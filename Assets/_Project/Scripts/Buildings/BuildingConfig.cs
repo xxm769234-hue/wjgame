@@ -1,0 +1,39 @@
+using UnityEngine;
+
+[CreateAssetMenu(fileName = "BuildingConfig", menuName = "Game/Building Config")]
+public sealed class BuildingConfig : ScriptableObject
+{
+    [Header("Identity")]
+    public int buildingId;
+    public string buildingName = "Building";
+    [TextArea] public string description;
+
+    [Header("Visual")]
+    public Sprite buildingSprite;
+    public Color fallbackColor = new Color(0.92f, 0.62f, 0.25f, 1f);
+    [Min(0.01f)] public float visualScale = 1f;
+    public Vector2 visualOffset;
+
+    [Header("Build")]
+    [Min(0)] public int cost;
+    [Min(0)] public int buildSeconds;
+    public string buildingType = "Default";
+    public bool canBuild = true;
+    public string disabledReason;
+
+    [Header("Upgrade")]
+    [Min(1)] public int maxLevel = 3;
+    [Min(0)] public int upgradeCost = 50;
+    [Min(0)] public int upgradeSeconds = 10;
+    [Min(0)] public int resourceAmountPerLevel = 5;
+
+    [Header("Resource Output")]
+    public bool canProduceResource = true;
+    public bool requireNpcForProduction;
+    public bool showResourceBubbleImmediately = true;
+    public string resourceName = "Gold";
+    public Sprite resourceIcon;
+    public Color resourceColor = new Color(1f, 0.78f, 0.2f, 1f);
+    [Min(1)] public int resourceAmount = 10;
+    [Min(0f)] public float productionSeconds = 10f;
+}
