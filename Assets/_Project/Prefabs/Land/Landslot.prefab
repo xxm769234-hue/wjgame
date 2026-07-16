@@ -71,8 +71,8 @@ SpriteRenderer:
   m_AutoUVMaxAngle: 89
   m_LightmapParameters: {fileID: 0}
   m_SortingLayerID: -1658151675
-  m_SortingLayer: 1
-  m_SortingOrder: 0
+  m_SortingLayer: 2
+  m_SortingOrder: 1020
   m_Sprite: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
@@ -161,10 +161,10 @@ SpriteMask:
   m_MaskAlphaCutoff: 0.2
   m_FrontSortingLayerID: -1658151675
   m_BackSortingLayerID: -1658151675
-  m_FrontSortingLayer: 1
-  m_BackSortingLayer: 1
-  m_FrontSortingOrder: 10
-  m_BackSortingOrder: 10
+  m_FrontSortingLayer: 2
+  m_BackSortingLayer: 2
+  m_FrontSortingOrder: 1031
+  m_BackSortingOrder: 1029
   m_IsCustomRangeActive: 1
   m_SpriteSortPoint: 0
 --- !u!1 &1248217622731571644
@@ -238,8 +238,8 @@ SpriteRenderer:
   m_AutoUVMaxAngle: 89
   m_LightmapParameters: {fileID: 0}
   m_SortingLayerID: -1658151675
-  m_SortingLayer: 1
-  m_SortingOrder: 0
+  m_SortingLayer: 2
+  m_SortingOrder: 1000
   m_Sprite: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
@@ -328,10 +328,10 @@ SpriteMask:
   m_MaskAlphaCutoff: 0.2
   m_FrontSortingLayerID: -1658151675
   m_BackSortingLayerID: -1658151675
-  m_FrontSortingLayer: 1
-  m_BackSortingLayer: 1
-  m_FrontSortingOrder: 10
-  m_BackSortingOrder: 10
+  m_FrontSortingLayer: 2
+  m_BackSortingLayer: 2
+  m_FrontSortingOrder: 1041
+  m_BackSortingOrder: 1039
   m_IsCustomRangeActive: 1
   m_SpriteSortPoint: 0
 --- !u!1 &1385509188888634921
@@ -384,6 +384,20 @@ MonoBehaviour:
   slotId: 0
   landRenderer: {fileID: 9176169539110313699}
   spriteMask: {fileID: 5130481329068931019}
+  polygonCollider: {fileID: 4674810685999828611}
+  useManualGridPosition: 0
+  gridPosition: {x: 0, y: 0}
+  landSortingLayer: Land
+  sortingOrderBase: 100
+  sortingOrderStep: 10
+  outlineWidth: 0.06
+  outlineColor: {r: 0, g: 0, b: 0, a: 1}
+  outlineSortingOrderOffset: 2
+  buildingSortingLayer: Building
+  buildingSortingOrderOffset: 5
+  npcSortingOrderOffset: 8
+  resourceBubbleOffset: {x: 0, y: 2.1}
+  resourceBubbleSortingOrderOffset: 12
 --- !u!60 &4674810685999828611
 PolygonCollider2D:
   m_ObjectHideFlags: 0
@@ -413,7 +427,7 @@ PolygonCollider2D:
   m_CallbackLayers:
     serializedVersion: 2
     m_Bits: 4294967295
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_UsedByEffector: 0
   m_UsedByComposite: 0
   m_Offset: {x: 0, y: 0}
@@ -511,10 +525,10 @@ SpriteMask:
   m_MaskAlphaCutoff: 0.2
   m_FrontSortingLayerID: -1658151675
   m_BackSortingLayerID: -1658151675
-  m_FrontSortingLayer: 1
-  m_BackSortingLayer: 1
-  m_FrontSortingOrder: 10
-  m_BackSortingOrder: 10
+  m_FrontSortingLayer: 2
+  m_BackSortingLayer: 2
+  m_FrontSortingOrder: 1021
+  m_BackSortingOrder: 1019
   m_IsCustomRangeActive: 1
   m_SpriteSortPoint: 0
 --- !u!1 &2265195713997435428
@@ -588,8 +602,8 @@ SpriteRenderer:
   m_AutoUVMaxAngle: 89
   m_LightmapParameters: {fileID: 0}
   m_SortingLayerID: -1658151675
-  m_SortingLayer: 1
-  m_SortingOrder: 0
+  m_SortingLayer: 2
+  m_SortingOrder: 1010
   m_Sprite: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
@@ -700,6 +714,20 @@ MonoBehaviour:
   slotId: 0
   landRenderer: {fileID: 3219355767793714641}
   spriteMask: {fileID: 4273998454211128794}
+  polygonCollider: {fileID: 8842119772930284045}
+  useManualGridPosition: 0
+  gridPosition: {x: 0, y: 0}
+  landSortingLayer: Land
+  sortingOrderBase: 100
+  sortingOrderStep: 10
+  outlineWidth: 0.06
+  outlineColor: {r: 0, g: 0, b: 0, a: 1}
+  outlineSortingOrderOffset: 2
+  buildingSortingLayer: Building
+  buildingSortingOrderOffset: 5
+  npcSortingOrderOffset: 8
+  resourceBubbleOffset: {x: 0, y: 2.1}
+  resourceBubbleSortingOrderOffset: 12
 --- !u!60 &8842119772930284045
 PolygonCollider2D:
   m_ObjectHideFlags: 0
@@ -729,7 +757,7 @@ PolygonCollider2D:
   m_CallbackLayers:
     serializedVersion: 2
     m_Bits: 4294967295
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_UsedByEffector: 0
   m_UsedByComposite: 0
   m_Offset: {x: 0, y: 0}
@@ -821,8 +849,8 @@ SpriteRenderer:
   m_AutoUVMaxAngle: 89
   m_LightmapParameters: {fileID: 0}
   m_SortingLayerID: -1658151675
-  m_SortingLayer: 1
-  m_SortingOrder: 0
+  m_SortingLayer: 2
+  m_SortingOrder: 1040
   m_Sprite: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
@@ -884,6 +912,20 @@ MonoBehaviour:
   slotId: 0
   landRenderer: {fileID: 8266319060662422979}
   spriteMask: {fileID: 7762349607131922114}
+  polygonCollider: {fileID: 8802240028932736220}
+  useManualGridPosition: 0
+  gridPosition: {x: 0, y: 0}
+  landSortingLayer: Land
+  sortingOrderBase: 100
+  sortingOrderStep: 10
+  outlineWidth: 0.06
+  outlineColor: {r: 0, g: 0, b: 0, a: 1}
+  outlineSortingOrderOffset: 2
+  buildingSortingLayer: Building
+  buildingSortingOrderOffset: 5
+  npcSortingOrderOffset: 8
+  resourceBubbleOffset: {x: 0, y: 2.1}
+  resourceBubbleSortingOrderOffset: 12
 --- !u!60 &8802240028932736220
 PolygonCollider2D:
   m_ObjectHideFlags: 0
@@ -913,7 +955,7 @@ PolygonCollider2D:
   m_CallbackLayers:
     serializedVersion: 2
     m_Bits: 4294967295
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_UsedByEffector: 0
   m_UsedByComposite: 0
   m_Offset: {x: 0, y: 0}
@@ -984,6 +1026,20 @@ MonoBehaviour:
   slotId: 0
   landRenderer: {fileID: 5415635688610515599}
   spriteMask: {fileID: 2363076929718301732}
+  polygonCollider: {fileID: 4813292102805706893}
+  useManualGridPosition: 0
+  gridPosition: {x: 0, y: 0}
+  landSortingLayer: Land
+  sortingOrderBase: 100
+  sortingOrderStep: 10
+  outlineWidth: 0.06
+  outlineColor: {r: 0, g: 0, b: 0, a: 1}
+  outlineSortingOrderOffset: 2
+  buildingSortingLayer: Building
+  buildingSortingOrderOffset: 5
+  npcSortingOrderOffset: 8
+  resourceBubbleOffset: {x: 0, y: 2.1}
+  resourceBubbleSortingOrderOffset: 12
 --- !u!60 &4813292102805706893
 PolygonCollider2D:
   m_ObjectHideFlags: 0
@@ -1013,7 +1069,7 @@ PolygonCollider2D:
   m_CallbackLayers:
     serializedVersion: 2
     m_Bits: 4294967295
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_UsedByEffector: 0
   m_UsedByComposite: 0
   m_Offset: {x: 0, y: 0}
@@ -1111,10 +1167,10 @@ SpriteMask:
   m_MaskAlphaCutoff: 0.2
   m_FrontSortingLayerID: -1658151675
   m_BackSortingLayerID: -1658151675
-  m_FrontSortingLayer: 1
-  m_BackSortingLayer: 1
-  m_FrontSortingOrder: 10
-  m_BackSortingOrder: 10
+  m_FrontSortingLayer: 2
+  m_BackSortingLayer: 2
+  m_FrontSortingOrder: 1011
+  m_BackSortingOrder: 1009
   m_IsCustomRangeActive: 1
   m_SpriteSortPoint: 0
 --- !u!1 &7556389282192907232
@@ -1167,6 +1223,20 @@ MonoBehaviour:
   slotId: 0
   landRenderer: {fileID: 160520410393294919}
   spriteMask: {fileID: 2723591799573557139}
+  polygonCollider: {fileID: 6240362999758506535}
+  useManualGridPosition: 0
+  gridPosition: {x: 0, y: 0}
+  landSortingLayer: Land
+  sortingOrderBase: 100
+  sortingOrderStep: 10
+  outlineWidth: 0.06
+  outlineColor: {r: 0, g: 0, b: 0, a: 1}
+  outlineSortingOrderOffset: 2
+  buildingSortingLayer: Building
+  buildingSortingOrderOffset: 5
+  npcSortingOrderOffset: 8
+  resourceBubbleOffset: {x: 0, y: 2.1}
+  resourceBubbleSortingOrderOffset: 12
 --- !u!60 &6240362999758506535
 PolygonCollider2D:
   m_ObjectHideFlags: 0
@@ -1196,7 +1266,7 @@ PolygonCollider2D:
   m_CallbackLayers:
     serializedVersion: 2
     m_Bits: 4294967295
-  m_IsTrigger: 0
+  m_IsTrigger: 1
   m_UsedByEffector: 0
   m_UsedByComposite: 0
   m_Offset: {x: 0, y: 0}
@@ -1288,8 +1358,8 @@ SpriteRenderer:
   m_AutoUVMaxAngle: 89
   m_LightmapParameters: {fileID: 0}
   m_SortingLayerID: -1658151675
-  m_SortingLayer: 1
-  m_SortingOrder: 0
+  m_SortingLayer: 2
+  m_SortingOrder: 1030
   m_Sprite: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
@@ -1378,9 +1448,9 @@ SpriteMask:
   m_MaskAlphaCutoff: 0.2
   m_FrontSortingLayerID: -1658151675
   m_BackSortingLayerID: -1658151675
-  m_FrontSortingLayer: 1
-  m_BackSortingLayer: 1
-  m_FrontSortingOrder: 10
-  m_BackSortingOrder: 10
+  m_FrontSortingLayer: 2
+  m_BackSortingLayer: 2
+  m_FrontSortingOrder: 1001
+  m_BackSortingOrder: 999
   m_IsCustomRangeActive: 1
   m_SpriteSortPoint: 0

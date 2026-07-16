@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>Owns map coordinates, slot registration, and local occupied-slot validation.</summary>
+/// <summary>Owns map coordinates, slot registration, and backend snapshot application.</summary>
 public sealed class MapManager : MonoBehaviour
 {
     public static MapManager Instance { get; private set; }
@@ -73,6 +73,7 @@ public sealed class MapManager : MonoBehaviour
         if (autoRegisterSceneSlots) RebuildSlotCache();
         ConfigureCameraController();
         ResourceCollectionManager.EnsureInstance();
+        BackendGameService.EnsureInstance().Connect();
     }
 
     private void OnDestroy()
@@ -189,23 +190,82 @@ public sealed class MapManager : MonoBehaviour
         return true;
     }
 
-    public bool TryPlaceLand(LandSlotController slot, LandConfig config, out string reason)
-    {
-        if (!CanPlace(slot, config, out reason)) return false;
-
-        if (!slot.Build(config))
-        {
-            reason = "Land slot refused the build request.";
-            return false;
-        }
-
-        occupiedSlots.Add(slot.GridPosition);
-        return true;
-    }
-
     public bool TryGetSlot(Vector2Int gridPosition, out LandSlotController slot)
     {
         return slotsByGrid.TryGetValue(gridPosition, out slot);
+    }
+
+    public void MarkOccupied(LandSlotController slot)
+    {
+        if (slot == null) return;
+        EnsureRegistered(slot);
+        occupiedSlots.Add(slot.GridPosition);
+    }
+
+    public void ApplyRemoteMapData(MapDataResponse mapData)
+    {
+        if (mapData == null) return;
+
+        mapSize = new Vector2Int(Mathf.Max(1, mapData.width), Mathf.Max(1, mapData.height));
+        RebuildSlotCache();
+        ClearRemoteSlotState();
+
+        if (mapData.lands != null)
+        {
+            for (int i = 0; i < mapData.lands.Length; i++)
+            {
+                LandTileResponse land = mapData.lands[i];
+                if (land == null) continue;
+
+                Vector2Int position = new Vector2Int(land.positionX, land.positionY);
+                if (!TryGetSlot(position, out LandSlotController slot)) continue;
+
+                slot.ApplyRemoteLand(RuntimeConfigFactory.ResolveLand(land), land);
+                occupiedSlots.Add(position);
+            }
+        }
+
+        ApplyRemoteBuildings(mapData.buildings);
+    }
+
+    public void ApplyRemoteBuildings(BuildingResponse[] buildings)
+    {
+        if (buildings != null)
+        {
+            for (int i = 0; i < buildings.Length; i++)
+            {
+                BuildingResponse building = buildings[i];
+                if (building == null) continue;
+
+                LandSlotController slot = FindSlotForBuilding(building);
+                if (slot == null) continue;
+
+                slot.ApplyRemoteBuilding(RuntimeConfigFactory.ResolveBuilding(building), building);
+            }
+        }
+    }
+
+    public void ApplyRemoteProductions(ProductionResponse[] productions)
+    {
+        if (productions == null) return;
+
+        for (int i = 0; i < productions.Length; i++)
+        {
+            ProductionResponse production = productions[i];
+            if (production == null) continue;
+
+            LandSlotController slot = FindSlotByPlayerBuildingId(production.playerBuildingId);
+            if (slot != null) slot.ApplyRemoteProduction(production);
+        }
+    }
+
+    public void ClearReadyRemoteProductions()
+    {
+        LandSlotController[] slots = FindObjectsByType<LandSlotController>(FindObjectsSortMode.None);
+        for (int i = 0; i < slots.Length; i++)
+        {
+            if (slots[i] != null && slots[i].HasResourceReady) slots[i].ClearRemoteProductionState();
+        }
     }
 
     public void BuildRuntimeLandslotLayout()
@@ -293,6 +353,45 @@ public sealed class MapManager : MonoBehaviour
         if (slot == null) return;
         if (slot.HasGridPosition && slotsByGrid.TryGetValue(slot.GridPosition, out LandSlotController registered) && registered == slot) return;
         RegisterSlot(slot);
+    }
+
+    private void ClearRemoteSlotState()
+    {
+        LandSlotController[] slots = FindObjectsByType<LandSlotController>(FindObjectsSortMode.None);
+        for (int i = 0; i < slots.Length; i++)
+        {
+            if (slots[i] != null) slots[i].ClearLandStateFromBackend();
+        }
+        occupiedSlots.Clear();
+    }
+
+    private LandSlotController FindSlotForBuilding(BuildingResponse building)
+    {
+        LandSlotController slot = FindSlotByPlayerLandId(building.landId);
+        if (slot != null) return slot;
+
+        Vector2Int position = new Vector2Int(building.positionX, building.positionY);
+        return TryGetSlot(position, out slot) ? slot : null;
+    }
+
+    private LandSlotController FindSlotByPlayerLandId(int playerLandId)
+    {
+        LandSlotController[] slots = FindObjectsByType<LandSlotController>(FindObjectsSortMode.None);
+        for (int i = 0; i < slots.Length; i++)
+        {
+            if (slots[i] != null && slots[i].HasRemotePlayerLandId && slots[i].RemotePlayerLandId == playerLandId) return slots[i];
+        }
+        return null;
+    }
+
+    private LandSlotController FindSlotByPlayerBuildingId(int playerBuildingId)
+    {
+        LandSlotController[] slots = FindObjectsByType<LandSlotController>(FindObjectsSortMode.None);
+        for (int i = 0; i < slots.Length; i++)
+        {
+            if (slots[i] != null && slots[i].PlayerBuildingId == playerBuildingId) return slots[i];
+        }
+        return null;
     }
 
     private Vector2Int ResolveGridPosition(LandSlotController slot, IDictionary<Vector2Int, LandSlotController> assigned)

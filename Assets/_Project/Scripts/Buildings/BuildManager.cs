@@ -17,6 +17,7 @@ public sealed class BuildManager : MonoBehaviour
     public bool IsBuildMode { get; private set; }
     private LandPreview activePreview;
     private MapManager mapManager;
+    private bool placementPending;
 
     private void Awake()
     {
@@ -68,10 +69,34 @@ public sealed class BuildManager : MonoBehaviour
     {
         if (mapManager == null) mapManager = MapManager.EnsureInstance();
         string reason = "MapManager is missing.";
-        if (mapManager == null || !mapManager.TryPlaceLand(slot, config, out reason))
+        if (mapManager == null || !mapManager.CanPlace(slot, config, out reason))
         {
             Debug.LogWarning($"Land placement failed: {reason}", slot);
+            EndBuild(false);
+            return;
         }
+
+        BackendGameService service = BackendGameService.Instance;
+        if (service == null || !service.IsAuthenticated)
+        {
+            Debug.LogWarning("Land placement failed: Backend session is not authenticated.", slot);
+            EndBuild(false);
+            return;
+        }
+
+        if (placementPending)
+        {
+            Debug.LogWarning("Land placement is already pending.", slot);
+            EndBuild(false);
+            return;
+        }
+
+        placementPending = true;
+        service.PlaceLand(slot, config, (success, message) =>
+        {
+            placementPending = false;
+            if (!success) Debug.LogWarning($"Backend land placement failed: {message}", slot);
+        });
         EndBuild(false);
     }
 

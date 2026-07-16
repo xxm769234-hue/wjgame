@@ -1640,12 +1640,15 @@ MonoBehaviour:
   buildPanel: {fileID: 1467752052}
   mapArea: {fileID: 0}
   mapRoot: {fileID: 55948454}
+  landDragItemPrefab: {fileID: 3784507810664169484, guid: 3ae8e1f550286aa4686d1f5e668e193e, type: 3}
+  landDragItemContainer: {fileID: 1910966822}
   animationDuration: 0.25
   panelOpenPosition: {x: 0, y: 0}
   panelClosedPosition: {x: 350, y: 0}
   mapClosedPosition: {x: 0, y: 0}
   mapOpenPosition: {x: -175, y: 0}
   worldMapOpenOffset: {x: -2, y: 0, z: 0}
+  closeWhenClickOutside: 1
   startOpen: 0
 --- !u!1 &1487293326
 GameObject:

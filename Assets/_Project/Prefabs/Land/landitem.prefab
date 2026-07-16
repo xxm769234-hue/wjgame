@@ -282,3 +282,5 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   config: {fileID: 0}
+  labelText: {fileID: 2192481372433503439}
+  iconImage: {fileID: 0}

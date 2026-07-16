@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -72,37 +71,27 @@ public sealed class ResourceCollectionManager : MonoBehaviour
         return count;
     }
 
-    public int CollectAllReadyResources()
-    {
-        LandSlotController[] slots = FindObjectsByType<LandSlotController>(FindObjectsSortMode.None);
-        Dictionary<string, int> totalsByResource = new Dictionary<string, int>();
-        int collectedSlots = 0;
-
-        for (int i = 0; i < slots.Length; i++)
-        {
-            LandSlotController slot = slots[i];
-            if (slot == null || !slot.HasResourceReady) continue;
-
-            if (!slot.TryCollectReadyResource(out string resourceName, out int amount)) continue;
-
-            if (string.IsNullOrEmpty(resourceName)) resourceName = "Resource";
-            if (!totalsByResource.ContainsKey(resourceName)) totalsByResource[resourceName] = 0;
-            totalsByResource[resourceName] += amount;
-            collectedSlots++;
-        }
-
-        if (collectedSlots > 0)
-        {
-            Debug.Log($"Collect All gathered {FormatTotals(totalsByResource)} from {collectedSlots} land slot(s).", this);
-        }
-
-        RefreshButtonState();
-        return collectedSlots;
-    }
-
     public void OnClickCollectAll()
     {
-        CollectAllReadyResources();
+        BackendGameService service = BackendGameService.Instance;
+        if (service == null || !service.IsAuthenticated)
+        {
+            Debug.LogWarning("Backend collect-all failed: Backend session is not authenticated.", this);
+            RefreshButtonState();
+            return;
+        }
+
+        if (service.IsAuthenticated)
+        {
+            if (collectAllButton != null) collectAllButton.interactable = false;
+            service.CollectAllProductions((success, message, collectedCount) =>
+            {
+                if (!success) Debug.LogWarning($"Backend collect-all failed: {message}", this);
+                else Debug.Log($"Backend collect-all gathered {collectedCount} item type(s).", this);
+                RefreshButtonState();
+            });
+            return;
+        }
     }
 
     private void EnsureCollectAllButton()
@@ -186,15 +175,4 @@ public sealed class ResourceCollectionManager : MonoBehaviour
         }
     }
 
-    private static string FormatTotals(Dictionary<string, int> totalsByResource)
-    {
-        if (totalsByResource == null || totalsByResource.Count == 0) return "0 resources";
-
-        List<string> parts = new List<string>();
-        foreach (KeyValuePair<string, int> pair in totalsByResource)
-        {
-            parts.Add($"{pair.Value} {pair.Key}");
-        }
-        return string.Join(", ", parts);
-    }
 }

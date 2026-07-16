@@ -16,6 +16,7 @@ public sealed class LandInfoPanel : MonoBehaviour
     [SerializeField] private TMP_Text descText;
     [SerializeField] private TMP_Text levelText;
     [SerializeField] private TMP_Text buildingText;
+    [SerializeField] private TMP_Text productionText;
     [SerializeField] private TMP_Text npcText;
     [SerializeField] private Button buildButton;
     [SerializeField] private Button assignNpcButton;
@@ -64,10 +65,12 @@ public sealed class LandInfoPanel : MonoBehaviour
         SetText(descText, data.description);
         SetText(levelText, $"Level: {data.unlockLevel}");
         RefreshBuildingStatus();
+        RefreshProductionStatus();
         RefreshNpcStatus();
         panel.SetActive(true);
         shownFrame = Time.frameCount;
         PositionNearSlot(slot);
+        RefreshRemoteDetails(slot);
     }
 
     public void Hide()
@@ -82,7 +85,43 @@ public sealed class LandInfoPanel : MonoBehaviour
     {
         if (slot == null || current != slot || panel == null || !panel.activeSelf) return;
         RefreshBuildingStatus();
+        RefreshProductionStatus();
         RefreshNpcStatus();
+    }
+
+    public void SetBuildingMessage(string message)
+    {
+        SetText(buildingText, message);
+    }
+
+    private void RefreshRemoteDetails(LandSlotController slot)
+    {
+        BackendGameService service = BackendGameService.Instance;
+        if (service == null || !service.IsAuthenticated || slot == null || !slot.HasBuilding) return;
+
+        service.LoadBuildingDetail(slot, result =>
+        {
+            if (current != slot) return;
+            if (result == null || !result.Success)
+            {
+                SetText(buildingText, $"Building detail failed: {ResultMessage(result)}");
+                return;
+            }
+            RefreshBuildingStatus();
+            RefreshProductionStatus();
+        });
+
+        service.LoadProductionDetail(slot, result =>
+        {
+            if (current != slot) return;
+            if (result == null || !result.Success)
+            {
+                SetText(npcText, $"Production detail failed: {ResultMessage(result)}");
+                return;
+            }
+            RefreshProductionStatus();
+            RefreshNpcStatus();
+        });
     }
 
     private void Update()
@@ -153,6 +192,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         HideBuildingList();
         RefreshBuildingStatus();
+        RefreshProductionStatus();
         RefreshNpcStatus();
     }
 
@@ -168,6 +208,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         }
 
         RefreshBuildingStatus();
+        RefreshProductionStatus();
         RefreshNpcStatus();
     }
 
@@ -197,6 +238,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         }
 
         RefreshBuildingStatus();
+        RefreshProductionStatus();
         RefreshNpcStatus();
     }
 
@@ -212,6 +254,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         }
 
         RefreshBuildingStatus();
+        RefreshProductionStatus();
         RefreshNpcStatus();
     }
 
@@ -227,6 +270,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         }
 
         RefreshBuildingStatus();
+        RefreshProductionStatus();
         RefreshNpcStatus();
     }
 
@@ -250,19 +294,41 @@ public sealed class LandInfoPanel : MonoBehaviour
         if (npcListPanel == null || npcListContent == null || npcManager == null) return;
 
         ClearNpcList();
-        IReadOnlyList<NpcConfig> npcs = npcManager.AvailableNpcs;
-        for (int i = 0; i < npcs.Count; i++)
-        {
-            NpcConfig config = npcs[i];
-            if (config == null) continue;
-
-            string label = FormatNpcLabel(config);
-            NpcConfig captured = config;
-            Button itemButton = CreateTextButton($"NPC Item {i + 1}", npcListContent, label, new Vector2(0f, 0f), new Vector2(600f, 52f), 22f, () => SelectNpc(captured));
-            if (!npcManager.CanAssignToSlot(current, config, out _)) itemButton.interactable = false;
-        }
-
+        LandSlotController requestedSlot = current;
+        Button loading = CreateTextButton("NPC Loading", npcListContent, "Loading NPCs...", new Vector2(0f, 0f), new Vector2(600f, 52f), 22f, () => { });
+        loading.interactable = false;
         npcListPanel.gameObject.SetActive(true);
+
+        npcManager.RequestAvailableNpcsForSlot(requestedSlot, (success, message, npcs) =>
+        {
+            if (current != requestedSlot || npcListPanel == null || !npcListPanel.gameObject.activeSelf) return;
+
+            ClearNpcList();
+            if (!success)
+            {
+                Button failed = CreateTextButton("NPC Load Failed", npcListContent, $"NPC failed: {message}", new Vector2(0f, 0f), new Vector2(600f, 52f), 20f, () => { });
+                failed.interactable = false;
+                return;
+            }
+
+            if (npcs == null || npcs.Count == 0)
+            {
+                Button empty = CreateTextButton("NPC Empty", npcListContent, "No available NPC", new Vector2(0f, 0f), new Vector2(600f, 52f), 22f, () => { });
+                empty.interactable = false;
+                return;
+            }
+
+            for (int i = 0; i < npcs.Count; i++)
+            {
+                NpcConfig config = npcs[i];
+                if (config == null) continue;
+
+                string label = FormatNpcLabel(config);
+                NpcConfig captured = config;
+                Button itemButton = CreateTextButton($"NPC Item {i + 1}", npcListContent, label, new Vector2(0f, 0f), new Vector2(600f, 52f), 22f, () => SelectNpc(captured));
+                if (!npcManager.CanAssignToSlot(current, config, out _)) itemButton.interactable = false;
+            }
+        });
     }
 
     private void SelectNpc(NpcConfig config)
@@ -270,14 +336,22 @@ public sealed class LandInfoPanel : MonoBehaviour
         if (npcManager == null) npcManager = NpcManager.EnsureInstance();
         if (npcManager == null || current == null) return;
 
-        if (!npcManager.TryAssignToSlot(current, config, out string reason))
+        if (!npcManager.TryAssignToSlot(current, config, (success, message) =>
+        {
+            if (!success)
+            {
+                SetText(npcText, $"NPC failed: {message}");
+                return;
+            }
+
+            HideNpcList();
+            RefreshProductionStatus();
+            RefreshNpcStatus();
+        }, out string reason))
         {
             SetText(npcText, $"NPC failed: {reason}");
             return;
         }
-
-        HideNpcList();
-        RefreshNpcStatus();
     }
 
     private void OnRemoveNpcClicked()
@@ -285,14 +359,22 @@ public sealed class LandInfoPanel : MonoBehaviour
         if (npcManager == null) npcManager = NpcManager.EnsureInstance();
         if (npcManager == null || current == null) return;
 
-        if (!npcManager.TryRemoveFromSlot(current, out string reason))
+        if (!npcManager.TryRemoveFromSlot(current, (success, message) =>
+        {
+            if (!success)
+            {
+                SetText(npcText, $"Remove NPC failed: {message}");
+                return;
+            }
+
+            HideNpcList();
+            RefreshProductionStatus();
+            RefreshNpcStatus();
+        }, out string reason))
         {
             SetText(npcText, $"Remove NPC failed: {reason}");
             return;
         }
-
-        HideNpcList();
-        RefreshNpcStatus();
     }
 
     private void RefreshBuildingStatus()
@@ -347,6 +429,26 @@ public sealed class LandInfoPanel : MonoBehaviour
         }
     }
 
+    private void RefreshProductionStatus()
+    {
+        if (current == null) return;
+
+        if (!current.HasBuilding)
+        {
+            SetText(productionText, "Production: Build first");
+            return;
+        }
+
+        IReadOnlyList<ProductionResponse> productions = current.LatestProductions;
+        if (productions == null || productions.Count == 0)
+        {
+            SetText(productionText, current.IsBuildingCompleted ? "Production: Syncing..." : "Production: Paused");
+            return;
+        }
+
+        SetText(productionText, FormatProductionStatus(productions));
+    }
+
     private void HideBuildingList()
     {
         if (buildingListPanel != null) buildingListPanel.gameObject.SetActive(false);
@@ -398,6 +500,35 @@ public sealed class LandInfoPanel : MonoBehaviour
         return text;
     }
 
+    private static string FormatProductionStatus(IReadOnlyList<ProductionResponse> productions)
+    {
+        if (productions == null || productions.Count == 0) return "Production: None";
+
+        List<string> lines = new List<string>();
+        for (int i = 0; i < productions.Count; i++)
+        {
+            ProductionResponse production = productions[i];
+            if (production == null) continue;
+
+            string itemName = !string.IsNullOrEmpty(production.itemName) ? production.itemName : production.itemKey;
+            if (string.IsNullOrEmpty(itemName)) itemName = "Resource";
+
+            string collectState = production.canCollect ? "Ready" : FormatRemaining(production.remainingSeconds);
+            string bonus = production.npcProduceBonusRate > 0f ? $"  Bonus +{Mathf.RoundToInt(production.npcProduceBonusRate * 100f)}%" : string.Empty;
+            lines.Add($"{itemName}: {production.storedAmount}/{production.storageCapacity}  +{production.produceAmount}/{production.produceIntervalSeconds}s  {collectState}{bonus}");
+        }
+
+        return lines.Count == 0 ? "Production: None" : $"Production:\n{string.Join("\n", lines)}";
+    }
+
+    private static string FormatRemaining(int remainingSeconds)
+    {
+        if (remainingSeconds <= 0) return "Waiting";
+        int minutes = remainingSeconds / 60;
+        int seconds = remainingSeconds % 60;
+        return minutes > 0 ? $"Next {minutes}m {seconds}s" : $"Next {seconds}s";
+    }
+
     private static string FormatNpcLabel(NpcConfig config)
     {
         string role = IsBlank(config.role) ? "Resident" : config.role;
@@ -409,6 +540,12 @@ public sealed class LandInfoPanel : MonoBehaviour
     private static bool IsBlank(string value)
     {
         return string.IsNullOrEmpty(value) || value.Trim().Length == 0;
+    }
+
+    private static string ResultMessage<T>(BackendResult<T> result)
+    {
+        if (result == null) return "No backend response.";
+        return string.IsNullOrEmpty(result.Message) ? $"HTTP {result.HttpStatus}" : result.Message;
     }
 
     private static bool TryGetPointerDownPosition(out Vector2 screenPosition)
@@ -455,13 +592,15 @@ public sealed class LandInfoPanel : MonoBehaviour
         panelRect.anchorMax = new Vector2(0.5f, 0.5f);
         panelRect.pivot = new Vector2(0.5f, 0.5f);
         panelRect.sizeDelta = panelSize;
+        if (productionText == null) productionText = CreatePanelText("Production Status", panelRect);
         if (npcText == null) npcText = CreatePanelText("NPC Status", panelRect);
 
         ConfigureTextRect(nameText, new Vector2(0f, 142f), new Vector2(620f, 58f), 38f);
         ConfigureTextRect(descText, new Vector2(0f, 70f), new Vector2(620f, 70f), 24f);
-        ConfigureTextRect(levelText, new Vector2(-185f, 5f), new Vector2(420f, 42f), 24f);
-        ConfigureTextRect(buildingText, new Vector2(-125f, -55f), new Vector2(390f, 76f), 22f);
-        ConfigureTextRect(npcText, new Vector2(-140f, -115f), new Vector2(360f, 46f), 24f);
+        ConfigureTextRect(levelText, new Vector2(-185f, 8f), new Vector2(420f, 36f), 22f);
+        ConfigureTextRect(buildingText, new Vector2(-135f, -42f), new Vector2(370f, 58f), 20f);
+        ConfigureTextRect(productionText, new Vector2(-145f, -108f), new Vector2(370f, 72f), 17f);
+        ConfigureTextRect(npcText, new Vector2(-150f, -166f), new Vector2(350f, 38f), 19f);
     }
 
     private static void ConfigureTextRect(TMP_Text text, Vector2 position, Vector2 size, float fontSize)

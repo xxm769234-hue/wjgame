@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Rendering;
@@ -8,7 +9,6 @@ public sealed class LandSlotController : MonoBehaviour
 {
     private const int UnassignedSortingOrder = int.MinValue;
     private static int nextRuntimeSortingOffset;
-    private static int nextRuntimePlayerBuildingId = 1;
 
     [SerializeField] private int slotId;
     [SerializeField] private SpriteRenderer landRenderer;
@@ -35,6 +35,7 @@ public sealed class LandSlotController : MonoBehaviour
     [SerializeField] private int resourceBubbleSortingOrderOffset = 12;
 
     private int runtimeSortingOrder = UnassignedSortingOrder;
+    private int runtimePlayerLandId;
     private LandConfig currentLand;
     private BuildingConfig currentBuilding;
     private NpcConfig currentNpc;
@@ -49,18 +50,24 @@ public sealed class LandSlotController : MonoBehaviour
     private float buildingStartedAt;
     private float buildingEndsAt;
     private float buildingDuration;
+    private bool remoteCompletionPending;
+    private float nextRemoteCompletionAttemptAt;
     private bool resourceReady;
-    private float nextResourceReadyAt;
+    private string remoteResourceName;
+    private int remoteResourceAmount;
+    private readonly List<ProductionResponse> latestProductions = new List<ProductionResponse>();
     private static Material outlineMaterial;
 
     public int SlotId => slotId;
+    public bool HasRemotePlayerLandId => runtimePlayerLandId > 0;
+    public int RemotePlayerLandId => runtimePlayerLandId;
     public LandConfig CurrentLand => currentLand;
     public BuildingConfig CurrentBuilding => currentBuilding;
     public NpcConfig CurrentNpc => currentNpc;
     public bool IsBuilt => currentLand != null;
     public bool HasBuilding => currentBuilding != null;
     public bool HasNpc => currentNpc != null;
-    public int PlayerLandId => slotId > 0 ? slotId : GridPosition.x * 1000 + GridPosition.y + 1;
+    public int PlayerLandId => runtimePlayerLandId > 0 ? runtimePlayerLandId : slotId > 0 ? slotId : GridPosition.x * 1000 + GridPosition.y + 1;
     public int PlayerBuildingId => playerBuildingId;
     public int BuildingLevel => HasBuilding ? buildingLevel : 0;
     public BuildingRuntimeStatus BuildingStatus => buildingStatus;
@@ -69,6 +76,7 @@ public sealed class LandSlotController : MonoBehaviour
     public float BuildingRemainingSeconds => IsBuildingInProgress ? Mathf.Max(0f, buildingEndsAt - Time.time) : 0f;
     public float BuildingProgress => IsBuildingInProgress && buildingDuration > 0f ? Mathf.Clamp01((Time.time - buildingStartedAt) / buildingDuration) : IsBuildingCompleted ? 1f : 0f;
     public bool HasResourceReady => resourceReady;
+    public IReadOnlyList<ProductionResponse> LatestProductions => latestProductions;
     public PolygonCollider2D Collider => polygonCollider;
     public Vector3 CenterWorld => polygonCollider != null ? ShapeHelper.GetWorldCentroid(polygonCollider) : transform.position;
     public Vector2Int GridPosition => gridPosition;
@@ -127,156 +135,21 @@ public sealed class LandSlotController : MonoBehaviour
 
     public bool CanBuild() => currentLand == null;
 
-    public bool Build(LandConfig config)
-    {
-        if (config == null || config.landSprite == null || !CanBuild()) return false;
-        ResolveReferences(true);
-        if (landRenderer == null || spriteMask == null)
-        {
-            Debug.LogError($"LandSlot '{name}' is missing SpriteRenderer or SpriteMask.", this);
-            return false;
-        }
-        currentLand = config;
-        ConfigureRenderingLayers();
-        spriteMask.enabled = true;
-        landRenderer.sprite = config.landSprite;
-        landRenderer.enabled = true;
-        SetOutlineVisible(true);
-        return true;
-    }
-
     public LandConfig GetLand() => currentLand;
-
-    public bool BuildBuilding(BuildingConfig config)
-    {
-        if (config == null || !IsBuilt || HasBuilding) return false;
-
-        currentBuilding = config;
-        playerBuildingId = AllocatePlayerBuildingId();
-        buildingLevel = 1;
-        StartBuildingTimer(BuildingRuntimeStatus.BUILDING, config.buildSeconds);
-        ConfigureBuildingRenderer(true);
-        if (buildingStatus == BuildingRuntimeStatus.COMPLETED) ScheduleNextResource(true);
-        else HideResourceBubble();
-        return buildingRenderer != null;
-    }
-
-    public bool AssignNpc(NpcConfig config)
-    {
-        if (config == null || !IsBuilt || !IsBuildingCompleted || HasNpc) return false;
-
-        currentNpc = config;
-        ConfigureNpcRenderer(true);
-        if (!resourceReady) ScheduleNextResource(true);
-        return npcRenderer != null;
-    }
-
-    public bool RemoveNpc()
-    {
-        if (!HasNpc) return false;
-
-        if (NpcManager.Instance != null) NpcManager.Instance.UnregisterAssignment(currentNpc, this);
-        currentNpc = null;
-        if (npcRenderer != null) npcRenderer.enabled = false;
-
-        resourceReady = false;
-        HideResourceBubble();
-        if (IsBuildingCompleted) ScheduleNextResource(true);
-        return true;
-    }
 
     public void CollectReadyResource()
     {
-        TryCollectReadyResource(out _, out _);
-    }
-
-    public bool TryCollectReadyResource(out string resourceName, out int amount)
-    {
-        resourceName = string.Empty;
-        amount = 0;
-        if (!resourceReady || currentBuilding == null || !IsBuildingCompleted) return false;
-
-        resourceName = currentBuilding.resourceName;
-        amount = GetCurrentResourceAmount();
-        Debug.Log($"Collected {amount} {resourceName} from '{name}'.", this);
-        resourceReady = false;
-        HideResourceBubble();
-        ScheduleNextResource(false);
-        return true;
-    }
-
-    public bool TryStartUpgrade(out string reason)
-    {
-        reason = string.Empty;
-        if (!IsBuildingCompleted)
+        BackendGameService service = BackendGameService.Instance;
+        if (service != null && service.IsAuthenticated)
         {
-            reason = "Only completed buildings can be upgraded.";
-            return false;
-        }
-        if (buildingLevel >= currentBuilding.maxLevel)
-        {
-            reason = "Building is already at max level.";
-            return false;
+            service.CollectProduction(this, (success, message) =>
+            {
+                if (!success) Debug.LogWarning($"Backend production collect failed: {message}", this);
+            });
+            return;
         }
 
-        resourceReady = false;
-        HideResourceBubble();
-        StartBuildingTimer(BuildingRuntimeStatus.UPGRADING, currentBuilding.upgradeSeconds);
-        ConfigureBuildingRenderer(false);
-        return true;
-    }
-
-    public bool TryCancelBuildingAction(out string reason)
-    {
-        reason = string.Empty;
-        if (!IsBuildingInProgress)
-        {
-            reason = "Only building or upgrading actions can be cancelled.";
-            return false;
-        }
-
-        if (buildingStatus == BuildingRuntimeStatus.BUILDING)
-        {
-            ClearBuildingState();
-            return true;
-        }
-
-        buildingStatus = BuildingRuntimeStatus.COMPLETED;
-        ClearBuildingTimer();
-        ConfigureBuildingRenderer(false);
-        ScheduleNextResource(true);
-        return true;
-    }
-
-    public bool TryCompleteBuildingAction(out string reason)
-    {
-        reason = string.Empty;
-        if (!IsBuildingInProgress)
-        {
-            reason = "Building is not waiting to complete.";
-            return false;
-        }
-        if (BuildingRemainingSeconds > 0f)
-        {
-            reason = $"Still needs {Mathf.CeilToInt(BuildingRemainingSeconds)}s.";
-            return false;
-        }
-
-        CompleteBuildingAction();
-        return true;
-    }
-
-    public bool TryDemolishBuilding(out string reason)
-    {
-        reason = string.Empty;
-        if (!IsBuildingCompleted)
-        {
-            reason = "Building or upgrading buildings cannot be demolished.";
-            return false;
-        }
-
-        ClearBuildingState();
-        return true;
+        Debug.LogWarning("Backend production collect failed: Backend session is not authenticated.", this);
     }
 
     public bool CanReceiveMovedBuilding(BuildingConfig config, out string reason)
@@ -300,31 +173,113 @@ public sealed class LandSlotController : MonoBehaviour
         return true;
     }
 
-    public bool TryMoveBuildingTo(LandSlotController target, out string reason)
-    {
-        reason = string.Empty;
-        if (!IsBuildingCompleted)
-        {
-            reason = "Only completed buildings can be moved.";
-            return false;
-        }
-        if (target == null || target == this)
-        {
-            reason = "Choose another target land.";
-            return false;
-        }
-        if (!target.CanReceiveMovedBuilding(currentBuilding, out reason)) return false;
-
-        target.ReceiveMovedBuilding(currentBuilding, currentNpc, playerBuildingId, buildingLevel);
-        ClearBuildingState();
-        return true;
-    }
-
     public void SetRuntimeGridPosition(Vector2Int value)
     {
         if (useManualGridPosition) return;
         gridPosition = value;
         hasGridPosition = true;
+    }
+
+    public void ApplyRemoteLand(LandConfig config, LandTileResponse response)
+    {
+        if (response != null)
+        {
+            runtimePlayerLandId = response.playerLandId;
+            if (!useManualGridPosition)
+            {
+                gridPosition = new Vector2Int(response.positionX, response.positionY);
+                hasGridPosition = true;
+            }
+        }
+
+        ForceBuildLand(config);
+    }
+
+    public void ApplyRemoteBuilding(BuildingConfig config, BuildingResponse response)
+    {
+        if (config == null || response == null || !IsBuilt) return;
+
+        if (playerBuildingId != response.playerBuildingId) latestProductions.Clear();
+        currentBuilding = config;
+        playerBuildingId = response.playerBuildingId;
+        buildingLevel = Mathf.Max(1, response.level);
+        buildingStatus = RuntimeConfigFactory.ParseBuildingStatus(response.status);
+        ApplyRemoteBuildingTimer(response.remainingTime, response.progress);
+        ConfigureBuildingRenderer(true);
+
+        HideResourceBubble();
+    }
+
+    public void ApplyRemoteProduction(ProductionResponse response)
+    {
+        if (response == null || response.playerBuildingId != playerBuildingId) return;
+
+        remoteResourceName = string.IsNullOrEmpty(response.itemName) ? response.itemKey : response.itemName;
+        remoteResourceAmount = Mathf.Max(0, response.storedAmount);
+        UpsertProduction(response);
+        ApplyRemoteSettledNpc(response.settledNpc);
+        resourceReady = response.canCollect && remoteResourceAmount > 0;
+        if (resourceReady)
+        {
+            RefreshResourceBubble();
+        }
+        else
+        {
+            ClearRemoteProductionState(response.remainingSeconds);
+        }
+    }
+
+    public void ClearRemoteProductionState(int remainingSeconds = 0)
+    {
+        resourceReady = false;
+        remoteResourceAmount = 0;
+        HideResourceBubble();
+    }
+
+    private void UpsertProduction(ProductionResponse response)
+    {
+        for (int i = 0; i < latestProductions.Count; i++)
+        {
+            ProductionResponse existing = latestProductions[i];
+            if (existing == null) continue;
+
+            bool sameItemId = response.itemId > 0 && existing.itemId == response.itemId;
+            bool sameItemKey = !string.IsNullOrEmpty(response.itemKey) && string.Equals(existing.itemKey, response.itemKey, System.StringComparison.OrdinalIgnoreCase);
+            if (sameItemId || sameItemKey)
+            {
+                latestProductions[i] = response;
+                return;
+            }
+        }
+
+        latestProductions.Add(response);
+    }
+
+    private void ApplyRemoteSettledNpc(SettledNpcResponse settledNpc)
+    {
+        if (settledNpc != null && settledNpc.playerNpcId > 0)
+        {
+            currentNpc = NpcManager.CreateRuntimeNpc(settledNpc);
+            ConfigureNpcRenderer(true);
+            return;
+        }
+
+        currentNpc = null;
+        if (npcRenderer != null) npcRenderer.enabled = false;
+    }
+
+    public void ClearLandStateFromBackend()
+    {
+        ClearBuildingState();
+        runtimePlayerLandId = 0;
+        currentLand = null;
+        if (landRenderer != null) landRenderer.enabled = false;
+        SetOutlineVisible(false);
+    }
+
+    public void ClearBuildingStateFromBackend()
+    {
+        ClearBuildingState();
     }
 
     private void OnMouseDown()
@@ -504,61 +459,7 @@ public sealed class LandSlotController : MonoBehaviour
 
     private void UpdateResourceProduction()
     {
-        if (resourceReady || currentBuilding == null) return;
-
-        if (!CanProduceResource())
-        {
-            HideResourceBubble();
-            return;
-        }
-
-        if (nextResourceReadyAt <= 0f)
-        {
-            ScheduleNextResource(true);
-            return;
-        }
-
-        if (Time.time >= nextResourceReadyAt) SetResourceReady();
-    }
-
-    private bool CanProduceResource()
-    {
-        return currentBuilding != null
-            && buildingStatus == BuildingRuntimeStatus.COMPLETED
-            && currentBuilding.canProduceResource
-            && (!currentBuilding.requireNpcForProduction || HasNpc);
-    }
-
-    private void ScheduleNextResource(bool allowImmediate)
-    {
-        if (!CanProduceResource())
-        {
-            resourceReady = false;
-            nextResourceReadyAt = 0f;
-            HideResourceBubble();
-            return;
-        }
-
-        if (allowImmediate && currentBuilding.showResourceBubbleImmediately)
-        {
-            SetResourceReady();
-            return;
-        }
-
-        resourceReady = false;
-        HideResourceBubble();
-        float seconds = Mathf.Max(0f, currentBuilding.productionSeconds);
-        if (seconds <= 0f) SetResourceReady();
-        else nextResourceReadyAt = Time.time + seconds;
-    }
-
-    private void SetResourceReady()
-    {
-        if (!CanProduceResource()) return;
-
-        resourceReady = true;
-        nextResourceReadyAt = 0f;
-        RefreshResourceBubble();
+        if (!resourceReady) HideResourceBubble();
     }
 
     private void RefreshResourceBubble()
@@ -574,8 +475,8 @@ public sealed class LandSlotController : MonoBehaviour
 
         bubble.transform.localPosition = CalculateResourceBubbleLocalPosition();
         bubble.Show(
-            currentBuilding.resourceName,
-            GetCurrentResourceAmount(),
+            GetDisplayedResourceName(),
+            GetDisplayedResourceAmount(),
             currentBuilding.resourceIcon,
             currentBuilding.resourceColor,
             buildingSortingLayer,
@@ -627,34 +528,42 @@ public sealed class LandSlotController : MonoBehaviour
         return false;
     }
 
-    private void StartBuildingTimer(BuildingRuntimeStatus status, int seconds)
-    {
-        buildingStatus = seconds > 0 ? status : BuildingRuntimeStatus.COMPLETED;
-        if (buildingStatus == BuildingRuntimeStatus.COMPLETED)
-        {
-            ClearBuildingTimer();
-            return;
-        }
-
-        buildingDuration = seconds;
-        buildingStartedAt = Time.time;
-        buildingEndsAt = buildingStartedAt + seconds;
-    }
-
     private void UpdateBuildingLifecycle()
     {
         if (!IsBuildingInProgress || BuildingRemainingSeconds > 0f) return;
-        CompleteBuildingAction();
-        if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.RefreshIfShowing(this);
+        TryRequestRemoteBuildingSync();
     }
 
-    private void CompleteBuildingAction()
+    private void TryRequestRemoteBuildingSync()
     {
-        if (buildingStatus == BuildingRuntimeStatus.UPGRADING) buildingLevel++;
-        buildingStatus = BuildingRuntimeStatus.COMPLETED;
-        ClearBuildingTimer();
-        ConfigureBuildingRenderer(false);
-        ScheduleNextResource(true);
+        if (remoteCompletionPending || Time.unscaledTime < nextRemoteCompletionAttemptAt) return;
+        BackendGameService service = BackendGameService.Instance;
+        if (service == null || !service.IsAuthenticated) return;
+
+        remoteCompletionPending = true;
+        nextRemoteCompletionAttemptAt = Time.unscaledTime + 5f;
+        service.SyncBuildingStatus(result =>
+        {
+            remoteCompletionPending = false;
+            if (result == null || !result.Success)
+            {
+                Debug.LogWarning($"Backend building sync failed: {ResultMessage(result)}. {BuildDebugSummary()}", this);
+            }
+            if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.RefreshIfShowing(this);
+        });
+    }
+
+    private string BuildDebugSummary()
+    {
+        string buildingName = currentBuilding != null ? currentBuilding.buildingName : "None";
+        int buildingId = currentBuilding != null ? currentBuilding.buildingId : 0;
+        return $"playerBuildingId={playerBuildingId}, buildingId={buildingId}, buildingName={buildingName}, playerLandId={PlayerLandId}, grid={GridPosition}, status={buildingStatus}, remaining={BuildingRemainingSeconds:0.00}s, progress={BuildingProgress:0.00}";
+    }
+
+    private static string ResultMessage<T>(BackendResult<T> result)
+    {
+        if (result == null) return "No backend response.";
+        return string.IsNullOrEmpty(result.Message) ? $"HTTP {result.HttpStatus}" : result.Message;
     }
 
     private void ClearBuildingTimer()
@@ -664,46 +573,66 @@ public sealed class LandSlotController : MonoBehaviour
         buildingDuration = 0f;
     }
 
-    private void ReceiveMovedBuilding(BuildingConfig building, NpcConfig npc, int movedPlayerBuildingId, int movedLevel)
-    {
-        currentBuilding = building;
-        currentNpc = npc;
-        playerBuildingId = movedPlayerBuildingId;
-        buildingLevel = Mathf.Max(1, movedLevel);
-        buildingStatus = BuildingRuntimeStatus.COMPLETED;
-        ClearBuildingTimer();
-        ConfigureBuildingRenderer(true);
-        ConfigureNpcRenderer(true);
-        ScheduleNextResource(true);
-        if (npc != null && NpcManager.Instance != null) NpcManager.Instance.RegisterAssignment(npc, this);
-    }
-
     private void ClearBuildingState()
     {
-        if (currentNpc != null && NpcManager.Instance != null) NpcManager.Instance.UnregisterAssignment(currentNpc, this);
         currentBuilding = null;
         currentNpc = null;
         playerBuildingId = 0;
         buildingLevel = 1;
         buildingStatus = BuildingRuntimeStatus.COMPLETED;
+        remoteCompletionPending = false;
+        nextRemoteCompletionAttemptAt = 0f;
         ClearBuildingTimer();
         resourceReady = false;
-        nextResourceReadyAt = 0f;
+        remoteResourceName = string.Empty;
+        remoteResourceAmount = 0;
+        latestProductions.Clear();
         HideResourceBubble();
         if (buildingRenderer != null) buildingRenderer.enabled = false;
         if (npcRenderer != null) npcRenderer.enabled = false;
     }
 
-    private int GetCurrentResourceAmount()
+    private string GetDisplayedResourceName()
     {
-        if (currentBuilding == null) return 0;
-        int bonus = Mathf.Max(0, buildingLevel - 1) * currentBuilding.resourceAmountPerLevel;
-        return currentBuilding.resourceAmount + bonus;
+        return !string.IsNullOrEmpty(remoteResourceName) ? remoteResourceName : currentBuilding != null ? currentBuilding.resourceName : string.Empty;
     }
 
-    private static int AllocatePlayerBuildingId()
+    private int GetDisplayedResourceAmount()
     {
-        return nextRuntimePlayerBuildingId++;
+        return remoteResourceAmount;
+    }
+
+    private void ForceBuildLand(LandConfig config)
+    {
+        if (config == null) return;
+
+        ResolveReferences(true);
+        currentLand = config;
+        ConfigureRenderingLayers();
+        if (spriteMask != null) spriteMask.enabled = true;
+        if (landRenderer != null)
+        {
+            if (config.landSprite != null) landRenderer.sprite = config.landSprite;
+            landRenderer.enabled = landRenderer.sprite != null;
+        }
+        SetOutlineVisible(true);
+    }
+
+    private void ApplyRemoteBuildingTimer(int remainingSeconds, float progress)
+    {
+        if (buildingStatus == BuildingRuntimeStatus.COMPLETED)
+        {
+            ClearBuildingTimer();
+            return;
+        }
+
+        float normalizedProgress = Mathf.Clamp01(progress);
+        int safeRemainingSeconds = Mathf.Max(0, remainingSeconds);
+        buildingEndsAt = Time.time + safeRemainingSeconds;
+        buildingDuration = normalizedProgress > 0f && normalizedProgress < 1f
+            ? safeRemainingSeconds / Mathf.Max(0.001f, 1f - normalizedProgress)
+            : Mathf.Max(1f, safeRemainingSeconds);
+        buildingStartedAt = buildingEndsAt - buildingDuration;
     }
 
     private static Sprite CreateFallbackBuildingSprite(Color color)
