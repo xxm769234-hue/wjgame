@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.Events;
 using UnityEngine.UI;
 
@@ -30,6 +31,7 @@ public sealed class LandInfoPanel : MonoBehaviour
     [SerializeField] private RectTransform buildingListContent;
     [SerializeField] private RectTransform npcListPanel;
     [SerializeField] private RectTransform npcListContent;
+    [SerializeField] private bool logButtonClicks = true;
     private LandSlotController current;
     private RectTransform panelRect;
     private RectTransform canvasRect;
@@ -146,10 +148,12 @@ public sealed class LandInfoPanel : MonoBehaviour
 
     public void ToggleBuildingList()
     {
+        if (logButtonClicks) Debug.Log($"LandInfoPanel ToggleBuildingList clicked. current={(current != null ? current.name : "null")}, hasBuilding={current != null && current.HasBuilding}", this);
         if (current == null || current.HasBuilding) return;
         HideNpcList();
         if (buildingListPanel != null && buildingListPanel.gameObject.activeSelf)
         {
+            if (logButtonClicks) Debug.Log("LandInfoPanel hiding building list.", this);
             HideBuildingList();
             return;
         }
@@ -161,19 +165,32 @@ public sealed class LandInfoPanel : MonoBehaviour
     {
         if (buildingManager == null) buildingManager = BuildingManager.EnsureInstance();
         EnsureBuildControls();
-        if (buildingListPanel == null || buildingListContent == null || buildingManager == null) return;
+        if (buildingListPanel == null || buildingListContent == null || buildingManager == null)
+        {
+            Debug.LogWarning($"LandInfoPanel cannot show building list. panel={buildingListPanel != null}, content={buildingListContent != null}, manager={buildingManager != null}", this);
+            return;
+        }
 
         ClearBuildingList();
         IReadOnlyList<BuildingConfig> buildings = buildingManager.AvailableBuildings;
+        if (logButtonClicks) Debug.Log($"LandInfoPanel showing building list. availableBuildings={buildings.Count}", this);
+        int visibleCount = 0;
         for (int i = 0; i < buildings.Count; i++)
         {
             BuildingConfig config = buildings[i];
             if (config == null) continue;
 
+            if (!buildingManager.CanBuildOnSlot(current, config, out string disabledReason))
+            {
+                if (logButtonClicks) Debug.Log($"LandInfoPanel hidden building item: {config.buildingName}. reason={disabledReason}", this);
+                continue;
+            }
+
             string label = FormatBuildingLabel(config);
             BuildingConfig captured = config;
-            Button itemButton = CreateTextButton($"Building Item {i + 1}", buildingListContent, label, new Vector2(0f, 0f), new Vector2(600f, 58f), 24f, () => SelectBuilding(captured));
-            if (!buildingManager.CanBuildOnSlot(current, config, out _)) itemButton.interactable = false;
+            visibleCount++;
+            CreateTextButton($"Building Item {visibleCount}", buildingListContent, label, new Vector2(0f, 0f), new Vector2(600f, 58f), 24f, () => SelectBuilding(captured));
+            if (logButtonClicks) Debug.Log($"LandInfoPanel shown building item: {config.buildingName} type={config.buildingType} id={config.buildingId}", this);
         }
 
         buildingListPanel.gameObject.SetActive(true);
@@ -182,14 +199,21 @@ public sealed class LandInfoPanel : MonoBehaviour
     private void SelectBuilding(BuildingConfig config)
     {
         if (buildingManager == null) buildingManager = BuildingManager.EnsureInstance();
-        if (buildingManager == null || current == null) return;
+        if (logButtonClicks) Debug.Log($"LandInfoPanel SelectBuilding invoked. building={(config != null ? config.buildingName : "null")}, current={(current != null ? current.name : "null")}", this);
+        if (buildingManager == null || current == null)
+        {
+            Debug.LogWarning($"LandInfoPanel SelectBuilding aborted. manager={buildingManager != null}, current={current != null}", this);
+            return;
+        }
 
         if (!buildingManager.TryBuildOnSlot(current, config, out string reason))
         {
+            Debug.LogWarning($"LandInfoPanel build click reached BuildingManager but failed before request. building={(config != null ? config.buildingName : "null")}, reason={reason}", this);
             SetText(buildingText, $"Building failed: {reason}");
             return;
         }
 
+        if (logButtonClicks) Debug.Log($"LandInfoPanel build request started for {config.buildingName}.", this);
         HideBuildingList();
         RefreshBuildingStatus();
         RefreshProductionStatus();
@@ -576,12 +600,24 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         Camera uiCamera = rootCanvas != null && rootCanvas.renderMode != RenderMode.ScreenSpaceOverlay ? rootCanvas.worldCamera : null;
         if (RectTransformUtility.RectangleContainsScreenPoint(panelRect, screenPosition, uiCamera)) return true;
-        if (buildingListPanel != null
-            && buildingListPanel.gameObject.activeSelf
-            && RectTransformUtility.RectangleContainsScreenPoint(buildingListPanel, screenPosition, uiCamera)) return true;
-        return npcListPanel != null
-            && npcListPanel.gameObject.activeSelf
-            && RectTransformUtility.RectangleContainsScreenPoint(npcListPanel, screenPosition, uiCamera);
+        if (IsPointerInsideActiveRectOrChildren(buildingListPanel, screenPosition, uiCamera)) return true;
+        return IsPointerInsideActiveRectOrChildren(npcListPanel, screenPosition, uiCamera);
+    }
+
+    private static bool IsPointerInsideActiveRectOrChildren(RectTransform root, Vector2 screenPosition, Camera uiCamera)
+    {
+        if (root == null || !root.gameObject.activeInHierarchy) return false;
+        if (RectTransformUtility.RectangleContainsScreenPoint(root, screenPosition, uiCamera)) return true;
+
+        RectTransform[] children = root.GetComponentsInChildren<RectTransform>(false);
+        for (int i = 0; i < children.Length; i++)
+        {
+            RectTransform child = children[i];
+            if (child == null || child == root) continue;
+            if (RectTransformUtility.RectangleContainsScreenPoint(child, screenPosition, uiCamera)) return true;
+        }
+
+        return false;
     }
 
     private void ConfigureFloatingPanel()
@@ -801,7 +837,18 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         Button button = buttonObject.GetComponent<Button>();
         button.targetGraphic = image;
-        button.onClick.AddListener(action);
+        EventTrigger trigger = buttonObject.AddComponent<EventTrigger>();
+        EventTrigger.Entry pointerDown = new EventTrigger.Entry { eventID = EventTriggerType.PointerDown };
+        pointerDown.callback.AddListener(_ =>
+        {
+            if (logButtonClicks) Debug.Log($"LandInfoPanel button pointerDown: {objectName} label={label} interactable={button.interactable}", this);
+        });
+        trigger.triggers.Add(pointerDown);
+        button.onClick.AddListener(() =>
+        {
+            if (logButtonClicks) Debug.Log($"LandInfoPanel button onClick: {objectName} label={label} interactable={button.interactable}", this);
+            action?.Invoke();
+        });
 
         GameObject textObject = new GameObject("Label", typeof(RectTransform), typeof(TextMeshProUGUI));
         textObject.transform.SetParent(buttonObject.transform, false);

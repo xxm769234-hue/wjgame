@@ -110,6 +110,7 @@ public sealed class BuildingManager : MonoBehaviour
             return false;
         }
 
+        Debug.Log($"BuildingManager build click accepted. Checking backend conditions for {config.buildingName} on playerLandId={slot.PlayerLandId}.", slot);
         remoteActionPending = true;
         service.CheckBuildingForLand(slot, config, result =>
         {
@@ -122,6 +123,7 @@ public sealed class BuildingManager : MonoBehaviour
                 return;
             }
 
+            Debug.Log($"BuildingManager backend check result for {config.buildingName}: canBuild={result.Data.canBuild}, message={result.Data.message}", slot);
             if (!result.Data.canBuild)
             {
                 remoteActionPending = false;
@@ -134,6 +136,7 @@ public sealed class BuildingManager : MonoBehaviour
             service.BuildBuilding(slot, config, (success, message) =>
             {
                 remoteActionPending = false;
+                Debug.Log($"BuildingManager backend build callback for {config.buildingName}: success={success}, message={message}", slot);
                 if (!success) Debug.LogWarning($"Backend building build failed: {message}", slot);
                 if (LandInfoPanel.Instance != null)
                 {
