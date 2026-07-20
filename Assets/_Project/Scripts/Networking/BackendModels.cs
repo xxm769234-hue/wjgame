@@ -309,3 +309,29 @@ public sealed class CollectedItemResponse
     public string name;
     public int quantity;
 }
+
+[Serializable]
+public sealed class IdleAdventureAfkRewardStateResponse
+{
+    public int playerId;
+    public string itemKey;
+    public string displayName;
+    public int baseQuantityPerCycle;
+    public int quantityPerHighestStage;
+    public int quantityPerCycle;
+    public int productionIntervalSeconds;
+    public int maxStoredQuantity;
+    public int storedQuantity;
+    public int highestClearedStage;
+    public long serverUnixSeconds;
+    public long lastSettledServerUnixSeconds;
+}
+
+[Serializable]
+public sealed class IdleAdventureAfkRewardCollectResponse
+{
+    public int playerId;
+    public CollectedItemResponse collectedItem;
+    public InventoryItemResponse[] items;
+    public IdleAdventureAfkRewardStateResponse state;
+}

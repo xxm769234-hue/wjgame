@@ -1,0 +1,270 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0caa822244394f93afd88e4e89a38532, type: 3}
+  m_Name: IdleAdventureDefaultModeConfig
+  m_EditorClassIdentifier: 
+  startingFriendlyCount: 3
+  baseEnemyCount: 2
+  addEnemyEveryStages: 2
+  friendlyBaseHealth: 160
+  friendlyBaseAttack: 28
+  friendlyBaseDefense: 5
+  friendlyBaseSpeed: 12
+  enemyBaseHealth: 95
+  enemyBaseAttack: 15
+  enemyBaseDefense: 1
+  enemyBaseSpeed: 9
+  enemyHealthPerStage: 22
+  enemyAttackPerStage: 4
+  enemySpeedPerStage: 1
+  turnInterval: 0.75
+  attackAnimationDuration: 0.28
+  hitFlashDuration: 0.18
+  friendlyLineup:
+  - combatantName: Hero 1
+    maxHealth: 160
+    attack: 28
+    defense: 5
+    speed: 18
+    attributeType: 2
+    skillSlots:
+    - skillName: Power Strike
+      cooldownRounds: 2
+      skillMultiplier: 1.35
+      damageAttribute: 2
+      selfBuffPresetIndex: -1
+      targetBuffPresetIndex: -1
+    - skillName: Battle Focus
+      cooldownRounds: 3
+      skillMultiplier: 1
+      damageAttribute: 2
+      selfBuffPresetIndex: 0
+      targetBuffPresetIndex: -1
+  - combatantName: Hero 2
+    maxHealth: 174
+    attack: 31
+    defense: 6
+    speed: 17
+    attributeType: 3
+    skillSlots:
+    - skillName: Piercing Hit
+      cooldownRounds: 2
+      skillMultiplier: 1.25
+      damageAttribute: 3
+      selfBuffPresetIndex: -1
+      targetBuffPresetIndex: -1
+    - skillName: Guard Break
+      cooldownRounds: 3
+      skillMultiplier: 1
+      damageAttribute: 3
+      selfBuffPresetIndex: -1
+      targetBuffPresetIndex: 1
+  - combatantName: Hero 3
+    maxHealth: 188
+    attack: 34
+    defense: 7
+    speed: 16
+    attributeType: 4
+    skillSlots:
+    - skillName: Heavy Blow
+      cooldownRounds: 2
+      skillMultiplier: 1.45
+      damageAttribute: 4
+      selfBuffPresetIndex: -1
+      targetBuffPresetIndex: -1
+    - skillName: Quick Tempo
+      cooldownRounds: 3
+      skillMultiplier: 1
+      damageAttribute: 4
+      selfBuffPresetIndex: 0
+      targetBuffPresetIndex: -1
+  enemyLineup:
+  - combatantName: Enemy 1
+    maxHealth: 95
+    attack: 15
+    defense: 1
+    speed: 15
+    attributeType: 4
+    skillSlots:
+    - skillName: Claw
+      cooldownRounds: 2
+      skillMultiplier: 1.2
+      damageAttribute: 4
+      selfBuffPresetIndex: -1
+      targetBuffPresetIndex: -1
+  - combatantName: Enemy 2
+    maxHealth: 107
+    attack: 17
+    defense: 1
+    speed: 14
+    attributeType: 2
+    skillSlots:
+    - skillName: Rend
+      cooldownRounds: 2
+      skillMultiplier: 1.15
+      damageAttribute: 2
+      selfBuffPresetIndex: -1
+      targetBuffPresetIndex: -1
+  - combatantName: Enemy 3
+    maxHealth: 119
+    attack: 19
+    defense: 2
+    speed: 13
+    attributeType: 5
+    skillSlots:
+    - skillName: Intimidate
+      cooldownRounds: 3
+      skillMultiplier: 1
+      damageAttribute: 5
+      selfBuffPresetIndex: -1
+      targetBuffPresetIndex: 1
+  - combatantName: Enemy 4
+    maxHealth: 131
+    attack: 21
+    defense: 2
+    speed: 12
+    attributeType: 3
+    skillSlots:
+    - skillName: Claw
+      cooldownRounds: 2
+      skillMultiplier: 1.2
+      damageAttribute: 3
+      selfBuffPresetIndex: -1
+      targetBuffPresetIndex: -1
+  - combatantName: Enemy 5
+    maxHealth: 143
+    attack: 23
+    defense: 3
+    speed: 11
+    attributeType: 6
+    skillSlots:
+    - skillName: Rend
+      cooldownRounds: 2
+      skillMultiplier: 1.15
+      damageAttribute: 6
+      selfBuffPresetIndex: -1
+      targetBuffPresetIndex: -1
+  - combatantName: Enemy 6
+    maxHealth: 155
+    attack: 25
+    defense: 3
+    speed: 10
+    attributeType: 7
+    skillSlots:
+    - skillName: Intimidate
+      cooldownRounds: 3
+      skillMultiplier: 1
+      damageAttribute: 7
+      selfBuffPresetIndex: -1
+      targetBuffPresetIndex: 1
+  buffPresets:
+  - buffId: normal_damage_up
+    displayName: Damage Up
+    category: 0
+    source: 0
+    effectType: 0
+    durationRounds: 3
+    attackModifier: 0
+    defenseModifier: 0
+    speedModifier: 0
+    normalDamageMultiplier: 0.15
+    attributeDamageMultiplier: 0
+    affectedAttribute: 0
+  - buffId: fire_damage_down
+    displayName: Fire Damage Down
+    category: 1
+    source: 0
+    effectType: 1
+    durationRounds: 3
+    attackModifier: 0
+    defenseModifier: 0
+    speedModifier: 0
+    normalDamageMultiplier: 0
+    attributeDamageMultiplier: 0.15
+    affectedAttribute: 2
+  fieldBuffs:
+  - buffId: fire_field_up
+    displayName: Fire Field Up
+    category: 0
+    affectFriendlies: 1
+    affectEnemies: 1
+    affectedAttribute: 2
+    fieldDamageMultiplier: 0.15
+  attributeRestraints:
+  - attackerAttribute: 2
+    defenderAttribute: 4
+  - attackerAttribute: 3
+    defenderAttribute: 2
+  - attackerAttribute: 4
+    defenderAttribute: 5
+  - attackerAttribute: 5
+    defenderAttribute: 3
+  - attackerAttribute: 6
+    defenderAttribute: 7
+  - attackerAttribute: 7
+    defenderAttribute: 6
+  stageRewards:
+  - stage: 1
+    rewards:
+    - itemKey: gold
+      displayName: Gold
+      quantity: 120
+    - itemKey: adventure_token
+      displayName: Adventure Token
+      quantity: 1
+  - stage: 2
+    rewards:
+    - itemKey: gold
+      displayName: Gold
+      quantity: 180
+    - itemKey: wood
+      displayName: Wood
+      quantity: 60
+    - itemKey: adventure_token
+      displayName: Adventure Token
+      quantity: 1
+  - stage: 3
+    rewards:
+    - itemKey: gold
+      displayName: Gold
+      quantity: 260
+    - itemKey: stone
+      displayName: Stone
+      quantity: 80
+    - itemKey: adventure_token
+      displayName: Adventure Token
+      quantity: 2
+  - stage: 4
+    rewards:
+    - itemKey: gold
+      displayName: Gold
+      quantity: 360
+    - itemKey: iron
+      displayName: Iron
+      quantity: 80
+    - itemKey: adventure_token
+      displayName: Adventure Token
+      quantity: 2
+  - stage: 5
+    rewards:
+    - itemKey: gold
+      displayName: Gold
+      quantity: 480
+    - itemKey: stone
+      displayName: Stone
+      quantity: 120
+    - itemKey: iron
+      displayName: Iron
+      quantity: 100
+    - itemKey: adventure_token
+      displayName: Adventure Token
+      quantity: 3

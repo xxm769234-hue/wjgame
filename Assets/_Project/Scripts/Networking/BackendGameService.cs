@@ -259,6 +259,28 @@ public sealed class BackendGameService : MonoBehaviour
         return StartCoroutine(CollectAllProductionsRoutine(onComplete));
     }
 
+    public Coroutine LoadIdleAdventureAfkReward(Action<BackendResult<IdleAdventureAfkRewardStateResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated)
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureAfkRewardStateResponse>(false, 0, "Backend session is not authenticated.", null));
+            return null;
+        }
+
+        return StartCoroutine(LoadIdleAdventureAfkRewardRoutine(onComplete));
+    }
+
+    public Coroutine CollectIdleAdventureAfkReward(Action<BackendResult<IdleAdventureAfkRewardCollectResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated)
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureAfkRewardCollectResponse>(false, 0, "Backend session is not authenticated.", null));
+            return null;
+        }
+
+        return StartCoroutine(CollectIdleAdventureAfkRewardRoutine(onComplete));
+    }
+
     public Coroutine GetAvailableNpcs(LandSlotController slot, Action<BackendResult<NpcResponse[]>> onComplete)
     {
         if (!IsAuthenticated || slot == null)
@@ -783,6 +805,29 @@ public sealed class BackendGameService : MonoBehaviour
         }
 
         onComplete?.Invoke(success, ResultMessage(result), collectedCount);
+    }
+
+    private IEnumerator LoadIdleAdventureAfkRewardRoutine(Action<BackendResult<IdleAdventureAfkRewardStateResponse>> onComplete)
+    {
+        BackendResult<IdleAdventureAfkRewardStateResponse> result = null;
+        yield return BackendApiClient.Get<IdleAdventureAfkRewardStateResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/afk-reward", value => result = value);
+        onComplete?.Invoke(result);
+    }
+
+    private IEnumerator CollectIdleAdventureAfkRewardRoutine(Action<BackendResult<IdleAdventureAfkRewardCollectResponse>> onComplete)
+    {
+        PlayerIdRequest request = new PlayerIdRequest { playerId = PlayerId };
+        BackendResult<IdleAdventureAfkRewardCollectResponse> result = null;
+        yield return BackendApiClient.Post<IdleAdventureAfkRewardCollectResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/afk-reward/collect", request, value => result = value);
+
+        if (result != null && result.Success && result.Data != null)
+        {
+            CurrentInventory = result.Data.items;
+            if (CurrentUser == null) CurrentUser = new UserResponse();
+            CurrentUser.items = result.Data.items;
+        }
+
+        onComplete?.Invoke(result);
     }
 
     private IEnumerator GetAvailableNpcsRoutine(LandSlotController slot, Action<BackendResult<NpcResponse[]>> onComplete)
