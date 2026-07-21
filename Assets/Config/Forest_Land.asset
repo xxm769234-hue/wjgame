@@ -1,0 +1,22 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f2d0fa5cf04bb44ca4222c1e90f42f7, type: 3}
+  m_Name: Forest_Land
+  m_EditorClassIdentifier: 
+  id: forest
+  name: "\u68EE\u6797\u5730\u5757"
+  icon: {fileID: 0}
+  tileSprite: {fileID: 21300000, guid: 4dcac0ea4bf29634ea014d7200d8abfc, type: 3}
+  matchBuildTypes:
+  - 
+  matchBuildIds:
+  - lumber
