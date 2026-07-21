@@ -41,6 +41,7 @@ public class HomePageUI : MonoBehaviour
     private GameObject rechargePanelObject;
     private GameObject taskPanelObject;
     private GameObject inventoryPanelObject;
+    private InventoryPanelView inventoryPanelView;
     private string activeTaskCategory = "daily";
     private InventoryItemResponse[] currentInventoryItems = new InventoryItemResponse[0];
     private readonly Dictionary<string, Sprite> inventorySpriteCache = new Dictionary<string, Sprite>();
@@ -1356,6 +1357,16 @@ public class HomePageUI : MonoBehaviour
         HideTaskPanel();
         HideInventoryPanel();
 
+        InventoryPanelView inventoryPrefab = Resources.Load<InventoryPanelView>("UI/InventoryPanel");
+        if (inventoryPrefab != null)
+        {
+            inventoryPanelView = Instantiate(inventoryPrefab, mainPageTransform, false);
+            inventoryPanelObject = inventoryPanelView.gameObject;
+            ConfigureInventoryPrefab(inventoryPanelView, visibleItems, selectedIndex, ownedCount, unlockedSlots);
+            SetStatus(inventoryStatusMessage);
+            return;
+        }
+
         Image shadow = CreateImage("InventoryPanelShadow", mainPageTransform, new Color(0.08f, 0.04f, 0.01f, 0.50f));
         SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(114f, -94f), new Vector2(1730f, 914f));
         shadow.raycastTarget = false;
@@ -1456,6 +1467,116 @@ public class HomePageUI : MonoBehaviour
         }
 
         SetStatus(inventoryStatusMessage);
+    }
+
+    private void ConfigureInventoryPrefab(
+        InventoryPanelView view,
+        List<InventoryItemResponse> visibleItems,
+        int selectedIndex,
+        int ownedCount,
+        int unlockedSlots)
+    {
+        view.SetMode(inventoryStallMode, inventoryServerBacked);
+        view.SetResourceValue("Gold", GetInventoryResourceValue("Gold"));
+        view.SetResourceValue("Crystal", GetInventoryResourceValue("Crystal"));
+        view.SetResourceValue("SoulCrystal", GetInventoryResourceValue("SoulCrystal"));
+        view.SetCounts(ownedCount, visibleItems.Count, InventoryCapacity, unlockedSlots);
+        view.SetStatus(inventoryStatusMessage);
+        view.SetEmptyVisible(visibleItems.Count == 0);
+        view.BindChromeActions(HideInventoryPanel, ExpandInventorySlots, SortInventoryItems, ShowRechargeContent);
+        view.BindCategoryActions(activeInventoryCategory, SetInventoryCategory);
+        view.BindSideActions(
+            inventoryStallMode,
+            () => SetInventoryStallMode(false),
+            () => SetInventoryStallMode(true),
+            ShowRechargeContent);
+
+        int slotCount = Mathf.Min(InventoryCapacity, view.SlotCount);
+        for (int slotIndex = 0; slotIndex < slotCount; slotIndex++)
+        {
+            InventorySlotView slot = view.GetSlot(slotIndex);
+            if (slot == null)
+            {
+                continue;
+            }
+
+            if (slotIndex >= unlockedSlots)
+            {
+                slot.ShowLocked(ExpandInventorySlots);
+                continue;
+            }
+
+            InventoryItemResponse item = slotIndex < visibleItems.Count ? visibleItems[slotIndex] : null;
+            if (item == null)
+            {
+                slot.ShowEmpty();
+                continue;
+            }
+
+            string itemKey = GetInventoryItemKey(item);
+            Sprite sprite = LoadInventorySprite(GetInventoryIconAssetPath(item, slotIndex));
+            if (sprite != null && sprite.texture != null)
+            {
+                sprite.texture.filterMode = FilterMode.Point;
+            }
+
+            string fallbackLabel = string.IsNullOrEmpty(item.name) ? "物" : item.name.Substring(0, 1);
+            slot.ShowItem(
+                sprite,
+                fallbackLabel,
+                item.quantity,
+                itemKey == selectedInventoryItemKey,
+                GetInventoryFallbackColor(item),
+                () => SelectInventoryItem(itemKey));
+        }
+
+        for (int slotIndex = slotCount; slotIndex < view.SlotCount; slotIndex++)
+        {
+            InventorySlotView slot = view.GetSlot(slotIndex);
+            if (slot != null)
+            {
+                slot.ShowEmpty();
+            }
+        }
+
+        if (selectedIndex < 0 || selectedIndex >= slotCount)
+        {
+            view.HideContextMenu();
+            return;
+        }
+
+        int selectedRow = selectedIndex / InventoryColumns;
+        int selectedColumn = selectedIndex % InventoryColumns;
+        Vector2 slotPosition = new Vector2(286f, -158f) + new Vector2(selectedColumn * 118f, -selectedRow * 118f);
+        Vector2 menuPosition = slotPosition.x > 950f
+            ? slotPosition + new Vector2(-190f, -4f)
+            : slotPosition + new Vector2(112f, -4f);
+        InventoryItemResponse selectedItem = visibleItems[selectedIndex];
+        string contextHint = inventoryServerBacked ? "服务端暂未开放操作接口" : "操作 1 件物品";
+        string primaryLabel = inventoryStallMode ? "上架" : GetInventoryActionLabel(selectedItem);
+
+        view.ShowContextMenu(
+            menuPosition,
+            selectedItem.name,
+            $"{GetInventoryTypeLabel(selectedItem)}  x{selectedItem.quantity}",
+            primaryLabel,
+            contextHint,
+            HandlePrimaryInventoryAction,
+            SellSelectedInventoryItem,
+            () =>
+            {
+                selectedInventoryItemKey = string.Empty;
+                RenderInventoryPanel();
+            });
+    }
+
+    private Color GetInventoryFallbackColor(InventoryItemResponse item)
+    {
+        string category = GetInventoryCategory(item);
+        if (category == "equipment") return new Color(0.35f, 0.47f, 0.78f, 1f);
+        if (category == "medicine") return new Color(0.25f, 0.68f, 0.38f, 1f);
+        if (category == "pet") return new Color(0.76f, 0.33f, 0.68f, 1f);
+        return new Color(0.80f, 0.38f, 0.14f, 1f);
     }
 
     private InventoryItemResponse[] BuildLocalInventoryItems()
@@ -3456,6 +3577,7 @@ public class HomePageUI : MonoBehaviour
 
         Destroy(inventoryPanelObject);
         inventoryPanelObject = null;
+        inventoryPanelView = null;
     }
 
     private void SetLeftContent(string title, string body, string status)
