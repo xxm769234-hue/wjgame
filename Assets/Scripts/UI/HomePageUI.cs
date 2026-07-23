@@ -8,14 +8,13 @@ using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-public class HomePageUI : MonoBehaviour
+public partial class HomePageUI : MonoBehaviour
 {
     private const string HomeSceneName = "HomeScene";
     private const string MapSceneName = "MapScene";
     private const string LaunchSceneName = "Launch";
-    private const string BaseApiUrl = "http://localhost:8080/api";
-    private const string AuthTokenKey = "AuthToken";
-    private const string PlayerIdKey = "PlayerId";
+    private const string AuthTokenKey = GameSession.AuthTokenKey;
+    private const string PlayerIdKey = GameSession.PlayerIdKey;
     private const string LotteryChanceKey = "LotteryChanceCount";
     private const int DefaultLotteryChanceCount = 100;
     private const int InventoryCapacity = 40;
@@ -41,7 +40,10 @@ public class HomePageUI : MonoBehaviour
     private GameObject rechargePanelObject;
     private GameObject taskPanelObject;
     private GameObject inventoryPanelObject;
+    private GameObject settingsPanelObject;
     private InventoryPanelView inventoryPanelView;
+    private AnnouncementPanelView announcementPanelView;
+    private HomePageScenePanels scenePanels;
     private string activeTaskCategory = "daily";
     private InventoryItemResponse[] currentInventoryItems = new InventoryItemResponse[0];
     private readonly Dictionary<string, Sprite> inventorySpriteCache = new Dictionary<string, Sprite>();
@@ -51,6 +53,7 @@ public class HomePageUI : MonoBehaviour
     private bool inventoryServerBacked;
     private bool inventoryStallMode;
     private bool lotteryRolling;
+    private bool settingsLogoutConfirmation;
     private Text popupNameText;
     private Text popupAccountText;
     private Text popupLevelText;
@@ -104,9 +107,22 @@ public class HomePageUI : MonoBehaviour
 
     private void Awake()
     {
+        if (!GameSession.HasValidSession)
+        {
+            SceneManager.LoadScene(LaunchSceneName);
+            return;
+        }
+
         defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        scenePanels = FindObjectOfType<HomePageScenePanels>(true);
+        if (scenePanels != null)
+        {
+            scenePanels.HideAll();
+        }
+
         EnsureEventSystem();
         Build();
+        BeginRealtimeConnection();
     }
 
     private void Build()
@@ -121,7 +137,7 @@ public class HomePageUI : MonoBehaviour
         CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.matchWidthOrHeight = 0.5f;
+        scaler.matchWidthOrHeight = 0f;
 
         RectTransform root = canvasObj.GetComponent<RectTransform>();
         Image desk = CreateImage("Desk", root, new Color(0.36f, 0.22f, 0.12f, 1f));
@@ -147,17 +163,17 @@ public class HomePageUI : MonoBehaviour
         AddWoodLine(page.transform, new Vector2(0f, -956f), new Vector2(1900f, 5f));
 
         AddAvatarDisplay(page.transform);
-        AddTopMetric(page.transform, "exp:10000", new Vector2(160f, 0f), new Vector2(210f, 45f));
-        AddTopMetric(page.transform, "blood:1000", new Vector2(160f, -52f), new Vector2(210f, 45f));
-        AddTopMetric(page.transform, $"Level:{PlayerPrefs.GetInt("PlayerLv", 1)}", new Vector2(420f, -20f), new Vector2(210f, 48f));
-        AddTopMetric(page.transform, $"Gold:{PlayerPrefs.GetInt("Gold", 1000)}", new Vector2(660f, -20f), new Vector2(220f, 48f));
-        AddSmallPlusButton(page.transform, new Vector2(885f, -24f), ShowRechargeContent);
-        AddTopMetric(page.transform, $"Brick:{PlayerPrefs.GetInt("Brick", 1000)}", new Vector2(930f, -20f), new Vector2(225f, 48f));
-        AddSmallPlusButton(page.transform, new Vector2(1160f, -24f), ShowRechargeContent);
+        AddTopMetric(page.transform, $"等级 Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}", new Vector2(174f, -20f), new Vector2(190f, 48f));
+        AddTopMetric(page.transform, $"金币 {PlayerPrefs.GetInt("Gold", 1000)}", new Vector2(386f, -20f), new Vector2(220f, 48f));
+        AddSmallPlusButton(page.transform, new Vector2(610f, -24f), ShowRechargeContent);
+        AddTopMetric(page.transform, $"木材 {PlayerPrefs.GetInt("Wood", 500)}", new Vector2(660f, -20f), new Vector2(220f, 48f));
+        AddTopMetric(page.transform, $"石材 {PlayerPrefs.GetInt("Stone", 500)}", new Vector2(900f, -20f), new Vector2(220f, 48f));
+        AddTopMetric(page.transform, $"铁矿 {PlayerPrefs.GetInt("Iron", 300)}", new Vector2(1140f, -20f), new Vector2(220f, 48f));
 
         CreateMainSideButton(page.transform, "SideBagButton", "背包", new Vector2(6f, -148f), ShowBagContent);
         CreateMainSideButton(page.transform, "SideEquipmentButton", "装备", new Vector2(6f, -214f), ShowEquipmentContent);
         CreateMainSideButton(page.transform, "SideSettingsButton", "设置", new Vector2(6f, -280f), ShowSettingsContent);
+        CreateMainSideButton(page.transform, "SideShopButton", "商城", new Vector2(6f, -346f), ShowShopContent);
 
         Image panelShadow = CreateImage("MainContentPanelShadow", page.transform, new Color(0.15f, 0.08f, 0.04f, 0.30f));
         panelShadow.raycastTarget = false;
@@ -186,9 +202,11 @@ public class HomePageUI : MonoBehaviour
         contentBodyText = CreateText("ContentBody", contentPanel.transform, string.Empty, 22, FontStyle.Normal, InkColor, TextAnchor.UpperLeft);
         SetRect(contentBodyText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(36f, -78f), new Vector2(-72f, 565f));
 
+        BuildHomeMapSelector(contentPanel.transform);
+
         Button enterButton = CreateButton(page.transform, "EnterMapButton", "进入地图", new Color(0.91f, 0.62f, 0.36f, 1f), Color.white);
         enterButton.onClick.AddListener(EnterSelectedArea);
-        SetRect(enterButton.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1802f, -332f), new Vector2(118f, 415f));
+        SetRect(enterButton.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1774f, -332f), new Vector2(126f, 415f));
         ShrinkButtonLabel(enterButton, 22);
 
         CreateMainSideButton(page.transform, "RightBuildButton", "建造", new Vector2(1668f, -332f), ShowBuildContent);
@@ -206,6 +224,7 @@ public class HomePageUI : MonoBehaviour
 
         statusText = CreateText("Status", page.transform, string.Empty, 18, FontStyle.Normal, new Color(1f, 0.86f, 0.58f, 1f), TextAnchor.MiddleLeft);
         SetRect(statusText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1430f, -1008f), new Vector2(460f, 32f));
+        ShowMapSelectionContent();
         ShowAnnouncement();
     }
 
@@ -307,7 +326,7 @@ public class HomePageUI : MonoBehaviour
         shine.raycastTarget = false;
         SetRect(shine.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), Vector2.zero, new Vector2(0f, 15f));
 
-        Text label = CreateText("Text", box.transform, text, 32, FontStyle.Bold, new Color(0.90f, 1f, 0.05f, 1f), TextAnchor.MiddleLeft);
+        Text label = CreateText("Text", box.transform, text, 27, FontStyle.Bold, new Color(0.90f, 1f, 0.05f, 1f), TextAnchor.MiddleLeft);
         SetRect(label.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(6f, 0f), new Vector2(-12f, 0f));
     }
 
@@ -468,7 +487,7 @@ public class HomePageUI : MonoBehaviour
 
         AddWoodLine(page, new Vector2(200f, -48f), new Vector2(310f, 5f));
         AddWoodLine(page, new Vector2(520f, -48f), new Vector2(220f, 5f));
-        AddWoodLine(page, new Vector2(0f, -508f), new Vector2(150f, 5f));
+        AddWoodLine(page, new Vector2(0f, -526f), new Vector2(150f, 5f));
         AddWoodLine(page, new Vector2(0f, -818f), new Vector2(590f, 5f));
 
         CreateTopStatBox(page, "Gold:1000", new Vector2(310f, -20f));
@@ -500,6 +519,9 @@ public class HomePageUI : MonoBehaviour
 
         Button newbieSignButton = CreatePanelSideButton(page, "NewbieSignButton", "新手签到", new Vector2(0f, -432f), new Color(0.96f, 0.70f, 0.42f, 1f));
         newbieSignButton.onClick.AddListener(ShowNewbieSignContent);
+
+        Button shopButton = CreatePanelSideButton(page, "ShopButton", "商城", new Vector2(0f, -475f), new Color(0.48f, 0.72f, 0.52f, 1f));
+        shopButton.onClick.AddListener(ShowShopContent);
 
         Image panelShadow = CreateImage("LeftContentPanelShadow", page, new Color(0.12f, 0.07f, 0.04f, 0.28f));
         panelShadow.raycastTarget = false;
@@ -740,20 +762,12 @@ public class HomePageUI : MonoBehaviour
 
     private void ShowPersonalInfo()
     {
-        string nickname = PlayerPrefs.GetString("PlayerNickname", "玩家");
-        string username = PlayerPrefs.GetString("LoginUsername", "Guest");
-        bool isGuest = string.IsNullOrEmpty(PlayerPrefs.GetString("AuthToken", string.Empty));
-
-        SetLeftContent(
-            "个人信息",
-            $"昵称：{nickname}\n账号：{username}\n状态：{(isGuest ? "游客模式" : "账号登录")}\n等级：Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}\n\n资源\n金币：{PlayerPrefs.GetInt("Gold", 1000)}\n木材：{PlayerPrefs.GetInt("Wood", 500)}\n石材：{PlayerPrefs.GetInt("Stone", 500)}\n铁矿：{PlayerPrefs.GetInt("Iron", 300)}",
-            "已切换到个人信息"
-        );
+        ShowGuestProfilePanel();
     }
 
     private void ShowFriendsContent()
     {
-        SetLeftContent("好友列表", "当前接口文档没有好友系统接口。\n\n已接入本地展示：\n好友申请：0\n在线好友：0\n最近互动：暂无\n\n后端需要补充好友列表、添加好友、删除好友、赠送体力等接口后，才能接入真实好友数据。", "已打开好友列表");
+        ShowFriendsPanel();
     }
 
     private void ShowMailContent()
@@ -789,27 +803,28 @@ public class HomePageUI : MonoBehaviour
 
     private void ShowSettingsContent()
     {
-        bool musicOn = PlayerPrefs.GetInt("MusicEnabled", 1) == 1;
-        musicOn = !musicOn;
-        PlayerPrefs.SetInt("MusicEnabled", musicOn ? 1 : 0);
-        PlayerPrefs.Save();
+        settingsLogoutConfirmation = false;
+        HideEquipmentPanel();
+        HideShopPanel();
+        if (TryShowSettingsScenePanel("设置修改后会即时生效"))
+        {
+            return;
+        }
+
         SetLeftContent(
             "设置",
-            $"音乐：{(musicOn ? "开启" : "关闭")}\n音效：{(PlayerPrefs.GetInt("SoundEnabled", 1) == 1 ? "开启" : "关闭")}\n画质：标准\n账号：{PlayerPrefs.GetString("LoginUsername", "Guest")}\n\n再次点击设置按钮可切换音乐开关。\n返回登录功能已保留在代码中，可后续加独立按钮调用。",
-            "已更新设置"
+            $"音乐：{(GameSettingsRuntime.MusicEnabled ? "开启" : "关闭")}  {GameSettingsRuntime.MusicVolume}%\n" +
+            $"音效：{(GameSettingsRuntime.SoundEnabled ? "开启" : "关闭")}  {GameSettingsRuntime.SoundVolume}%\n" +
+            $"画质：{QualitySettings.names[GameSettingsRuntime.QualityLevel]}\n" +
+            $"全屏：{(GameSettingsRuntime.FullScreen ? "开启" : "关闭")}\n" +
+            $"帧率：{GameSettingsRuntime.TargetFrameRate} FPS",
+            "设置面板暂不可用"
         );
     }
 
     private void ShowEquipmentContent()
     {
-        if (!HasAuthSession())
-        {
-            SetLeftContent("装备", "游客模式装备\n\n武器：新手短剑\n防具：布甲\n饰品：暂无\n战力：10\n\n当前后端没有独立装备接口，账号模式会从背包物品中筛选装备类数据。", "已打开游客装备");
-            return;
-        }
-
-        SetLeftContent("装备", "正在读取装备数据...", "正在请求背包接口");
-        StartCoroutine(GetInventoryList(true));
+        ShowEquipmentPanel();
     }
 
     private void ShowRechargeContent()
@@ -829,12 +844,24 @@ public class HomePageUI : MonoBehaviour
     private void ShowLotteryContent()
     {
         MarkTaskProgress("TaskLotteryOpened");
+        if (HasAuthSession())
+        {
+            ShowLotteryPanel("账号模式暂无服务端抽奖接口，本次不会消耗机会或发放本地奖励。", string.Empty, 0, false);
+            return;
+        }
+
         EnsureLotteryChanceCount();
         ShowLotteryPanel("点击开始消耗 1 次机会", string.Empty, 0, false);
     }
 
     private void PerformLotteryDraw()
     {
+        if (HasAuthSession())
+        {
+            ShowLotteryPanel("账号模式暂无服务端抽奖接口，已阻止本地资源变更。", string.Empty, 0, false);
+            return;
+        }
+
         if (lotteryRolling)
         {
             return;
@@ -904,6 +931,12 @@ public class HomePageUI : MonoBehaviour
         string today = DateTime.Now.ToString("yyyy-MM-dd");
         string signedDate = PlayerPrefs.GetString("DailySignDate", string.Empty);
         int signedDays = PlayerPrefs.GetInt("DailySignDays", 0);
+        if (HasAuthSession())
+        {
+            ShowDailySignPanel(signedDays, signedDate == today, "账号模式暂无服务端签到接口，已阻止本地资源变更。");
+            return;
+        }
+
         if (signedDate == today)
         {
             ShowDailySignPanel(signedDays, true, $"今日日期：{today}  今日已签到");
@@ -921,6 +954,12 @@ public class HomePageUI : MonoBehaviour
     private void ShowNewbieSignContent()
     {
         int signedDays = PlayerPrefs.GetInt("NewbieSignDays", 0);
+        if (HasAuthSession())
+        {
+            ShowNewbieSignPanel(signedDays, "账号模式暂无服务端新手签到接口，已阻止本地资源变更。");
+            return;
+        }
+
         if (signedDays >= 3)
         {
             ShowNewbieSignPanel(signedDays, "新手三日签到已全部领取");
@@ -972,6 +1011,11 @@ public class HomePageUI : MonoBehaviour
         HideRechargePanel();
         HideTaskPanel();
         HideInventoryPanel();
+        HideEquipmentPanel();
+        HideShopPanel();
+        HideAnnouncementPanel();
+        HideGuestProfilePanel();
+        HideFriendsPanel();
 
         TaskDisplayItem[] tasks = BuildTaskItems(category);
         int completedCount = 0;
@@ -981,6 +1025,11 @@ public class HomePageUI : MonoBehaviour
             {
                 completedCount++;
             }
+        }
+
+        if (TryShowTaskScenePanel(category, message, tasks, completedCount))
+        {
+            return;
         }
 
         Image shadow = CreateImage("TaskPanelShadow", mainPageTransform, new Color(0.10f, 0.05f, 0.02f, 0.48f));
@@ -1261,6 +1310,12 @@ public class HomePageUI : MonoBehaviour
             return;
         }
 
+        if (HasAuthSession())
+        {
+            ShowTaskPanel(activeTaskCategory, "账号模式暂无服务端任务奖励接口，已阻止本地资源变更。");
+            return;
+        }
+
         AddLocalResource(task.rewardKey, task.rewardAmount);
         PlayerPrefs.SetInt(GetTaskClaimKey(task), 1);
         PlayerPrefs.Save();
@@ -1356,6 +1411,15 @@ public class HomePageUI : MonoBehaviour
         HideRechargePanel();
         HideTaskPanel();
         HideInventoryPanel();
+        HideEquipmentPanel();
+        HideShopPanel();
+        HideAnnouncementPanel();
+
+        if (TryShowInventoryScenePanel(visibleItems, selectedIndex, ownedCount, unlockedSlots))
+        {
+            SetStatus(inventoryStatusMessage);
+            return;
+        }
 
         InventoryPanelView inventoryPrefab = Resources.Load<InventoryPanelView>("UI/InventoryPanel");
         if (inventoryPrefab != null)
@@ -1455,7 +1519,7 @@ public class HomePageUI : MonoBehaviour
         AddInventoryFooter(panel.transform, ownedCount, visibleItems.Count, unlockedSlots);
         AddInventorySideAction(panel.transform, new Vector2(1450f, -154f), "仓库", "仓", !inventoryStallMode, () => SetInventoryStallMode(false));
         AddInventorySideAction(panel.transform, new Vector2(1450f, -314f), "摆摊", "摊", inventoryStallMode, () => SetInventoryStallMode(true));
-        AddInventorySideAction(panel.transform, new Vector2(1450f, -474f), "商店", "店", false, ShowRechargeContent);
+        AddInventorySideAction(panel.transform, new Vector2(1450f, -474f), "商店", "店", false, ShowShopContent);
 
         selectedIndex = FindFilteredInventoryIndex(visibleItems, selectedInventoryItemKey);
         if (selectedIndex >= 0)
@@ -1489,7 +1553,7 @@ public class HomePageUI : MonoBehaviour
             inventoryStallMode,
             () => SetInventoryStallMode(false),
             () => SetInventoryStallMode(true),
-            ShowRechargeContent);
+            ShowShopContent);
 
         int slotCount = Mathf.Min(InventoryCapacity, view.SlotCount);
         for (int slotIndex = 0; slotIndex < slotCount; slotIndex++)
@@ -2390,7 +2454,89 @@ public class HomePageUI : MonoBehaviour
 
     private void ShowAnnouncement()
     {
-        SetLeftContent("公告", "欢迎来到微郡游戏。\n\n当前版本首页已支持：\n1. 左页信息面板切换\n2. 右页地图选择\n3. 游客和账号登录状态读取\n\n点击右页地图卡片选择区域，再从右页下方进入该区域。", "已显示公告");
+        if (mainPageTransform == null)
+        {
+            SetLeftContent("公告", BuildAnnouncementBody(), "已显示游戏公告");
+            return;
+        }
+
+        HideSystemMailPanel();
+        HideSignPanel();
+        HideLotteryPanel();
+        HideRechargePanel();
+        HideTaskPanel();
+        HideInventoryPanel();
+        HideEquipmentPanel();
+        HideShopPanel();
+        HideAnnouncementPanel();
+
+        announcementPanelView = FindSceneAnnouncementPanel();
+        if (announcementPanelView == null)
+        {
+            SetLeftContent("公告", BuildAnnouncementBody(), "场景公告组件未找到，已使用文本模式显示");
+            return;
+        }
+
+        announcementPanelView.gameObject.SetActive(true);
+        announcementPanelView.transform.SetAsLastSibling();
+        announcementPanelView.SetAnnouncement(
+            "游戏公告",
+            "版本 1.0 · 首页功能更新",
+            "发布日期 2026年7月21日",
+            BuildAnnouncementBody());
+        announcementPanelView.BindClose(HideAnnouncementPanel);
+
+        PlayerPrefs.SetString("LastReadAnnouncementVersion", "2026-07-21");
+        PlayerPrefs.Save();
+        SetStatus("已打开游戏公告");
+    }
+
+    private string BuildAnnouncementBody()
+    {
+        return string.Join("\n", new[]
+        {
+            "《微郡》7月版本更新公告",
+            string.Empty,
+            "亲爱的领主：",
+            "本次首页与领地系统更新已经完成。重新进入首页后，即可体验以下新增内容。",
+            string.Empty,
+            "---------- 版本更新 ----------",
+            "一、全新书页主页",
+            "1. 首页采用领地手册与地图书页布局，主要入口重新分类排列。",
+            "2. 玩家头像、资源概览、设置、邮件等常用信息集中展示。",
+            "3. 建造、对战、经营三个模式已加入右侧功能区。",
+            string.Empty,
+            "二、系统功能补充",
+            "1. 背包支持装备、药品、其它和灵宠分类，可进行使用、出售、整理与扩容。",
+            "2. 任务列表包含每日任务、主线任务、成长任务和活动任务。",
+            "3. 系统邮件、充值商店和幸运抽奖界面已补充完整。",
+            string.Empty,
+            "---------- 活动公告 ----------",
+            "活动一：每日签到",
+            "活动时间：长期开放",
+            "活动说明：连续签到以两周为一个周期，可领取金币、资源和稀有道具。",
+            string.Empty,
+            "活动二：新手三日签到",
+            "活动时间：新角色创建后开放",
+            "活动说明：累计签到三天，可领取资源补给与装备宝箱。",
+            string.Empty,
+            "活动三：幸运抽奖",
+            "活动时间：长期开放",
+            "活动说明：消耗抽奖机会参与翻牌，奖励会直接加入本地资源或背包。",
+            string.Empty,
+            "---------- 优化与修复 ----------",
+            "1. 优化书页背景、按钮尺寸和文字清晰度。",
+            "2. 修复部分面板重叠、内容超出边框和关闭按钮不可见的问题。",
+            "3. 背包界面已改为 Unity Prefab 组件，后续可直接替换图片和样式。",
+            string.Empty,
+            "温馨提示：",
+            "账号模式会读取服务器数据；游客模式使用本地存档。部分服务端操作接口尚未开放时，界面会保留查看功能并给出提示。",
+            string.Empty,
+            "感谢各位领主的支持，祝您游戏愉快！",
+            string.Empty,
+            "微郡运营组",
+            "2026年7月21日"
+        });
     }
 
     private void ShowRechargePanel(PaymentProductResponse[] products, string status, bool disabled)
@@ -2407,8 +2553,16 @@ public class HomePageUI : MonoBehaviour
         HideRechargePanel();
         HideTaskPanel();
         HideInventoryPanel();
+        HideEquipmentPanel();
+        HideShopPanel();
+        HideAnnouncementPanel();
 
         PaymentProductResponse[] displayProducts = NormalizeRechargeProducts(products);
+
+        if (TryShowRechargeScenePanel(displayProducts, status, disabled))
+        {
+            return;
+        }
 
         Image shadow = CreateImage("RechargePanelShadow", mainPageTransform, new Color(0.11f, 0.05f, 0.02f, 0.46f));
         SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(256f, -112f), new Vector2(1418f, 808f));
@@ -2482,7 +2636,8 @@ public class HomePageUI : MonoBehaviour
     {
         string name = string.IsNullOrEmpty(product.name) ? $"魂晶x{GetDefaultRechargeReward(index)}" : product.name;
         string rewardName = string.IsNullOrEmpty(product.rewardItemName) ? "魂晶" : product.rewardItemName;
-        int rewardQuantity = product.rewardQuantity <= 0 ? GetDefaultRechargeReward(index) : product.rewardQuantity;
+        int apiRewardAmount = GetShopRewardAmount(product);
+        int rewardQuantity = apiRewardAmount <= 0 ? GetDefaultRechargeReward(index) : apiRewardAmount;
         int bonus = Mathf.Max(0, Mathf.RoundToInt(rewardQuantity * GetFirstRechargeBonusRate(index)));
 
         Image shadow = CreateImage("RechargeProductShadow", parent, new Color(0.12f, 0.05f, 0.02f, 0.24f));
@@ -2529,8 +2684,8 @@ public class HomePageUI : MonoBehaviour
             return;
         }
 
-        string code = string.IsNullOrEmpty(product.productCode) ? "local-product" : product.productCode;
-        SetStatus($"已选择 {productName}：{rewardName} x{rewardQuantity}，首充赠 x{bonus}。订单创建接口待接入：{code}");
+        SetStatus($"已选择 {productName}：{rewardName} x{rewardQuantity}，正在创建支付订单。");
+        BeginPaymentOrder(product, productName);
     }
 
     private void AddRechargeBackground(Transform parent, Vector2 size)
@@ -2727,6 +2882,7 @@ public class HomePageUI : MonoBehaviour
                 currency = "CNY",
                 rewardItemKey = "SoulCrystal",
                 rewardItemName = "魂晶",
+                rewardAmount = rewards[i],
                 rewardQuantity = rewards[i],
                 description = "本地默认充值档位"
             };
@@ -2749,6 +2905,14 @@ public class HomePageUI : MonoBehaviour
         HideRechargePanel();
         HideTaskPanel();
         HideInventoryPanel();
+        HideEquipmentPanel();
+        HideShopPanel();
+        HideAnnouncementPanel();
+
+        if (TryShowLotteryScenePanel(status, rewardName, rewardValue, hasResult, isRolling))
+        {
+            return;
+        }
 
         Image shadow = CreateImage("LotteryPanelShadow", mainPageTransform, new Color(0.08f, 0.05f, 0.03f, 0.44f));
         SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(576f, -92f), new Vector2(788f, 900f));
@@ -2996,6 +3160,14 @@ public class HomePageUI : MonoBehaviour
         HideRechargePanel();
         HideTaskPanel();
         HideInventoryPanel();
+        HideEquipmentPanel();
+        HideShopPanel();
+        HideAnnouncementPanel();
+
+        if (TryShowDailySignScenePanel(signedDays, todaySigned, status))
+        {
+            return;
+        }
 
         Image shadow = CreateImage("SignPanelShadow", mainPageTransform, new Color(0.08f, 0.05f, 0.03f, 0.45f));
         SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(356f, -118f), new Vector2(1216f, 820f));
@@ -3056,6 +3228,14 @@ public class HomePageUI : MonoBehaviour
         HideRechargePanel();
         HideTaskPanel();
         HideInventoryPanel();
+        HideEquipmentPanel();
+        HideShopPanel();
+        HideAnnouncementPanel();
+
+        if (TryShowNewbieSignScenePanel(signedDays, status))
+        {
+            return;
+        }
 
         Image shadow = CreateImage("SignPanelShadow", mainPageTransform, new Color(0.08f, 0.05f, 0.03f, 0.45f));
         SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(462f, -174f), new Vector2(1016f, 662f));
@@ -3275,6 +3455,8 @@ public class HomePageUI : MonoBehaviour
 
     private void ShowSystemMailPanel(MailResponse[] mails, string message)
     {
+        CaptureMailList(mails);
+        mails = currentServerMails;
         if (mainPageTransform == null)
         {
             SetLeftContent("邮件", message ?? BuildMailText(mails), "已打开系统邮件");
@@ -3287,6 +3469,14 @@ public class HomePageUI : MonoBehaviour
         HideRechargePanel();
         HideTaskPanel();
         HideInventoryPanel();
+        HideEquipmentPanel();
+        HideShopPanel();
+        HideAnnouncementPanel();
+
+        if (TryShowSystemMailScenePanel(mails, message))
+        {
+            return;
+        }
 
         Image shadow = CreateImage("SystemMailPanelShadow", mainPageTransform, new Color(0.10f, 0.05f, 0.03f, 0.42f));
         SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(328f, -146f), new Vector2(1292f, 768f));
@@ -3322,7 +3512,7 @@ public class HomePageUI : MonoBehaviour
         Button claimAll = CreateButton(listHeader.transform, "ClaimAllButton", "一键领取", new Color(1f, 0.73f, 0.25f, 1f), new Color(0.44f, 0.16f, 0.06f, 1f));
         SetRect(claimAll.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(212f, -7f), new Vector2(124f, 40f));
         ConfigureClearButtonLabel(claimAll, 18);
-        claimAll.onClick.AddListener(() => SetStatus("一键领取按钮已接入界面，领取接口待后续补充"));
+        claimAll.onClick.AddListener(ClaimAllMailAttachments);
 
         Image detail = CreateImage("MailDetailArea", panel.transform, new Color(1f, 0.98f, 0.88f, 0.98f));
         SetRect(detail.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(470f, -128f), new Vector2(620f, 555f));
@@ -3347,7 +3537,7 @@ public class HomePageUI : MonoBehaviour
         Button claim = CreateButton(detail.transform, "ClaimMailButton", "领取", new Color(0.83f, 0.30f, 0.23f, 1f), Color.white);
         SetRect(claim.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(446f, -475f), new Vector2(126f, 48f));
         ConfigureClearButtonLabel(claim, 22);
-        claim.onClick.AddListener(() => SetStatus("领取按钮已接入界面，附件领取接口待后续补充"));
+        claim.onClick.AddListener(ClaimSelectedMailAttachment);
 
         AddMailTabButton(panel.transform, new Vector2(1118f, -146f), "系统", true);
         AddMailTabButton(panel.transform, new Vector2(1118f, -226f), "奖励", false);
@@ -3375,10 +3565,20 @@ public class HomePageUI : MonoBehaviour
         }
 
         int count = Mathf.Min(mails.Length, 5);
+        int initialIndex = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (mails[i] != null && mails[i].mailId == selectedMailId)
+            {
+                initialIndex = i;
+                break;
+            }
+        }
+
         for (int i = 0; i < count; i++)
         {
             MailResponse mail = mails[i];
-            bool selected = i == 0;
+            bool selected = i == initialIndex;
             Button card = CreateButton(listParent, "MailItem" + i, string.Empty, selected ? new Color(1f, 0.92f, 0.45f, 1f) : new Color(1f, 0.96f, 0.78f, 1f), InkColor);
             SetRect(card.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(26f, -96f - i * 84f), new Vector2(332f, 72f));
 
@@ -3398,19 +3598,20 @@ public class HomePageUI : MonoBehaviour
             card.onClick.AddListener(() => UpdateMailDetail(capturedMail, detailTitle, detailBody));
         }
 
-        UpdateMailDetail(mails[0], detailTitle, detailBody);
+        UpdateMailDetail(mails[initialIndex], detailTitle, detailBody);
     }
 
     private void UpdateMailDetail(MailResponse mail, Text detailTitle, Text detailBody)
     {
+        SelectMailForActions(mail);
         string title = string.IsNullOrEmpty(mail.title) ? "系统邮件" : mail.title;
         string sender = string.IsNullOrEmpty(mail.senderName) ? "系统" : mail.senderName;
-        string content = string.IsNullOrEmpty(mail.content) ? "暂无详细内容，当前邮件列表接口未返回正文。" : mail.content;
+        string content = string.IsNullOrEmpty(mail.content) ? "暂无详细内容，正在读取邮件详情..." : mail.content;
         string attachment = mail.hasAttachment ? (mail.attachmentClaimed ? "附件状态：已领取" : "附件状态：可领取") : "附件状态：无附件";
         string time = string.IsNullOrEmpty(mail.createTime) ? "时间：未知" : $"时间：{mail.createTime}";
 
         detailTitle.text = title;
-        detailBody.text = $"{content}\n\n发件人：{sender}\n{time}\n{attachment}";
+        detailBody.text = $"{content}\n\n发件人：{sender}\n{time}\n{attachment}\n{BuildMailAttachmentSummary(mail)}";
     }
 
     private void AddAirmailBorder(Transform parent, Vector2 size)
@@ -3479,6 +3680,12 @@ public class HomePageUI : MonoBehaviour
 
     private void HideSystemMailPanel()
     {
+        if (HideRegisteredScenePanel(HomePageScenePanelType.Mail, ref mailPanelObject))
+        {
+            ShowMapSelectionContent();
+            return;
+        }
+
         if (mailPanelObject == null)
         {
             return;
@@ -3492,10 +3699,18 @@ public class HomePageUI : MonoBehaviour
 
         Destroy(mailPanelObject);
         mailPanelObject = null;
+        ShowMapSelectionContent();
     }
 
     private void HideSignPanel()
     {
+        bool hidDailyPanel = HideRegisteredScenePanel(HomePageScenePanelType.DailySign, ref signPanelObject);
+        bool hidNewbiePanel = HideRegisteredScenePanel(HomePageScenePanelType.NewbieSign, ref signPanelObject);
+        if (hidDailyPanel || hidNewbiePanel)
+        {
+            return;
+        }
+
         if (signPanelObject == null)
         {
             return;
@@ -3513,6 +3728,11 @@ public class HomePageUI : MonoBehaviour
 
     private void HideLotteryPanel()
     {
+        if (HideRegisteredScenePanel(HomePageScenePanelType.Lottery, ref lotteryPanelObject))
+        {
+            return;
+        }
+
         if (lotteryPanelObject == null)
         {
             return;
@@ -3530,6 +3750,12 @@ public class HomePageUI : MonoBehaviour
 
     private void HideRechargePanel()
     {
+        if (HideRegisteredScenePanel(HomePageScenePanelType.Recharge, ref rechargePanelObject))
+        {
+            ShowMapSelectionContent();
+            return;
+        }
+
         if (rechargePanelObject == null)
         {
             return;
@@ -3543,10 +3769,16 @@ public class HomePageUI : MonoBehaviour
 
         Destroy(rechargePanelObject);
         rechargePanelObject = null;
+        ShowMapSelectionContent();
     }
 
     private void HideTaskPanel()
     {
+        if (HideRegisteredScenePanel(HomePageScenePanelType.Task, ref taskPanelObject))
+        {
+            return;
+        }
+
         if (taskPanelObject == null)
         {
             return;
@@ -3564,6 +3796,12 @@ public class HomePageUI : MonoBehaviour
 
     private void HideInventoryPanel()
     {
+        if (HideRegisteredScenePanel(HomePageScenePanelType.Inventory, ref inventoryPanelObject))
+        {
+            inventoryPanelView = null;
+            return;
+        }
+
         if (inventoryPanelObject == null)
         {
             return;
@@ -3580,6 +3818,38 @@ public class HomePageUI : MonoBehaviour
         inventoryPanelView = null;
     }
 
+    private void HideAnnouncementPanel()
+    {
+        AnnouncementPanelView panel = FindSceneAnnouncementPanel();
+        if (panel == null)
+        {
+            return;
+        }
+
+        panel.gameObject.SetActive(false);
+        ShowMapSelectionContent();
+    }
+
+    private AnnouncementPanelView FindSceneAnnouncementPanel()
+    {
+        if (announcementPanelView != null)
+        {
+            return announcementPanelView;
+        }
+
+        AnnouncementPanelView[] panels = FindObjectsOfType<AnnouncementPanelView>(true);
+        foreach (AnnouncementPanelView panel in panels)
+        {
+            if (panel.gameObject.scene == gameObject.scene)
+            {
+                announcementPanelView = panel;
+                break;
+            }
+        }
+
+        return announcementPanelView;
+    }
+
     private void SetLeftContent(string title, string body, string status)
     {
         HideSystemMailPanel();
@@ -3588,19 +3858,31 @@ public class HomePageUI : MonoBehaviour
         HideRechargePanel();
         HideTaskPanel();
         HideInventoryPanel();
+        HideEquipmentPanel();
+        HideShopPanel();
+        HideAnnouncementPanel();
+        HideGuestProfilePanel();
+        HideFriendsPanel();
 
         if (contentPanelObject != null && !contentPanelObject.activeSelf)
         {
             contentPanelObject.SetActive(true);
         }
 
+        if (mapSelectorObject != null)
+        {
+            mapSelectorObject.SetActive(false);
+        }
+
         if (contentTitleText != null)
         {
+            contentTitleText.gameObject.SetActive(true);
             contentTitleText.text = title;
         }
 
         if (contentBodyText != null)
         {
+            contentBodyText.gameObject.SetActive(true);
             contentBodyText.text = body;
         }
 
@@ -3609,30 +3891,51 @@ public class HomePageUI : MonoBehaviour
 
     private bool HasAuthSession()
     {
-        return PlayerPrefs.GetInt("LoginState", 0) == 1
-            && PlayerPrefs.GetInt(PlayerIdKey, 0) > 0
-            && !string.IsNullOrEmpty(PlayerPrefs.GetString(AuthTokenKey, string.Empty));
+        return GameSession.IsAuthenticated;
     }
 
     private UnityWebRequest CreateAuthorizedGet(string path)
     {
-        UnityWebRequest request = UnityWebRequest.Get(BaseApiUrl + path);
-        request.SetRequestHeader("Authorization", "Bearer " + PlayerPrefs.GetString(AuthTokenKey, string.Empty));
-        request.SetRequestHeader("Content-Type", "application/json; charset=UTF-8");
-        request.timeout = 10;
-        return request;
+        if (ApiRequestUtility.TryCreateGet(path, true, out UnityWebRequest request, out string error))
+        {
+            requestCreationError = string.Empty;
+            return request;
+        }
+
+        requestCreationError = error;
+        return null;
     }
 
     private IEnumerator GetInventoryList(bool equipmentOnly)
     {
         int playerId = PlayerPrefs.GetInt(PlayerIdKey, 0);
-        using (UnityWebRequest request = CreateAuthorizedGet($"/inventory/list/{playerId}"))
+        UnityWebRequest request = CreateAuthorizedGet($"/inventory/list/{playerId}");
+        if (request == null)
+        {
+            string errorMessage = requestCreationError;
+            if (equipmentOnly)
+            {
+                SetLeftContent("装备", errorMessage, "接口配置错误");
+            }
+            else
+            {
+                ShowInventoryPanel(new InventoryItemResponse[0], true, errorMessage);
+            }
+            yield break;
+        }
+
+        using (request)
         {
             yield return request.SendWebRequest();
 
+            if (HandleUnauthorizedResponse(request))
+            {
+                yield break;
+            }
+
             if (request.result != UnityWebRequest.Result.Success)
             {
-                string errorMessage = $"请求失败：{request.error}\n\n请确认后端服务已启动：{BaseApiUrl}";
+                string errorMessage = $"请求失败：{ApiRequestUtility.GetErrorMessage(request, "服务器连接失败")}\n\n接口地址：{ApiRuntimeConfig.GetDisplayBaseUrl()}";
                 if (equipmentOnly)
                 {
                     SetLeftContent("装备", errorMessage, "接口请求失败");
@@ -3644,7 +3947,7 @@ public class HomePageUI : MonoBehaviour
                 yield break;
             }
 
-            InventoryListApiResponse response = JsonUtility.FromJson<InventoryListApiResponse>(request.downloadHandler.text);
+            InventoryListApiResponse response = ParseJson<InventoryListApiResponse>(request.downloadHandler.text);
             if (response == null || response.code != 200)
             {
                 string errorMessage = GetApiError(response);
@@ -3673,17 +3976,29 @@ public class HomePageUI : MonoBehaviour
     private IEnumerator GetMailList()
     {
         int playerId = PlayerPrefs.GetInt(PlayerIdKey, 0);
-        using (UnityWebRequest request = CreateAuthorizedGet($"/mail/list/{playerId}?limit=50"))
+        UnityWebRequest request = CreateAuthorizedGet($"/mail/list/{playerId}?limit=50");
+        if (request == null)
+        {
+            ShowSystemMailPanel(null, requestCreationError);
+            yield break;
+        }
+
+        using (request)
         {
             yield return request.SendWebRequest();
 
-            if (request.result != UnityWebRequest.Result.Success)
+            if (HandleUnauthorizedResponse(request))
             {
-                ShowSystemMailPanel(null, $"请求失败：{request.error}\n\n请确认后端服务已启动：{BaseApiUrl}");
                 yield break;
             }
 
-            MailListApiResponse response = JsonUtility.FromJson<MailListApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                ShowSystemMailPanel(null, $"请求失败：{ApiRequestUtility.GetErrorMessage(request, "服务器连接失败")}\n\n接口地址：{ApiRuntimeConfig.GetDisplayBaseUrl()}");
+                yield break;
+            }
+
+            MailListApiResponse response = ParseJson<MailListApiResponse>(request.downloadHandler.text);
             if (response == null || response.code != 200)
             {
                 ShowSystemMailPanel(null, GetApiError(response));
@@ -3696,17 +4011,29 @@ public class HomePageUI : MonoBehaviour
 
     private IEnumerator GetPaymentProducts()
     {
-        using (UnityWebRequest request = CreateAuthorizedGet("/payment/product/list"))
+        UnityWebRequest request = CreateAuthorizedGet("/payment/product/list");
+        if (request == null)
+        {
+            ShowRechargePanel(GetDefaultRechargeProducts(), requestCreationError, true);
+            yield break;
+        }
+
+        using (request)
         {
             yield return request.SendWebRequest();
 
-            if (request.result != UnityWebRequest.Result.Success)
+            if (HandleUnauthorizedResponse(request))
             {
-                ShowRechargePanel(GetDefaultRechargeProducts(), $"请求失败：{request.error}\n请确认后端服务已启动：{BaseApiUrl}", true);
                 yield break;
             }
 
-            PaymentProductListApiResponse response = JsonUtility.FromJson<PaymentProductListApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                ShowRechargePanel(GetDefaultRechargeProducts(), $"请求失败：{ApiRequestUtility.GetErrorMessage(request, "服务器连接失败")}\n接口地址：{ApiRuntimeConfig.GetDisplayBaseUrl()}", true);
+                yield break;
+            }
+
+            PaymentProductListApiResponse response = ParseJson<PaymentProductListApiResponse>(request.downloadHandler.text);
             if (response == null || response.code != 200)
             {
                 ShowRechargePanel(GetDefaultRechargeProducts(), GetApiError(response), true);
@@ -3758,15 +4085,36 @@ public class HomePageUI : MonoBehaviour
 
     private bool IsEquipmentItem(InventoryItemResponse item)
     {
+        if (item == null)
+        {
+            return false;
+        }
+
         string type = item.itemType ?? string.Empty;
-        string key = item.itemKey ?? string.Empty;
+        string key = NormalizeInventoryKey(item.itemKey);
         string name = item.name ?? string.Empty;
         return type.IndexOf("EQUIP", StringComparison.OrdinalIgnoreCase) >= 0
-            || key.IndexOf("equip", StringComparison.OrdinalIgnoreCase) >= 0
-            || key.IndexOf("weapon", StringComparison.OrdinalIgnoreCase) >= 0
+            || type.IndexOf("WEAPON", StringComparison.OrdinalIgnoreCase) >= 0
+            || type.IndexOf("ARMOR", StringComparison.OrdinalIgnoreCase) >= 0
+            || type.IndexOf("ACCESSORY", StringComparison.OrdinalIgnoreCase) >= 0
+            || type.IndexOf("ORNAMENT", StringComparison.OrdinalIgnoreCase) >= 0
+            || key.Contains("equip")
+            || key.Contains("weapon")
+            || key.Contains("armor")
+            || key.Contains("helmet")
+            || key.Contains("shield")
+            || key.Contains("accessory")
+            || key.Contains("ornament")
+            || key.Contains("ring")
+            || key.Contains("necklace")
+            || key.Contains("amulet")
             || name.Contains("装备")
             || name.Contains("武器")
-            || name.Contains("防具");
+            || name.Contains("防具")
+            || name.Contains("饰品")
+            || name.Contains("戒")
+            || name.Contains("项链")
+            || name.Contains("护符");
     }
 
     private string BuildMailText(MailResponse[] mails)
@@ -3806,7 +4154,7 @@ public class HomePageUI : MonoBehaviour
         for (int i = 0; i < products.Length; i++)
         {
             PaymentProductResponse product = products[i];
-            text += $"{i + 1}. {product.name}\n   编码：{product.productCode}\n   价格：{product.priceFen / 100f:0.##} {product.currency}\n   奖励：{product.rewardItemName} x{product.rewardQuantity}\n";
+            text += $"{i + 1}. {product.name}\n   编码：{product.productCode}\n   价格：{product.priceFen / 100f:0.##} {product.currency}\n   奖励：{product.rewardItemName} x{GetShopRewardAmount(product)}\n";
         }
 
         text += "\n创建订单和微信支付需要商品按钮/订单确认弹窗，当前已接入商品列表接口。";
@@ -3820,6 +4168,12 @@ public class HomePageUI : MonoBehaviour
 
     private void AddLocalResource(string key, int amount)
     {
+        if (HasAuthSession())
+        {
+            Debug.LogWarning($"账号模式已阻止本地资源变更：{key} {amount:+#;-#;0}");
+            return;
+        }
+
         int defaultValue = 0;
         if (key == "Gold")
         {
@@ -3847,12 +4201,7 @@ public class HomePageUI : MonoBehaviour
 
     private void HideContentPanel()
     {
-        if (contentPanelObject != null)
-        {
-            contentPanelObject.SetActive(false);
-        }
-
-        SetStatus("已关闭显示面板");
+        ShowMapSelectionContent();
     }
 
     private void BuildTopRow(Transform page)
@@ -4246,6 +4595,7 @@ public class HomePageUI : MonoBehaviour
         selectedAreaDescription.text = area.description;
         selectedAreaHint.text = area.unlockHint;
         selectedAreaHint.color = area.color;
+        RefreshMapSelectorState();
         SetStatus($"已选择：{area.name}");
     }
 
@@ -4276,25 +4626,26 @@ public class HomePageUI : MonoBehaviour
 
     private void EnterArea(string landType)
     {
-        PlayerPrefs.SetString("CurrentAreaLandType", landType);
-        PlayerPrefs.SetString("OpenAreaLandType", landType);
-        PlayerPrefs.SetInt("TaskMapEntered", 1);
-        PlayerPrefs.SetString("TaskMapDate", GetTaskDate());
-        if (string.IsNullOrEmpty(PlayerPrefs.GetString("HomeSelectedMode", string.Empty)))
+        if (mapEntryRunning)
         {
-            PlayerPrefs.SetString("HomeSelectedMode", "build");
+            return;
         }
 
-        PlayerPrefs.Save();
-        SceneManager.LoadScene(MapSceneName);
+        if (HasAuthSession())
+        {
+            StartCoroutine(GetMapDataAndEnter(landType));
+            return;
+        }
+
+        CompleteEnterArea(landType);
     }
 
     private void ReturnToLogin()
     {
-        PlayerPrefs.SetInt("LoginState", 0);
-        PlayerPrefs.DeleteKey("AuthToken");
-        PlayerPrefs.Save();
-        SceneManager.LoadScene(LaunchSceneName);
+        if (!logoutRunning)
+        {
+            StartCoroutine(LogoutAndReturnToLogin());
+        }
     }
 
     private void SetStatus(string message)
@@ -4568,6 +4919,7 @@ public class HomePageUI : MonoBehaviour
         public bool expired;
         public string expireTime;
         public string createTime;
+        public MailAttachmentResponse[] attachments;
     }
 
     [Serializable]
@@ -4585,6 +4937,8 @@ public class HomePageUI : MonoBehaviour
         public string currency;
         public string rewardItemKey;
         public string rewardItemName;
+        public string rewardIcon;
+        public int rewardAmount;
         public int rewardQuantity;
         public string description;
     }

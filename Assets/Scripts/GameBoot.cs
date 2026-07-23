@@ -1,6 +1,5 @@
 using System;
 using System.Collections;
-using System.Text;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Networking;
@@ -9,14 +8,9 @@ using UnityEngine.UI;
 
 public class GameBoot : MonoBehaviour
 {
-    private const string BaseApiUrl = "http://localhost:8080/api";
     private const string HomeSceneName = "HomeScene";
     private const string RememberAccountKey = "LoginRememberAccount";
     private const string AccountKey = "LoginAccount";
-    private const string LoginStateKey = "LoginState";
-    private const string AuthTokenKey = "AuthToken";
-    private const string TokenExpiresInKey = "TokenExpiresIn";
-    private const string PlayerIdKey = "PlayerId";
     private const string PlayerNicknameKey = "PlayerNickname";
 
     private static readonly Color BackgroundColor = new Color(0.93f, 0.96f, 0.99f, 1f);
@@ -78,16 +72,14 @@ public class GameBoot : MonoBehaviour
         CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.matchWidthOrHeight = 0.5f;
+        scaler.matchWidthOrHeight = 0f;
 
         RectTransform root = canvasObj.GetComponent<RectTransform>();
+        BuildFixedLoginLayout(root);
+    }
 
-        if (Application.isPlaying || !Application.isPlaying)
-        {
-            BuildFixedLoginLayout(root);
-            return;
-        }
-
+    private void BuildModernLoginLayout(RectTransform root)
+    {
         Image background = CreateImage("Background", root, BackgroundColor);
         Stretch(background.rectTransform);
 
@@ -207,7 +199,7 @@ public class GameBoot : MonoBehaviour
     private void BuildFixedLoginLayout(RectTransform root)
     {
         Color paperColor = new Color(0.98f, 0.95f, 0.86f, 1f);
-        Color redTextColor = new Color(0.90f, 0.16f, 0.18f, 1f);
+        Color inkColor = new Color(0.28f, 0.16f, 0.09f, 1f);
         Color shadowColor = new Color(0.18f, 0.10f, 0.05f, 0.28f);
 
         Image background = CreateImage("FixedLoginBackground", root, new Color(0.48f, 0.30f, 0.16f, 1f));
@@ -215,87 +207,93 @@ public class GameBoot : MonoBehaviour
 
         Image centerShadow = CreateImage("CenterPanelShadow", root, shadowColor);
         centerShadow.raycastTarget = false;
-        SetRect(centerShadow.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(8f, -65f), new Vector2(780f, 710f));
+        SetRect(centerShadow.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(10f, -10f), new Vector2(850f, 960f));
 
         Image centerPanel = CreateImage("CenterPanel", root, new Color(0.42f, 0.25f, 0.12f, 0.42f));
         centerPanel.raycastTarget = false;
-        SetRect(centerPanel.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, -55f), new Vector2(780f, 710f));
+        SetRect(centerPanel.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), Vector2.zero, new Vector2(850f, 960f));
 
-        CreateDecorLine(root, new Vector2(-600f, 350f), new Vector2(520f, 8f));
-        CreateDecorLine(root, new Vector2(660f, 350f), new Vector2(420f, 8f));
-        CreateDecorLine(root, new Vector2(-650f, -245f), new Vector2(420f, 8f));
-        CreateDecorLine(root, new Vector2(650f, -245f), new Vector2(620f, 8f));
+        CreateDecorLine(root, new Vector2(-650f, 380f), new Vector2(520f, 8f));
+        CreateDecorLine(root, new Vector2(650f, 380f), new Vector2(520f, 8f));
+        CreateDecorLine(root, new Vector2(-650f, -380f), new Vector2(520f, 8f));
+        CreateDecorLine(root, new Vector2(650f, -380f), new Vector2(520f, 8f));
 
         Image logoShadow = CreateImage("LogoShadow", root, shadowColor);
         logoShadow.raycastTarget = false;
-        SetRect(logoShadow.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(8f, 202f), new Vector2(660f, 190f));
+        SetRect(logoShadow.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(8f, 384f), new Vector2(650f, 126f));
 
         Image logoPanel = CreateImage("LogoPanel", root, paperColor);
-        SetRect(logoPanel.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, 210f), new Vector2(650f, 180f));
+        SetRect(logoPanel.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, 392f), new Vector2(650f, 126f));
 
-        Text logoText = CreateText("LogoText", logoPanel.transform, "游戏logo", 34, FontStyle.Normal, new Color(0.95f, 0.18f, 0.25f, 1f), TextAnchor.MiddleCenter);
-        Stretch(logoText.rectTransform);
+        Text logoText = CreateText("LogoText", logoPanel.transform, "微郡", 42, FontStyle.Bold, new Color(0.74f, 0.20f, 0.15f, 1f), TextAnchor.MiddleCenter);
+        SetRect(logoText.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(0f, 12f), new Vector2(-24f, -44f));
+        Text logoSubtitle = CreateText("LogoSubtitle", logoPanel.transform, "登录领地手册，继续你的旅程", 16, FontStyle.Normal, new Color(0.48f, 0.39f, 0.31f, 1f), TextAnchor.MiddleCenter);
+        SetRect(logoSubtitle.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 12f), new Vector2(-24f, 30f));
 
-        Text nicknameLabel = CreateText("NicknameLabel", root, "昵称:", 28, FontStyle.Normal, new Color(0.95f, 0.18f, 0.25f, 1f), TextAnchor.MiddleRight);
-        SetRect(nicknameLabel.rectTransform, CenterAnchor(), CenterAnchor(), new Vector2(1f, 0.5f), new Vector2(-350f, -30f), new Vector2(120f, 48f));
-
-        Image nicknameShadow = CreateImage("NicknameInputShadow", root, shadowColor);
-        nicknameShadow.raycastTarget = false;
-        SetRect(nicknameShadow.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(8f, -38f), new Vector2(660f, 78f));
-
-        accountInput = CreateInputField(root, "NicknameInput", string.Empty);
-        SetRect(accountInput.GetComponent<RectTransform>(), CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, -30f), new Vector2(650f, 70f));
-        accountInput.GetComponent<Image>().color = new Color(0.99f, 0.97f, 0.90f, 1f);
+        accountInput = CreateBookInput(root, "AccountInput", "请输入登录账号", "账号", 232f, shadowColor);
         accountInput.characterLimit = 50;
-        nicknameInput = accountInput;
 
-        Text passwordLabel = CreateText("PasswordLabel", root, "密码:", 28, FontStyle.Normal, new Color(0.95f, 0.18f, 0.25f, 1f), TextAnchor.MiddleRight);
-        SetRect(passwordLabel.rectTransform, CenterAnchor(), CenterAnchor(), new Vector2(1f, 0.5f), new Vector2(-350f, -175f), new Vector2(120f, 48f));
+        nicknameInput = CreateBookInput(root, "NicknameInput", "注册或首次微信登录时填写", "昵称", 124f, shadowColor);
+        nicknameInput.characterLimit = 50;
 
-        Image passwordShadow = CreateImage("PasswordInputShadow", root, shadowColor);
-        passwordShadow.raycastTarget = false;
-        SetRect(passwordShadow.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(8f, -183f), new Vector2(660f, 78f));
-
-        passwordInput = CreateInputField(root, "PasswordInput", string.Empty);
+        passwordInput = CreateBookInput(root, "PasswordInput", "请输入密码", "密码", 16f, shadowColor);
         passwordInput.contentType = InputField.ContentType.Password;
         passwordInput.characterLimit = 255;
-        SetRect(passwordInput.GetComponent<RectTransform>(), CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, -175f), new Vector2(650f, 70f));
-        passwordInput.GetComponent<Image>().color = new Color(0.99f, 0.97f, 0.90f, 1f);
-
-        loginButton = CreateFixedButton(root, "LoginButton", "登录", new Vector2(-205f, -335f), new Vector2(205f, 70f), paperColor, redTextColor, 26);
-        loginButton.onClick.AddListener(TryLogin);
-
-        registerButton = CreateFixedButton(root, "RegisterButton", "注册", new Vector2(35f, -335f), new Vector2(205f, 70f), paperColor, redTextColor, 26);
-        registerButton.onClick.AddListener(TryRegister);
-
-        weChatButton = CreateFixedButton(root, "OtherLoginButton", "其他登录", new Vector2(275f, -335f), new Vector2(205f, 70f), paperColor, redTextColor, 24);
-        weChatButton.onClick.AddListener(TryWeChatLogin);
-
-        Button settingsButton = CreateFixedButton(root, "SettingsButton", "设置", new Vector2(830f, 315f), new Vector2(110f, 90f), paperColor, redTextColor, 20);
-        settingsButton.onClick.AddListener(ShowSettingsPanel);
-
-        Button mailButton = CreateFixedButton(root, "MailButton", "邮件", new Vector2(830f, 205f), new Vector2(110f, 90f), paperColor, redTextColor, 20);
-        mailButton.onClick.AddListener(() => ShowError("邮件功能待接入"));
-
-        statusText = CreateText("StatusText", root, string.Empty, 18, FontStyle.Normal, ErrorColor, TextAnchor.MiddleCenter);
-        SetRect(statusText.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, -425f), new Vector2(650f, 34f));
 
         rememberToggle = CreateRememberToggle(root);
-        rememberToggle.isOn = PlayerPrefs.GetInt(RememberAccountKey, 1) == 1;
-        SetRect(rememberToggle.GetComponent<RectTransform>(), Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(-5000f, -5000f), Vector2.zero);
-        rememberToggle.gameObject.SetActive(false);
+        SetRect(rememberToggle.GetComponent<RectTransform>(), CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(-214f, -56f), new Vector2(220f, 28f));
 
-        guestButton = CreateButton(root, "HiddenGuestButton", string.Empty, Color.clear, Color.clear);
+        loginButton = CreateFixedButton(root, "LoginButton", "登录", new Vector2(-158f, -132f), new Vector2(290f, 54f), PrimaryColor, Color.white, 22);
+        loginButton.onClick.AddListener(TryLogin);
+
+        registerButton = CreateFixedButton(root, "RegisterButton", "注册并登录", new Vector2(158f, -132f), new Vector2(290f, 54f), new Color(0.76f, 0.83f, 0.92f, 1f), new Color(0.12f, 0.22f, 0.34f, 1f), 21);
+        registerButton.onClick.AddListener(TryRegister);
+
+        weChatButton = CreateFixedButton(root, "WeChatLoginButton", "微信登录", new Vector2(-158f, -204f), new Vector2(290f, 54f), WeChatButtonColor, Color.white, 21);
+        weChatButton.onClick.AddListener(TryWeChatLogin);
+
+        guestButton = CreateFixedButton(root, "GuestButton", "游客进入", new Vector2(158f, -204f), new Vector2(290f, 54f), GuestButtonColor, inkColor, 21);
         guestButton.onClick.AddListener(LoginAsGuest);
-        SetRect(guestButton.GetComponent<RectTransform>(), Vector2.zero, Vector2.zero, Vector2.zero, new Vector2(-5000f, -5000f), Vector2.zero);
-        guestButton.gameObject.SetActive(false);
+
+        Button settingsButton = CreateFixedButton(root, "SettingsButton", "设置", new Vector2(852f, 390f), new Vector2(104f, 72f), paperColor, inkColor, 18);
+        settingsButton.onClick.AddListener(ShowSettingsPanel);
+
+        Button mailButton = CreateFixedButton(root, "MailButton", "邮件", new Vector2(852f, 300f), new Vector2(104f, 72f), paperColor, inkColor, 18);
+        mailButton.onClick.AddListener(() => ShowError("登录后可在首页查看系统邮件"));
+
+        statusText = CreateText("StatusText", root, string.Empty, 18, FontStyle.Normal, ErrorColor, TextAnchor.MiddleCenter);
+        SetRect(statusText.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, -276f), new Vector2(650f, 48f));
 
         bool rememberAccount = PlayerPrefs.GetInt(RememberAccountKey, 1) == 1;
+        rememberToggle.isOn = rememberAccount;
         accountInput.text = rememberAccount ? PlayerPrefs.GetString(AccountKey, string.Empty) : string.Empty;
+        nicknameInput.text = PlayerPrefs.GetString(PlayerNicknameKey, string.Empty);
         passwordInput.text = string.Empty;
 
         BuildSettingsPanel(root);
         SetStatus(string.Empty, ErrorColor);
+    }
+
+    private InputField CreateBookInput(Transform root, string name, string placeholder, string label, float y, Color shadowColor)
+    {
+        Text fieldLabel = CreateText(name + "Label", root, label + "：", 22, FontStyle.Bold, new Color(0.82f, 0.24f, 0.18f, 1f), TextAnchor.MiddleRight);
+        SetRect(fieldLabel.rectTransform, CenterAnchor(), CenterAnchor(), new Vector2(1f, 0.5f), new Vector2(-310f, y), new Vector2(100f, 50f));
+
+        Image shadow = CreateImage(name + "Shadow", root, shadowColor);
+        shadow.raycastTarget = false;
+        SetRect(shadow.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(58f, y - 6f), new Vector2(570f, 58f));
+
+        InputField input = CreateInputField(root, name, placeholder);
+        SetRect(input.GetComponent<RectTransform>(), CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(50f, y), new Vector2(570f, 58f));
+        input.GetComponent<Image>().color = new Color(0.99f, 0.97f, 0.90f, 1f);
+        input.textComponent.fontSize = 18;
+        Text placeholderText = input.placeholder as Text;
+        if (placeholderText != null)
+        {
+            placeholderText.fontSize = 16;
+        }
+
+        return input;
     }
 
     private void BuildSettingsPanel(RectTransform root)
@@ -411,19 +409,13 @@ public class GameBoot : MonoBehaviour
             return;
         }
 
-#if UNITY_WEBGL && !UNITY_EDITOR
-        ShowError("请在微信小游戏环境中调用 wx.login，并回调 OnWeChatLoginCodeReceived");
-#else
-        ShowError("微信登录需要在微信小游戏环境中使用");
-#endif
+        SetBusyState(true, "正在调用微信登录...");
+        WeChatPlatformBridge.RequestLogin(this);
     }
 
     public void OnWeChatLoginCodeReceived(string code)
     {
-        if (requestRunning)
-        {
-            return;
-        }
+        SetBusyState(false, string.Empty);
 
         if (string.IsNullOrEmpty(code))
         {
@@ -442,7 +434,7 @@ public class GameBoot : MonoBehaviour
 
     public void OnWeChatLoginFailed(string message)
     {
-        ShowError(string.IsNullOrEmpty(message) ? "微信登录失败" : message);
+        SetBusyState(false, string.IsNullOrEmpty(message) ? "微信登录失败" : message);
     }
 
     private void LoginAsGuest()
@@ -487,36 +479,44 @@ public class GameBoot : MonoBehaviour
 
         SetBusyState(true, "正在连接服务器...");
 
-        using (UnityWebRequest request = new UnityWebRequest(BaseApiUrl + path, UnityWebRequest.kHttpVerbPOST))
+        if (!ApiRequestUtility.TryCreateJsonRequest(
+                path,
+                UnityWebRequest.kHttpVerbPOST,
+                json,
+                false,
+                out UnityWebRequest request,
+                out string configError))
         {
-            byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
-            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json; charset=UTF-8");
-            request.timeout = 10;
+            SetBusyState(false, configError);
+            yield break;
+        }
 
+        using (request)
+        {
             yield return request.SendWebRequest();
 
-            if (request.result != UnityWebRequest.Result.Success)
-            {
-                SetBusyState(false, $"登录服务连接失败：{request.error}");
-                yield break;
-            }
-
-            ApiResponse response;
+            ApiResponse response = null;
             try
             {
-                response = JsonUtility.FromJson<ApiResponse>(request.downloadHandler.text);
+                if (!string.IsNullOrWhiteSpace(request.downloadHandler.text))
+                {
+                    response = JsonUtility.FromJson<ApiResponse>(request.downloadHandler.text);
+                }
             }
             catch (Exception)
             {
-                SetBusyState(false, "登录服务返回数据格式错误");
+                response = null;
+            }
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                SetBusyState(false, ApiRequestUtility.GetErrorMessage(request, "登录服务连接失败"));
                 yield break;
             }
 
             if (response == null)
             {
-                SetBusyState(false, "登录服务无响应");
+                SetBusyState(false, "登录服务返回数据格式错误");
                 yield break;
             }
 
@@ -540,18 +540,7 @@ public class GameBoot : MonoBehaviour
     private void SaveLoginState(LoginData data)
     {
         UserData user = data.user;
-        PlayerPrefs.SetInt(LoginStateKey, 1);
         PlayerPrefs.SetInt(RememberAccountKey, rememberToggle.isOn ? 1 : 0);
-        PlayerPrefs.SetString(AuthTokenKey, data.token);
-        PlayerPrefs.SetInt(TokenExpiresInKey, data.expiresIn);
-        PlayerPrefs.SetInt(PlayerIdKey, user.id);
-        PlayerPrefs.SetString(PlayerNicknameKey, user.nickname ?? string.Empty);
-        PlayerPrefs.SetInt("PlayerLv", user.level);
-        PlayerPrefs.SetString("LoginUsername", user.username ?? string.Empty);
-        PlayerPrefs.SetInt("Gold", user.gold);
-        PlayerPrefs.SetInt("Wood", user.wood);
-        PlayerPrefs.SetInt("Stone", user.stone);
-        PlayerPrefs.SetInt("Iron", user.iron);
 
         if (rememberToggle.isOn)
         {
@@ -562,38 +551,37 @@ public class GameBoot : MonoBehaviour
             PlayerPrefs.DeleteKey(AccountKey);
         }
 
-        PlayerPrefs.Save();
+        GameSession.SaveAuthenticated(
+            data.token,
+            data.expiresIn,
+            user.id,
+            user.username,
+            user.nickname,
+            user.level,
+            user.gold,
+            user.wood,
+            user.stone,
+            user.iron);
     }
 
     private void SaveGuestLoginState()
     {
-        PlayerPrefs.SetInt(LoginStateKey, 1);
         PlayerPrefs.SetInt(RememberAccountKey, rememberToggle.isOn ? 1 : 0);
-        PlayerPrefs.DeleteKey(AuthTokenKey);
-        PlayerPrefs.SetInt(TokenExpiresInKey, 0);
-        PlayerPrefs.SetInt(PlayerIdKey, 0);
-        PlayerPrefs.SetString(PlayerNicknameKey, "游客");
-        PlayerPrefs.SetInt("PlayerLv", 1);
-        PlayerPrefs.SetString("LoginUsername", "Guest");
-        PlayerPrefs.SetInt("Gold", 1000);
-        PlayerPrefs.SetInt("Wood", 500);
-        PlayerPrefs.SetInt("Stone", 500);
-        PlayerPrefs.SetInt("Iron", 300);
-        PlayerPrefs.Save();
+        GameSession.SaveGuest(PlayerPrefs.GetString("GuestNickname", "游客"));
     }
 
     private void SetBusyState(bool busy, string message)
     {
         requestRunning = busy;
 
-        accountInput.interactable = !busy;
-        nicknameInput.interactable = !busy;
-        passwordInput.interactable = !busy;
-        rememberToggle.interactable = !busy;
-        loginButton.interactable = !busy;
-        registerButton.interactable = !busy;
-        weChatButton.interactable = !busy;
-        guestButton.interactable = !busy;
+        if (accountInput != null) accountInput.interactable = !busy;
+        if (nicknameInput != null) nicknameInput.interactable = !busy;
+        if (passwordInput != null) passwordInput.interactable = !busy;
+        if (rememberToggle != null) rememberToggle.interactable = !busy;
+        if (loginButton != null) loginButton.interactable = !busy;
+        if (registerButton != null) registerButton.interactable = !busy;
+        if (weChatButton != null) weChatButton.interactable = !busy;
+        if (guestButton != null) guestButton.interactable = !busy;
 
         SetStatus(message, busy ? MutedTextColor : ErrorColor);
     }

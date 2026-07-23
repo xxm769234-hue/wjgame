@@ -1,18 +1,18 @@
-using System;
+ï»¿using System;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public class SceneSwitchMgr : MonoBehaviour
 {
-    [Header("Îå´óÇøÓòÌø×ª°´Å¥")]
+    [Header("äº”å¤§åŒºåŸŸè·³è½¬æŒ‰é’®")]
     public Button GrassBtn;
     public Button ForestBtn;
     public Button SeaBtn;
     public Button VolcanoBtn;
     public Button SnowBtn;
 
-    [Header("¶ÔÓ¦ÇøÓòÅäÖÃ")]
+    [Header("å¯¹åº”åŒºåŸŸé…ç½®")]
     public MapAreaConfig grassArea;
     public MapAreaConfig forestArea;
     public MapAreaConfig seaArea;
@@ -21,57 +21,59 @@ public class SceneSwitchMgr : MonoBehaviour
 
     public void Awake()
     {
-        // ´úÂë×Ô¶¯°ó¶¨ËùÓĞ°´Å¥µã»÷ÊÂ¼ş£¬²»ÓÃÊÖ¶¯ÍÏ×§OnClick
-        GrassBtn.onClick.AddListener(() => EnterMapScene(grassArea));
-        ForestBtn.onClick.AddListener(() => EnterMapScene(forestArea));
-        SeaBtn.onClick.AddListener(() => EnterMapScene(seaArea));
-        VolcanoBtn.onClick.AddListener(() => EnterMapScene(volcanoArea));
-        SnowBtn.onClick.AddListener(() => EnterMapScene(snowArea));
+        BindButton(GrassBtn, grassArea);
+        BindButton(ForestBtn, forestArea);
+        BindButton(SeaBtn, seaArea);
+        BindButton(VolcanoBtn, volcanoArea);
+        BindButton(SnowBtn, snowArea);
     }
 
-    private void EnterMapScene(object grassAreaCfg)
-    {
-        throw new NotImplementedException();
-    }
-
-    // µã»÷Ê×Ò³²İÔ­°´Å¥
+    // ç‚¹å‡»é¦–é¡µè‰åŸæŒ‰é’®
     public void ClickGrassMap()
     {
-        Debug.Log("µã»÷²İÔ­");
-        PlayerPrefs.SetString("CurrentAreaLandType", grassArea.landType);
-        SceneManager.LoadScene("MapScene");
+        Debug.Log("ç‚¹å‡»è‰åŸ");
+        EnterMapScene(grassArea);
     }
     public void ClickForestMap()
     {
-        PlayerPrefs.SetString("CurrentAreaLandType", forestArea.landType);
-        SceneManager.LoadScene("MapScene");
+        EnterMapScene(forestArea);
     }
     public void ClickSeaMap()
     {
-        PlayerPrefs.SetString("CurrentAreaLandType", seaArea.landType);
-        SceneManager.LoadScene("MapScene");
+        EnterMapScene(seaArea);
     }
     public void ClickVolcanoMap()
     {
-        PlayerPrefs.SetString("CurrentAreaLandType", volcanoArea.landType);
-        SceneManager.LoadScene("MapScene");
+        EnterMapScene(volcanoArea);
     }
     public void ClickSnowMap()
     {
-        PlayerPrefs.SetString("CurrentAreaLandType", snowArea.landType);
-        SceneManager.LoadScene("MapScene");
+        EnterMapScene(snowArea);
     }
 
     /// <summary>
-    /// Í³Ò»Ìø×ªÂß¼­£º±£´æµ±Ç°½øÈëµÄÇøÓòÀàĞÍ£¬¼ÓÔØ¾­ÓªµØÍ¼³¡¾°
+    /// ç»Ÿä¸€è·³è½¬é€»è¾‘ï¼šä¿å­˜å½“å‰è¿›å…¥çš„åŒºåŸŸç±»å‹ï¼ŒåŠ è½½ç»è¥åœ°å›¾åœºæ™¯
     /// </summary>
     private void EnterMapScene(MapAreaConfig targetArea)
     {
-        // °Ñµ±Ç°Ñ¡ÔñµÄÇøÓòlandType´æÈë±¾µØ£¬½øµØÍ¼ºó¶ÁÈ¡
+        if (targetArea == null)
+        {
+            Debug.LogWarning("åœ°å›¾æŒ‰é’®ç¼ºå°‘ MapAreaConfigï¼Œå·²å–æ¶ˆåœºæ™¯è·³è½¬ã€‚", this);
+            return;
+        }
+
         PlayerPrefs.SetString("OpenAreaLandType", targetArea.landType);
-        // ÇĞ»»µ½ÄãµÄ¾­ÓªµØÍ¼³¡¾°£¨³¡¾°Ãû±ØĞëºÍBuild SettingsÀïÒ»ÖÂ£©
+        PlayerPrefs.SetString("CurrentAreaLandType", targetArea.landType);
+        PlayerPrefs.Save();
         SceneManager.LoadScene("MapScene");
     }
 
+    private void BindButton(Button button, MapAreaConfig area)
+    {
+        if (button != null)
+        {
+            button.onClick.AddListener(() => EnterMapScene(area));
+        }
+    }
 
 }
