@@ -24,6 +24,7 @@ public sealed class MapManager : MonoBehaviour
     [SerializeField, Min(0f)] private float unitHorizontalGap = 0.35f;
     [SerializeField, Min(0f)] private float unitVerticalGap = 0.25f;
     [SerializeField, Min(0f)] private float sideGap = 0f;
+    [SerializeField, Min(0f)] private float mapTopSpacing = 3.5f;
     [SerializeField] private string mapBackgroundName = "MapBackground";
     [SerializeField] private Vector2 mapBackgroundPadding = new Vector2(2f, 2f);
     [SerializeField] private int mapBackgroundSortingOrder = -100;
@@ -343,7 +344,7 @@ public sealed class MapManager : MonoBehaviour
 
         if (hasBounds)
         {
-            runtimeMapBounds = combinedBounds;
+            runtimeMapBounds = AddTopSpacing(combinedBounds, mapTopSpacing);
             ResizeMapBackground(runtimeMapBounds);
         }
     }
@@ -559,6 +560,17 @@ public sealed class MapManager : MonoBehaviour
         }
 
         return bounds;
+    }
+
+    private static Bounds AddTopSpacing(Bounds bounds, float topSpacing)
+    {
+        if (topSpacing <= 0.0001f) return bounds;
+
+        Vector3 center = bounds.center;
+        Vector3 size = bounds.size;
+        center.y += topSpacing * 0.5f;
+        size.y += topSpacing;
+        return new Bounds(center, size);
     }
 
     private void ResizeMapBackground(Bounds mapBounds)

@@ -16,6 +16,11 @@ public static class BackendApiClient
         return Send<T>(baseUrl, token, UnityWebRequest.kHttpVerbPOST, path, body, onComplete);
     }
 
+    public static IEnumerator Put<T>(string baseUrl, string token, string path, object body, Action<BackendResult<T>> onComplete)
+    {
+        return Send<T>(baseUrl, token, UnityWebRequest.kHttpVerbPUT, path, body, onComplete);
+    }
+
     private static IEnumerator Send<T>(string baseUrl, string token, string method, string path, object body, Action<BackendResult<T>> onComplete)
     {
         string url = BuildUrl(baseUrl, path);
@@ -28,7 +33,7 @@ public static class BackendApiClient
 
             if (body != null)
             {
-                string json = JsonUtility.ToJson(body);
+                string json = body is string rawJson ? rawJson : JsonUtility.ToJson(body);
                 byte[] payload = Encoding.UTF8.GetBytes(json);
                 request.uploadHandler = new UploadHandlerRaw(payload);
             }

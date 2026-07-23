@@ -10,6 +10,7 @@ public sealed class IdleAdventureCombatant : MonoBehaviour
     private IdleAdventureBattleSkill[] skillSlots = new IdleAdventureBattleSkill[0];
 
     public string CombatantName { get; private set; }
+    public string RuntimeId { get; private set; }
     public int MaxHealth { get; private set; }
     public int CurrentHealth { get; private set; }
     public int Attack { get; private set; }
@@ -29,6 +30,7 @@ public sealed class IdleAdventureCombatant : MonoBehaviour
     public void Initialize(string combatantName, int maxHealth, int attack, int defense, int speed, bool isFriendly, int slotIndex, IdleAdventureSkillDefinition[] skills = null, int skillSlotCount = 0, IdleAdventureDamageAttribute attributeType = IdleAdventureDamageAttribute.Physical)
     {
         CombatantName = combatantName;
+        RuntimeId = string.Empty;
         MaxHealth = Mathf.Max(1, maxHealth);
         CurrentHealth = MaxHealth;
         Attack = Mathf.Max(0, attack);
@@ -40,6 +42,38 @@ public sealed class IdleAdventureCombatant : MonoBehaviour
         BaseColor = isFriendly ? new Color(0.18f, 0.62f, 0.93f, 1f) : new Color(0.9f, 0.32f, 0.28f, 1f);
         buffs.Clear();
         SetSkillSlots(skills, skillSlotCount);
+    }
+
+    public void ApplyBackendState(string runtimeId, string combatantName, int maxHealth, int currentHealth, int attack, int defense, int speed, bool isFriendly, int slotIndex, IdleAdventureDamageAttribute attributeType, IList<IdleAdventureBattleBuff> backendBuffs)
+    {
+        RuntimeId = string.IsNullOrEmpty(runtimeId) ? RuntimeId : runtimeId;
+        CombatantName = string.IsNullOrEmpty(combatantName) ? CombatantName : combatantName;
+        MaxHealth = Mathf.Max(1, maxHealth);
+        CurrentHealth = Mathf.Clamp(currentHealth, 0, MaxHealth);
+        Attack = Mathf.Max(0, attack);
+        Defense = Mathf.Max(0, defense);
+        Speed = Mathf.Max(1, speed);
+        AttributeType = attributeType == IdleAdventureDamageAttribute.None ? IdleAdventureDamageAttribute.Physical : attributeType;
+        IsFriendly = isFriendly;
+        SlotIndex = slotIndex;
+        BaseColor = isFriendly ? new Color(0.18f, 0.62f, 0.93f, 1f) : new Color(0.9f, 0.32f, 0.28f, 1f);
+        ReplaceBuffs(backendBuffs);
+    }
+
+    public void SetCurrentHealth(int currentHealth)
+    {
+        CurrentHealth = Mathf.Clamp(currentHealth, 0, MaxHealth);
+    }
+
+    public void ReplaceBuffs(IList<IdleAdventureBattleBuff> nextBuffs)
+    {
+        buffs.Clear();
+        if (nextBuffs == null) return;
+
+        for (int i = 0; i < nextBuffs.Count; i++)
+        {
+            if (nextBuffs[i] != null) buffs.Add(nextBuffs[i].FreshCopy());
+        }
     }
 
     public void TakeDamage(int damage)

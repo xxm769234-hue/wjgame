@@ -270,6 +270,171 @@ public sealed class BackendGameService : MonoBehaviour
         return StartCoroutine(LoadIdleAdventureAfkRewardRoutine(onComplete));
     }
 
+    public Coroutine LoadIdleAdventureHome(Action<BackendResult<IdleAdventureHomeResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated)
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureHomeResponse>(false, 0, "Backend session is not authenticated.", null));
+            return null;
+        }
+
+        return StartCoroutine(LoadIdleAdventureHomeRoutine(onComplete));
+    }
+
+    public Coroutine LoadIdleAdventureFormation(Action<BackendResult<IdleAdventureFormationResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated)
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureFormationResponse>(false, 0, "Backend session is not authenticated.", null));
+            return null;
+        }
+
+        return StartCoroutine(LoadIdleAdventureFormationRoutine(onComplete));
+    }
+
+    public Coroutine SaveIdleAdventureFormation(IdleAdventureSaveFormationRequest request, Action<BackendResult<IdleAdventureFormationResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated)
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureFormationResponse>(false, 0, "Backend session is not authenticated.", null));
+            return null;
+        }
+
+        return StartCoroutine(SaveIdleAdventureFormationRoutine(request, onComplete));
+    }
+
+    public Coroutine AutoFillIdleAdventureFormation(Action<BackendResult<IdleAdventureFormationResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated)
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureFormationResponse>(false, 0, "Backend session is not authenticated.", null));
+            return null;
+        }
+
+        return StartCoroutine(AutoFillIdleAdventureFormationRoutine(onComplete));
+    }
+
+    public Coroutine ClearIdleAdventureFormation(Action<BackendResult<IdleAdventureFormationResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated)
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureFormationResponse>(false, 0, "Backend session is not authenticated.", null));
+            return null;
+        }
+
+        return StartCoroutine(ClearIdleAdventureFormationRoutine(onComplete));
+    }
+
+    public Coroutine StartIdleAdventureSession(IdleAdventureStartSessionRequest request, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated)
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Backend session is not authenticated.", null));
+            return null;
+        }
+
+        return StartCoroutine(StartIdleAdventureSessionRoutine(request, onComplete));
+    }
+
+    public Coroutine LoadIdleAdventureSession(string sessionKey, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated || string.IsNullOrEmpty(sessionKey))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Backend session or session key is missing.", null));
+            return null;
+        }
+
+        return StartCoroutine(LoadIdleAdventureSessionRoutine(sessionKey, onComplete));
+    }
+
+    public Coroutine ResolveIdleAdventureRound(string sessionKey, int clientRound, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated || string.IsNullOrEmpty(sessionKey))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Backend session or session key is missing.", null));
+            return null;
+        }
+
+        return StartCoroutine(ResolveIdleAdventureRoundRoutine(sessionKey, clientRound, onComplete));
+    }
+
+    public Coroutine ApplyIdleAdventureBuff(string sessionKey, IdleAdventureApplyBuffRequest request, Action<BackendResult<IdleAdventureBuffAppliedResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated || string.IsNullOrEmpty(sessionKey) || request == null)
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureBuffAppliedResponse>(false, 0, "Backend session, session key, or buff request is missing.", null));
+            return null;
+        }
+
+        return StartCoroutine(ApplyIdleAdventureBuffRoutine(sessionKey, request, onComplete));
+    }
+
+    public Coroutine ContinueIdleAdventureStage(string sessionKey, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated || string.IsNullOrEmpty(sessionKey))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Backend session or session key is missing.", null));
+            return null;
+        }
+
+        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(sessionKey, "stages/continue", onComplete));
+    }
+
+    public Coroutine RetryIdleAdventureStage(string sessionKey, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated || string.IsNullOrEmpty(sessionKey))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Backend session or session key is missing.", null));
+            return null;
+        }
+
+        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(sessionKey, "stages/retry", onComplete));
+    }
+
+    public Coroutine PauseIdleAdventureSession(string sessionKey, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated || string.IsNullOrEmpty(sessionKey))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Backend session or session key is missing.", null));
+            return null;
+        }
+
+        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(sessionKey, "pause", onComplete));
+    }
+
+    public Coroutine ResumeIdleAdventureSession(string sessionKey, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated || string.IsNullOrEmpty(sessionKey))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Backend session or session key is missing.", null));
+            return null;
+        }
+
+        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(sessionKey, "resume", onComplete));
+    }
+
+    public Coroutine EndIdleAdventureSession(string sessionKey, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated || string.IsNullOrEmpty(sessionKey))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Backend session or session key is missing.", null));
+            return null;
+        }
+
+        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(sessionKey, "end", onComplete));
+    }
+
+    public Coroutine LoadIdleAdventureProgress(Action<BackendResult<IdleAdventureProgressResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated)
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureProgressResponse>(false, 0, "Backend session is not authenticated.", null));
+            return null;
+        }
+
+        return StartCoroutine(LoadIdleAdventureProgressRoutine(onComplete));
+    }
+
     public Coroutine CollectIdleAdventureAfkReward(Action<BackendResult<IdleAdventureAfkRewardCollectResponse>> onComplete = null)
     {
         if (!IsAuthenticated)
@@ -814,6 +979,91 @@ public sealed class BackendGameService : MonoBehaviour
         onComplete?.Invoke(result);
     }
 
+    private IEnumerator LoadIdleAdventureHomeRoutine(Action<BackendResult<IdleAdventureHomeResponse>> onComplete)
+    {
+        BackendResult<IdleAdventureHomeResponse> result = null;
+        yield return BackendApiClient.Get<IdleAdventureHomeResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/home", value => result = value);
+        onComplete?.Invoke(result);
+    }
+
+    private IEnumerator LoadIdleAdventureFormationRoutine(Action<BackendResult<IdleAdventureFormationResponse>> onComplete)
+    {
+        BackendResult<IdleAdventureFormationResponse> result = null;
+        yield return BackendApiClient.Get<IdleAdventureFormationResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/formation", value => result = value);
+        onComplete?.Invoke(result);
+    }
+
+    private IEnumerator SaveIdleAdventureFormationRoutine(IdleAdventureSaveFormationRequest request, Action<BackendResult<IdleAdventureFormationResponse>> onComplete)
+    {
+        string json = request != null ? request.ToJson() : "{\"slots\":[]}";
+        BackendResult<IdleAdventureFormationResponse> result = null;
+        yield return BackendApiClient.Put<IdleAdventureFormationResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/formation", json, value => result = value);
+        onComplete?.Invoke(result);
+    }
+
+    private IEnumerator AutoFillIdleAdventureFormationRoutine(Action<BackendResult<IdleAdventureFormationResponse>> onComplete)
+    {
+        BackendResult<IdleAdventureFormationResponse> result = null;
+        yield return BackendApiClient.Post<IdleAdventureFormationResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/formation/auto-fill", null, value => result = value);
+        onComplete?.Invoke(result);
+    }
+
+    private IEnumerator ClearIdleAdventureFormationRoutine(Action<BackendResult<IdleAdventureFormationResponse>> onComplete)
+    {
+        BackendResult<IdleAdventureFormationResponse> result = null;
+        yield return BackendApiClient.Post<IdleAdventureFormationResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/formation/clear", null, value => result = value);
+        onComplete?.Invoke(result);
+    }
+
+    private IEnumerator StartIdleAdventureSessionRoutine(IdleAdventureStartSessionRequest request, Action<BackendResult<IdleAdventureSessionResponse>> onComplete)
+    {
+        BackendResult<IdleAdventureSessionResponse> result = null;
+        yield return BackendApiClient.Post<IdleAdventureSessionResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/sessions/start", request, value => result = value);
+        onComplete?.Invoke(result);
+    }
+
+    private IEnumerator LoadIdleAdventureSessionRoutine(string sessionKey, Action<BackendResult<IdleAdventureSessionResponse>> onComplete)
+    {
+        BackendResult<IdleAdventureSessionResponse> result = null;
+        yield return BackendApiClient.Get<IdleAdventureSessionResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/sessions/{sessionKey}", value => result = value);
+        onComplete?.Invoke(result);
+    }
+
+    private IEnumerator ResolveIdleAdventureRoundRoutine(string sessionKey, int clientRound, Action<BackendResult<IdleAdventureSessionResponse>> onComplete)
+    {
+        IdleAdventureResolveRoundRequest request = new IdleAdventureResolveRoundRequest { client_round = Mathf.Max(1, clientRound) };
+        BackendResult<IdleAdventureSessionResponse> result = null;
+        yield return BackendApiClient.Post<IdleAdventureSessionResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/sessions/{sessionKey}/rounds/resolve", request, value => result = value);
+        onComplete?.Invoke(result);
+    }
+
+    private IEnumerator ApplyIdleAdventureBuffRoutine(string sessionKey, IdleAdventureApplyBuffRequest request, Action<BackendResult<IdleAdventureBuffAppliedResponse>> onComplete)
+    {
+        BackendResult<IdleAdventureBuffAppliedResponse> result = null;
+        yield return BackendApiClient.Post<IdleAdventureBuffAppliedResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/sessions/{sessionKey}/buffs/apply", request, value => result = value);
+        onComplete?.Invoke(result);
+    }
+
+    private IEnumerator PostIdleAdventureSessionCommandRoutine(string sessionKey, string commandPath, Action<BackendResult<IdleAdventureSessionResponse>> onComplete)
+    {
+        BackendResult<IdleAdventureSessionResponse> result = null;
+        yield return BackendApiClient.Post<IdleAdventureSessionResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/sessions/{sessionKey}/{commandPath}", null, value => result = value);
+        if (result != null && result.Success && result.Data != null && result.Data.items != null)
+        {
+            CurrentInventory = ConvertIdleAdventureInventory(result.Data.items);
+            if (CurrentUser == null) CurrentUser = new UserResponse();
+            CurrentUser.items = CurrentInventory;
+        }
+        onComplete?.Invoke(result);
+    }
+
+    private IEnumerator LoadIdleAdventureProgressRoutine(Action<BackendResult<IdleAdventureProgressResponse>> onComplete)
+    {
+        BackendResult<IdleAdventureProgressResponse> result = null;
+        yield return BackendApiClient.Get<IdleAdventureProgressResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/progress", value => result = value);
+        onComplete?.Invoke(result);
+    }
+
     private IEnumerator CollectIdleAdventureAfkRewardRoutine(Action<BackendResult<IdleAdventureAfkRewardCollectResponse>> onComplete)
     {
         PlayerIdRequest request = new PlayerIdRequest { playerId = PlayerId };
@@ -822,9 +1072,9 @@ public sealed class BackendGameService : MonoBehaviour
 
         if (result != null && result.Success && result.Data != null)
         {
-            CurrentInventory = result.Data.items;
+            CurrentInventory = ConvertIdleAdventureInventory(result.Data.items);
             if (CurrentUser == null) CurrentUser = new UserResponse();
-            CurrentUser.items = result.Data.items;
+            CurrentUser.items = CurrentInventory;
         }
 
         onComplete?.Invoke(result);
@@ -942,6 +1192,30 @@ public sealed class BackendGameService : MonoBehaviour
         CurrentUser.items = response.items;
         CurrentInventory = response.items;
         Debug.Log("Backend production collect succeeded; inventory snapshot refreshed.", this);
+    }
+
+    private static InventoryItemResponse[] ConvertIdleAdventureInventory(IdleAdventureInventoryItemResponse[] source)
+    {
+        if (source == null) return null;
+
+        InventoryItemResponse[] converted = new InventoryItemResponse[source.Length];
+        for (int i = 0; i < source.Length; i++)
+        {
+            IdleAdventureInventoryItemResponse item = source[i];
+            if (item == null) continue;
+
+            converted[i] = new InventoryItemResponse
+            {
+                itemId = (int)item.item_id,
+                itemKey = item.item_key,
+                name = string.IsNullOrEmpty(item.display_name) ? item.name : item.display_name,
+                itemType = item.item_type,
+                icon = item.icon,
+                quantity = (int)item.quantity
+            };
+        }
+
+        return converted;
     }
 
     private void StoreLogin(LoginResponse response)

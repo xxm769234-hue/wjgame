@@ -1,4 +1,5 @@
 using System;
+using System.Text;
 
 [Serializable]
 public sealed class ApiResponse<T>
@@ -313,25 +314,399 @@ public sealed class CollectedItemResponse
 [Serializable]
 public sealed class IdleAdventureAfkRewardStateResponse
 {
-    public int playerId;
-    public string itemKey;
-    public string displayName;
-    public int baseQuantityPerCycle;
-    public int quantityPerHighestStage;
-    public int quantityPerCycle;
-    public int productionIntervalSeconds;
-    public int maxStoredQuantity;
-    public int storedQuantity;
-    public int highestClearedStage;
-    public long serverUnixSeconds;
-    public long lastSettledServerUnixSeconds;
+    public long player_id;
+    public string item_key;
+    public string display_name;
+    public int base_quantity_per_cycle;
+    public int quantity_per_highest_stage;
+    public int quantity_per_cycle;
+    public int production_interval_seconds;
+    public int max_stored_quantity;
+    public int stored_quantity;
+    public int highest_stage;
+    public long server_unix_seconds;
+    public long last_settled_server_unix_seconds;
+
+    public int playerId => (int)player_id;
+    public string itemKey => item_key;
+    public string displayName => display_name;
+    public int baseQuantityPerCycle => base_quantity_per_cycle;
+    public int quantityPerHighestStage => quantity_per_highest_stage;
+    public int quantityPerCycle => quantity_per_cycle;
+    public int productionIntervalSeconds => production_interval_seconds;
+    public int maxStoredQuantity => max_stored_quantity;
+    public int storedQuantity => stored_quantity;
+    public int highestClearedStage => highest_stage;
+    public long serverUnixSeconds => server_unix_seconds;
+    public long lastSettledServerUnixSeconds => last_settled_server_unix_seconds;
 }
 
 [Serializable]
 public sealed class IdleAdventureAfkRewardCollectResponse
 {
-    public int playerId;
-    public CollectedItemResponse collectedItem;
-    public InventoryItemResponse[] items;
+    public long player_id;
+    public IdleAdventureCollectedItemResponse collected_item;
+    public IdleAdventureInventoryItemResponse[] items;
     public IdleAdventureAfkRewardStateResponse state;
+    public bool idempotent_replay;
+
+    public int playerId => (int)player_id;
+    public IdleAdventureCollectedItemResponse collectedItem => collected_item;
+    public bool idempotentReplay => idempotent_replay;
+}
+
+[Serializable]
+public sealed class IdleAdventureFormationSlotRequest
+{
+    public int slot_index;
+    public long definition_id;
+    public bool has_definition_id = true;
+}
+
+[Serializable]
+public sealed class IdleAdventureSaveFormationRequest
+{
+    public IdleAdventureFormationSlotRequest[] slots;
+
+    public string ToJson()
+    {
+        StringBuilder builder = new StringBuilder();
+        builder.Append("{\"slots\":[");
+        if (slots != null)
+        {
+            bool appended = false;
+            for (int i = 0; i < slots.Length; i++)
+            {
+                IdleAdventureFormationSlotRequest slot = slots[i];
+                if (slot == null) continue;
+
+                if (appended) builder.Append(',');
+                builder.Append("{\"slot_index\":");
+                builder.Append(slot.slot_index);
+                builder.Append(",\"definition_id\":");
+                if (slot.has_definition_id) builder.Append(slot.definition_id);
+                else builder.Append("null");
+                builder.Append('}');
+                appended = true;
+            }
+        }
+        builder.Append("]}");
+        return builder.ToString();
+    }
+}
+
+[Serializable]
+public sealed class IdleAdventureStartSessionRequest
+{
+    public int stage;
+    public bool use_saved_formation = true;
+    public IdleAdventureFormationSlotRequest[] formation_slots;
+}
+
+[Serializable]
+public sealed class IdleAdventureResolveRoundRequest
+{
+    public int client_round;
+}
+
+[Serializable]
+public sealed class IdleAdventureApplyBuffRequest
+{
+    public string target_side;
+    public int slot_index;
+    public long buff_preset_id;
+    public string source = "OTHER";
+}
+
+[Serializable]
+public sealed class IdleAdventureStageClearRequest
+{
+    public string session_key;
+    public int cleared_stage;
+}
+
+[Serializable]
+public sealed class IdleAdventureHomeResponse
+{
+    public long player_id;
+    public int highest_stage;
+    public int next_stage;
+    public bool has_running_session;
+    public string running_session_key;
+    public IdleAdventureModeConfigResponse mode_config;
+    public IdleAdventureFormationDataResponse formation;
+    public IdleAdventurePlayerNpcResponse[] available_npc_list;
+}
+
+[Serializable]
+public sealed class IdleAdventureModeConfigResponse
+{
+    public int max_party_size;
+    public int formation_rows;
+    public int formation_columns;
+    public int friendly_skill_slot_count;
+    public int enemy_skill_slot_count;
+    public int max_buff_icon_slots;
+    public int starting_friendly_count;
+    public int base_enemy_count;
+    public int add_enemy_every_stages;
+    public float turn_interval;
+    public float attack_animation_duration;
+    public float hit_flash_duration;
+    public float attribute_restraint_multiplier;
+    public string reward_settlement;
+    public IdleAdventureCombatRulesResponse combat_rules;
+}
+
+[Serializable]
+public sealed class IdleAdventureCombatRulesResponse
+{
+    public string initiative;
+    public bool front_column_first;
+    public bool prefer_same_row;
+    public bool prefer_upper_row_when_same_row_empty;
+}
+
+[Serializable]
+public sealed class IdleAdventureFormationDataResponse
+{
+    public int deployed_count;
+    public IdleAdventureFormationSlotResponse[] slots;
+}
+
+[Serializable]
+public sealed class IdleAdventureFormationResponse
+{
+    public long player_id;
+    public int deployed_count;
+    public IdleAdventureFormationSlotResponse[] slots;
+}
+
+[Serializable]
+public sealed class IdleAdventureFormationSlotResponse
+{
+    public int slot_index;
+    public int column;
+    public int row;
+    public bool front_column;
+    public long definition_id;
+    public string combatant_name;
+}
+
+[Serializable]
+public sealed class IdleAdventurePlayerNpcResponse
+{
+    public long definition_id;
+    public string combatant_key;
+    public string combatant_name;
+    public string side;
+    public long max_health;
+    public long attack;
+    public long defense;
+    public long speed;
+    public string attribute_type;
+    public bool assigned;
+    public IdleAdventureSkillSlotResponse[] skill_slots;
+}
+
+[Serializable]
+public sealed class IdleAdventureSkillDefinitionResponse
+{
+    public long skill_id;
+    public string skill_key;
+    public string skill_name;
+    public int cooldown_rounds;
+    public float skill_multiplier;
+    public string damage_attribute;
+    public long self_buff_preset_id;
+    public long target_buff_preset_id;
+}
+
+[Serializable]
+public sealed class IdleAdventureSkillSlotResponse
+{
+    public int slot_index;
+    public IdleAdventureSkillDefinitionResponse skill;
+}
+
+[Serializable]
+public sealed class IdleAdventureSessionResponse
+{
+    public string session_key;
+    public long player_id;
+    public int stage;
+    public string stage_name;
+    public int stage_attempt;
+    public int round;
+    public int round_before;
+    public int round_after;
+    public string status;
+    public bool paused;
+    public bool stage_choice_pending;
+    public int pending_next_stage;
+    public IdleAdventureInitiativeEntryResponse[] initiative_order;
+    public IdleAdventureBattleActionResponse[] actions;
+    public IdleAdventureCombatantStateResponse[] friendlies;
+    public IdleAdventureCombatantStateResponse[] enemies;
+    public string[] logs;
+    public IdleAdventureRewardItemResponse[] pending_rewards;
+    public int[] settled_stages;
+    public IdleAdventureRewardItemResponse[] granted_rewards;
+    public IdleAdventureInventoryItemResponse[] items;
+    public string message;
+    public bool idempotent_replay;
+}
+
+[Serializable]
+public sealed class IdleAdventureCombatantStateResponse
+{
+    public string runtime_id;
+    public long definition_id;
+    public string combatant_name;
+    public string side;
+    public int slot_index;
+    public long max_health;
+    public long current_health;
+    public long attack;
+    public long defense;
+    public long speed;
+    public string attribute_type;
+    public long effective_attack;
+    public long effective_defense;
+    public long effective_speed;
+    public bool defeated;
+    public IdleAdventureActiveBuffResponse[] active_buffs;
+    public IdleAdventureSkillStateResponse[] skill_states;
+}
+
+[Serializable]
+public sealed class IdleAdventureActiveBuffResponse
+{
+    public string buff_key;
+    public string display_name;
+    public string category;
+    public string source;
+    public string effect_type;
+    public int remaining_rounds;
+    public long attack_modifier;
+    public long defense_modifier;
+    public long speed_modifier;
+    public float normal_damage_multiplier;
+    public float attribute_damage_multiplier;
+    public string affected_attribute;
+}
+
+[Serializable]
+public sealed class IdleAdventureSkillStateResponse
+{
+    public int slot_index;
+    public long skill_id;
+    public string skill_name;
+    public int cooldown_remaining;
+    public bool can_use;
+}
+
+[Serializable]
+public sealed class IdleAdventureInitiativeEntryResponse
+{
+    public string runtime_id;
+    public string combatant_name;
+    public string side;
+    public int slot_index;
+    public long effective_speed;
+}
+
+[Serializable]
+public sealed class IdleAdventureBattleActionResponse
+{
+    public int action_order;
+    public int round;
+    public string action_type;
+    public string actor_runtime_id;
+    public string actor_name;
+    public string target_runtime_id;
+    public string target_name;
+    public long skill_id;
+    public string skill_name;
+    public long damage;
+    public long target_health_before;
+    public long target_health_after;
+    public IdleAdventureDamageFormulaResponse damage_formula;
+    public IdleAdventureActiveBuffResponse[] applied_buffs;
+    public string[] defeated_runtime_ids;
+    public IdleAdventureAnimationResponse animation;
+    public string log;
+}
+
+[Serializable]
+public sealed class IdleAdventureDamageFormulaResponse
+{
+    public long base_damage;
+    public float skill_multiplier;
+    public float normal_buff_multiplier;
+    public float attribute_buff_multiplier;
+    public float field_buff_multiplier;
+    public float attribute_restraint_multiplier;
+    public float bonus_multiplier;
+    public string attacker_attribute;
+    public string defender_attribute;
+}
+
+[Serializable]
+public sealed class IdleAdventureAnimationResponse
+{
+    public int attack_direction;
+    public float attack_duration;
+    public float hit_flash_duration;
+}
+
+[Serializable]
+public sealed class IdleAdventureRewardItemResponse
+{
+    public string item_key;
+    public string display_name;
+    public long quantity;
+}
+
+[Serializable]
+public sealed class IdleAdventureInventoryItemResponse
+{
+    public long item_id;
+    public string item_key;
+    public string name;
+    public string display_name;
+    public string item_type;
+    public string icon;
+    public long quantity;
+}
+
+[Serializable]
+public sealed class IdleAdventureCollectedItemResponse
+{
+    public long item_id;
+    public string item_key;
+    public string display_name;
+    public long quantity;
+
+    public string itemKey => item_key;
+    public string name => display_name;
+}
+
+[Serializable]
+public sealed class IdleAdventureProgressResponse
+{
+    public long player_id;
+    public int highest_stage;
+    public int last_stage;
+    public string running_session_key;
+    public long total_wins;
+    public long total_failures;
+    public string updated_at;
+}
+
+[Serializable]
+public sealed class IdleAdventureBuffAppliedResponse
+{
+    public IdleAdventureCombatantStateResponse target;
+    public string log;
 }

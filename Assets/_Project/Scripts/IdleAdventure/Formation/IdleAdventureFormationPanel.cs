@@ -5,6 +5,9 @@ using UnityEngine.UI;
 
 public sealed class IdleAdventureFormationPanel : MonoBehaviour
 {
+    private const int FormationRows = 3;
+    private const int MaxPartySize = 6;
+
     [SerializeField] private RectTransform formationWindow;
     [SerializeField] private TextMeshProUGUI statusText;
     [SerializeField] private Button openButton;
@@ -64,6 +67,8 @@ public sealed class IdleAdventureFormationPanel : MonoBehaviour
 
     public void Bind(Action onOpen, Action onClose, Action onAutoFill, Action onClear, Action<int, int> onDropNpc, Action<int> onClearSlot)
     {
+        ConfigureRaycastTargets();
+
         BindButton(openButton, onOpen);
         BindButton(closeButton, onClose);
         BindButton(autoFillButton, onAutoFill);
@@ -104,6 +109,29 @@ public sealed class IdleAdventureFormationPanel : MonoBehaviour
             : new Color(0.08f, 0.09f, 0.10f, 0.82f);
     }
 
+    public void ApplySlotLayout(bool frontColumnOnRight)
+    {
+        int count = Mathf.Min(MaxPartySize, slotBackgrounds != null ? slotBackgrounds.Length : 0);
+        for (int i = 0; i < count; i++)
+        {
+            if (slotBackgrounds[i] == null) continue;
+
+            bool frontColumn = i < FormationRows;
+            int row = Mathf.Clamp(i % FormationRows, 0, FormationRows - 1);
+            int column = frontColumn == frontColumnOnRight ? 1 : 0;
+            float left = column == 0 ? 0.05f : 0.53f;
+            float right = column == 0 ? 0.47f : 0.95f;
+            float top = 0.92f - row * 0.30f;
+            float bottom = top - 0.22f;
+
+            RectTransform rectTransform = slotBackgrounds[i].rectTransform;
+            rectTransform.anchorMin = new Vector2(left, bottom);
+            rectTransform.anchorMax = new Vector2(right, top);
+            rectTransform.offsetMin = Vector2.zero;
+            rectTransform.offsetMax = Vector2.zero;
+        }
+    }
+
     public void SetNpc(int npcIndex, string label, bool available, bool assigned)
     {
         if (npcIndex < 0 || npcIndex >= npcBackgrounds.Length || npcIndex >= npcLabels.Length) return;
@@ -133,5 +161,31 @@ public sealed class IdleAdventureFormationPanel : MonoBehaviour
         }
 
         return true;
+    }
+
+    private void ConfigureRaycastTargets()
+    {
+        SetParentImageRaycast(slotBackgrounds, false);
+        SetParentImageRaycast(npcBackgrounds, false);
+
+        for (int i = 0; i < slotBackgrounds.Length; i++)
+        {
+            if (slotBackgrounds[i] != null) slotBackgrounds[i].raycastTarget = true;
+            if (slotLabels != null && i < slotLabels.Length && slotLabels[i] != null) slotLabels[i].raycastTarget = false;
+        }
+
+        for (int i = 0; i < npcBackgrounds.Length; i++)
+        {
+            if (npcBackgrounds[i] != null) npcBackgrounds[i].raycastTarget = true;
+            if (npcLabels != null && i < npcLabels.Length && npcLabels[i] != null) npcLabels[i].raycastTarget = false;
+        }
+    }
+
+    private static void SetParentImageRaycast(Image[] images, bool raycastTarget)
+    {
+        if (images == null || images.Length == 0 || images[0] == null || images[0].transform.parent == null) return;
+
+        Image parentImage = images[0].transform.parent.GetComponent<Image>();
+        if (parentImage != null) parentImage.raycastTarget = raycastTarget;
     }
 }

@@ -289,6 +289,31 @@ MonoBehaviour:
   rewardLedger: {fileID: 416274536}
   afkRewardSource: {fileID: 933609500}
   stageProgress: {fileID: 2081744365}
+  sceneCamera: {fileID: 100002}
+  sceneEventSystem: {fileID: 406819619}
+  combatantRoot: {fileID: 1959960555}
+  backgroundCanvas: {fileID: 164638648}
+  startCanvas: {fileID: 1789944780}
+  canvas: {fileID: 492321421}
+  afkRewardCanvas: {fileID: 1727618323}
+  battleHudView: {fileID: 492321418}
+  startPanelView: {fileID: 1363143163}
+  formationPanelView: {fileID: 1363143162}
+  stageEndPanelView: {fileID: 116083566}
+  friendlyViews:
+  - {fileID: 1771835132}
+  - {fileID: 1010979776}
+  - {fileID: 861788188}
+  - {fileID: 85979100}
+  - {fileID: 883277540}
+  - {fileID: 904020747}
+  enemyViews:
+  - {fileID: 1246031042}
+  - {fileID: 268173915}
+  - {fileID: 1417769575}
+  - {fileID: 793467825}
+  - {fileID: 968794858}
+  - {fileID: 1577101846}
 --- !u!1 &13715735
 GameObject:
   m_ObjectHideFlags: 0
@@ -2156,7 +2181,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
   m_Color: {r: 0.08, g: 0.09, b: 0.11, a: 0.92}
-  m_RaycastTarget: 1
+  m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
@@ -6095,8 +6120,8 @@ RectTransform:
   - {fileID: 1558832141}
   m_Father: {fileID: 81242060}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.53, y: 0.4}
-  m_AnchorMax: {x: 0.95, y: 0.62}
+  m_AnchorMin: {x: 0.05, y: 0.4}
+  m_AnchorMax: {x: 0.47, y: 0.62}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -11001,7 +11026,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: 'Next stage: 1'
+  m_text: 'Next stage: 3'
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -12998,8 +13023,8 @@ RectTransform:
   - {fileID: 79595451}
   m_Father: {fileID: 81242060}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.05, y: 0.4}
-  m_AnchorMax: {x: 0.47, y: 0.62}
+  m_AnchorMin: {x: 0.53, y: 0.4}
+  m_AnchorMax: {x: 0.95, y: 0.62}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -15320,8 +15345,8 @@ RectTransform:
   - {fileID: 2111137001}
   m_Father: {fileID: 81242060}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.53, y: 0.099999994}
-  m_AnchorMax: {x: 0.95, y: 0.32}
+  m_AnchorMin: {x: 0.05, y: 0.099999994}
+  m_AnchorMax: {x: 0.47, y: 0.32}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -16385,7 +16410,7 @@ MonoBehaviour:
   productionIntervalSeconds: 30
   maxStoredQuantity: 1000
   useBackendWhenAuthenticated: 1
-  highestClearedStage: 0
+  highestClearedStage: 2
   serverStoredQuantity: 0
   lastSettledServerUnixSeconds: 1784536691
   syncedServerUnixSeconds: 1784536691
@@ -16417,10 +16442,10 @@ RectTransform:
   - {fileID: 502154896}
   m_Father: {fileID: 1727618320}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 1, y: 1}
-  m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: -103, y: -98}
-  m_SizeDelta: {x: 150, y: 140}
+  m_AnchorMin: {x: 1, y: 0}
+  m_AnchorMax: {x: 1, y: 0}
+  m_AnchoredPosition: {x: -127, y: 112}
+  m_SizeDelta: {x: 198, y: 168}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &933609502
 MonoBehaviour:
@@ -22317,8 +22342,8 @@ RectTransform:
   - {fileID: 1951623923}
   m_Father: {fileID: 81242060}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.05, y: 0.099999994}
-  m_AnchorMax: {x: 0.47, y: 0.32}
+  m_AnchorMin: {x: 0.53, y: 0.099999994}
+  m_AnchorMax: {x: 0.95, y: 0.32}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -29947,8 +29972,8 @@ RectTransform:
   - {fileID: 1500656509}
   m_Father: {fileID: 81242060}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.53, y: 0.70000005}
-  m_AnchorMax: {x: 0.95, y: 0.92}
+  m_AnchorMin: {x: 0.05, y: 0.70000005}
+  m_AnchorMax: {x: 0.47, y: 0.92}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -33841,8 +33866,8 @@ RectTransform:
   - {fileID: 1169087126}
   m_Father: {fileID: 81242060}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0.05, y: 0.70000005}
-  m_AnchorMax: {x: 0.47, y: 0.92}
+  m_AnchorMin: {x: 0.53, y: 0.70000005}
+  m_AnchorMax: {x: 0.95, y: 0.92}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -35774,8 +35799,8 @@ MonoBehaviour:
   defaultPrefsKey: weijun.idleAdventure.highestClearedStage
   playerPrefsPrefix: weijun.idleAdventure.highestClearedStage.
   scopeByBackendPlayer: 1
-  highestClearedStage: 0
-  nextUnclearedStage: 1
+  highestClearedStage: 2
+  nextUnclearedStage: 3
   progressLoaded:
     m_PersistentCalls:
       m_Calls: []
@@ -36888,7 +36913,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   m_Material: {fileID: 0}
   m_Color: {r: 0.07, g: 0.075, b: 0.085, a: 0.94}
-  m_RaycastTarget: 1
+  m_RaycastTarget: 0
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:

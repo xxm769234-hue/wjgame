@@ -135,7 +135,9 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     public void Collect()
     {
         if (TryCollectFromBackend()) return;
-        CollectLocalEstimate();
+
+        Debug.LogWarning("Idle Adventure AFK reward collection requires an authenticated backend session.", this);
+        RefreshView();
     }
 
     public void TryLoadServerState()
@@ -196,7 +198,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
         {
             string collectedKey = string.IsNullOrEmpty(response.collectedItem.itemKey) ? ItemKey : response.collectedItem.itemKey;
             string collectedName = string.IsNullOrEmpty(response.collectedItem.name) ? DisplayName : response.collectedItem.name;
-            int collectedQuantity = response.collectedItem.quantity;
+            int collectedQuantity = Mathf.Clamp((int)Math.Min(int.MaxValue, response.collectedItem.quantity), 0, int.MaxValue);
 
             Dictionary<string, int> rewards = new Dictionary<string, int>
             {
@@ -214,33 +216,6 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
 
         if (response.state != null) ApplyBackendState(response.state);
         else ClearStoredReward();
-    }
-
-    private void CollectLocalEstimate()
-    {
-        long serverNow = GetEstimatedServerUnixSeconds();
-        int amount = CalculateStoredQuantity(serverNow);
-        if (amount <= 0) return;
-
-        Dictionary<string, int> rewards = new Dictionary<string, int>
-        {
-            { ItemKey, amount }
-        };
-
-        Dictionary<string, string> displayNames = new Dictionary<string, string>
-        {
-            { ItemKey, DisplayName }
-        };
-
-        if (rewardLedger != null) rewardLedger.GrantRewards(rewards, displayNames, $"{DisplayName} x{amount}");
-        rewardCollected.Invoke(ItemKey, DisplayName, amount);
-
-        syncedServerUnixSeconds = serverNow;
-        lastSettledServerUnixSeconds = serverNow;
-        serverStoredQuantity = 0;
-        localSecondsSinceServerSync = 0f;
-        hasServerSnapshot = true;
-        RefreshView();
     }
 
     public void ClearStoredReward()

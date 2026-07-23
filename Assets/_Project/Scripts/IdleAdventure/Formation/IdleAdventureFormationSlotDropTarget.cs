@@ -18,9 +18,21 @@ public sealed class IdleAdventureFormationSlotDropTarget : MonoBehaviour, IDropH
 
     public void OnDrop(PointerEventData eventData)
     {
-        IdleAdventureFormationDragItem dragItem = eventData.pointerDrag != null ? eventData.pointerDrag.GetComponent<IdleAdventureFormationDragItem>() : null;
-        if (dragItem == null) return;
+        IdleAdventureFormationDragItem dragItem = null;
+        if (eventData.pointerDrag != null)
+        {
+            dragItem = eventData.pointerDrag.GetComponent<IdleAdventureFormationDragItem>();
+            if (dragItem == null) dragItem = eventData.pointerDrag.GetComponentInParent<IdleAdventureFormationDragItem>();
+            if (dragItem == null) dragItem = eventData.pointerDrag.GetComponentInChildren<IdleAdventureFormationDragItem>();
+        }
 
+        if (dragItem == null)
+        {
+            Debug.LogWarning($"Formation drop ignored on slot {slotIndex}: no drag item found.", this);
+            return;
+        }
+
+        Debug.Log($"Formation drop accepted: slot={slotIndex}, npcIndex={dragItem.DefinitionIndex}", this);
         onDropped?.Invoke(slotIndex, dragItem.DefinitionIndex);
     }
 

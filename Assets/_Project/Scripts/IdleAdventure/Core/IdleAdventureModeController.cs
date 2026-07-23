@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using TMPro;
@@ -19,6 +20,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private const string StartCanvasName = "Idle Adventure Start Canvas";
     private const string HudCanvasName = "Idle Adventure Canvas";
     private const string AfkRewardCanvasName = "Idle Adventure AFK Reward Canvas";
+    private const long BackendBattleFocusBuffPresetId = 16001L;
+    private const long BackendArmorBreakBuffPresetId = 16002L;
 
     [Header("Mode Config")]
     [SerializeField] private IdleAdventureModeConfig modeConfig;
@@ -62,18 +65,35 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     [Header("Progress")]
     [SerializeField] private IdleAdventureStageProgress stageProgress;
 
+    [Header("Editor Debug")]
+    [SerializeField] private bool allowLocalCombatSimulation;
+
     private readonly Queue<string> battleLog = new Queue<string>();
     private readonly List<IdleAdventureCombatant> friendlies = new List<IdleAdventureCombatant>(MaxPartySize);
     private readonly List<IdleAdventureCombatant> enemies = new List<IdleAdventureCombatant>(MaxPartySize);
-    private readonly IdleAdventureActorView[] friendlyViews = new IdleAdventureActorView[MaxPartySize];
-    private readonly IdleAdventureActorView[] enemyViews = new IdleAdventureActorView[MaxPartySize];
     private readonly int[] friendlyFormation = new int[MaxPartySize];
+    private readonly Dictionary<string, IdleAdventureCombatant> backendRuntimeCombatants = new Dictionary<string, IdleAdventureCombatant>();
     private readonly List<int> clearedRewardStages = new List<int>();
     private readonly Dictionary<string, int> pendingRunRewards = new Dictionary<string, int>();
     private readonly Dictionary<string, int> grantedRewards = new Dictionary<string, int>();
     private readonly Dictionary<string, string> rewardDisplayNames = new Dictionary<string, string>();
 
-    private Canvas canvas;
+    [Header("Persistent Scene References")]
+    [SerializeField] private Camera sceneCamera;
+    [SerializeField] private EventSystem sceneEventSystem;
+    [SerializeField] private Transform combatantRoot;
+    [SerializeField] private Canvas backgroundCanvas;
+    [SerializeField] private Canvas startCanvas;
+    [SerializeField] private Canvas canvas;
+    [SerializeField] private Canvas afkRewardCanvas;
+    [SerializeField] private IdleAdventureBattleHud battleHudView;
+    [SerializeField] private IdleAdventureStartPanel startPanelView;
+    [SerializeField] private IdleAdventureFormationPanel formationPanelView;
+    [SerializeField] private IdleAdventureStageEndPanel stageEndPanelView;
+    [SerializeField] private IdleAdventurePausePanel pausePanelView;
+    [SerializeField] private IdleAdventureActorView[] friendlyViews = new IdleAdventureActorView[MaxPartySize];
+    [SerializeField] private IdleAdventureActorView[] enemyViews = new IdleAdventureActorView[MaxPartySize];
+
     private TextMeshProUGUI stageText;
     private TextMeshProUGUI turnText;
     private TextMeshProUGUI friendlyCountText;
@@ -82,14 +102,6 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private TextMeshProUGUI resultText;
     private Button pauseButton;
     private TextMeshProUGUI pauseButtonText;
-    private Canvas backgroundCanvas;
-    private Canvas startCanvas;
-    private Canvas afkRewardCanvas;
-    private Transform combatantRoot;
-    private IdleAdventureBattleHud battleHudView;
-    private IdleAdventureStartPanel startPanelView;
-    private IdleAdventureStageEndPanel stageEndPanelView;
-    private IdleAdventureFormationPanel formationPanelView;
     private bool interfaceBuildInProgress;
 
     private int stage = 1;
@@ -100,6 +112,17 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private bool stageFailedPending;
     private bool modePausedByChoice;
     private bool paused;
+    private bool backendModeActive;
+    private bool backendRequestPending;
+    private bool backendFormationDirty;
+    private bool localSimulationBlockedLogged;
+    private int backendFormationRevision;
+    private string backendSessionKey;
+    private string backendRunningSessionKey;
+    private int backendHighestStage;
+    private int backendNextStage = 1;
+    private IdleAdventurePlayerNpcResponse[] backendAvailableNpcs = new IdleAdventurePlayerNpcResponse[0];
+    private Coroutine backendHomeLoadRoutine;
     private Coroutine battleRoutine;
 
     public IReadOnlyDictionary<string, int> GrantedRewards => grantedRewards;
@@ -107,6 +130,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     private void Awake()
     {
+        EnsureViewCacheArrays();
         ApplyModeConfig();
         ConfigureCamera();
         EnsureEventSystem();
@@ -133,6 +157,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         if (this == null || Application.isPlaying) return;
 
+        EnsureViewCacheArrays();
         ApplyModeConfig();
         ConfigureCamera();
         EnsureEventSystem();
@@ -149,6 +174,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     [ContextMenu("Rebuild Persistent Scene Components")]
     private void RebuildPersistentSceneComponents()
     {
+        EnsureViewCacheArrays();
         ClearGeneratedInterface();
         BuildInterface();
         EnsureCombatantRoot();
@@ -194,6 +220,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         EnsureStageProgress();
         EnsureAfkRewardSource();
         ResetToStartScreen();
+        QueueBackendHomeLoad();
 
         if (battleRoutine != null)
         {
@@ -215,8 +242,15 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         }
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
     public void SetFriendlyPartySize(int count)
     {
+        if (!CanUseLocalCombatSimulation())
+        {
+            Debug.LogWarning("SetFriendlyPartySize is local simulation only and is disabled while Idle Adventure is backend-authoritative.", this);
+            return;
+        }
+
         startingFriendlyCount = Mathf.Clamp(count, 1, MaxPartySize);
         InitializeDefaultFormation();
         BuildFriendlyParty(startingFriendlyCount);
@@ -226,8 +260,15 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         RefreshBattleView();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
     public void SetEnemyPartySize(int count)
     {
+        if (!CanUseLocalCombatSimulation())
+        {
+            Debug.LogWarning("SetEnemyPartySize is local simulation only and is disabled while Idle Adventure is backend-authoritative.", this);
+            return;
+        }
+
         BuildEnemyParty(Mathf.Clamp(count, 1, MaxPartySize));
         round = 1;
         AddLog($"Enemy party size changed to {DeployedCount(enemies)}.");
@@ -236,20 +277,28 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     public void AutoFillFormation()
     {
-        InitializeDefaultFormation();
-        RefreshFormationView();
-        UpdateButtonStates();
+        if (!ShouldUseBackendApi())
+        {
+            AddLog("Backend formation auto-fill requires authentication.");
+            if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", "Login is required before editing formation.");
+            UpdateButtonStates();
+            return;
+        }
+
+        if (!backendRequestPending) StartCoroutine(AutoFillBackendFormationRoutine());
     }
 
     public void ClearFormation()
     {
-        for (int i = 0; i < MaxPartySize; i++)
+        if (!ShouldUseBackendApi())
         {
-            friendlyFormation[i] = -1;
+            AddLog("Backend formation clear requires authentication.");
+            if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", "Login is required before editing formation.");
+            UpdateButtonStates();
+            return;
         }
 
-        RefreshFormationView();
-        UpdateButtonStates();
+        if (!backendRequestPending) StartCoroutine(ClearBackendFormationRoutine());
     }
 
     public void OpenFormationPanel()
@@ -257,6 +306,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (formationPanelView == null) return;
 
         formationPanelView.ShowFormationWindow();
+        if (ShouldUseBackendApi() && !HasBackendNpcDefinitionsReady())
+        {
+            QueueBackendHomeLoad();
+        }
+
         RefreshFormationView();
     }
 
@@ -272,6 +326,14 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         if (slotIndex < 0 || slotIndex >= MaxPartySize) return;
         if (definitionIndex < 0 || definitionIndex >= AvailableFriendlyDefinitionCount()) return;
+        if (!ShouldUseBackendApi())
+        {
+            AddLog("Backend formation save requires authentication.");
+            QueueBackendHomeLoad();
+            return;
+        }
+
+        Debug.Log($"Formation assign requested: slot={slotIndex}, npcIndex={definitionIndex}, backend={ShouldUseBackendApi()}, backendNpcCount={(backendAvailableNpcs != null ? backendAvailableNpcs.Length : 0)}, backendDefinitionId={ResolveBackendDefinitionId(definitionIndex)}", this);
 
         for (int i = 0; i < MaxPartySize; i++)
         {
@@ -279,107 +341,221 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         }
 
         friendlyFormation[slotIndex] = definitionIndex;
+        backendFormationDirty = true;
+        backendFormationRevision++;
         RefreshFormationView();
         UpdateButtonStates();
+        SaveBackendFormationIfAvailable();
     }
 
     public void ClearFormationSlot(int slotIndex)
     {
         if (slotIndex < 0 || slotIndex >= MaxPartySize) return;
+        if (!ShouldUseBackendApi())
+        {
+            AddLog("Backend formation save requires authentication.");
+            QueueBackendHomeLoad();
+            return;
+        }
 
         friendlyFormation[slotIndex] = -1;
+        backendFormationDirty = true;
+        backendFormationRevision++;
         RefreshFormationView();
         UpdateButtonStates();
+        SaveBackendFormationIfAvailable();
     }
 
     public void ApplyAttackBuffToFriendlySlot(int slotIndex)
     {
-        ApplySkillNormalDamageBuffToFriendlySlot(slotIndex, "normal_damage_up", "Damage Up", true, 3, 0.15f);
+        ApplyBackendBuffPresetToFriendlySlot(slotIndex, (int)BackendBattleFocusBuffPresetId);
     }
 
     public void ApplyDefenseDebuffToEnemySlot(int slotIndex)
     {
-        ApplySkillStatBuffToEnemySlot(slotIndex, "defense_down", "Defense Down", false, 3, 0, -4, 0);
+        ApplyBackendBuffPresetToEnemySlot(slotIndex, (int)BackendArmorBreakBuffPresetId);
     }
 
+    public void ApplyBackendBuffPresetToFriendlySlot(int slotIndex, int buffPresetId)
+    {
+        TryRequestBackendBuff("FRIENDLY", slotIndex, buffPresetId);
+    }
+
+    public void ApplyBackendBuffPresetToEnemySlot(int slotIndex, int buffPresetId)
+    {
+        TryRequestBackendBuff("ENEMY", slotIndex, buffPresetId);
+    }
+
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Use ApplyBackendBuffPresetToFriendlySlot or ApplyBackendBuffPresetToEnemySlot.")]
     public bool ApplyBuffPresetToFriendlySlot(int slotIndex, int presetIndex)
     {
-        return ApplyBuffPresetToParty(friendlies, slotIndex, presetIndex);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Use ApplyBackendBuffPresetToFriendlySlot or ApplyBackendBuffPresetToEnemySlot.")]
     public bool ApplyBuffPresetToEnemySlot(int slotIndex, int presetIndex)
     {
-        return ApplyBuffPresetToParty(enemies, slotIndex, presetIndex);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Use backend /buffs/apply with a configured buff_preset_id.")]
     public bool ApplyStatBuffToFriendlySlot(int slotIndex, string buffId, string displayName, bool isBenefit, int durationRounds, int attackModifier, int defenseModifier, int speedModifier)
     {
-        return ApplySkillStatBuffToFriendlySlot(slotIndex, buffId, displayName, isBenefit, durationRounds, attackModifier, defenseModifier, speedModifier);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Use backend /buffs/apply with a configured buff_preset_id.")]
     public bool ApplyStatBuffToEnemySlot(int slotIndex, string buffId, string displayName, bool isBenefit, int durationRounds, int attackModifier, int defenseModifier, int speedModifier)
     {
-        return ApplySkillStatBuffToEnemySlot(slotIndex, buffId, displayName, isBenefit, durationRounds, attackModifier, defenseModifier, speedModifier);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Character skill buffs are applied by backend round resolution.")]
     public bool ApplySkillStatBuffToFriendlySlot(int slotIndex, string buffId, string displayName, bool isBenefit, int durationRounds, int attackModifier, int defenseModifier, int speedModifier)
     {
-        return ApplyStatBuffToParty(friendlies, slotIndex, buffId, displayName, isBenefit, IdleAdventureBuffSource.CharacterSkill, durationRounds, attackModifier, defenseModifier, speedModifier);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Character skill buffs are applied by backend round resolution.")]
     public bool ApplySkillStatBuffToEnemySlot(int slotIndex, string buffId, string displayName, bool isBenefit, int durationRounds, int attackModifier, int defenseModifier, int speedModifier)
     {
-        return ApplyStatBuffToParty(enemies, slotIndex, buffId, displayName, isBenefit, IdleAdventureBuffSource.CharacterSkill, durationRounds, attackModifier, defenseModifier, speedModifier);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Use backend /buffs/apply with a configured buff_preset_id.")]
     public bool ApplyOtherStatBuffToFriendlySlot(int slotIndex, string buffId, string displayName, bool isBenefit, int durationRounds, int attackModifier, int defenseModifier, int speedModifier)
     {
-        return ApplyStatBuffToParty(friendlies, slotIndex, buffId, displayName, isBenefit, IdleAdventureBuffSource.Other, durationRounds, attackModifier, defenseModifier, speedModifier);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Use backend /buffs/apply with a configured buff_preset_id.")]
     public bool ApplyOtherStatBuffToEnemySlot(int slotIndex, string buffId, string displayName, bool isBenefit, int durationRounds, int attackModifier, int defenseModifier, int speedModifier)
     {
-        return ApplyStatBuffToParty(enemies, slotIndex, buffId, displayName, isBenefit, IdleAdventureBuffSource.Other, durationRounds, attackModifier, defenseModifier, speedModifier);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Character skill buffs are applied by backend round resolution.")]
     public bool ApplySkillNormalDamageBuffToFriendlySlot(int slotIndex, string buffId, string displayName, bool isBenefit, int durationRounds, float multiplier)
     {
-        return ApplyDamageMultiplierBuffToParty(friendlies, slotIndex, buffId, displayName, isBenefit, IdleAdventureBuffSource.CharacterSkill, IdleAdventureBuffEffectType.NormalDamage, durationRounds, multiplier, 0f, IdleAdventureDamageAttribute.None);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Character skill buffs are applied by backend round resolution.")]
     public bool ApplySkillNormalDamageBuffToEnemySlot(int slotIndex, string buffId, string displayName, bool isBenefit, int durationRounds, float multiplier)
     {
-        return ApplyDamageMultiplierBuffToParty(enemies, slotIndex, buffId, displayName, isBenefit, IdleAdventureBuffSource.CharacterSkill, IdleAdventureBuffEffectType.NormalDamage, durationRounds, multiplier, 0f, IdleAdventureDamageAttribute.None);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Use backend /buffs/apply with a configured buff_preset_id.")]
     public bool ApplyOtherNormalDamageBuffToFriendlySlot(int slotIndex, string buffId, string displayName, bool isBenefit, int durationRounds, float multiplier)
     {
-        return ApplyDamageMultiplierBuffToParty(friendlies, slotIndex, buffId, displayName, isBenefit, IdleAdventureBuffSource.Other, IdleAdventureBuffEffectType.NormalDamage, durationRounds, multiplier, 0f, IdleAdventureDamageAttribute.None);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Use backend /buffs/apply with a configured buff_preset_id.")]
     public bool ApplyOtherNormalDamageBuffToEnemySlot(int slotIndex, string buffId, string displayName, bool isBenefit, int durationRounds, float multiplier)
     {
-        return ApplyDamageMultiplierBuffToParty(enemies, slotIndex, buffId, displayName, isBenefit, IdleAdventureBuffSource.Other, IdleAdventureBuffEffectType.NormalDamage, durationRounds, multiplier, 0f, IdleAdventureDamageAttribute.None);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Character skill buffs are applied by backend round resolution.")]
     public bool ApplySkillAttributeDamageBuffToFriendlySlot(int slotIndex, string buffId, string displayName, bool isBenefit, int durationRounds, float multiplier, IdleAdventureDamageAttribute affectedAttribute)
     {
-        return ApplyDamageMultiplierBuffToParty(friendlies, slotIndex, buffId, displayName, isBenefit, IdleAdventureBuffSource.CharacterSkill, IdleAdventureBuffEffectType.AttributeDamage, durationRounds, 0f, multiplier, affectedAttribute);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Character skill buffs are applied by backend round resolution.")]
     public bool ApplySkillAttributeDamageBuffToEnemySlot(int slotIndex, string buffId, string displayName, bool isBenefit, int durationRounds, float multiplier, IdleAdventureDamageAttribute affectedAttribute)
     {
-        return ApplyDamageMultiplierBuffToParty(enemies, slotIndex, buffId, displayName, isBenefit, IdleAdventureBuffSource.CharacterSkill, IdleAdventureBuffEffectType.AttributeDamage, durationRounds, 0f, multiplier, affectedAttribute);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Use backend /buffs/apply with a configured buff_preset_id.")]
     public bool ApplyOtherAttributeDamageBuffToFriendlySlot(int slotIndex, string buffId, string displayName, bool isBenefit, int durationRounds, float multiplier, IdleAdventureDamageAttribute affectedAttribute)
     {
-        return ApplyDamageMultiplierBuffToParty(friendlies, slotIndex, buffId, displayName, isBenefit, IdleAdventureBuffSource.Other, IdleAdventureBuffEffectType.AttributeDamage, durationRounds, 0f, multiplier, affectedAttribute);
+        return DeprecatedLocalBuffApi();
     }
 
+    [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
+    [Obsolete("Local buff mutation is disabled. Use backend /buffs/apply with a configured buff_preset_id.")]
     public bool ApplyOtherAttributeDamageBuffToEnemySlot(int slotIndex, string buffId, string displayName, bool isBenefit, int durationRounds, float multiplier, IdleAdventureDamageAttribute affectedAttribute)
     {
-        return ApplyDamageMultiplierBuffToParty(enemies, slotIndex, buffId, displayName, isBenefit, IdleAdventureBuffSource.Other, IdleAdventureBuffEffectType.AttributeDamage, durationRounds, 0f, multiplier, affectedAttribute);
+        return DeprecatedLocalBuffApi();
+    }
+
+    private bool DeprecatedLocalBuffApi()
+    {
+        Debug.LogWarning("Local Idle Adventure buff mutation is disabled. Buff changes must be requested from backend /buffs/apply.", this);
+        return false;
+    }
+
+    private bool TryRequestBackendBuff(string targetSide, int slotIndex, long buffPresetId)
+    {
+        if (slotIndex < 0 || slotIndex >= MaxPartySize || buffPresetId <= 0L) return false;
+
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated || string.IsNullOrEmpty(backendSessionKey) || !backendModeActive)
+        {
+            AddLog("Backend buff apply requires an active authenticated battle session.");
+            return false;
+        }
+
+        if (backendRequestPending)
+        {
+            AddLog("Backend is busy. Buff apply skipped.");
+            return false;
+        }
+
+        StartCoroutine(ApplyBackendBuffRoutine(targetSide, slotIndex, buffPresetId));
+        return true;
+    }
+
+    private IEnumerator ApplyBackendBuffRoutine(string targetSide, int slotIndex, long buffPresetId)
+    {
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated || string.IsNullOrEmpty(backendSessionKey)) yield break;
+
+        backendRequestPending = true;
+        UpdateButtonStates();
+        BackendResult<IdleAdventureBuffAppliedResponse> result = null;
+        IdleAdventureApplyBuffRequest request = new IdleAdventureApplyBuffRequest
+        {
+            target_side = targetSide,
+            slot_index = slotIndex,
+            buff_preset_id = buffPresetId,
+            source = "OTHER"
+        };
+        yield return service.ApplyIdleAdventureBuff(backendSessionKey, request, value => result = value);
+        backendRequestPending = false;
+
+        if (result != null && result.Success && result.Data != null)
+        {
+            ApplyBackendBuffTargetState(result.Data.target, targetSide);
+            if (!string.IsNullOrEmpty(result.Data.log)) AddLog(result.Data.log);
+            else AddLog($"Backend buff {buffPresetId} applied to {targetSide} slot {slotIndex + 1}.");
+        }
+        else
+        {
+            AddLog($"Backend buff apply failed: {BackendResultMessage(result)}");
+        }
+
+        RefreshBattleView();
+        UpdateButtonStates();
     }
 
     private bool ApplyStatBuffToParty(List<IdleAdventureCombatant> party, int slotIndex, string buffId, string displayName, bool isBenefit, IdleAdventureBuffSource source, int durationRounds, int attackModifier, int defenseModifier, int speedModifier)
@@ -421,29 +597,63 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         return false;
     }
 
+    private void EnsureViewCacheArrays()
+    {
+        if (friendlyViews == null || friendlyViews.Length != MaxPartySize)
+        {
+            IdleAdventureActorView[] resized = new IdleAdventureActorView[MaxPartySize];
+            if (friendlyViews != null)
+            {
+                int copyCount = Mathf.Min(friendlyViews.Length, resized.Length);
+                for (int i = 0; i < copyCount; i++) resized[i] = friendlyViews[i];
+            }
+
+            friendlyViews = resized;
+        }
+
+        if (enemyViews == null || enemyViews.Length != MaxPartySize)
+        {
+            IdleAdventureActorView[] resized = new IdleAdventureActorView[MaxPartySize];
+            if (enemyViews != null)
+            {
+                int copyCount = Mathf.Min(enemyViews.Length, resized.Length);
+                for (int i = 0; i < copyCount; i++) resized[i] = enemyViews[i];
+            }
+
+            enemyViews = resized;
+        }
+    }
+
     private void ConfigureCamera()
     {
-        Camera mainCamera = Camera.main;
-        if (mainCamera == null)
+        if (sceneCamera == null) sceneCamera = Camera.main;
+        if (sceneCamera == null)
+        {
+            Transform existingCamera = transform.root != null ? transform.root.Find("Main Camera") : null;
+            if (existingCamera != null) sceneCamera = existingCamera.GetComponent<Camera>();
+        }
+
+        if (sceneCamera == null)
         {
             GameObject cameraObject = new GameObject("Main Camera");
-            mainCamera = cameraObject.AddComponent<Camera>();
+            sceneCamera = cameraObject.AddComponent<Camera>();
             cameraObject.tag = "MainCamera";
         }
 
-        mainCamera.clearFlags = CameraClearFlags.SolidColor;
-        mainCamera.backgroundColor = new Color(0.08f, 0.09f, 0.11f);
-        mainCamera.orthographic = true;
-        mainCamera.orthographicSize = 5f;
-        mainCamera.transform.position = new Vector3(0f, 0f, -10f);
+        sceneCamera.clearFlags = CameraClearFlags.SolidColor;
+        sceneCamera.backgroundColor = new Color(0.08f, 0.09f, 0.11f);
+        sceneCamera.orthographic = true;
+        sceneCamera.orthographicSize = 5f;
+        sceneCamera.transform.position = new Vector3(0f, 0f, -10f);
     }
 
     private void EnsureEventSystem()
     {
-        if (FindObjectOfType<EventSystem>() != null) return;
+        if (sceneEventSystem == null) sceneEventSystem = FindObjectOfType<EventSystem>();
+        if (sceneEventSystem != null) return;
 
         GameObject eventSystemObject = new GameObject("EventSystem");
-        eventSystemObject.AddComponent<EventSystem>();
+        sceneEventSystem = eventSystemObject.AddComponent<EventSystem>();
         eventSystemObject.AddComponent<StandaloneInputModule>();
     }
 
@@ -540,7 +750,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (root == null) return;
 
         RectTransform panel = CreatePanel("AFK Reward Widget", root, new Color(0.10f, 0.12f, 0.14f, 0.94f));
-        Anchor(panel, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(28f, 28f), new Vector2(198f, 168f));
+        Anchor(panel, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-226f, 28f), new Vector2(-28f, 196f));
 
         Image iconImage = CreateImage("Reward Icon Button", panel, new Color(0.32f, 0.36f, 0.40f, 1f));
         Anchor(iconImage.rectTransform, new Vector2(0f, 0.22f), new Vector2(0.58f, 1f), new Vector2(12f, -10f), new Vector2(-8f, -12f));
@@ -638,7 +848,9 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
             BuildStartPanel(startCanvas.GetComponent<RectTransform>());
             BuildEndPanel(root);
+            BuildPausePanel(root);
             HideEndPanel();
+            HidePausePanel();
         }
         finally
         {
@@ -744,6 +956,10 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private Canvas EnsureAfkRewardCanvas()
     {
         Transform existingCanvasTransform = transform.Find(AfkRewardCanvasName);
+        if (existingCanvasTransform == null && startCanvas != null)
+        {
+            existingCanvasTransform = startCanvas.transform.Find(AfkRewardCanvasName);
+        }
         if (existingCanvasTransform == null)
         {
             GameObject canvasObject = new GameObject(AfkRewardCanvasName, typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
@@ -752,6 +968,10 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         }
         else
         {
+            if (existingCanvasTransform.parent != transform)
+            {
+                existingCanvasTransform.SetParent(transform, false);
+            }
             afkRewardCanvas = EnsureComponent<Canvas>(existingCanvasTransform.gameObject);
             EnsureComponent<CanvasScaler>(existingCanvasTransform.gameObject);
             EnsureComponent<GraphicRaycaster>(existingCanvasTransform.gameObject);
@@ -841,6 +1061,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private void ConfigureStartScreenVisible(bool visible)
     {
         if (startCanvas != null) startCanvas.gameObject.SetActive(visible);
+        if (afkRewardCanvas != null) afkRewardCanvas.gameObject.SetActive(visible);
     }
 
     private void BindActorViews(RectTransform slotsRoot, bool friendlySide)
@@ -899,6 +1120,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             startPanelView.Bind(StartAdventure);
             formationPanelView.Bind(OpenFormationPanel, CloseFormationPanel, AutoFillFormation, ClearFormation, AssignFormationSlot, ClearFormationSlot);
+            formationPanelView.ApplySlotLayout(true);
             RefreshFormationView();
         }
 
@@ -907,7 +1129,13 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         else stageEndPanelView.Bind(ContinueNextStage, EndMode);
         RemoveExtraStageEndPanels(root, stageEndPanelView);
 
+        pausePanelView = ResolveExistingPausePanel(root);
+        if (pausePanelView == null || !pausePanelView.HasBindings) BuildPausePanel(root);
+        else pausePanelView.Bind(ResumePausedBattle, ExitPausedBattle);
+        RemoveExtraPausePanels(root, pausePanelView);
+
         HideEndPanel();
+        HidePausePanel();
     }
 
     private IdleAdventureStartPanel ResolveExistingStartPanel(RectTransform root)
@@ -920,6 +1148,12 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         if (stageEndPanelView != null && stageEndPanelView.HasBindings) return stageEndPanelView;
         return root.GetComponentInChildren<IdleAdventureStageEndPanel>(true);
+    }
+
+    private IdleAdventurePausePanel ResolveExistingPausePanel(RectTransform root)
+    {
+        if (pausePanelView != null && pausePanelView.HasBindings) return pausePanelView;
+        return root.GetComponentInChildren<IdleAdventurePausePanel>(true);
     }
 
     private IdleAdventureFormationPanel ResolveExistingFormationPanel(RectTransform root)
@@ -957,6 +1191,20 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         }
     }
 
+    private void RemoveExtraPausePanels(RectTransform root, IdleAdventurePausePanel panelToKeep)
+    {
+        if (root == null) return;
+
+        IdleAdventurePausePanel[] panels = root.GetComponentsInChildren<IdleAdventurePausePanel>(true);
+        for (int i = panels.Length - 1; i >= 0; i--)
+        {
+            IdleAdventurePausePanel panel = panels[i];
+            if (panel == null || panel == panelToKeep) continue;
+
+            DestroyRuntimeObject(panel.gameObject);
+        }
+    }
+
     private void ClearGeneratedInterface()
     {
         Transform existingBackgroundCanvas = transform.Find(BackgroundCanvasName);
@@ -969,6 +1217,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (existingCanvas != null) DestroyRuntimeObject(existingCanvas.gameObject);
 
         Transform existingAfkRewardCanvas = transform.Find(AfkRewardCanvasName);
+        if (existingAfkRewardCanvas == null && startCanvas != null) existingAfkRewardCanvas = startCanvas.transform.Find(AfkRewardCanvasName);
         if (existingAfkRewardCanvas != null) DestroyRuntimeObject(existingAfkRewardCanvas.gameObject);
 
         backgroundCanvas = null;
@@ -979,6 +1228,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         battleHudView = null;
         startPanelView = null;
         stageEndPanelView = null;
+        pausePanelView = null;
         formationPanelView = null;
         stageText = null;
         turnText = null;
@@ -1045,7 +1295,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             bool frontColumn = IsFrontColumnSlot(i);
             int row = GetFormationRow(i);
-            int column = frontColumn ? 0 : 1;
+            int column = frontColumn ? 1 : 0;
             float left = column == 0 ? 0.05f : 0.53f;
             float right = column == 0 ? 0.47f : 0.95f;
             float top = 0.92f - row * 0.30f;
@@ -1104,6 +1354,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         formationPanelView = startPanel.gameObject.AddComponent<IdleAdventureFormationPanel>();
         formationPanelView.Initialize(formationWindow, formationText, formationButton, closeButton, autoFillButton, clearButton, formationSlots, formationLabels, formationDropTargets, npcItems, npcLabels, npcDragItems, ownerCanvas);
         formationPanelView.Bind(OpenFormationPanel, CloseFormationPanel, AutoFillFormation, ClearFormation, AssignFormationSlot, ClearFormationSlot);
+        formationPanelView.ApplySlotLayout(true);
         RefreshFormationView();
     }
 
@@ -1132,6 +1383,32 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         stageEndPanelView.Bind(ContinueNextStage, EndMode);
     }
 
+    private void BuildPausePanel(RectTransform root)
+    {
+        RectTransform pausePanel = CreatePanel("Pause Panel", root, new Color(0f, 0f, 0f, 0.62f));
+        Stretch(pausePanel);
+
+        RectTransform panelBody = CreatePanel("Pause Panel Body", pausePanel, new Color(0.10f, 0.12f, 0.15f, 0.98f));
+        Anchor(panelBody, new Vector2(0.32f, 0.34f), new Vector2(0.68f, 0.66f), Vector2.zero, Vector2.zero);
+
+        TextMeshProUGUI pausePanelTitleText = CreateText("Pause Panel Title", panelBody, "Battle Paused", 30, FontStyles.Bold, TextAlignmentOptions.Center);
+        Anchor(pausePanelTitleText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(30f, -78f), new Vector2(-30f, -24f));
+
+        TextMeshProUGUI pausePanelBodyText = CreateText("Pause Panel Body Text", panelBody, "Continue the current battle or exit back to the mode page.", 18, FontStyles.Normal, TextAlignmentOptions.Center);
+        Anchor(pausePanelBodyText.rectTransform, new Vector2(0f, 0.42f), new Vector2(1f, 0.74f), new Vector2(40f, 0f), new Vector2(-40f, 0f));
+
+        Button resumeButton = CreateButton("Continue Battle Button", panelBody, "Continue Battle");
+        Anchor(resumeButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(-260f, 42f), new Vector2(-24f, 96f));
+
+        Button exitButton = CreateButton("Exit Battle Button", panelBody, "Exit Battle");
+        Anchor(exitButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(24f, 42f), new Vector2(260f, 96f));
+
+        pausePanelView = pausePanel.gameObject.AddComponent<IdleAdventurePausePanel>();
+        pausePanelView.Initialize(pausePanelTitleText, pausePanelBodyText, resumeButton, exitButton);
+        pausePanelView.Bind(ResumePausedBattle, ExitPausedBattle);
+        pausePanelView.SetButtonLabels("Continue Battle", "Exit Battle");
+    }
+
     private void ResetToStartScreen()
     {
         battleStarted = false;
@@ -1139,6 +1416,14 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         stageFailedPending = false;
         modePausedByChoice = false;
         paused = false;
+        backendModeActive = false;
+        backendRequestPending = false;
+        backendFormationDirty = false;
+        backendFormationRevision = 0;
+        backendSessionKey = string.Empty;
+        backendRunningSessionKey = string.Empty;
+        backendRuntimeCombatants.Clear();
+        localSimulationBlockedLogged = false;
         pendingNextStage = -1;
         stage = 1;
         round = 1;
@@ -1156,6 +1441,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (pauseButtonText != null) pauseButtonText.text = "Pause";
         if (resultText != null) resultText.text = string.Empty;
+        HidePausePanel();
         HideEndPanel();
         ShowStartPanel();
         SetWaitingText();
@@ -1181,6 +1467,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     private int AvailableFriendlyDefinitionCount()
     {
+        if (backendAvailableNpcs != null && backendAvailableNpcs.Length > 0)
+        {
+            return Mathf.Clamp(backendAvailableNpcs.Length, 1, MaxPartySize);
+        }
+
         int configuredCount = modeConfig != null && modeConfig.FriendlyLineup != null ? modeConfig.FriendlyLineup.Length : 0;
         return Mathf.Clamp(Mathf.Max(configuredCount, startingFriendlyCount), 1, MaxPartySize);
     }
@@ -1238,6 +1529,12 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private string ResolveFriendlyFormationName(int definitionIndex)
     {
         string fallbackName = $"Hero {definitionIndex + 1}";
+        if (backendAvailableNpcs != null && definitionIndex >= 0 && definitionIndex < backendAvailableNpcs.Length && backendAvailableNpcs[definitionIndex] != null)
+        {
+            string backendName = backendAvailableNpcs[definitionIndex].combatant_name;
+            return string.IsNullOrEmpty(backendName) ? fallbackName : backendName;
+        }
+
         IdleAdventureCombatantDefinition[] lineup = modeConfig != null ? modeConfig.FriendlyLineup : null;
         if (lineup == null || definitionIndex < 0 || definitionIndex >= lineup.Length || lineup[definitionIndex] == null) return fallbackName;
         return lineup[definitionIndex].ResolveName(fallbackName);
@@ -1256,6 +1553,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (startPanelView != null) startPanelView.Show();
         if (formationPanelView != null) formationPanelView.HideFormationWindow();
         RefreshFormationView();
+        HidePausePanel();
         HideEndPanel();
         UpdateButtonStates();
     }
@@ -1268,6 +1566,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     private void ShowEndPanel()
     {
+        HidePausePanel();
         if (stageEndPanelView != null) stageEndPanelView.Show();
         UpdateButtonStates();
     }
@@ -1276,6 +1575,30 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         if (stageEndPanelView != null) stageEndPanelView.Hide();
         UpdateButtonStates();
+    }
+
+    private void ShowPausePanel()
+    {
+        if (pausePanelView == null) return;
+
+        pausePanelView.SetContent("Battle Paused", "Continue the current battle or exit back to the mode page.");
+        pausePanelView.SetButtonLabels("Continue Battle", "Exit Battle");
+        pausePanelView.Show();
+        UpdateButtonStates();
+    }
+
+    private void HidePausePanel()
+    {
+        if (pausePanelView != null) pausePanelView.Hide();
+        UpdateButtonStates();
+    }
+
+    private void SetBattleRunningLocally()
+    {
+        paused = false;
+        modePausedByChoice = false;
+        if (pauseButtonText != null) pauseButtonText.text = "Pause";
+        HidePausePanel();
     }
 
     private void StartAdventure()
@@ -1287,22 +1610,494 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             return;
         }
 
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated)
+        {
+            string message = "Backend session is not authenticated. Login is required before starting Idle Adventure.";
+            AddLog(message);
+            if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", message);
+            UpdateButtonStates();
+            return;
+        }
+
+        if (!backendRequestPending) StartCoroutine(StartBackendAdventureRoutine());
+    }
+
+    private IEnumerator StartBackendAdventureRoutine()
+    {
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated) yield break;
+
+        backendRequestPending = true;
+        if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", "Starting from backend...");
+
+        yield return RefreshBackendHomeBeforeSessionStart(service);
+        if (!string.IsNullOrEmpty(backendRunningSessionKey))
+        {
+            BackendResult<IdleAdventureSessionResponse> endResult = null;
+            yield return service.EndIdleAdventureSession(backendRunningSessionKey, value => endResult = value);
+            if (endResult == null || !endResult.Success || endResult.Data == null)
+            {
+                backendRequestPending = false;
+                AddLog($"Backend active session cleanup failed: {BackendResultMessage(endResult)}");
+                if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", $"Backend cleanup failed: {BackendResultMessage(endResult)}");
+                UpdateButtonStates();
+                yield break;
+            }
+
+            AddLog("Previous backend battle session ended before starting a new formation.");
+            backendSessionKey = string.Empty;
+            backendRunningSessionKey = string.Empty;
+        }
+
+        int requestedStage = Mathf.Max(1, backendNextStage > 0 ? backendNextStage : NextUnclearedStage());
+        yield return StartBackendSessionFromSavedFormation(service, requestedStage, "Backend battle start failed");
+    }
+
+    private IEnumerator RefreshBackendHomeBeforeSessionStart(BackendGameService service)
+    {
+        if (service == null || !service.IsAuthenticated) yield break;
+
+        BackendResult<IdleAdventureHomeResponse> homeResult = null;
+        yield return service.LoadIdleAdventureHome(value => homeResult = value);
+        if (homeResult != null && homeResult.Success && homeResult.Data != null)
+        {
+            ApplyBackendHome(homeResult.Data);
+        }
+        else
+        {
+            AddLog($"Backend home refresh before start failed: {BackendResultMessage(homeResult)}");
+        }
+    }
+
+    private IEnumerator StartBackendSessionFromSavedFormation(BackendGameService service, int requestedStage, string failurePrefix)
+    {
+        IdleAdventureStartSessionRequest request = new IdleAdventureStartSessionRequest
+        {
+            stage = Mathf.Max(1, requestedStage),
+            use_saved_formation = true,
+            formation_slots = null
+        };
+
+        BackendResult<IdleAdventureSessionResponse> result = null;
+        yield return service.StartIdleAdventureSession(request, value => result = value);
+        backendRequestPending = false;
+
+        if (result == null || !result.Success || result.Data == null)
+        {
+            AddLog($"{failurePrefix}: {BackendResultMessage(result)}");
+            if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", $"{failurePrefix}: {BackendResultMessage(result)}");
+            UpdateButtonStates();
+            yield break;
+        }
+
+        backendModeActive = true;
+        backendSessionKey = result.Data.session_key;
+        backendRunningSessionKey = backendSessionKey;
+        localSimulationBlockedLogged = false;
         battleStarted = true;
         stageChoicePending = false;
         stageFailedPending = false;
         modePausedByChoice = false;
         pendingNextStage = -1;
-        paused = false;
+        SetBattleRunningLocally();
         ClearRunRewards();
-        if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", "Expedition ready");
-        if (pauseButtonText != null) pauseButtonText.text = "Pause";
+        grantedRewards.Clear();
+        rewardDisplayNames.Clear();
+        if (rewardLedger != null) rewardLedger.ClearGrantedRewards();
         ConfigureCombatScreenVisible(true);
         HideStartPanel();
         HideEndPanel();
-        int startStage = NextUnclearedStage();
-        StartStage(startStage);
-        AddLog($"Adventure started from Stage {startStage}.");
+        HidePausePanel();
+        ApplyBackendSessionSnapshot(result.Data, true);
+        SetBattleRunningLocally();
+        AddLog(string.IsNullOrEmpty(result.Data.message) ? $"Backend battle started from Stage {stage}." : result.Data.message);
         UpdateButtonStates();
+    }
+
+    private void ApplyBackendSessionSnapshot(IdleAdventureSessionResponse session, bool rebuildParties)
+    {
+        if (session == null) return;
+
+        backendSessionKey = string.IsNullOrEmpty(session.session_key) ? backendSessionKey : session.session_key;
+        stage = Mathf.Max(1, session.stage);
+        round = Mathf.Max(1, session.round);
+        string status = NormalizeBackendStatus(session.status);
+        backendRunningSessionKey = status == "ENDED" ? string.Empty : backendSessionKey;
+        paused = status == "RUNNING" ? false : status == "PAUSED" || session.paused;
+        pendingNextStage = session.pending_next_stage > 0 ? session.pending_next_stage : pendingNextStage;
+        if (pauseButtonText != null) pauseButtonText.text = paused ? "Resume" : "Pause";
+
+        SyncRewardDictionary(pendingRunRewards, session.pending_rewards);
+        SyncRewardDictionary(grantedRewards, session.granted_rewards);
+        SyncBackendProgressFromSession(session);
+
+        if (rebuildParties)
+        {
+            BuildBackendParty(friendlies, session.friendlies, true);
+            BuildBackendParty(enemies, session.enemies, false);
+        }
+        else
+        {
+            UpdateBackendParty(friendlies, session.friendlies, true);
+            UpdateBackendParty(enemies, session.enemies, false);
+        }
+
+        backendRuntimeCombatants.Clear();
+        RegisterBackendRuntimeCombatants(friendlies);
+        RegisterBackendRuntimeCombatants(enemies);
+
+        if (!string.IsNullOrEmpty(session.message)) AddLog(session.message);
+        RefreshBattleView();
+    }
+
+    private void BuildBackendParty(List<IdleAdventureCombatant> party, IdleAdventureCombatantStateResponse[] states, bool isFriendly)
+    {
+        ClearParty(party);
+        for (int i = 0; i < MaxPartySize; i++)
+        {
+            party.Add(null);
+        }
+
+        if (states == null) return;
+
+        for (int i = 0; i < states.Length; i++)
+        {
+            IdleAdventureCombatantStateResponse state = states[i];
+            if (IsEmptyBackendCombatantPlaceholder(state)) continue;
+            if (state == null || state.slot_index < 0 || state.slot_index >= MaxPartySize) continue;
+            if (ShouldHideBackendCombatantState(state)) continue;
+
+            IdleAdventureCombatant combatant = CreateCombatant(
+                string.IsNullOrEmpty(state.combatant_name) ? $"{(isFriendly ? "Hero" : "Enemy")} {state.slot_index + 1}" : state.combatant_name,
+                ToInt(state.max_health),
+                ToInt(state.attack),
+                ToInt(state.defense),
+                ToInt(state.speed),
+                isFriendly,
+                state.slot_index,
+                null,
+                ParseAttribute(state.attribute_type));
+            ApplyBackendCombatantState(combatant, state, isFriendly);
+            party[state.slot_index] = combatant;
+        }
+    }
+
+    private void UpdateBackendParty(List<IdleAdventureCombatant> party, IdleAdventureCombatantStateResponse[] states, bool isFriendly)
+    {
+        if (party.Count != MaxPartySize)
+        {
+            BuildBackendParty(party, states, isFriendly);
+            return;
+        }
+
+        bool[] seenSlots = new bool[MaxPartySize];
+        if (states != null)
+        {
+            for (int i = 0; i < states.Length; i++)
+            {
+                IdleAdventureCombatantStateResponse state = states[i];
+                if (IsEmptyBackendCombatantPlaceholder(state)) continue;
+                if (state == null || state.slot_index < 0 || state.slot_index >= MaxPartySize) continue;
+
+                seenSlots[state.slot_index] = true;
+                if (ShouldHideBackendCombatantState(state))
+                {
+                    if (party[state.slot_index] != null)
+                    {
+                        DestroyRuntimeObject(party[state.slot_index].gameObject);
+                        party[state.slot_index] = null;
+                    }
+
+                    continue;
+                }
+
+                IdleAdventureCombatant combatant = party[state.slot_index];
+                if (combatant == null)
+                {
+                    combatant = CreateCombatant(
+                        string.IsNullOrEmpty(state.combatant_name) ? $"{(isFriendly ? "Hero" : "Enemy")} {state.slot_index + 1}" : state.combatant_name,
+                        ToInt(state.max_health),
+                        ToInt(state.attack),
+                        ToInt(state.defense),
+                        ToInt(state.speed),
+                        isFriendly,
+                        state.slot_index,
+                        null,
+                        ParseAttribute(state.attribute_type));
+                    party[state.slot_index] = combatant;
+                }
+
+                ApplyBackendCombatantState(combatant, state, isFriendly);
+            }
+        }
+
+        for (int i = 0; i < MaxPartySize; i++)
+        {
+            if (seenSlots[i]) continue;
+            if (party[i] == null) continue;
+
+            DestroyRuntimeObject(party[i].gameObject);
+            party[i] = null;
+        }
+    }
+
+    private void ApplyBackendCombatantState(IdleAdventureCombatant combatant, IdleAdventureCombatantStateResponse state, bool isFriendly)
+    {
+        if (combatant == null || state == null) return;
+
+        List<IdleAdventureBattleBuff> buffs = ConvertBackendBuffs(state.active_buffs);
+        int currentHealth = state.defeated ? 0 : ToInt(state.current_health);
+        combatant.ApplyBackendState(
+            state.runtime_id,
+            state.combatant_name,
+            ToInt(state.max_health),
+            currentHealth,
+            ToInt(state.attack),
+            ToInt(state.defense),
+            ToInt(state.speed),
+            isFriendly,
+            state.slot_index,
+            ParseAttribute(state.attribute_type),
+            buffs);
+    }
+
+    private void ApplyBackendBuffTargetState(IdleAdventureCombatantStateResponse state, string requestedSide)
+    {
+        if (IsEmptyBackendCombatantPlaceholder(state)) return;
+
+        string resolvedSide = state != null && !string.IsNullOrEmpty(state.side) ? state.side : requestedSide;
+        bool isFriendly = string.Equals(resolvedSide, "FRIENDLY", StringComparison.OrdinalIgnoreCase);
+        List<IdleAdventureCombatant> party = isFriendly ? friendlies : enemies;
+        if (state == null || state.slot_index < 0 || state.slot_index >= MaxPartySize) return;
+
+        while (party.Count < MaxPartySize) party.Add(null);
+
+        if (ShouldHideBackendCombatantState(state))
+        {
+            if (party[state.slot_index] != null)
+            {
+                if (!string.IsNullOrEmpty(party[state.slot_index].RuntimeId)) backendRuntimeCombatants.Remove(party[state.slot_index].RuntimeId);
+                DestroyRuntimeObject(party[state.slot_index].gameObject);
+                party[state.slot_index] = null;
+            }
+
+            return;
+        }
+
+        IdleAdventureCombatant combatant = party[state.slot_index];
+        if (combatant == null)
+        {
+            combatant = CreateCombatant(
+                string.IsNullOrEmpty(state.combatant_name) ? $"{(isFriendly ? "Hero" : "Enemy")} {state.slot_index + 1}" : state.combatant_name,
+                ToInt(state.max_health),
+                ToInt(state.attack),
+                ToInt(state.defense),
+                ToInt(state.speed),
+                isFriendly,
+                state.slot_index,
+                null,
+                ParseAttribute(state.attribute_type));
+            party[state.slot_index] = combatant;
+        }
+
+        ApplyBackendCombatantState(combatant, state, isFriendly);
+        if (!string.IsNullOrEmpty(combatant.RuntimeId)) backendRuntimeCombatants[combatant.RuntimeId] = combatant;
+    }
+
+    private static bool ShouldHideBackendCombatantState(IdleAdventureCombatantStateResponse state)
+    {
+        if (state == null) return true;
+        return state.defeated || state.current_health <= 0 || state.max_health <= 0;
+    }
+
+    private static bool IsEmptyBackendCombatantPlaceholder(IdleAdventureCombatantStateResponse state)
+    {
+        if (state == null) return true;
+
+        return string.IsNullOrEmpty(state.runtime_id) &&
+               state.definition_id <= 0 &&
+               string.IsNullOrEmpty(state.combatant_name) &&
+               string.IsNullOrEmpty(state.side) &&
+               state.max_health <= 0 &&
+               state.current_health <= 0 &&
+               state.attack <= 0 &&
+               state.defense <= 0 &&
+               state.speed <= 0 &&
+               state.effective_attack <= 0 &&
+               state.effective_defense <= 0 &&
+               state.effective_speed <= 0 &&
+               !state.defeated;
+    }
+
+    private void RegisterBackendRuntimeCombatants(List<IdleAdventureCombatant> party)
+    {
+        for (int i = 0; i < party.Count; i++)
+        {
+            IdleAdventureCombatant combatant = party[i];
+            if (combatant == null || string.IsNullOrEmpty(combatant.RuntimeId)) continue;
+            backendRuntimeCombatants[combatant.RuntimeId] = combatant;
+        }
+    }
+
+    private IdleAdventureCombatant FindBackendCombatant(string runtimeId)
+    {
+        if (string.IsNullOrEmpty(runtimeId)) return null;
+        if (backendRuntimeCombatants.TryGetValue(runtimeId, out IdleAdventureCombatant combatant)) return combatant;
+        return FindBackendCombatantByRuntimeSlot(runtimeId);
+    }
+
+    private IdleAdventureCombatant FindBackendCombatantByRuntimeSlot(string runtimeId)
+    {
+        if (!TryResolveBackendRuntimeSlot(runtimeId, out List<IdleAdventureCombatant> party, out int slotIndex, out bool _)) return null;
+
+        if (slotIndex >= party.Count) return null;
+        IdleAdventureCombatant combatant = party[slotIndex];
+        if (combatant == null) return null;
+        return string.IsNullOrEmpty(combatant.RuntimeId) || combatant.RuntimeId == runtimeId ? combatant : null;
+    }
+
+    private bool TryResolveBackendRuntimeSlot(string runtimeId, out List<IdleAdventureCombatant> party, out int slotIndex, out bool isFriendly)
+    {
+        party = null;
+        slotIndex = -1;
+        isFriendly = false;
+        if (string.IsNullOrEmpty(runtimeId) || runtimeId.Length < 3 || runtimeId[1] != '-') return false;
+        if (!int.TryParse(runtimeId.Substring(2), out slotIndex)) return false;
+        if (slotIndex < 0 || slotIndex >= MaxPartySize) return false;
+
+        if (runtimeId[0] == 'F')
+        {
+            party = friendlies;
+            isFriendly = true;
+            return true;
+        }
+
+        if (runtimeId[0] == 'E')
+        {
+            party = enemies;
+            isFriendly = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static IdleAdventureInitiativeEntryResponse FindInitiativeEntry(IdleAdventureInitiativeEntryResponse[] initiative, string runtimeId)
+    {
+        if (initiative == null || string.IsNullOrEmpty(runtimeId)) return null;
+
+        for (int i = 0; i < initiative.Length; i++)
+        {
+            IdleAdventureInitiativeEntryResponse entry = initiative[i];
+            if (entry != null && entry.runtime_id == runtimeId) return entry;
+        }
+
+        return null;
+    }
+
+    private List<IdleAdventureBattleBuff> ConvertBackendBuffs(IdleAdventureActiveBuffResponse[] backendBuffs)
+    {
+        List<IdleAdventureBattleBuff> buffs = new List<IdleAdventureBattleBuff>();
+        if (backendBuffs == null) return buffs;
+
+        for (int i = 0; i < backendBuffs.Length; i++)
+        {
+            IdleAdventureActiveBuffResponse source = backendBuffs[i];
+            if (source == null) continue;
+
+            buffs.Add(IdleAdventureBattleBuff.Create(
+                source.buff_key,
+                source.display_name,
+                ParseBuffCategory(source.category),
+                ParseBuffSource(source.source),
+                ParseBuffEffectType(source.effect_type),
+                Mathf.Max(1, source.remaining_rounds),
+                ToInt(source.attack_modifier),
+                ToInt(source.defense_modifier),
+                ToInt(source.speed_modifier),
+                source.normal_damage_multiplier,
+                source.attribute_damage_multiplier,
+                ParseAttribute(source.affected_attribute)));
+        }
+
+        return buffs;
+    }
+
+    private void SyncRewardDictionary(Dictionary<string, int> target, IdleAdventureRewardItemResponse[] rewards)
+    {
+        if (target == null) return;
+
+        target.Clear();
+        if (rewards == null) return;
+
+        for (int i = 0; i < rewards.Length; i++)
+        {
+            IdleAdventureRewardItemResponse reward = rewards[i];
+            if (reward == null || reward.quantity <= 0) continue;
+            AddRewardToLedger(target, reward.item_key, reward.display_name, ToInt(reward.quantity));
+        }
+    }
+
+    private void SyncBackendProgressFromSession(IdleAdventureSessionResponse session)
+    {
+        if (session == null || session.settled_stages == null || session.settled_stages.Length == 0) return;
+
+        int highest = backendHighestStage;
+        for (int i = 0; i < session.settled_stages.Length; i++)
+        {
+            highest = Mathf.Max(highest, session.settled_stages[i]);
+        }
+
+        backendHighestStage = highest;
+        backendNextStage = Mathf.Max(1, highest + 1);
+        if (stageProgress != null) stageProgress.SetProgressFromServer(highest);
+        if (afkRewardSource != null) afkRewardSource.SetHighestClearedStageFromProgress(highest);
+    }
+
+    private static IdleAdventureDamageAttribute ParseAttribute(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return IdleAdventureDamageAttribute.Physical;
+        switch (value.Trim().ToUpperInvariant())
+        {
+            case "FIRE":
+                return IdleAdventureDamageAttribute.Fire;
+            case "WATER":
+                return IdleAdventureDamageAttribute.Water;
+            case "WOOD":
+                return IdleAdventureDamageAttribute.Wood;
+            case "EARTH":
+                return IdleAdventureDamageAttribute.Earth;
+            case "LIGHT":
+                return IdleAdventureDamageAttribute.Light;
+            case "DARK":
+                return IdleAdventureDamageAttribute.Dark;
+            case "NONE":
+                return IdleAdventureDamageAttribute.None;
+            default:
+                return IdleAdventureDamageAttribute.Physical;
+        }
+    }
+
+    private static IdleAdventureBuffCategory ParseBuffCategory(string value)
+    {
+        return string.Equals(value, "DETRIMENT", StringComparison.OrdinalIgnoreCase) || string.Equals(value, "DEBUFF", StringComparison.OrdinalIgnoreCase)
+            ? IdleAdventureBuffCategory.Detriment
+            : IdleAdventureBuffCategory.Benefit;
+    }
+
+    private static IdleAdventureBuffSource ParseBuffSource(string value)
+    {
+        return string.Equals(value, "CHARACTER_SKILL", StringComparison.OrdinalIgnoreCase)
+            ? IdleAdventureBuffSource.CharacterSkill
+            : IdleAdventureBuffSource.Other;
+    }
+
+    private static IdleAdventureBuffEffectType ParseBuffEffectType(string value)
+    {
+        if (string.Equals(value, "ATTRIBUTE_DAMAGE", StringComparison.OrdinalIgnoreCase)) return IdleAdventureBuffEffectType.AttributeDamage;
+        if (string.Equals(value, "FIELD", StringComparison.OrdinalIgnoreCase)) return IdleAdventureBuffEffectType.Field;
+        return IdleAdventureBuffEffectType.NormalDamage;
     }
 
     private void OpenStageCompletePanel()
@@ -1350,6 +2145,19 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private void ContinueNextStage()
     {
         if (!battleStarted) return;
+        if (backendModeActive)
+        {
+            if (!backendRequestPending) StartCoroutine(stageFailedPending ? RetryBackendStageRoutine() : ContinueBackendStageRoutine());
+            return;
+        }
+
+        if (!CanUseLocalCombatSimulation())
+        {
+            AddLog("Local stage transition is disabled. Backend session is required.");
+            UpdateButtonStates();
+            return;
+        }
+
         if (stageFailedPending)
         {
             RestartCurrentStage();
@@ -1364,6 +2172,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         modePausedByChoice = false;
         pendingNextStage = -1;
         HideEndPanel();
+        HidePausePanel();
         paused = false;
         StartStage(nextStage);
         UpdateButtonStates();
@@ -1372,6 +2181,18 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private void RestartCurrentStage()
     {
         if (!battleStarted || !stageFailedPending) return;
+        if (backendModeActive)
+        {
+            if (!backendRequestPending) StartCoroutine(RetryBackendStageRoutine());
+            return;
+        }
+
+        if (!CanUseLocalCombatSimulation())
+        {
+            AddLog("Local restart is disabled. Backend retry is required.");
+            UpdateButtonStates();
+            return;
+        }
 
         int retryStage = Mathf.Max(1, stage);
         stageChoicePending = false;
@@ -1379,6 +2200,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         modePausedByChoice = false;
         pendingNextStage = -1;
         HideEndPanel();
+        HidePausePanel();
         paused = false;
         StartStage(retryStage);
         AddLog($"Restarting Stage {retryStage}.");
@@ -1388,6 +2210,18 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private void EndMode()
     {
         if (!battleStarted) return;
+        if (backendModeActive)
+        {
+            if (!backendRequestPending) StartCoroutine(EndBackendModeRoutine());
+            return;
+        }
+
+        if (!CanUseLocalCombatSimulation())
+        {
+            AddLog("Local reward settlement is disabled. Backend end session is required.");
+            UpdateButtonStates();
+            return;
+        }
 
         string rewardSummary = SettlePendingRewards();
         stageChoicePending = false;
@@ -1403,9 +2237,310 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         ClearParty(enemies);
         ClearCombatantRootChildren();
         HideEndPanel();
+        HidePausePanel();
         ConfigureCombatScreenVisible(false);
         ShowStartPanel();
         AddLog("Idle Adventure mode exited.");
+        SetWaitingText();
+        if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", $"Rewards granted: {rewardSummary}");
+        UpdateButtonStates();
+    }
+
+    private void ResumePausedBattle()
+    {
+        if (!battleStarted || !paused || stageChoicePending || stageFailedPending || modePausedByChoice) return;
+
+        if (backendModeActive)
+        {
+            if (!backendRequestPending) StartCoroutine(ResumeBackendPausedBattleRoutine());
+            return;
+        }
+
+        if (!CanUseLocalCombatSimulation())
+        {
+            AddLog("Local resume is disabled. Backend session is required.");
+            UpdateButtonStates();
+            return;
+        }
+
+        SetBattleRunningLocally();
+        AddLog("Battle resumed.");
+        RefreshBattleView();
+        UpdateButtonStates();
+    }
+
+    private void ExitPausedBattle()
+    {
+        if (!battleStarted || stageChoicePending || stageFailedPending || modePausedByChoice) return;
+
+        if (backendModeActive)
+        {
+            if (!backendRequestPending) StartCoroutine(EndBackendModeRoutine());
+            return;
+        }
+
+        if (!CanUseLocalCombatSimulation())
+        {
+            AddLog("Local exit is disabled. Backend end session is required.");
+            UpdateButtonStates();
+            return;
+        }
+
+        EndMode();
+    }
+
+    private IEnumerator ResumeBackendPausedBattleRoutine()
+    {
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated || string.IsNullOrEmpty(backendSessionKey)) yield break;
+
+        backendRequestPending = true;
+        UpdateButtonStates();
+        BackendResult<IdleAdventureSessionResponse> result = null;
+        yield return service.ResumeIdleAdventureSession(backendSessionKey, value => result = value);
+        backendRequestPending = false;
+
+        if (result == null || !result.Success || result.Data == null)
+        {
+            AddLog($"Backend resume failed: {BackendResultMessage(result)}");
+            yield return RefreshBackendSessionAfterCommandFailure("resume");
+            UpdateButtonStates();
+            yield break;
+        }
+
+        string status = NormalizeBackendStatus(result.Data.status);
+        if (status == "RUNNING")
+        {
+            SetBattleRunningLocally();
+            RefreshBattleView();
+            AddLog("Battle resumed by backend.");
+        }
+        else if (status == "PAUSED" || result.Data.paused)
+        {
+            paused = true;
+            if (pauseButtonText != null) pauseButtonText.text = "Resume";
+            ShowPausePanel();
+            AddLog("Backend battle is still paused.");
+        }
+        else
+        {
+            ApplyBackendSessionSnapshot(result.Data, true);
+            HandleBackendSessionStatus(result.Data);
+        }
+
+        UpdateButtonStates();
+    }
+
+    private IEnumerator ContinueBackendStageRoutine()
+    {
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated || string.IsNullOrEmpty(backendSessionKey)) yield break;
+
+        backendRequestPending = true;
+        UpdateButtonStates();
+        BackendResult<IdleAdventureSessionResponse> result = null;
+        yield return service.ContinueIdleAdventureStage(backendSessionKey, value => result = value);
+        backendRequestPending = false;
+
+        if (result == null || !result.Success || result.Data == null)
+        {
+            AddLog($"Backend continue failed: {BackendResultMessage(result)}");
+            yield return RefreshBackendSessionAfterCommandFailure("continue");
+            UpdateButtonStates();
+            yield break;
+        }
+
+        stageChoicePending = false;
+        stageFailedPending = false;
+        modePausedByChoice = false;
+        pendingNextStage = -1;
+        SetBattleRunningLocally();
+        HideEndPanel();
+        HidePausePanel();
+        ApplyBackendSessionSnapshot(result.Data, true);
+        yield return ResumeBackendStageTransitionIfPaused("continue", result.Data);
+        UpdateButtonStates();
+    }
+
+    private IEnumerator RetryBackendStageRoutine()
+    {
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated || string.IsNullOrEmpty(backendSessionKey)) yield break;
+
+        backendRequestPending = true;
+        UpdateButtonStates();
+        BackendResult<IdleAdventureSessionResponse> result = null;
+        yield return service.RetryIdleAdventureStage(backendSessionKey, value => result = value);
+        backendRequestPending = false;
+
+        if (result == null || !result.Success || result.Data == null)
+        {
+            AddLog($"Backend retry failed: {BackendResultMessage(result)}");
+            yield return RefreshBackendSessionAfterCommandFailure("retry");
+            UpdateButtonStates();
+            yield break;
+        }
+
+        stageChoicePending = false;
+        stageFailedPending = false;
+        modePausedByChoice = false;
+        pendingNextStage = -1;
+        SetBattleRunningLocally();
+        HideEndPanel();
+        HidePausePanel();
+        ApplyBackendSessionSnapshot(result.Data, true);
+        yield return ResumeBackendStageTransitionIfPaused("retry", result.Data);
+        UpdateButtonStates();
+    }
+
+    private IEnumerator EndBackendModeRoutine()
+    {
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated || string.IsNullOrEmpty(backendSessionKey)) yield break;
+
+        backendRequestPending = true;
+        UpdateButtonStates();
+        BackendResult<IdleAdventureSessionResponse> result = null;
+        yield return service.EndIdleAdventureSession(backendSessionKey, value => result = value);
+        backendRequestPending = false;
+
+        if (result == null || !result.Success || result.Data == null)
+        {
+            AddLog($"Backend end mode failed: {BackendResultMessage(result)}");
+            yield return RefreshBackendSessionAfterCommandFailure("end");
+            UpdateButtonStates();
+            yield break;
+        }
+
+        ApplyBackendSessionSnapshot(result.Data, false);
+        FinishBackendExit(result.Data);
+        yield return service.LoadIdleAdventureHome(value =>
+        {
+            if (value != null && value.Success && value.Data != null) ApplyBackendHome(value.Data);
+        });
+    }
+
+    private IEnumerator RefreshBackendSessionAfterCommandFailure(string commandName)
+    {
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated || string.IsNullOrEmpty(backendSessionKey)) yield break;
+
+        BackendResult<IdleAdventureSessionResponse> sessionResult = null;
+        yield return service.LoadIdleAdventureSession(backendSessionKey, value => sessionResult = value);
+        if (sessionResult == null || !sessionResult.Success || sessionResult.Data == null)
+        {
+            AddLog($"Backend session refresh after {commandName} failed: {BackendResultMessage(sessionResult)}");
+            yield break;
+        }
+
+        string status = NormalizeBackendStatus(sessionResult.Data.status);
+        AddLog($"Backend session after {commandName}: status={status}, stage={sessionResult.Data.stage}, round={sessionResult.Data.round}.");
+        ApplyBackendSessionSnapshot(sessionResult.Data, true);
+
+        if (status == "RUNNING" || (IsStageTransitionCommand(commandName) && status == "PAUSED"))
+        {
+            stageChoicePending = false;
+            stageFailedPending = false;
+            modePausedByChoice = false;
+            pendingNextStage = -1;
+            SetBattleRunningLocally();
+            HideEndPanel();
+            HidePausePanel();
+            RefreshBattleView();
+            if (status == "PAUSED") yield return ResumeBackendStageTransitionIfPaused(commandName, sessionResult.Data);
+            yield break;
+        }
+
+        HandleBackendSessionStatus(sessionResult.Data);
+    }
+
+    private IEnumerator ResumeBackendStageTransitionIfPaused(string commandName, IdleAdventureSessionResponse session)
+    {
+        string status = NormalizeBackendStatus(session != null ? session.status : string.Empty);
+        if (status == "RUNNING")
+        {
+            SetBattleRunningLocally();
+            HideEndPanel();
+            HidePausePanel();
+            RefreshBattleView();
+            yield break;
+        }
+
+        if (!IsStageTransitionCommand(commandName) || status != "PAUSED")
+        {
+            HandleBackendSessionStatus(session);
+            yield break;
+        }
+
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated || string.IsNullOrEmpty(backendSessionKey))
+        {
+            HandleBackendSessionStatus(session);
+            yield break;
+        }
+
+        AddLog($"Backend {commandName} entered a paused stage. Resuming battle.");
+        backendRequestPending = true;
+        UpdateButtonStates();
+        BackendResult<IdleAdventureSessionResponse> resumeResult = null;
+        yield return service.ResumeIdleAdventureSession(backendSessionKey, value => resumeResult = value);
+        backendRequestPending = false;
+
+        if (resumeResult != null && resumeResult.Success && resumeResult.Data != null)
+        {
+            ApplyBackendSessionSnapshot(resumeResult.Data, true);
+            if (NormalizeBackendStatus(resumeResult.Data.status) == "RUNNING")
+            {
+                SetBattleRunningLocally();
+                HideEndPanel();
+                HidePausePanel();
+                RefreshBattleView();
+                yield break;
+            }
+
+            HandleBackendSessionStatus(resumeResult.Data);
+            yield break;
+        }
+
+        AddLog($"Backend resume after {commandName} failed: {BackendResultMessage(resumeResult)}");
+        HandleBackendSessionStatus(session);
+    }
+
+    private static bool IsStageTransitionCommand(string commandName)
+    {
+        return string.Equals(commandName, "continue", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(commandName, "retry", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeBackendStatus(string status)
+    {
+        return string.IsNullOrEmpty(status) ? string.Empty : status.Trim().ToUpperInvariant();
+    }
+
+    private void FinishBackendExit(IdleAdventureSessionResponse session)
+    {
+        string rewardSummary = FormatRewardSummary(grantedRewards);
+        if (rewardLedger != null) rewardLedger.GrantRewards(grantedRewards, rewardDisplayNames, rewardSummary);
+
+        stageChoicePending = false;
+        stageFailedPending = false;
+        modePausedByChoice = true;
+        pendingNextStage = -1;
+        paused = true;
+        battleStarted = false;
+        backendModeActive = false;
+        backendSessionKey = string.Empty;
+        backendRuntimeCombatants.Clear();
+        if (pauseButtonText != null) pauseButtonText.text = "Pause";
+        if (resultText != null) resultText.text = string.Empty;
+
+        ClearParty(friendlies);
+        ClearParty(enemies);
+        ClearCombatantRootChildren();
+        HideEndPanel();
+        HidePausePanel();
+        ConfigureCombatScreenVisible(false);
+        ShowStartPanel();
         SetWaitingText();
         if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", $"Rewards granted: {rewardSummary}");
         UpdateButtonStates();
@@ -1443,6 +2578,281 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         EnsureStageProgress();
         int loadedStage = stageProgress != null ? stageProgress.LoadProgress() : 0;
         if (afkRewardSource != null) afkRewardSource.SetHighestClearedStageFromProgress(loadedStage);
+    }
+
+    private bool ShouldUseBackendApi()
+    {
+        if (!Application.isPlaying) return false;
+
+        BackendGameService service = BackendGameService.Instance;
+        return service != null && service.IsAuthenticated;
+    }
+
+    private bool CanUseLocalCombatSimulation()
+    {
+        return allowLocalCombatSimulation && Application.isEditor;
+    }
+
+    private BackendGameService ResolveBackendService()
+    {
+        BackendGameService service = BackendGameService.Instance;
+        if (service == null && Application.isPlaying) service = BackendGameService.EnsureInstance();
+        return service;
+    }
+
+    private void QueueBackendHomeLoad()
+    {
+        if (!Application.isPlaying) return;
+        if (backendHomeLoadRoutine != null) StopCoroutine(backendHomeLoadRoutine);
+        backendHomeLoadRoutine = StartCoroutine(LoadBackendHomeWhenReady());
+    }
+
+    private IEnumerator LoadBackendHomeWhenReady()
+    {
+        BackendGameService service = ResolveBackendService();
+        float deadline = Time.unscaledTime + 8f;
+        while (service != null && (!service.IsAuthenticated || service.IsConnecting) && Time.unscaledTime < deadline)
+        {
+            yield return null;
+        }
+
+        backendHomeLoadRoutine = null;
+        if (service == null || !service.IsAuthenticated) yield break;
+
+        BackendResult<IdleAdventureHomeResponse> result = null;
+        yield return service.LoadIdleAdventureHome(value => result = value);
+        if (result != null && result.Success && result.Data != null)
+        {
+            ApplyBackendHome(result.Data);
+        }
+        else
+        {
+            AddLog($"Backend home load failed: {BackendResultMessage(result)}");
+        }
+    }
+
+    private void ApplyBackendHome(IdleAdventureHomeResponse home)
+    {
+        if (home == null) return;
+
+        backendHighestStage = Mathf.Max(0, home.highest_stage);
+        backendNextStage = Mathf.Max(1, home.next_stage > 0 ? home.next_stage : backendHighestStage + 1);
+        backendRunningSessionKey = home.has_running_session && !string.IsNullOrEmpty(home.running_session_key)
+            ? home.running_session_key
+            : string.Empty;
+        backendAvailableNpcs = home.available_npc_list ?? new IdleAdventurePlayerNpcResponse[0];
+
+        if (stageProgress != null) stageProgress.SetProgressFromServer(backendHighestStage);
+        if (afkRewardSource != null) afkRewardSource.SetHighestClearedStageFromProgress(backendHighestStage);
+
+        if (home.formation != null && !backendFormationDirty)
+        {
+            ApplyBackendFormation(home.formation.slots);
+        }
+        else if (backendFormationDirty)
+        {
+            SanitizeCurrentFormationForBackend();
+        }
+
+        if (startPanelView != null)
+        {
+            string runningText = home.has_running_session && !string.IsNullOrEmpty(home.running_session_key)
+                ? "Running session can be resumed from backend"
+                : $"Next stage: {backendNextStage}";
+            startPanelView.SetContent("Idle Adventure mode", runningText);
+        }
+
+        RefreshFormationView();
+        if (!backendRequestPending) UpdateButtonStates();
+        if (backendFormationDirty) SaveBackendFormationIfAvailable();
+    }
+
+    private void ApplyBackendFormation(IdleAdventureFormationSlotResponse[] slots)
+    {
+        for (int i = 0; i < MaxPartySize; i++)
+        {
+            friendlyFormation[i] = -1;
+        }
+
+        if (slots == null) return;
+
+        for (int i = 0; i < slots.Length; i++)
+        {
+            IdleAdventureFormationSlotResponse slot = slots[i];
+            if (slot == null || slot.slot_index < 0 || slot.slot_index >= MaxPartySize || slot.definition_id <= 0) continue;
+
+            int definitionIndex = FindBackendNpcIndex(slot.definition_id);
+            if (definitionIndex >= 0) friendlyFormation[slot.slot_index] = definitionIndex;
+        }
+    }
+
+    private void ApplyBackendFormation(IdleAdventureFormationResponse formation)
+    {
+        if (formation == null) return;
+
+        ApplyBackendFormation(formation.slots);
+        RefreshFormationView();
+        UpdateButtonStates();
+    }
+
+    private int FindBackendNpcIndex(long definitionId)
+    {
+        if (backendAvailableNpcs == null) return -1;
+
+        for (int i = 0; i < backendAvailableNpcs.Length; i++)
+        {
+            if (backendAvailableNpcs[i] != null && backendAvailableNpcs[i].definition_id == definitionId) return i;
+        }
+
+        return -1;
+    }
+
+    private IEnumerator AutoFillBackendFormationRoutine()
+    {
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated) yield break;
+
+        backendRequestPending = true;
+        BackendResult<IdleAdventureFormationResponse> result = null;
+        yield return service.AutoFillIdleAdventureFormation(value => result = value);
+        backendRequestPending = false;
+
+        if (result != null && result.Success && result.Data != null)
+        {
+            backendFormationDirty = false;
+            ApplyBackendFormation(result.Data);
+            AddLog("Backend formation auto-filled.");
+        }
+        else
+        {
+            AddLog($"Backend auto-fill failed: {BackendResultMessage(result)}");
+        }
+    }
+
+    private IEnumerator ClearBackendFormationRoutine()
+    {
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated) yield break;
+
+        backendRequestPending = true;
+        BackendResult<IdleAdventureFormationResponse> result = null;
+        yield return service.ClearIdleAdventureFormation(value => result = value);
+        backendRequestPending = false;
+
+        if (result != null && result.Success && result.Data != null)
+        {
+            backendFormationDirty = false;
+            ApplyBackendFormation(result.Data);
+            AddLog("Backend formation cleared.");
+        }
+        else
+        {
+            AddLog($"Backend clear formation failed: {BackendResultMessage(result)}");
+        }
+    }
+
+    private void SaveBackendFormationIfAvailable()
+    {
+        if (!ShouldUseBackendApi() || backendRequestPending) return;
+        if (!CurrentFormationCanResolveBackendDefinitions())
+        {
+            Debug.LogWarning("Backend formation save delayed: available NPC definitions are not ready for the current formation.", this);
+            QueueBackendHomeLoad();
+            return;
+        }
+
+        StartCoroutine(SaveBackendFormationRoutine(backendFormationRevision));
+    }
+
+    private IEnumerator SaveBackendFormationRoutine(int saveRevision)
+    {
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated) yield break;
+
+        backendRequestPending = true;
+        BackendResult<IdleAdventureFormationResponse> result = null;
+        yield return service.SaveIdleAdventureFormation(CreateBackendSaveFormationRequest(), value => result = value);
+        backendRequestPending = false;
+
+        if (saveRevision != backendFormationRevision)
+        {
+            Debug.Log("Backend formation save response ignored because a newer local formation edit exists.", this);
+            SaveBackendFormationIfAvailable();
+            yield break;
+        }
+
+        if (result != null && result.Success && result.Data != null)
+        {
+            backendFormationDirty = false;
+            ApplyBackendFormation(result.Data);
+            AddLog("Backend formation saved.");
+        }
+        else
+        {
+            AddLog($"Backend formation save failed: {BackendResultMessage(result)}");
+        }
+    }
+
+    private IdleAdventureSaveFormationRequest CreateBackendSaveFormationRequest()
+    {
+        IdleAdventureFormationSlotRequest[] slots = new IdleAdventureFormationSlotRequest[MaxPartySize];
+        for (int i = 0; i < MaxPartySize; i++)
+        {
+            int definitionIndex = friendlyFormation[i];
+            long definitionId = ResolveBackendDefinitionId(definitionIndex);
+            slots[i] = new IdleAdventureFormationSlotRequest
+            {
+                slot_index = i,
+                definition_id = definitionId,
+                has_definition_id = definitionId > 0
+            };
+        }
+
+        return new IdleAdventureSaveFormationRequest { slots = slots };
+    }
+
+    private long ResolveBackendDefinitionId(int definitionIndex)
+    {
+        if (backendAvailableNpcs == null || definitionIndex < 0 || definitionIndex >= backendAvailableNpcs.Length) return 0L;
+        IdleAdventurePlayerNpcResponse npc = backendAvailableNpcs[definitionIndex];
+        return npc != null ? npc.definition_id : 0L;
+    }
+
+    private bool HasBackendNpcDefinitionsReady()
+    {
+        return backendAvailableNpcs != null && backendAvailableNpcs.Length > 0;
+    }
+
+    private bool CurrentFormationCanResolveBackendDefinitions()
+    {
+        for (int i = 0; i < MaxPartySize; i++)
+        {
+            int definitionIndex = friendlyFormation[i];
+            if (definitionIndex < 0) continue;
+            if (ResolveBackendDefinitionId(definitionIndex) <= 0) return false;
+        }
+
+        return true;
+    }
+
+    private void SanitizeCurrentFormationForBackend()
+    {
+        bool changed = false;
+        for (int i = 0; i < MaxPartySize; i++)
+        {
+            int definitionIndex = friendlyFormation[i];
+            if (definitionIndex < 0) continue;
+            if (ResolveBackendDefinitionId(definitionIndex) > 0) continue;
+
+            friendlyFormation[i] = -1;
+            changed = true;
+        }
+
+        if (changed)
+        {
+            backendFormationRevision++;
+            Debug.Log("Removed formation slots that are not present in the backend available NPC list.", this);
+        }
     }
 
     private int RecordStageProgress(int clearedStage)
@@ -1546,13 +2956,16 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     private void UpdateButtonStates()
     {
-        if (pauseButton != null) pauseButton.interactable = battleStarted && !stageChoicePending && !stageFailedPending && !modePausedByChoice;
-        if (startPanelView != null) startPanelView.SetInteractable(!battleStarted && FormationDeployedCount() > 0);
+        bool normalPausePending = battleStarted && paused && !stageChoicePending && !stageFailedPending && !modePausedByChoice;
+        bool pausePanelOpen = pausePanelView != null && pausePanelView.IsVisible;
+        if (pauseButton != null) pauseButton.interactable = battleStarted && !backendRequestPending && !stageChoicePending && !stageFailedPending && !modePausedByChoice && !pausePanelOpen;
+        if (startPanelView != null) startPanelView.SetInteractable(!backendRequestPending && !battleStarted && FormationDeployedCount() > 0);
         if (stageEndPanelView != null)
         {
-            stageEndPanelView.SetContinueInteractable(battleStarted && !modePausedByChoice && ((stageChoicePending && pendingNextStage > 0) || stageFailedPending));
-            stageEndPanelView.SetEndModeInteractable(battleStarted && !modePausedByChoice && (stageChoicePending || stageFailedPending));
+            stageEndPanelView.SetContinueInteractable(!backendRequestPending && battleStarted && !modePausedByChoice && ((stageChoicePending && pendingNextStage > 0) || stageFailedPending));
+            stageEndPanelView.SetEndModeInteractable(!backendRequestPending && battleStarted && !modePausedByChoice && (stageChoicePending || stageFailedPending));
         }
+        if (pausePanelView != null) pausePanelView.SetInteractable(!backendRequestPending && normalPausePending && pausePanelOpen);
     }
 
     private RectTransform BuildPartyPanel(RectTransform panel, bool friendlySide)
@@ -1655,6 +3068,29 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             while (!battleStarted || paused || stageChoicePending || stageFailedPending || modePausedByChoice) yield return null;
 
             if (turnText != null) turnText.text = $"Round {round}: speed order";
+            if (backendModeActive)
+            {
+                yield return ResolveBackendRound();
+                yield return new WaitForSeconds(turnInterval);
+                continue;
+            }
+
+            if (!CanUseLocalCombatSimulation())
+            {
+                if (!localSimulationBlockedLogged)
+                {
+                    AddLog("Local Idle Adventure combat simulation is disabled. Start an authenticated backend session instead.");
+                    localSimulationBlockedLogged = true;
+                }
+
+                battleStarted = false;
+                paused = true;
+                SetWaitingText();
+                UpdateButtonStates();
+                yield return null;
+                continue;
+            }
+
             yield return ResolveInitiativeRound();
             if (AllDefeated(enemies))
             {
@@ -1674,6 +3110,399 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             RefreshBattleView();
             yield return new WaitForSeconds(turnInterval);
         }
+    }
+
+    private IEnumerator ResolveBackendRound()
+    {
+        if (backendRequestPending || string.IsNullOrEmpty(backendSessionKey)) yield break;
+
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated)
+        {
+            AddLog("Backend session is not authenticated.");
+            paused = true;
+            UpdateButtonStates();
+            yield break;
+        }
+
+        backendRequestPending = true;
+        int requestedRound = round;
+        BackendResult<IdleAdventureSessionResponse> result = null;
+        yield return service.ResolveIdleAdventureRound(backendSessionKey, requestedRound, value => result = value);
+        backendRequestPending = false;
+
+        if (result == null || !result.Success || result.Data == null)
+        {
+            AddLog($"Backend round failed: {BackendResultMessage(result)}");
+            paused = true;
+            UpdateButtonStates();
+            yield break;
+        }
+
+        if (IsBackendRoundOutOfSync(result.Data, requestedRound))
+        {
+            Debug.LogWarning($"Backend round playback skipped because local round is out of sync: requested={requestedRound}, responseBefore={result.Data.round_before}, responseRound={result.Data.round}. Applying backend snapshot only.", this);
+            AddLog("Backend round replay detected. Synced latest battle state without replaying stale actions.");
+            ApplyBackendSessionSnapshot(result.Data, false);
+            HandleBackendSessionStatus(result.Data);
+            yield break;
+        }
+
+        NormalizeBackendActionRuntimeIds(result.Data.actions, result.Data.initiative_order);
+        Debug.Log($"Backend resolved round snapshot before playback: round={result.Data.round}, friendlies={FormatBackendStateSlots(result.Data.friendlies)}, enemies={FormatBackendStateSlots(result.Data.enemies)}, actions={FormatBackendActions(result.Data.actions)}.", this);
+        if (HasInvalidBackendDamageActions(result.Data.actions))
+        {
+            AddLog("Backend returned an invalid same-side damage action. Battle paused before applying the corrupted snapshot.");
+            paused = true;
+            if (pauseButtonText != null) pauseButtonText.text = "Resume";
+            UpdateButtonStates();
+            yield break;
+        }
+
+        yield return PlayBackendActions(result.Data.actions, result.Data.initiative_order);
+        ApplyBackendSessionSnapshot(result.Data, false);
+        HandleBackendSessionStatus(result.Data);
+    }
+
+    private static bool IsBackendRoundOutOfSync(IdleAdventureSessionResponse session, int requestedRound)
+    {
+        if (session == null || session.round_before <= 0) return false;
+        return session.round_before != requestedRound;
+    }
+
+    private void NormalizeBackendActionRuntimeIds(IdleAdventureBattleActionResponse[] actions, IdleAdventureInitiativeEntryResponse[] initiative)
+    {
+        if (actions == null || actions.Length == 0 || initiative == null || initiative.Length == 0) return;
+
+        int initiativeCursor = 0;
+        for (int i = 0; i < actions.Length; i++)
+        {
+            IdleAdventureBattleActionResponse action = actions[i];
+            if (action == null) continue;
+
+            bool actorMissing = string.IsNullOrEmpty(action.actor_runtime_id) || FindBackendCombatant(action.actor_runtime_id) == null;
+            bool invalidSameSide = action.damage > 0 && SameBackendRuntimeSide(action.actor_runtime_id, action.target_runtime_id);
+            int actorIndex = actorMissing || invalidSameSide
+                ? -1
+                : FindInitiativeIndex(initiative, action.actor_runtime_id, initiativeCursor);
+            if (actorIndex >= initiativeCursor)
+            {
+                initiativeCursor = actorIndex + 1;
+                continue;
+            }
+
+            if (!actorMissing && !invalidSameSide) continue;
+
+            IdleAdventureInitiativeEntryResponse correctedActor = FindNextInitiativeActorForAction(
+                initiative,
+                ref initiativeCursor,
+                action.target_runtime_id);
+            if (correctedActor == null || string.IsNullOrEmpty(correctedActor.runtime_id)) continue;
+
+            string previousActor = action.actor_runtime_id;
+            action.actor_runtime_id = correctedActor.runtime_id;
+            if (!string.IsNullOrEmpty(correctedActor.combatant_name)) action.actor_name = correctedActor.combatant_name;
+            Debug.LogWarning($"Backend action actor corrected from initiative order: order={action.action_order}, actor={previousActor}, correctedActor={action.actor_runtime_id}, target={action.target_runtime_id}.", this);
+        }
+    }
+
+    private static int FindInitiativeIndex(IdleAdventureInitiativeEntryResponse[] initiative, string runtimeId, int startIndex)
+    {
+        if (initiative == null || string.IsNullOrEmpty(runtimeId)) return -1;
+
+        int safeStart = Mathf.Clamp(startIndex, 0, initiative.Length);
+        for (int i = safeStart; i < initiative.Length; i++)
+        {
+            IdleAdventureInitiativeEntryResponse entry = initiative[i];
+            if (entry != null && entry.runtime_id == runtimeId) return i;
+        }
+
+        return -1;
+    }
+
+    private IdleAdventureInitiativeEntryResponse FindNextInitiativeActorForAction(
+        IdleAdventureInitiativeEntryResponse[] initiative,
+        ref int initiativeCursor,
+        string targetRuntimeId)
+    {
+        if (initiative == null) return null;
+
+        int safeStart = Mathf.Clamp(initiativeCursor, 0, initiative.Length);
+        for (int i = safeStart; i < initiative.Length; i++)
+        {
+            IdleAdventureInitiativeEntryResponse entry = initiative[i];
+            if (entry == null || string.IsNullOrEmpty(entry.runtime_id)) continue;
+            if (!string.IsNullOrEmpty(targetRuntimeId) && SameBackendRuntimeSide(entry.runtime_id, targetRuntimeId)) continue;
+
+            initiativeCursor = i + 1;
+            return entry;
+        }
+
+        return null;
+    }
+
+    private IEnumerator PlayBackendActions(IdleAdventureBattleActionResponse[] actions, IdleAdventureInitiativeEntryResponse[] initiative)
+    {
+        if (actions == null || actions.Length == 0) yield break;
+
+        for (int i = 0; i < actions.Length; i++)
+        {
+            while (paused) yield return null;
+
+            IdleAdventureBattleActionResponse action = actions[i];
+            if (action == null) continue;
+
+            IdleAdventureCombatant attacker = FindBackendCombatant(action.actor_runtime_id);
+            IdleAdventureCombatant target = FindBackendCombatant(action.target_runtime_id);
+
+            if (attacker == null)
+            {
+                Debug.LogWarning($"Backend action animation skipped because actor is not visible in the current backend snapshot: actor={action.actor_runtime_id}, target={action.target_runtime_id}, order={action.action_order}.", this);
+                ApplyBackendDefeatedRuntimeIds(action.defeated_runtime_ids);
+                RefreshBattleView();
+                continue;
+            }
+
+            if (attacker.IsDefeated)
+            {
+                Debug.LogWarning($"Backend action actor was locally defeated but backend returned an action, correcting local playback state: actor={action.actor_runtime_id}, target={action.target_runtime_id}, order={action.action_order}.", this);
+                attacker.SetCurrentHealth(Mathf.Max(1, attacker.CurrentHealth));
+                RefreshBattleView();
+            }
+
+            IdleAdventureCombatant visualTarget = target != null && !target.IsDefeated
+                ? target
+                : FirstTargetByFormation(attacker.IsFriendly ? enemies : friendlies, attacker.SlotIndex);
+            if (visualTarget == null)
+            {
+                Debug.LogWarning($"Backend action has no visible target, attack animation will still play: actor={action.actor_runtime_id}, target={action.target_runtime_id}, order={action.action_order}.", this);
+            }
+
+            Debug.Log($"Backend action playback: order={action.action_order}, actor={action.actor_runtime_id}, target={action.target_runtime_id}, damage={action.damage}, hp={action.target_health_before}->{action.target_health_after}, defeated={FormatRuntimeIds(action.defeated_runtime_ids)}.", this);
+            if (!string.IsNullOrEmpty(action.log)) AddLog(action.log);
+
+            float direction = action.animation != null && action.animation.attack_direction != 0
+                ? Mathf.Sign(action.animation.attack_direction)
+                : attacker.IsFriendly ? 1f : -1f;
+            float previousAttackDuration = attackAnimationDuration;
+            float previousHitDuration = hitFlashDuration;
+            if (action.animation != null)
+            {
+                if (action.animation.attack_duration > 0f) attackAnimationDuration = action.animation.attack_duration;
+                if (action.animation.hit_flash_duration > 0f) hitFlashDuration = action.animation.hit_flash_duration;
+            }
+
+            IdleAdventureActorView attackerView = GetView(attacker);
+            IdleAdventureActorView visualTargetView = GetView(visualTarget);
+            if (attackerView == null)
+            {
+                Debug.LogWarning($"Backend action actor has no bound view: actor={action.actor_runtime_id}, slot={attacker.SlotIndex}, order={action.action_order}.", this);
+            }
+
+            if (visualTarget != null && visualTargetView == null)
+            {
+                Debug.LogWarning($"Backend action visual target has no bound view: visualTarget={visualTarget.RuntimeId}, slot={visualTarget.SlotIndex}, actionTarget={action.target_runtime_id}, order={action.action_order}.", this);
+            }
+
+            yield return AnimateAttack(attackerView, direction);
+            ApplyBackendActionTargetHealth(target, action);
+            ApplyBackendDefeatedRuntimeIds(action.defeated_runtime_ids);
+            if (visualTargetView != null) yield return AnimateHit(visualTargetView);
+            attackAnimationDuration = previousAttackDuration;
+            hitFlashDuration = previousHitDuration;
+            RefreshBattleView();
+
+            yield return new WaitForSeconds(turnInterval * 0.35f);
+        }
+    }
+
+    private void ApplyBackendActionTargetHealth(IdleAdventureCombatant target, IdleAdventureBattleActionResponse action)
+    {
+        if (target == null || action == null) return;
+
+        int nextHealth = ToInt(action.target_health_after);
+        bool targetDefeatedByAction = RuntimeIdIn(action.defeated_runtime_ids, target.RuntimeId);
+        if (nextHealth <= 0 && !targetDefeatedByAction)
+        {
+            Debug.LogWarning($"Backend action target health was zero but target was not listed as defeated, keeping local target alive: target={target.RuntimeId}, actionTarget={action.target_runtime_id}, order={action.action_order}.", this);
+            return;
+        }
+
+        target.SetCurrentHealth(nextHealth);
+    }
+
+    private bool HasInvalidBackendDamageActions(IdleAdventureBattleActionResponse[] actions)
+    {
+        if (actions == null) return false;
+
+        for (int i = 0; i < actions.Length; i++)
+        {
+            IdleAdventureBattleActionResponse action = actions[i];
+            if (action == null || action.damage <= 0) continue;
+            if (!SameBackendRuntimeSide(action.actor_runtime_id, action.target_runtime_id)) continue;
+
+            Debug.LogError($"Invalid backend damage action: actor={action.actor_runtime_id}, target={action.target_runtime_id}, damage={action.damage}, order={action.action_order}. The frontend will not apply this backend snapshot.", this);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool SameBackendRuntimeSide(string actorRuntimeId, string targetRuntimeId)
+    {
+        if (string.IsNullOrEmpty(actorRuntimeId) || string.IsNullOrEmpty(targetRuntimeId)) return false;
+        if (actorRuntimeId.Length < 1 || targetRuntimeId.Length < 1) return false;
+
+        char actorSide = actorRuntimeId[0];
+        char targetSide = targetRuntimeId[0];
+        if ((actorSide != 'F' && actorSide != 'E') || (targetSide != 'F' && targetSide != 'E')) return false;
+        return actorSide == targetSide;
+    }
+
+    private void ApplyBackendDefeatedRuntimeIds(string[] defeatedRuntimeIds)
+    {
+        if (defeatedRuntimeIds == null) return;
+
+        for (int i = 0; i < defeatedRuntimeIds.Length; i++)
+        {
+            IdleAdventureCombatant defeated = FindBackendCombatant(defeatedRuntimeIds[i]);
+            if (defeated != null) defeated.SetCurrentHealth(0);
+        }
+    }
+
+    private static bool RuntimeIdIn(string[] runtimeIds, string runtimeId)
+    {
+        if (runtimeIds == null || string.IsNullOrEmpty(runtimeId)) return false;
+
+        for (int i = 0; i < runtimeIds.Length; i++)
+        {
+            if (runtimeIds[i] == runtimeId) return true;
+        }
+
+        return false;
+    }
+
+    private static string FormatRuntimeIds(string[] runtimeIds)
+    {
+        return runtimeIds == null || runtimeIds.Length == 0 ? "none" : string.Join(",", runtimeIds);
+    }
+
+    private static string FormatBackendActions(IdleAdventureBattleActionResponse[] actions)
+    {
+        if (actions == null || actions.Length == 0) return "none";
+
+        List<string> parts = new List<string>();
+        for (int i = 0; i < actions.Length; i++)
+        {
+            IdleAdventureBattleActionResponse action = actions[i];
+            if (action == null) continue;
+
+            parts.Add($"{action.action_order}:{action.actor_runtime_id}->{action.target_runtime_id} dmg={action.damage}");
+        }
+
+        return parts.Count == 0 ? "none" : string.Join(", ", parts);
+    }
+
+    private static string FormatBackendStateSlots(IdleAdventureCombatantStateResponse[] states)
+    {
+        if (states == null || states.Length == 0) return "none";
+
+        List<string> parts = new List<string>();
+        for (int i = 0; i < states.Length; i++)
+        {
+            IdleAdventureCombatantStateResponse state = states[i];
+            if (state == null) continue;
+
+            string runtimeId = string.IsNullOrEmpty(state.runtime_id) ? $"slot-{state.slot_index}" : state.runtime_id;
+            string defeated = state.defeated ? " defeated" : string.Empty;
+            parts.Add($"{runtimeId}:{state.current_health}/{state.max_health}{defeated}");
+        }
+
+        return parts.Count == 0 ? "none" : string.Join(", ", parts);
+    }
+
+    private void HandleBackendSessionStatus(IdleAdventureSessionResponse session)
+    {
+        if (session == null) return;
+
+        string status = NormalizeBackendStatus(session.status);
+        if (session.stage_choice_pending || status == "STAGE_COMPLETE")
+        {
+            OpenBackendStageCompletePanel(session);
+            return;
+        }
+
+        if (status == "FAILED" || status == "DEFEATED")
+        {
+            OpenBackendStageFailedPanel(session);
+            return;
+        }
+
+        if (status == "ENDED")
+        {
+            FinishBackendExit(session);
+            return;
+        }
+
+        stageChoicePending = false;
+        stageFailedPending = false;
+        modePausedByChoice = false;
+        if (status == "RUNNING") SetBattleRunningLocally();
+        else
+        {
+            paused = status == "PAUSED" || session.paused;
+            if (pauseButtonText != null) pauseButtonText.text = paused ? "Resume" : "Pause";
+            if (paused) ShowPausePanel();
+            else HidePausePanel();
+        }
+        RefreshBattleView();
+        UpdateButtonStates();
+    }
+
+    private void OpenBackendStageCompletePanel(IdleAdventureSessionResponse session)
+    {
+        stageChoicePending = true;
+        stageFailedPending = false;
+        modePausedByChoice = false;
+        pendingNextStage = session != null && session.pending_next_stage > 0 ? session.pending_next_stage : stage + 1;
+        paused = true;
+        if (pauseButtonText != null) pauseButtonText.text = "Resume";
+        if (resultText != null) resultText.text = "Victory";
+        ClearParty(enemies);
+
+        if (stageEndPanelView != null)
+        {
+            string pendingRewards = FormatRewardSummary(pendingRunRewards);
+            stageEndPanelView.SetContent($"Stage {stage} Cleared", $"Pending rewards: {pendingRewards}\nChoose whether to continue to the next stage or exit this mode.");
+            stageEndPanelView.SetButtonLabels("Continue", "Exit Mode");
+        }
+
+        AddLog($"Stage {stage} cleared by backend. Waiting for player choice.");
+        RefreshBattleView();
+        HidePausePanel();
+        ShowEndPanel();
+    }
+
+    private void OpenBackendStageFailedPanel(IdleAdventureSessionResponse session)
+    {
+        stageChoicePending = false;
+        stageFailedPending = true;
+        modePausedByChoice = false;
+        pendingNextStage = -1;
+        paused = true;
+        if (pauseButtonText != null) pauseButtonText.text = "Resume";
+        if (resultText != null) resultText.text = "Defeated";
+
+        if (stageEndPanelView != null)
+        {
+            string pendingRewards = FormatRewardSummary(pendingRunRewards);
+            stageEndPanelView.SetContent("Party Defeated", $"Pending rewards: {pendingRewards}\nChoose whether to restart this stage or exit this mode.");
+            stageEndPanelView.SetButtonLabels("Restart", "Exit Mode");
+        }
+
+        AddLog("Friendly party was defeated by backend. Waiting for player choice.");
+        HidePausePanel();
+        ShowEndPanel();
     }
 
     private IEnumerator ResolveInitiativeRound()
@@ -1770,6 +3599,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (pauseButtonText != null) pauseButtonText.text = "Pause";
         if (resultText != null) resultText.text = string.Empty;
         HideEndPanel();
+        HidePausePanel();
 
         BuildFriendlyParty(Mathf.Clamp(startingFriendlyCount, 1, MaxPartySize));
         BuildEnemyParty(CalculateEnemyCountForStage(stage));
@@ -2082,6 +3912,20 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         }
     }
 
+    private static int ToInt(long value)
+    {
+        if (value <= int.MinValue) return int.MinValue;
+        if (value >= int.MaxValue) return int.MaxValue;
+        return (int)value;
+    }
+
+    private static string BackendResultMessage<T>(BackendResult<T> result)
+    {
+        if (result == null) return "No backend response.";
+        string message = string.IsNullOrEmpty(result.Message) ? "No backend message." : result.Message;
+        return $"HTTP {result.HttpStatus}: {message}";
+    }
+
     private int CalculateDamage(IdleAdventureCombatant attacker, IdleAdventureCombatant target, IdleAdventureSkillDefinition skill)
     {
         if (attacker == null || target == null) return 0;
@@ -2204,9 +4048,54 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         if (!battleStarted || stageChoicePending || stageFailedPending || modePausedByChoice) return;
 
+        if (backendModeActive)
+        {
+            if (!backendRequestPending) StartCoroutine(ToggleBackendPauseRoutine());
+            return;
+        }
+
+        if (!CanUseLocalCombatSimulation())
+        {
+            AddLog("Local pause is disabled. Backend session is required.");
+            UpdateButtonStates();
+            return;
+        }
+
         paused = !paused;
         if (pauseButtonText != null) pauseButtonText.text = paused ? "Resume" : "Pause";
+        if (paused) ShowPausePanel();
+        else HidePausePanel();
         AddLog(paused ? "Battle paused." : "Battle resumed.");
+        UpdateButtonStates();
+    }
+
+    private IEnumerator ToggleBackendPauseRoutine()
+    {
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated || string.IsNullOrEmpty(backendSessionKey)) yield break;
+
+        backendRequestPending = true;
+        UpdateButtonStates();
+        bool requestedResume = paused;
+        BackendResult<IdleAdventureSessionResponse> result = null;
+        if (requestedResume) yield return service.ResumeIdleAdventureSession(backendSessionKey, value => result = value);
+        else yield return service.PauseIdleAdventureSession(backendSessionKey, value => result = value);
+        backendRequestPending = false;
+
+        if (result != null && result.Success && result.Data != null)
+        {
+            string status = NormalizeBackendStatus(result.Data.status);
+            paused = status == "PAUSED" || (result.Data.paused && status != "RUNNING");
+            if (pauseButtonText != null) pauseButtonText.text = paused ? "Resume" : "Pause";
+            if (paused) ShowPausePanel();
+            else HidePausePanel();
+            AddLog(paused ? "Battle paused by backend." : "Battle resumed by backend.");
+        }
+        else
+        {
+            AddLog($"Backend pause toggle failed: {BackendResultMessage(result)}");
+        }
+
         UpdateButtonStates();
     }
 
