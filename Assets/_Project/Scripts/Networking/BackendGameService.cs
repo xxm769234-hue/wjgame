@@ -7,6 +7,13 @@ public sealed class BackendGameService : MonoBehaviour
 {
     private const string TokenKey = "weijun.backend.token";
     private const string PlayerIdKey = "weijun.backend.playerId";
+    private const string SessionManagedKey = "weijun.backend.managedSession";
+    private const string SessionRevisionKey = "weijun.backend.sessionRevision";
+    private const string HomeLoginStateKey = "LoginState";
+    private const string HomeTokenKey = "AuthToken";
+    private const string HomePlayerIdKey = "PlayerId";
+    private const string HomeSessionModeKey = "SessionMode";
+    private const string HomeTokenExpiresAtKey = "TokenExpiresAtUtc";
 
     public static BackendGameService Instance { get; private set; }
 
@@ -33,6 +40,7 @@ public sealed class BackendGameService : MonoBehaviour
     private bool productionPollPending;
     private bool buildingSyncPending;
     private float nextProductionPollAt;
+    private int observedSessionRevision;
     private readonly List<LandConfig> remoteAvailableLands = new List<LandConfig>();
 
     public static BackendGameService EnsureInstance()
@@ -62,6 +70,7 @@ public sealed class BackendGameService : MonoBehaviour
         DontDestroyOnLoad(gameObject);
         Token = PlayerPrefs.GetString(TokenKey, string.Empty);
         PlayerId = PlayerPrefs.GetInt(PlayerIdKey, 0);
+        observedSessionRevision = PlayerPrefs.GetInt(SessionRevisionKey, 0);
     }
 
     private void Start()
@@ -71,6 +80,7 @@ public sealed class BackendGameService : MonoBehaviour
 
     private void Update()
     {
+        RefreshSharedSessionIfNeeded();
         if (!pollProductions || IsConnecting || !IsAuthenticated || productionPollPending) return;
         if (Time.unscaledTime < nextProductionPollAt) return;
 
@@ -523,7 +533,7 @@ public sealed class BackendGameService : MonoBehaviour
             }
         }
 
-        if (autoLoginWhenMissingToken)
+        if (autoLoginWhenMissingToken && PlayerPrefs.GetInt(SessionManagedKey, 0) != 1)
         {
             bool loginSuccess = false;
             yield return LoginRoutine(defaultUsername, defaultPassword, result => loginSuccess = result);
@@ -1225,6 +1235,15 @@ public sealed class BackendGameService : MonoBehaviour
         PlayerId = response.user != null ? response.user.id : 0;
         PlayerPrefs.SetString(TokenKey, Token);
         PlayerPrefs.SetInt(PlayerIdKey, PlayerId);
+        PlayerPrefs.SetInt(SessionManagedKey, 1);
+        PlayerPrefs.SetInt(HomeLoginStateKey, 1);
+        PlayerPrefs.SetString(HomeSessionModeKey, "account");
+        PlayerPrefs.SetString(HomeTokenKey, Token);
+        PlayerPrefs.SetInt(HomePlayerIdKey, PlayerId);
+        PlayerPrefs.SetString(
+            HomeTokenExpiresAtKey,
+            (DateTimeOffset.UtcNow.ToUnixTimeSeconds() + Math.Max(1, response.expiresIn)).ToString());
+        observedSessionRevision = IncrementSessionRevision();
         PlayerPrefs.Save();
         Debug.Log($"Backend login succeeded: playerId={PlayerId}", this);
     }
@@ -1239,7 +1258,44 @@ public sealed class BackendGameService : MonoBehaviour
         PlayerNpcs = null;
         PlayerPrefs.DeleteKey(TokenKey);
         PlayerPrefs.DeleteKey(PlayerIdKey);
+        PlayerPrefs.DeleteKey(HomeTokenKey);
+        PlayerPrefs.DeleteKey(HomePlayerIdKey);
+        PlayerPrefs.DeleteKey(HomeTokenExpiresAtKey);
+        PlayerPrefs.SetInt(HomeLoginStateKey, 0);
+        PlayerPrefs.DeleteKey(HomeSessionModeKey);
+        PlayerPrefs.SetInt(SessionManagedKey, 0);
+        observedSessionRevision = IncrementSessionRevision();
         PlayerPrefs.Save();
+    }
+
+    private void RefreshSharedSessionIfNeeded()
+    {
+        int currentRevision = PlayerPrefs.GetInt(SessionRevisionKey, 0);
+        if (currentRevision == observedSessionRevision)
+        {
+            return;
+        }
+
+        observedSessionRevision = currentRevision;
+        Token = PlayerPrefs.GetString(TokenKey, string.Empty);
+        PlayerId = PlayerPrefs.GetInt(PlayerIdKey, 0);
+        CurrentUser = null;
+        CurrentInventory = null;
+        NpcCatalog = null;
+        PlayerNpcs = null;
+        nextProductionPollAt = 0f;
+
+        if (IsAuthenticated && !IsConnecting)
+        {
+            Connect();
+        }
+    }
+
+    private static int IncrementSessionRevision()
+    {
+        int nextRevision = PlayerPrefs.GetInt(SessionRevisionKey, 0) + 1;
+        PlayerPrefs.SetInt(SessionRevisionKey, nextRevision);
+        return nextRevision;
     }
 
     private static string ResultMessage<T>(BackendResult<T> result)

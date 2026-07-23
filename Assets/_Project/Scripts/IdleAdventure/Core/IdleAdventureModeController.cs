@@ -1126,12 +1126,20 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         stageEndPanelView = ResolveExistingStageEndPanel(root);
         if (stageEndPanelView == null || !stageEndPanelView.HasBindings) BuildEndPanel(root);
-        else stageEndPanelView.Bind(ContinueNextStage, EndMode);
+        else
+        {
+            stageEndPanelView.Bind(ContinueNextStage, EndMode);
+            stageEndPanelView.SetButtonLabels("Continue", "Exit Mode");
+        }
         RemoveExtraStageEndPanels(root, stageEndPanelView);
 
         pausePanelView = ResolveExistingPausePanel(root);
         if (pausePanelView == null || !pausePanelView.HasBindings) BuildPausePanel(root);
-        else pausePanelView.Bind(ResumePausedBattle, ExitPausedBattle);
+        else
+        {
+            pausePanelView.Bind(ResumePausedBattle, ExitPausedBattle);
+            pausePanelView.SetButtonLabels("Continue Battle", "Exit Mode");
+        }
         RemoveExtraPausePanels(root, pausePanelView);
 
         HideEndPanel();
@@ -1375,7 +1383,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         Button continueButton = CreateButton("Continue Stage Button", panelBody, "Continue");
         Anchor(continueButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(-256f, 44f), new Vector2(-24f, 98f));
 
-        Button endModeButton = CreateButton("End Mode Button", panelBody, "End Mode");
+        Button endModeButton = CreateButton("End Mode Button", panelBody, "Exit Mode");
         Anchor(endModeButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(24f, 44f), new Vector2(256f, 98f));
 
         stageEndPanelView = endPanel.gameObject.AddComponent<IdleAdventureStageEndPanel>();
@@ -1400,13 +1408,13 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         Button resumeButton = CreateButton("Continue Battle Button", panelBody, "Continue Battle");
         Anchor(resumeButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(-260f, 42f), new Vector2(-24f, 96f));
 
-        Button exitButton = CreateButton("Exit Battle Button", panelBody, "Exit Battle");
+        Button exitButton = CreateButton("Exit Battle Button", panelBody, "Exit Mode");
         Anchor(exitButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(24f, 42f), new Vector2(260f, 96f));
 
         pausePanelView = pausePanel.gameObject.AddComponent<IdleAdventurePausePanel>();
         pausePanelView.Initialize(pausePanelTitleText, pausePanelBodyText, resumeButton, exitButton);
         pausePanelView.Bind(ResumePausedBattle, ExitPausedBattle);
-        pausePanelView.SetButtonLabels("Continue Battle", "Exit Battle");
+        pausePanelView.SetButtonLabels("Continue Battle", "Exit Mode");
     }
 
     private void ResetToStartScreen()
@@ -2239,9 +2247,9 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         HideEndPanel();
         HidePausePanel();
         ConfigureCombatScreenVisible(false);
-        ShowStartPanel();
-        AddLog("Idle Adventure mode exited.");
+        AddLog("Idle Adventure battle exited to the mode home page.");
         SetWaitingText();
+        ShowStartPanel();
         if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", $"Rewards granted: {rewardSummary}");
         UpdateButtonStates();
     }
