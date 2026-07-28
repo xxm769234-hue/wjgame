@@ -7,11 +7,13 @@ using UnityEngine.UI;
 
 public static class HomePageScenePanelsBuilder
 {
-    private const string HomeScenePath = "Assets/Scenes/HomeScene.unity";
+    private const string HomeScenePath = "Assets/_Project/Scenes/HomeScene.unity";
     private const string CanvasName = "HomePanelsCanvas";
     private const string InventoryPrefabPath = "Assets/Resources/UI/InventoryPanel.prefab";
+    private const string HomeBackgroundPath = "Assets/_Imported/weijun-game-project/Assets/UI/背景.png";
     private const string TestNodeName = "测试节点";
-    private const int ScenePanelsSchemaVersion = 7;
+    private const int MinimumComponentizedBookSchemaVersion = 8;
+    private const int ScenePanelsSchemaVersion = 10;
     private const int EquipmentRows = 6;
 
     private static Font defaultFont;
@@ -26,30 +28,59 @@ public static class HomePageScenePanelsBuilder
                 return;
             }
 
-            Scene scene = SceneManager.GetActiveScene();
-            if (scene.path != HomeScenePath)
+            string sessionKey = "WeiJun.HomeScenePanels.SchemaCheck." + ScenePanelsSchemaVersion;
+            if (SessionState.GetBool(sessionKey, false))
             {
                 return;
             }
 
-            bool addedTestNode = EnsureTestNode(scene);
-            GameObject canvasObject = FindRoot(scene, CanvasName);
-            HomePageScenePanels registry = canvasObject != null
-                ? canvasObject.GetComponent<HomePageScenePanels>()
-                : null;
-            if (registry != null && registry.SchemaVersion < 2)
+            Scene scene = SceneManager.GetSceneByPath(HomeScenePath);
+            bool openedForCheck = !scene.IsValid() || !scene.isLoaded;
+            if (openedForCheck)
             {
-                RemoveLegacyHomeCanvas(scene);
+                scene = EditorSceneManager.OpenScene(HomeScenePath, OpenSceneMode.Additive);
             }
 
-            if (registry == null || registry.SchemaVersion != ScenePanelsSchemaVersion)
+            try
             {
-                BuildScenePanels(scene, true);
+                bool addedTestNode = EnsureTestNode(scene);
+                GameObject canvasObject = FindRoot(scene, CanvasName);
+                HomePageScenePanels registry = canvasObject != null
+                    ? canvasObject.GetComponent<HomePageScenePanels>()
+                    : null;
+                if (registry != null && registry.SchemaVersion < 2)
+                {
+                    RemoveLegacyHomeCanvas(scene);
+                }
+
+                if (registry != null &&
+                    registry.SchemaVersion >= MinimumComponentizedBookSchemaVersion &&
+                    registry.SchemaVersion < ScenePanelsSchemaVersion)
+                {
+                    BuildBookHomeCanvas(canvasObject.transform);
+                    registry.EditorSetSchemaVersion(ScenePanelsSchemaVersion);
+                    EditorUtility.SetDirty(registry);
+                    EditorSceneManager.MarkSceneDirty(scene);
+                    EditorSceneManager.SaveScene(scene);
+                }
+                else if (registry == null || registry.SchemaVersion != ScenePanelsSchemaVersion)
+                {
+                    BuildScenePanels(scene, true);
+                }
+                else if (addedTestNode)
+                {
+                    EditorSceneManager.MarkSceneDirty(scene);
+                    EditorSceneManager.SaveScene(scene);
+                }
+
+                SessionState.SetBool(sessionKey, true);
             }
-            else if (addedTestNode)
+            finally
             {
-                EditorSceneManager.MarkSceneDirty(scene);
-                EditorSceneManager.SaveScene(scene);
+                if (openedForCheck && scene.IsValid() && scene.isLoaded)
+                {
+                    EditorSceneManager.CloseScene(scene, true);
+                }
             }
         };
     }
@@ -105,6 +136,9 @@ public static class HomePageScenePanelsBuilder
 
         RectTransform canvasRect = canvasObject.GetComponent<RectTransform>();
         canvasRect.localScale = Vector3.one;
+        Stretch(canvasRect);
+
+        BuildBookHomeCanvas(canvasRect);
 
         List<HomePageScenePanel> panels = new List<HomePageScenePanel>
         {
@@ -139,6 +173,70 @@ public static class HomePageScenePanelsBuilder
 
         Selection.activeGameObject = canvasObject;
         Debug.Log("Home scene panels rebuilt as editable Unity UI components.");
+    }
+
+    private static RectTransform BuildBookHomeCanvas(Transform parent)
+    {
+        Transform existing = parent.Find("BookHomeCanvas");
+        GameObject bookObject = existing != null
+            ? existing.gameObject
+            : CreateRectObject("BookHomeCanvas", parent);
+        RectTransform rect = bookObject.GetComponent<RectTransform>();
+        Stretch(rect);
+        rect.SetAsFirstSibling();
+
+        HomePageBookStyle style = bookObject.GetComponent<HomePageBookStyle>();
+        if (style == null)
+        {
+            style = bookObject.AddComponent<HomePageBookStyle>();
+        }
+
+        if (bookObject.GetComponent<HomePageBookView>() == null)
+        {
+            bookObject.AddComponent<HomePageBookView>();
+        }
+
+        HomePageUI homePage = bookObject.GetComponent<HomePageUI>();
+        if (homePage == null)
+        {
+            homePage = bookObject.AddComponent<HomePageUI>();
+        }
+
+        RemoveLegacyHomePageController(parent.gameObject.scene, homePage);
+
+        Sprite background = AssetDatabase.LoadAssetAtPath<Sprite>(HomeBackgroundPath);
+        style.EditorSetDefaultSprites(background);
+        homePage.EditorRebuildBookPreview();
+        EditorUtility.SetDirty(style);
+        EditorUtility.SetDirty(homePage);
+        return rect;
+    }
+
+    private static void RemoveLegacyHomePageController(Scene scene, HomePageUI retainedController)
+    {
+        GameObject[] roots = scene.GetRootGameObjects();
+        for (int i = 0; i < roots.Length; i++)
+        {
+            HomePageUI[] controllers = roots[i].GetComponentsInChildren<HomePageUI>(true);
+            for (int j = 0; j < controllers.Length; j++)
+            {
+                HomePageUI controller = controllers[j];
+                if (controller == retainedController || controller.gameObject.name != "Home Page Controller")
+                {
+                    continue;
+                }
+
+                Component[] components = controller.gameObject.GetComponents<Component>();
+                if (components.Length == 2)
+                {
+                    Object.DestroyImmediate(controller.gameObject);
+                }
+                else
+                {
+                    Object.DestroyImmediate(controller);
+                }
+            }
+        }
     }
 
     private static HomePageScenePanel BuildTaskPanel(Transform parent)
@@ -1007,6 +1105,8 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(filterAll.GetComponent<RectTransform>(), new Vector2(466f, -122f), new Vector2(112f, 50f));
         Button filterOnline = CreateButton("FriendsFilterOnline", panel.transform, "在线", new Color(0.90f, 0.79f, 0.59f, 1f), new Color(0.36f, 0.20f, 0.10f, 1f), 18);
         SetTopLeft(filterOnline.GetComponent<RectTransform>(), new Vector2(592f, -122f), new Vector2(112f, 50f));
+        Button weChatGift = CreateButton("FriendsWeChatGiftButton", panel.transform, "微信好友赠礼", new Color(0.16f, 0.61f, 0.35f, 1f), Color.white, 18);
+        SetTopLeft(weChatGift.GetComponent<RectTransform>(), new Vector2(718f, -122f), new Vector2(208f, 50f));
 
         InputField addInput = CreateSceneInputField("FriendsAddInput", panel.transform, "输入好友昵称", 18);
         SetTopLeft(addInput.GetComponent<RectTransform>(), new Vector2(944f, -122f), new Vector2(292f, 50f));

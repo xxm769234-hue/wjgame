@@ -104,10 +104,18 @@ public sealed class UserResponse
     public string username;
     public string nickname;
     public int level;
+    public long totalExperience;
+    public int levelCurveRevision;
+    public int currentLevelExperience;
+    public int requiredExperienceForNextLevel;
+    public int experienceProgressBps;
+    public bool maxLevel;
+    public bool economyFrozen;
     public int gold;
     public int wood;
     public int stone;
     public int iron;
+    public int diamond;
     public InventoryItemResponse[] items;
 }
 
@@ -227,6 +235,27 @@ public sealed class BuildingResponse
     public string buildEndTime;
     public int remainingTime;
     public float progress;
+    public ExperienceGrantResponse experienceGrant;
+}
+
+[Serializable]
+public sealed class ExperienceGrantResponse
+{
+    public int playerId;
+    public string sourceType;
+    public string sourceId;
+    public long requestedExperience;
+    public long grantedExperience;
+    public long beforeExperience;
+    public long afterExperience;
+    public int beforeLevel;
+    public int afterLevel;
+    public bool leveledUp;
+    public bool maxLevel;
+    public int currentLevelExperience;
+    public int requiredExperienceForNextLevel;
+    public int experienceProgressBps;
+    public int curveRevision;
 }
 
 [Serializable]

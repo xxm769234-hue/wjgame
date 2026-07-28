@@ -65,7 +65,9 @@ public partial class HomePageUI
         BindSceneButton(FindSceneComponent<Button>(root, "TaskCloseButton"), HideTaskPanel);
 
         string[] categoryIds = { "daily", "main", "growth", "activity" };
-        string[] categoryLabels = { "每日任务", "主线任务", "成长任务", "活动任务" };
+        string[] categoryLabels = HasAuthSession()
+            ? new[] { "每日任务", "每周任务", "成长任务", "活动任务" }
+            : new[] { "每日任务", "主线任务", "成长任务", "活动任务" };
         for (int i = 0; i < categoryIds.Length; i++)
         {
             string categoryId = categoryIds[i];
@@ -77,6 +79,7 @@ public partial class HomePageUI
             }
 
             bool selected = categoryId == category;
+            bool supported = !HasAuthSession() || categoryId == "daily" || categoryId == "main";
             Image background = button.GetComponent<Image>();
             if (background != null)
             {
@@ -98,7 +101,8 @@ public partial class HomePageUI
                 marker.gameObject.SetActive(selected);
             }
 
-            BindSceneButton(button, () => ShowTaskPanel(categoryId, $"已切换到{categoryLabel}"));
+            button.interactable = supported;
+            BindSceneButton(button, supported ? (Action)(() => ShowTaskPanel(categoryId, $"已切换到{categoryLabel}")) : null);
         }
 
         for (int i = 0; i < 4; i++)
@@ -260,7 +264,10 @@ public partial class HomePageUI
         BindSceneButton(FindSceneComponent<Button>(root, "RechargeCloseButton"), HideRechargePanel);
         BindSceneButton(
             FindSceneComponent<Button>(root, "RechargeGuideButton"),
-            () => SetStatus("贵族特权：充值获得贵族经验，特权接口待后续接入。"));
+            ShowRefundCenter);
+        SetSceneButtonText(
+            FindSceneComponent<Button>(root, "RechargeGuideButton"),
+            HasAuthSession() ? "退款/进度" : "账号功能");
 
         SetSceneText(root, "RechargeGoldText", $"金币  {PlayerPrefs.GetInt("Gold", 1000)}");
         SetSceneText(root, "RechargeSoulCrystalText", $"魂晶  {PlayerPrefs.GetInt("SoulCrystal", 1200)}");
@@ -318,6 +325,12 @@ public partial class HomePageUI
 
         lotteryPanelObject = panel.gameObject;
         Transform root = panel.PanelRoot;
+        if (HasAuthSession())
+        {
+            ConfigureServerLotteryScenePanel(root, status, rewardName, rewardValue, hasResult, isRolling);
+            return true;
+        }
+
         string centerName = hasResult ? rewardName : "折扣券";
         string centerAmount = hasResult ? "x" + rewardValue : "10%";
 
@@ -375,6 +388,11 @@ public partial class HomePageUI
         signPanelObject = panel.gameObject;
         Transform root = panel.PanelRoot;
         BindSceneButton(FindSceneComponent<Button>(root, "DailySignCloseButton"), HideSignPanel);
+        if (HasAuthSession())
+        {
+            ConfigureServerSignScenePanel(root, "MONTHLY", status);
+            return true;
+        }
 
         string[] rewardNames = GetDailySignRewardNames();
         string[] rewardAmounts = GetDailySignRewardAmounts();
@@ -402,6 +420,11 @@ public partial class HomePageUI
         signPanelObject = panel.gameObject;
         Transform root = panel.PanelRoot;
         BindSceneButton(FindSceneComponent<Button>(root, "NewbieSignCloseButton"), HideSignPanel);
+        if (HasAuthSession())
+        {
+            ConfigureServerSignScenePanel(root, "NEWBIE", status);
+            return true;
+        }
 
         string[] rewardNames = { "金币", "木材 石材", "装备宝箱" };
         string[] rewardAmounts = { "x300", "x300", "x1" };
@@ -465,17 +488,26 @@ public partial class HomePageUI
 
         mailPanelObject = panel.gameObject;
         Transform root = panel.PanelRoot;
+        mailShowingNotifications = false;
+        SetSceneText(root, "MailTitle", "系统邮件");
+        SetSceneText(root, "MailListTitle", "邮件列表");
+        SetSceneText(root, "MailEmptyText", "暂无邮件");
+        SetSceneText(root, "MailRewardTitle", "奖励");
+        SetSceneObjectActive(root, "DeleteMailButton", true);
+        SetSceneObjectActive(root, "NotificationPreviousButton", false);
+        SetSceneObjectActive(root, "NotificationNextButton", false);
         BindSceneButton(FindSceneComponent<Button>(root, "SystemMailCloseButton"), HideSystemMailPanel);
-        BindSceneButton(
-            FindSceneComponent<Button>(root, "ClaimAllButton"),
-            ClaimAllMailAttachments);
-        BindSceneButton(
-            FindSceneComponent<Button>(root, "ClaimMailButton"),
-            ClaimSelectedMailAttachment);
+        Button claimAllButton = FindSceneComponent<Button>(root, "ClaimAllButton");
+        Button claimButton = FindSceneComponent<Button>(root, "ClaimMailButton");
+        SetSceneButtonText(claimAllButton, "一键领取");
+        SetSceneButtonText(claimButton, "领取");
+        BindSceneButton(claimAllButton, ClaimAllMailAttachments);
+        BindSceneButton(claimButton, ClaimSelectedMailAttachment);
         BindSceneButton(FindSceneComponent<Button>(root, "DeleteMailButton"), DeleteSelectedMail);
-        BindSceneButton(FindSceneComponent<Button>(root, "MailTabSystem"), () => SetStatus("已选择系统邮件分类"));
-        BindSceneButton(FindSceneComponent<Button>(root, "MailTabReward"), () => SetStatus("已选择奖励邮件分类"));
-        BindSceneButton(FindSceneComponent<Button>(root, "MailTabNotice"), () => SetStatus("已选择公告邮件分类"));
+        BindSceneButton(FindSceneComponent<Button>(root, "MailTabSystem"), ShowMailContent);
+        BindSceneButton(FindSceneComponent<Button>(root, "MailTabReward"), ShowMailContent);
+        BindSceneButton(FindSceneComponent<Button>(root, "MailTabNotice"), ShowNotificationCenter);
+        SetSceneButtonText(FindSceneComponent<Button>(root, "MailTabNotice"), "提醒");
 
         List<MailResponse> validMails = new List<MailResponse>();
         if (mails != null)
@@ -487,6 +519,21 @@ public partial class HomePageUI
                     validMails.Add(mails[i]);
                 }
             }
+        }
+
+        bool hasClaimableAttachment = false;
+        for (int i = 0; i < validMails.Count; i++)
+        {
+            MailResponse mail = validMails[i];
+            if (mail.hasAttachment && !mail.attachmentClaimed && !mail.expired)
+            {
+                hasClaimableAttachment = true;
+                break;
+            }
+        }
+        if (claimAllButton != null)
+        {
+            claimAllButton.interactable = hasClaimableAttachment && !mailMutationRunning;
         }
 
         Transform emptyCard = FindSceneTransform(root, "MailEmptyCard");
@@ -531,6 +578,10 @@ public partial class HomePageUI
 
         if (validMails.Count == 0)
         {
+            if (claimButton != null)
+            {
+                claimButton.interactable = false;
+            }
             SetSceneText(root, "MailDetailTitle", "系统提示");
             SetSceneText(
                 root,
@@ -725,6 +776,7 @@ public partial class HomePageUI
             RefreshSettingsScenePanel(root, "已恢复默认设置");
         });
         BindSceneButton(FindSceneComponent<Button>(root, "SettingsLogoutButton"), () => HandleSettingsLogout(root));
+        ConfigureNotificationSubscriptionButton(root);
 
         SetSceneButtonText(
             FindSceneComponent<Button>(root, "SettingsLogoutButton"),

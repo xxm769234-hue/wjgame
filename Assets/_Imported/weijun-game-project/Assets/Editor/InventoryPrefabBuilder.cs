@@ -8,6 +8,7 @@ public static class InventoryPrefabBuilder
 {
     private const string PrefabDirectory = "Assets/Resources/UI";
     private const string PrefabPath = PrefabDirectory + "/InventoryPanel.prefab";
+    private const int PrefabSchemaVersion = 2;
     private const int InventoryCapacity = 40;
     private const int InventoryColumns = 8;
 
@@ -18,7 +19,9 @@ public static class InventoryPrefabBuilder
     {
         EditorApplication.delayCall += () =>
         {
-            if (!File.Exists(PrefabPath))
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+            InventoryPanelView view = prefab != null ? prefab.GetComponent<InventoryPanelView>() : null;
+            if (view == null || view.SchemaVersion != PrefabSchemaVersion)
             {
                 BuildPrefab();
             }
@@ -61,7 +64,7 @@ public static class InventoryPrefabBuilder
             Text titleText = CreateText(
                 "InventoryTitle",
                 panel.transform,
-                "储物",
+                "背包",
                 36,
                 FontStyle.Bold,
                 new Color(1f, 0.88f, 0.47f, 1f),
@@ -81,8 +84,7 @@ public static class InventoryPrefabBuilder
             InventoryPanelView.ResourceControl[] resources =
             {
                 BuildResourceBadge(panel.transform, new Vector2(620f, -24f), "金币", "Gold", new Color(1f, 0.74f, 0.14f, 1f)),
-                BuildResourceBadge(panel.transform, new Vector2(900f, -24f), "蓝晶", "Crystal", new Color(0.26f, 0.70f, 1f, 1f)),
-                BuildResourceBadge(panel.transform, new Vector2(1180f, -24f), "魂晶", "SoulCrystal", new Color(1f, 0.42f, 0.16f, 1f))
+                BuildResourceBadge(panel.transform, new Vector2(900f, -24f), "钻石", "Crystal", new Color(0.26f, 0.70f, 1f, 1f))
             };
 
             Button closeButton = CreateButton(
@@ -103,8 +105,7 @@ public static class InventoryPrefabBuilder
                 BuildCategoryButton(sidebar.transform, "all", "全部", new Vector2(16f, -18f)),
                 BuildCategoryButton(sidebar.transform, "equipment", "装备", new Vector2(16f, -106f)),
                 BuildCategoryButton(sidebar.transform, "medicine", "药品", new Vector2(16f, -194f)),
-                BuildCategoryButton(sidebar.transform, "other", "其它", new Vector2(16f, -282f)),
-                BuildCategoryButton(sidebar.transform, "pet", "灵宠", new Vector2(16f, -370f))
+                BuildCategoryButton(sidebar.transform, "other", "其它", new Vector2(16f, -282f))
             };
 
             Button expandButton = CreateButton(
@@ -115,7 +116,7 @@ public static class InventoryPrefabBuilder
                 new Color(0.35f, 0.15f, 0.04f, 1f),
                 17,
                 out _);
-            SetTopLeft(expandButton.GetComponent<RectTransform>(), new Vector2(16f, -548f), new Vector2(178f, 54f));
+            SetTopLeft(expandButton.GetComponent<RectTransform>(), new Vector2(16f, -458f), new Vector2(178f, 54f));
 
             Text sidebarHintText = CreateText(
                 "InventorySidebarHint",
@@ -125,7 +126,7 @@ public static class InventoryPrefabBuilder
                 FontStyle.Bold,
                 new Color(1f, 0.87f, 0.60f, 0.94f),
                 TextAnchor.MiddleCenter);
-            SetTopLeft(sidebarHintText.rectTransform, new Vector2(18f, -610f), new Vector2(174f, 48f));
+            SetTopLeft(sidebarHintText.rectTransform, new Vector2(18f, -540f), new Vector2(174f, 48f));
 
             BuildGridFrame(panel.transform);
 
@@ -156,9 +157,8 @@ public static class InventoryPrefabBuilder
 
             InventoryPanelView.SideActionControl[] sideActions =
             {
-                BuildSideAction(panel.transform, new Vector2(1450f, -154f), "warehouse", "仓库", "仓"),
-                BuildSideAction(panel.transform, new Vector2(1450f, -314f), "stall", "摆摊", "摊"),
-                BuildSideAction(panel.transform, new Vector2(1450f, -474f), "store", "商店", "店")
+                BuildSideAction(panel.transform, new Vector2(1450f, -234f), "warehouse", "仓库", "仓"),
+                BuildSideAction(panel.transform, new Vector2(1450f, -414f), "store", "商店", "店")
             };
 
             ContextMenuReferences context = BuildContextMenu(panel.transform);
@@ -189,6 +189,7 @@ public static class InventoryPrefabBuilder
                 context.PrimaryButton,
                 context.SellButton,
                 context.DismissButton);
+            view.EditorSetSchemaVersion(PrefabSchemaVersion);
 
             context.Root.gameObject.SetActive(false);
             PrefabUtility.SaveAsPrefabAsset(root, PrefabPath, out bool saved);
@@ -423,7 +424,7 @@ public static class InventoryPrefabBuilder
         Text capacityText = CreateText(
             "InventoryCapacity",
             footer.transform,
-            "储物袋空间：00/40",
+            "背包空间：00/40",
             18,
             FontStyle.Bold,
             new Color(1f, 0.86f, 0.48f, 1f),

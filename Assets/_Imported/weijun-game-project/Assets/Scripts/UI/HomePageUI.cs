@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Events;
 using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -33,6 +34,8 @@ public partial class HomePageUI : MonoBehaviour
 
     private Font defaultFont;
     private Transform mainPageTransform;
+    private HomePageBookView boundBookView;
+    private HomePageBookStyle bookStyle;
     private Button avatarButton;
     private GameObject personalInfoPopup;
     private GameObject mailPanelObject;
@@ -52,7 +55,6 @@ public partial class HomePageUI : MonoBehaviour
     private string selectedInventoryItemKey = string.Empty;
     private string inventoryStatusMessage = string.Empty;
     private bool inventoryServerBacked;
-    private bool inventoryStallMode;
     private bool lotteryRolling;
     private bool settingsLogoutConfirmation;
     private Text popupNameText;
@@ -123,29 +125,570 @@ public partial class HomePageUI : MonoBehaviour
 
         EnsureEventSystem();
         Build();
+        if (HasAuthSession())
+        {
+            StartCoroutine(RefreshAccountSnapshot(string.Empty));
+        }
         BeginRealtimeConnection();
     }
 
     private void Build()
     {
-        GameObject canvasObj = new GameObject("BookHomeCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-        canvasObj.transform.SetParent(transform, false);
+        RectTransform root = GetOrCreateBookHomeRoot();
+        HomePageBookView view = root.GetComponent<HomePageBookView>();
+        if (view != null && view.IsReady)
+        {
+            if (bookStyle != null)
+            {
+                bookStyle.ApplyToHierarchy();
+            }
 
-        Canvas canvas = canvasObj.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 220;
+            BindBookView(view);
+        }
+        else
+        {
+            ClearGeneratedBookChildren(root);
+            BuildOpenBookMainPage(root);
+        }
 
-        CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.matchWidthOrHeight = 0f;
-
-        RectTransform root = canvasObj.GetComponent<RectTransform>();
-        Image desk = CreateImage("Desk", root, new Color(0.36f, 0.22f, 0.12f, 1f));
-        Stretch(desk.rectTransform);
-
-        BuildReferenceMainPage(root);
         SelectArea(GetLastArea());
+    }
+
+    private void BindBookView(HomePageBookView view)
+    {
+        boundBookView = view;
+        mainPageTransform = view.MainPage;
+        avatarButton = view.AvatarButton;
+        statusText = view.StatusText;
+        selectedAreaTitle = view.SelectedAreaTitle;
+        selectedAreaDescription = view.SelectedAreaDescription;
+        selectedAreaHint = view.SelectedAreaHint;
+
+        if (view.AvatarNameText != null)
+        {
+            string fallbackName = string.IsNullOrEmpty(view.AvatarNameText.text) ? "Player" : view.AvatarNameText.text;
+            view.AvatarNameText.text = PlayerPrefs.GetString("PlayerNickname", fallbackName);
+        }
+
+        SetBookMetricValue(view.MetricTexts, 0, $"Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}");
+        SetBookMetricValue(view.MetricTexts, 1, PlayerPrefs.GetInt("Gold", 1000).ToString());
+        SetBookMetricValue(view.MetricTexts, 2, PlayerPrefs.GetInt("Crystal", 427).ToString());
+        SetBookMetricValue(view.MetricTexts, 3, PlayerPrefs.GetInt("Wood", 500).ToString());
+        SetBookMetricValue(view.MetricTexts, 4, PlayerPrefs.GetInt("Stone", 500).ToString());
+        SetBookMetricValue(view.MetricTexts, 5, PlayerPrefs.GetInt("Iron", 300).ToString());
+
+        BindButton(view.AvatarButton, ShowPersonalInfo);
+        BindButton(view.MetricPlusButtons[0], ShowGoldRewardAd);
+        BindButton(view.MetricPlusButtons[1], ShowRechargeContent);
+        BindButton(view.BattleButton, ShowBattleContent);
+        BindButton(view.LotteryButton, ShowLotteryContent);
+        BindButton(view.MailButton, ShowMailContent);
+        BindButton(view.BagButton, ShowBagContent);
+        BindButton(view.EquipmentButton, ShowEquipmentContent);
+        BindButton(view.ShopButton, ShowShopContent);
+        BindButton(view.FriendsButton, ShowFriendsContent);
+        BindButton(view.NoticeButton, ShowAnnouncement);
+        BindButton(view.SettingsButton, ShowSettingsContent);
+        BindButton(view.TaskButton, ShowTaskContent);
+        BindButton(view.DailySignButton, ShowDailySignContent);
+        BindButton(view.NewbieSignButton, ShowNewbieSignContent);
+        BindButton(view.RechargeButton, ShowRechargeContent);
+        BindButton(view.EnterMapButton, EnterSelectedArea);
+        BindButton(view.MapEnterStampButton, EnterSelectedArea);
+
+        for (int i = 0; i < view.AreaButtons.Length && i < areas.Length; i++)
+        {
+            AreaInfo area = areas[i];
+            BindButton(view.AreaButtons[i], () => SelectArea(area));
+        }
+
+        BindButton(view.BottomMailTab, ShowMailContent);
+        BindButton(view.BottomSignTab, ShowDailySignContent);
+        BindButton(view.BottomLotteryTab, ShowLotteryContent);
+        BindButton(view.BottomRechargeTab, ShowRechargeContent);
+        BindButton(view.BottomTaskTab, ShowTaskContent);
+        BindButton(view.BottomFriendTab, ShowFriendsContent);
+        BindButton(view.BottomNoticeTab, ShowAnnouncement);
+    }
+
+    private static void BindButton(Button button, UnityAction action)
+    {
+        if (button != null && action != null)
+        {
+            button.onClick.AddListener(action);
+        }
+    }
+
+    private static void SetBookMetricValue(Text[] metricTexts, int index, string value)
+    {
+        if (metricTexts == null || index < 0 || index >= metricTexts.Length || metricTexts[index] == null)
+        {
+            return;
+        }
+
+        Text metricText = metricTexts[index];
+        int separatorIndex = metricText.text.IndexOf(' ');
+        metricText.text = separatorIndex >= 0
+            ? metricText.text.Substring(0, separatorIndex + 1) + value
+            : value;
+    }
+
+#if UNITY_EDITOR
+    public void EditorRebuildBookPreview()
+    {
+        RectTransform root = transform as RectTransform;
+        if (root == null)
+        {
+            return;
+        }
+
+        defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        bookStyle = GetComponent<HomePageBookStyle>();
+        if (bookStyle == null)
+        {
+            bookStyle = gameObject.AddComponent<HomePageBookStyle>();
+        }
+
+        HomePageBookView view = GetComponent<HomePageBookView>();
+        if (view == null)
+        {
+            view = gameObject.AddComponent<HomePageBookView>();
+        }
+
+        ClearGeneratedBookChildren(root);
+        BuildOpenBookMainPage(root);
+
+        AreaInfo previewArea = GetLastArea();
+        selectedArea = previewArea;
+        if (selectedAreaTitle != null)
+        {
+            selectedAreaTitle.text = previewArea.name;
+            selectedAreaDescription.text = previewArea.description;
+            selectedAreaHint.text = previewArea.unlockHint;
+            selectedAreaHint.color = previewArea.color;
+        }
+
+        Button[] previewButtons = root.GetComponentsInChildren<Button>(true);
+        for (int i = 0; i < previewButtons.Length; i++)
+        {
+            previewButtons[i].onClick.RemoveAllListeners();
+        }
+
+        view.EditorCaptureReferences();
+        bookStyle.ApplyToHierarchy();
+        UnityEditor.EditorUtility.SetDirty(view);
+        UnityEditor.EditorUtility.SetDirty(bookStyle);
+        UnityEditor.EditorUtility.SetDirty(this);
+    }
+#endif
+
+    private RectTransform GetOrCreateBookHomeRoot()
+    {
+        Transform panelsRoot = scenePanels != null ? scenePanels.transform : null;
+        if (panelsRoot == null)
+        {
+            GameObject existingPanels = GameObject.Find("HomePanelsCanvas");
+            panelsRoot = existingPanels != null ? existingPanels.transform : null;
+        }
+
+        if (panelsRoot == null)
+        {
+            GameObject canvasObj = new GameObject("HomePanelsCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster), typeof(HomePageScenePanels));
+            canvasObj.layer = LayerMask.NameToLayer("UI");
+            panelsRoot = canvasObj.transform;
+
+            Canvas canvas = canvasObj.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 230;
+
+            CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.matchWidthOrHeight = 0.5f;
+
+            RectTransform panelsRect = canvasObj.GetComponent<RectTransform>();
+            panelsRect.localScale = Vector3.one;
+            Stretch(panelsRect);
+
+            scenePanels = canvasObj.GetComponent<HomePageScenePanels>();
+        }
+
+        RectTransform bookRoot = null;
+        for (int i = 0; i < panelsRoot.childCount; i++)
+        {
+            Transform child = panelsRoot.GetChild(i);
+            if (child.name == "BookHomeCanvas")
+            {
+                bookRoot = child as RectTransform;
+                break;
+            }
+        }
+
+        if (bookRoot == null)
+        {
+            GameObject bookObj = new GameObject("BookHomeCanvas", typeof(RectTransform), typeof(HomePageBookStyle), typeof(HomePageBookView));
+            bookObj.layer = LayerMask.NameToLayer("UI");
+            bookObj.transform.SetParent(panelsRoot, false);
+            bookRoot = bookObj.GetComponent<RectTransform>();
+        }
+
+        panelsRoot.localScale = Vector3.one;
+        bookRoot.SetAsFirstSibling();
+        Stretch(bookRoot);
+
+        bookStyle = bookRoot.GetComponent<HomePageBookStyle>();
+        if (bookStyle == null)
+        {
+            bookStyle = bookRoot.gameObject.AddComponent<HomePageBookStyle>();
+        }
+
+        if (bookRoot.GetComponent<HomePageBookView>() == null)
+        {
+            bookRoot.gameObject.AddComponent<HomePageBookView>();
+        }
+
+        return bookRoot;
+    }
+
+    private void ClearGeneratedBookChildren(Transform root)
+    {
+        for (int i = root.childCount - 1; i >= 0; i--)
+        {
+            GameObject child = root.GetChild(i).gameObject;
+            child.SetActive(false);
+            if (Application.isPlaying)
+            {
+                Destroy(child);
+            }
+            else
+            {
+                DestroyImmediate(child);
+            }
+        }
+    }
+
+    private void BuildOpenBookMainPage(Transform root)
+    {
+        Image page = CreateImage("MainBookPage", root, bookStyle != null ? bookStyle.DeskColor : new Color(0.54f, 0.61f, 0.60f, 1f));
+        if (bookStyle != null)
+        {
+            bookStyle.ApplyBackground(page);
+        }
+        mainPageTransform = page.transform;
+        Stretch(page.rectTransform);
+
+        AddDeskPattern(page.transform);
+        AddOpenBookSpread(page.transform);
+
+        AddBookAvatarDisplay(page.transform);
+        AddBookMetric(page.transform, "等级", $"Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}", new Vector2(174f, -24f), new Vector2(166f, 48f), new Color(0.62f, 0.39f, 0.20f, 1f), false, null);
+        AddBookMetric(page.transform, "金币", PlayerPrefs.GetInt("Gold", 1000).ToString(), new Vector2(360f, -24f), new Vector2(188f, 48f), new Color(0.88f, 0.61f, 0.18f, 1f), true, ShowGoldRewardAd);
+        AddBookMetric(page.transform, "钻石", PlayerPrefs.GetInt("Crystal", 427).ToString(), new Vector2(568f, -24f), new Vector2(188f, 48f), new Color(0.28f, 0.64f, 0.86f, 1f), true, ShowRechargeContent);
+        AddBookMetric(page.transform, "木材", PlayerPrefs.GetInt("Wood", 500).ToString(), new Vector2(776f, -24f), new Vector2(170f, 48f), new Color(0.32f, 0.55f, 0.31f, 1f), false, null);
+        AddBookMetric(page.transform, "石材", PlayerPrefs.GetInt("Stone", 500).ToString(), new Vector2(966f, -24f), new Vector2(170f, 48f), new Color(0.48f, 0.50f, 0.52f, 1f), false, null);
+        AddBookMetric(page.transform, "铁矿", PlayerPrefs.GetInt("Iron", 300).ToString(), new Vector2(1156f, -24f), new Vector2(170f, 48f), new Color(0.43f, 0.40f, 0.56f, 1f), false, null);
+
+        Transform leftPage = CreateBookSheet(page.transform, "LeftStoryPage", new Vector2(96f, -128f), new Vector2(846f, 814f), false).transform;
+        Transform rightPage = CreateBookSheet(page.transform, "RightTownPage", new Vector2(978f, -128f), new Vector2(846f, 814f), true).transform;
+
+        AddBookPageTitle(leftPage, "城镇手记", "冒险 / 背包 / 商店", new Vector2(56f, -30f));
+        AddBookPageTitle(rightPage, "领地地图", "探索 / 任务 / 补给", new Vector2(56f, -30f));
+
+        CreateBookFeatureButton(leftPage, "RightBattleButton", "对战", "进入挑战与战斗内容", new Vector2(56f, -104f), new Vector2(340f, 198f), new Color(0.72f, 0.26f, 0.22f, 1f), ShowBattleContent);
+        CreateBookFeatureButton(leftPage, "ActivityButton", "抽奖", "活动奖励与幸运抽取", new Vector2(434f, -104f), new Vector2(340f, 198f), new Color(0.78f, 0.52f, 0.18f, 1f), ShowLotteryContent);
+        CreateBookFeatureButton(leftPage, "BottomMailButton", "邮件", "系统消息与奖励领取", new Vector2(56f, -326f), new Vector2(718f, 128f), new Color(0.22f, 0.55f, 0.58f, 1f), ShowMailContent);
+        CreateBookFeatureButton(leftPage, "SideBagButton", "背包", "物品与资源", new Vector2(56f, -488f), new Vector2(218f, 124f), new Color(0.50f, 0.34f, 0.20f, 1f), ShowBagContent);
+        CreateBookFeatureButton(leftPage, "SideEquipmentButton", "装备", "角色装备", new Vector2(306f, -488f), new Vector2(218f, 124f), new Color(0.36f, 0.46f, 0.70f, 1f), ShowEquipmentContent);
+        CreateBookFeatureButton(leftPage, "SideShopButton", "商城", "道具与礼包", new Vector2(556f, -488f), new Vector2(218f, 124f), new Color(0.37f, 0.58f, 0.38f, 1f), ShowShopContent);
+        CreateBookFeatureButton(leftPage, "FriendsButton", "好友", "好友列表", new Vector2(56f, -642f), new Vector2(218f, 98f), new Color(0.46f, 0.38f, 0.70f, 1f), ShowFriendsContent);
+        CreateBookFeatureButton(leftPage, "BottomNoticeButton", "公告", "最新公告", new Vector2(306f, -642f), new Vector2(218f, 98f), new Color(0.70f, 0.45f, 0.20f, 1f), ShowAnnouncement);
+        CreateBookFeatureButton(leftPage, "SideSettingsButton", "设置", "声音与画质", new Vector2(556f, -642f), new Vector2(218f, 98f), new Color(0.36f, 0.43f, 0.48f, 1f), ShowSettingsContent);
+
+        CreateMapShowcase(rightPage, new Vector2(56f, -104f), new Vector2(718f, 340f));
+        CreateAreaThumb(rightPage, GetArea("grass"), "Sprites/Arts/png/grass.jpeg", new Vector2(56f, -470f));
+        CreateAreaThumb(rightPage, GetArea("forest"), "Sprites/Arts/png/forest.png", new Vector2(198f, -470f));
+        CreateAreaThumb(rightPage, GetArea("sea"), "Sprites/Arts/png/sea.png", new Vector2(340f, -470f));
+        CreateAreaThumb(rightPage, GetArea("volcano"), "Sprites/Arts/png/volcano.png", new Vector2(482f, -470f));
+        CreateAreaThumb(rightPage, GetArea("snow"), "Sprites/Arts/png/snow.png", new Vector2(624f, -470f));
+        CreateBookFeatureButton(rightPage, "BottomTaskButton", "任务", "每日目标", new Vector2(56f, -600f), new Vector2(166f, 112f), new Color(0.32f, 0.58f, 0.64f, 1f), ShowTaskContent);
+        CreateBookFeatureButton(rightPage, "BottomDailySignButton", "每日签到", "每日奖励", new Vector2(240f, -600f), new Vector2(166f, 112f), new Color(0.78f, 0.46f, 0.22f, 1f), ShowDailySignContent);
+        CreateBookFeatureButton(rightPage, "BottomNewbieSignButton", "新手签到", "成长奖励", new Vector2(424f, -600f), new Vector2(166f, 112f), new Color(0.57f, 0.48f, 0.76f, 1f), ShowNewbieSignContent);
+        CreateBookFeatureButton(rightPage, "BottomRechargeButton", "充值", "钻石补给", new Vector2(608f, -600f), new Vector2(166f, 112f), new Color(0.26f, 0.61f, 0.76f, 1f), ShowRechargeContent);
+
+        CreateBookBottomTab(page.transform, "BottomMailTab", "邮件", new Vector2(446f, -990f), ShowMailContent);
+        CreateBookBottomTab(page.transform, "BottomSignTab", "签到", new Vector2(580f, -990f), ShowDailySignContent);
+        CreateBookBottomTab(page.transform, "BottomLotteryTab", "抽奖", new Vector2(714f, -990f), ShowLotteryContent);
+        CreateBookBottomTab(page.transform, "BottomRechargeTab", "充值", new Vector2(848f, -990f), ShowRechargeContent);
+        CreateBookBottomTab(page.transform, "BottomTaskTab", "任务", new Vector2(982f, -990f), ShowTaskContent);
+        CreateBookBottomTab(page.transform, "BottomFriendTab", "好友", new Vector2(1116f, -990f), ShowFriendsContent);
+        CreateBookBottomTab(page.transform, "BottomNoticeTab", "公告", new Vector2(1250f, -990f), ShowAnnouncement);
+
+        statusText = CreateText("Status", page.transform, string.Empty, 18, FontStyle.Bold, new Color(0.98f, 0.89f, 0.66f, 1f), TextAnchor.MiddleRight);
+        SetRect(statusText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1348f, -28f), new Vector2(480f, 36f));
+    }
+
+    private void AddDeskPattern(Transform parent)
+    {
+        Image topWash = CreateImage("DeskTopWash", parent, new Color(0.81f, 0.89f, 0.88f, 0.34f));
+        topWash.raycastTarget = false;
+        SetRect(topWash.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), Vector2.zero, new Vector2(1920f, 120f));
+
+        for (int i = 0; i < 9; i++)
+        {
+            Image stripe = CreateImage("DeskStripe", parent, i % 2 == 0 ? new Color(0.40f, 0.48f, 0.47f, 0.10f) : new Color(0.97f, 0.94f, 0.84f, 0.10f));
+            stripe.raycastTarget = false;
+            SetRect(stripe.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(i * 236f, -96f), new Vector2(70f, 984f));
+            stripe.rectTransform.localEulerAngles = new Vector3(0f, 0f, -4f);
+        }
+    }
+
+    private void AddOpenBookSpread(Transform parent)
+    {
+        Image shadow = CreateImage("OpenBookShadow", parent, new Color(0.12f, 0.08f, 0.05f, 0.30f));
+        shadow.raycastTarget = false;
+        SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(128f, -156f), new Vector2(1668f, 826f));
+
+        Image cover = CreateImage("OpenBookCover", parent, bookStyle != null ? bookStyle.BookCoverColor : new Color(0.47f, 0.30f, 0.18f, 1f));
+        if (bookStyle != null)
+        {
+            bookStyle.ApplyBookCover(cover);
+        }
+        cover.raycastTarget = false;
+        SetRect(cover.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(84f, -112f), new Vector2(1752f, 862f));
+
+        Image spineShadow = CreateImage("BookSpineShadow", parent, new Color(0.15f, 0.08f, 0.04f, 0.42f));
+        spineShadow.raycastTarget = false;
+        SetRect(spineShadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(930f, -128f), new Vector2(64f, 814f));
+
+        Image spineLight = CreateImage("BookSpineLight", parent, new Color(0.88f, 0.75f, 0.54f, 0.55f));
+        spineLight.raycastTarget = false;
+        SetRect(spineLight.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(956f, -132f), new Vector2(9f, 804f));
+    }
+
+    private Image CreateBookSheet(Transform parent, string name, Vector2 position, Vector2 size, bool rightPage)
+    {
+        Image shadow = CreateImage(name + "SoftShadow", parent, new Color(0.16f, 0.10f, 0.05f, 0.20f));
+        shadow.raycastTarget = false;
+        SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(rightPage ? 10f : 5f, -10f), size);
+
+        Image sheet = CreateImage(name, parent, bookStyle != null ? bookStyle.PageColor : new Color(0.97f, 0.93f, 0.82f, 1f));
+        if (bookStyle != null)
+        {
+            if (rightPage)
+            {
+                bookStyle.ApplyRightPage(sheet);
+            }
+            else
+            {
+                bookStyle.ApplyLeftPage(sheet);
+            }
+        }
+        SetRect(sheet.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
+
+        Image edge = CreateImage(name + "InnerEdge", sheet.transform, rightPage ? new Color(0.76f, 0.62f, 0.42f, 0.20f) : new Color(1f, 0.98f, 0.90f, 0.28f));
+        edge.raycastTarget = false;
+        SetRect(edge.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), rightPage ? Vector2.zero : new Vector2(size.x - 42f, 0f), new Vector2(42f, size.y));
+
+        for (int i = 0; i < 18; i++)
+        {
+            float x = 34f + ((i * 107) % Mathf.RoundToInt(size.x - 72f));
+            float y = 68f + ((i * 83) % Mathf.RoundToInt(size.y - 118f));
+            Image dot = CreateImage(name + "PaperDot", sheet.transform, new Color(0.44f, 0.30f, 0.16f, 0.08f));
+            dot.raycastTarget = false;
+            SetRect(dot.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(x, -y), new Vector2(5f + i % 3, 5f + i % 3));
+        }
+
+        return sheet;
+    }
+
+    private void AddBookPageTitle(Transform parent, string title, string subtitle, Vector2 position)
+    {
+        Image mark = CreateImage("PageTitleMark", parent, new Color(0.33f, 0.49f, 0.53f, 1f));
+        mark.raycastTarget = false;
+        SetRect(mark.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(0f, -10f), new Vector2(12f, 52f));
+
+        Text titleText = CreateText("PageTitle", parent, title, 34, FontStyle.Bold, InkColor, TextAnchor.MiddleLeft);
+        SetRect(titleText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(26f, 0f), new Vector2(260f, 42f));
+
+        Text subText = CreateText("PageSubtitle", parent, subtitle, 17, FontStyle.Bold, MutedColor, TextAnchor.MiddleLeft);
+        SetRect(subText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(288f, -8f), new Vector2(300f, 32f));
+
+        Image line = CreateImage("PageTitleLine", parent, new Color(0.41f, 0.26f, 0.13f, 0.38f));
+        line.raycastTarget = false;
+        SetRect(line.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(0f, -60f), new Vector2(718f, 3f));
+    }
+
+    private void AddBookAvatarDisplay(Transform parent)
+    {
+        Image shadow = CreateImage("BookAvatarShadow", parent, new Color(0.12f, 0.07f, 0.04f, 0.28f));
+        shadow.raycastTarget = false;
+        SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(52f, -24f), new Vector2(96f, 76f));
+
+        Image frame = CreateImage("BookAvatarFrame", parent, new Color(0.96f, 0.83f, 0.55f, 1f));
+        SetRect(frame.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(44f, -18f), new Vector2(96f, 76f));
+
+        Image portrait = CreateImage("BookAvatarPortrait", frame.transform, new Color(0.80f, 0.88f, 0.86f, 1f));
+        SetRect(portrait.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(10f, -8f), new Vector2(76f, 46f));
+
+        Image head = CreateImage("BookAvatarHead", portrait.transform, new Color(0.95f, 0.72f, 0.52f, 1f));
+        SetRect(head.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(27f, -6f), new Vector2(22f, 22f));
+
+        Image body = CreateImage("BookAvatarBody", portrait.transform, new Color(0.34f, 0.54f, 0.74f, 1f));
+        SetRect(body.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(18f, -28f), new Vector2(40f, 16f));
+
+        Text name = CreateText("BookAvatarName", frame.transform, PlayerPrefs.GetString("PlayerNickname", "玩家"), 15, FontStyle.Bold, InkColor, TextAnchor.MiddleCenter);
+        SetRect(name.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(8f, -54f), new Vector2(80f, 18f));
+
+        Button button = CreateButton(frame.transform, "AvatarButton", string.Empty, new Color(1f, 1f, 1f, 0f), Color.white);
+        button.onClick.AddListener(ShowPersonalInfo);
+        Stretch(button.GetComponent<RectTransform>());
+        avatarButton = button;
+    }
+
+    private void AddBookMetric(Transform parent, string label, string value, Vector2 position, Vector2 size, Color accent, bool hasPlus, Action onPlus)
+    {
+        Image shadow = CreateImage("BookMetricShadow", parent, new Color(0.12f, 0.07f, 0.04f, 0.20f));
+        shadow.raycastTarget = false;
+        SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(4f, -5f), size);
+
+        Image box = CreateImage("BookMetric", parent, bookStyle != null ? bookStyle.MetricColor : new Color(0.98f, 0.91f, 0.74f, 0.98f));
+        if (bookStyle != null)
+        {
+            bookStyle.ApplyMetric(box);
+        }
+        SetRect(box.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
+
+        Image icon = CreateImage("BookMetricIcon", box.transform, accent);
+        icon.raycastTarget = false;
+        SetRect(icon.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(10f, -10f), new Vector2(28f, 28f));
+
+        Text text = CreateText("BookMetricText", box.transform, $"{label} {value}", 18, FontStyle.Bold, InkColor, TextAnchor.MiddleLeft);
+        SetRect(text.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(46f, -7f), new Vector2(hasPlus ? size.x - 84f : size.x - 56f, 34f));
+
+        if (!hasPlus || onPlus == null)
+        {
+            return;
+        }
+
+        Button plus = CreateButton(box.transform, "MetricPlusButton", "+", accent, Color.white);
+        plus.onClick.AddListener(() => onPlus());
+        SetRect(plus.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(size.x - 34f, -8f), new Vector2(28f, 28f));
+        ConfigureClearButtonLabel(plus, 22);
+    }
+
+    private Button CreateBookFeatureButton(Transform parent, string name, string title, string caption, Vector2 position, Vector2 size, Color accent, Action onClick)
+    {
+        Image shadow = CreateImage(name + "Shadow", parent, new Color(0.17f, 0.10f, 0.05f, 0.18f));
+        shadow.raycastTarget = false;
+        SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(6f, -7f), size);
+
+        Button button = CreateButton(parent, name, string.Empty, bookStyle != null ? bookStyle.FeatureButtonColor : new Color(0.99f, 0.94f, 0.81f, 1f), InkColor);
+        button.onClick.AddListener(() => onClick());
+        SetRect(button.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
+        if (bookStyle != null)
+        {
+            bookStyle.ApplyFeatureButton(button.GetComponent<Image>());
+        }
+
+        Image accentBar = CreateImage("Accent", button.transform, accent);
+        accentBar.raycastTarget = false;
+        SetRect(accentBar.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), Vector2.zero, new Vector2(12f, size.y));
+
+        Image icon = CreateImage("IconPatch", button.transform, new Color(accent.r, accent.g, accent.b, 0.18f));
+        icon.raycastTarget = false;
+        SetRect(icon.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(28f, -22f), new Vector2(Mathf.Min(76f, size.x * 0.28f), Mathf.Min(76f, size.y - 38f)));
+
+        Text titleText = CreateText("Title", button.transform, title, size.y > 150f ? 34 : 25, FontStyle.Bold, InkColor, TextAnchor.MiddleLeft);
+        SetRect(titleText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(size.y > 150f ? 120f : 88f, -24f), new Vector2(size.x - (size.y > 150f ? 146f : 108f), 42f));
+
+        Text captionText = CreateText("Caption", button.transform, caption, size.y > 150f ? 19 : 15, FontStyle.Bold, MutedColor, TextAnchor.UpperLeft);
+        SetRect(captionText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(size.y > 150f ? 120f : 88f, -72f), new Vector2(size.x - (size.y > 150f ? 146f : 108f), size.y - 84f));
+
+        Image bottomLine = CreateImage("BottomInkLine", button.transform, new Color(0.34f, 0.21f, 0.10f, 0.22f));
+        bottomLine.raycastTarget = false;
+        SetRect(bottomLine.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(28f, -size.y + 18f), new Vector2(size.x - 56f, 3f));
+        return button;
+    }
+
+    private void CreateMapShowcase(Transform parent, Vector2 position, Vector2 size)
+    {
+        Button map = CreateButton(parent, "EnterMapButton", string.Empty, bookStyle != null ? bookStyle.MapCardColor : new Color(0.79f, 0.86f, 0.73f, 1f), InkColor);
+        map.onClick.AddListener(EnterSelectedArea);
+        SetRect(map.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
+
+        Image image = map.GetComponent<Image>();
+        if (bookStyle != null && bookStyle.HasMapCardSprite)
+        {
+            bookStyle.ApplyMapCard(image);
+        }
+        else
+        {
+            Sprite sprite = LoadSpriteFromAsset("Sprites/Arts/png/grass.jpeg");
+            if (sprite != null)
+            {
+                image.sprite = sprite;
+                image.color = Color.white;
+                image.preserveAspect = false;
+            }
+        }
+
+        Image wash = CreateImage("MapPaperWash", map.transform, new Color(0.98f, 0.93f, 0.76f, 0.32f));
+        wash.raycastTarget = false;
+        Stretch(wash.rectTransform);
+
+        Image info = CreateImage("MapInfoPaper", map.transform, new Color(0.99f, 0.94f, 0.81f, 0.94f));
+        info.raycastTarget = false;
+        SetRect(info.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(28f, -218f), new Vector2(438f, 96f));
+
+        selectedAreaTitle = CreateText("SelectedTitle", info.transform, string.Empty, 28, FontStyle.Bold, InkColor, TextAnchor.MiddleLeft);
+        SetRect(selectedAreaTitle.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(18f, -10f), new Vector2(160f, 34f));
+
+        selectedAreaDescription = CreateText("SelectedDescription", info.transform, string.Empty, 16, FontStyle.Bold, MutedColor, TextAnchor.UpperLeft);
+        SetRect(selectedAreaDescription.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(18f, -45f), new Vector2(290f, 42f));
+
+        selectedAreaHint = CreateText("SelectedHint", info.transform, string.Empty, 16, FontStyle.Bold, PrimaryColor, TextAnchor.MiddleRight);
+        SetRect(selectedAreaHint.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(270f, -12f), new Vector2(150f, 30f));
+
+        Button enter = CreateButton(map.transform, "MapEnterStamp", "进入地图", new Color(0.72f, 0.28f, 0.18f, 0.96f), Color.white);
+        enter.onClick.AddListener(EnterSelectedArea);
+        SetRect(enter.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(size.x - 170f, -244f), new Vector2(136f, 66f));
+        ConfigureClearButtonLabel(enter, 22);
+    }
+
+    private void CreateAreaThumb(Transform parent, AreaInfo area, string spritePath, Vector2 position)
+    {
+        Button thumb = CreateButton(parent, area.landType + "Thumb", string.Empty, area.color, InkColor);
+        thumb.onClick.AddListener(() => SelectArea(area));
+        SetRect(thumb.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, new Vector2(124f, 86f));
+
+        Image image = thumb.GetComponent<Image>();
+        Sprite sprite = LoadSpriteFromAsset(spritePath);
+        if (sprite != null)
+        {
+            image.sprite = sprite;
+            image.color = Color.white;
+            image.preserveAspect = false;
+        }
+
+        Image labelBg = CreateImage("ThumbLabelBg", thumb.transform, new Color(0.18f, 0.12f, 0.06f, 0.54f));
+        labelBg.raycastTarget = false;
+        SetRect(labelBg.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(0f, -58f), new Vector2(124f, 28f));
+
+        Text label = CreateText("ThumbLabel", thumb.transform, area.name, 15, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+        SetRect(label.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(4f, -60f), new Vector2(116f, 24f));
+    }
+
+    private Button CreateBookBottomTab(Transform parent, string name, string text, Vector2 position, Action onClick)
+    {
+        Button button = CreateButton(parent, name, text, bookStyle != null ? bookStyle.BottomTabColor : new Color(0.98f, 0.88f, 0.62f, 1f), InkColor);
+        button.onClick.AddListener(() => onClick());
+        SetRect(button.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, new Vector2(112f, 52f));
+        if (bookStyle != null)
+        {
+            bookStyle.ApplyBottomTab(button.GetComponent<Image>());
+        }
+        ConfigureClearButtonLabel(button, 18);
+        return button;
     }
 
     private void BuildReferenceMainPage(Transform root)
@@ -167,52 +710,22 @@ public partial class HomePageUI : MonoBehaviour
         AddTopMetric(page.transform, $"等级 Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}", new Vector2(174f, -20f), new Vector2(190f, 48f));
         AddTopMetric(page.transform, $"金币 {PlayerPrefs.GetInt("Gold", 1000)}", new Vector2(386f, -20f), new Vector2(220f, 48f));
         AddSmallPlusButton(page.transform, new Vector2(610f, -24f), ShowRechargeContent);
-        AddTopMetric(page.transform, $"木材 {PlayerPrefs.GetInt("Wood", 500)}", new Vector2(660f, -20f), new Vector2(220f, 48f));
-        AddTopMetric(page.transform, $"石材 {PlayerPrefs.GetInt("Stone", 500)}", new Vector2(900f, -20f), new Vector2(220f, 48f));
-        AddTopMetric(page.transform, $"铁矿 {PlayerPrefs.GetInt("Iron", 300)}", new Vector2(1140f, -20f), new Vector2(220f, 48f));
+        AddTopMetric(page.transform, $"钻石 {PlayerPrefs.GetInt("Crystal", 427)}", new Vector2(660f, -20f), new Vector2(220f, 48f));
+        AddSmallPlusButton(page.transform, new Vector2(884f, -24f), ShowRechargeContent);
+        AddTopMetric(page.transform, $"木材 {PlayerPrefs.GetInt("Wood", 500)}", new Vector2(934f, -20f), new Vector2(190f, 48f));
+        AddTopMetric(page.transform, $"石材 {PlayerPrefs.GetInt("Stone", 500)}", new Vector2(1144f, -20f), new Vector2(190f, 48f));
+        AddTopMetric(page.transform, $"铁矿 {PlayerPrefs.GetInt("Iron", 300)}", new Vector2(1354f, -20f), new Vector2(190f, 48f));
 
         CreateMainSideButton(page.transform, "SideBagButton", "背包", new Vector2(6f, -148f), ShowBagContent);
         CreateMainSideButton(page.transform, "SideEquipmentButton", "装备", new Vector2(6f, -214f), ShowEquipmentContent);
         CreateMainSideButton(page.transform, "SideSettingsButton", "设置", new Vector2(6f, -280f), ShowSettingsContent);
         CreateMainSideButton(page.transform, "SideShopButton", "商城", new Vector2(6f, -346f), ShowShopContent);
 
-        Image panelShadow = CreateImage("MainContentPanelShadow", page.transform, new Color(0.15f, 0.08f, 0.04f, 0.30f));
-        panelShadow.raycastTarget = false;
-        SetRect(panelShadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(410f, -198f), new Vector2(1048f, 682f));
-
-        Image panelBorder = CreateImage("MainContentPanelBorder", page.transform, new Color(0.47f, 0.25f, 0.12f, 1f));
-        panelBorder.raycastTarget = false;
-        SetRect(panelBorder.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(390f, -180f), new Vector2(1050f, 685f));
-
-        Image contentPanel = CreateImage("MainContentPanel", page.transform, new Color(0.96f, 0.73f, 0.46f, 0.98f));
-        contentPanelObject = contentPanel.gameObject;
-        SetRect(contentPanel.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(395f, -185f), new Vector2(1040f, 675f));
-
-        Image panelHighlight = CreateImage("MainContentPanelHighlight", contentPanel.transform, new Color(1f, 0.88f, 0.60f, 0.32f));
-        panelHighlight.raycastTarget = false;
-        SetRect(panelHighlight.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(0f, 0f), new Vector2(0f, 70f));
-
-        contentTitleText = CreateText("ContentTitle", contentPanel.transform, string.Empty, 30, FontStyle.Bold, InkColor, TextAnchor.MiddleLeft);
-        SetRect(contentTitleText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(24f, -18f), new Vector2(-80f, 42f));
-
-        Button closeButton = CreateButton(contentPanel.transform, "ContentCloseButton", "×", new Color(0.85f, 0.66f, 0.36f, 1f), new Color(0.04f, 0.55f, 0.34f, 1f));
-        closeButton.onClick.AddListener(HideContentPanel);
-        SetRect(closeButton.GetComponent<RectTransform>(), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-8f, -8f), new Vector2(34f, 34f));
-        ShrinkButtonLabel(closeButton, 26);
-
-        contentBodyText = CreateText("ContentBody", contentPanel.transform, string.Empty, 22, FontStyle.Normal, InkColor, TextAnchor.UpperLeft);
-        SetRect(contentBodyText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(36f, -78f), new Vector2(-72f, 565f));
-
-        BuildHomeMapSelector(contentPanel.transform);
-
         Button enterButton = CreateButton(page.transform, "EnterMapButton", "进入地图", new Color(0.91f, 0.62f, 0.36f, 1f), Color.white);
         enterButton.onClick.AddListener(EnterSelectedArea);
         SetRect(enterButton.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1774f, -332f), new Vector2(126f, 415f));
         ShrinkButtonLabel(enterButton, 22);
-
-        CreateMainSideButton(page.transform, "RightBuildButton", "建造", new Vector2(1668f, -332f), ShowBuildContent);
         CreateMainSideButton(page.transform, "RightBattleButton", "对战", new Vector2(1668f, -405f), ShowBattleContent);
-        CreateMainSideButton(page.transform, "RightManageButton", "经营", new Vector2(1668f, -478f), ShowManageContent);
 
         CreateBottomNavButton(page.transform, "FriendsButton", "好友列表", new Vector2(390f, 0f), ShowFriendsContent);
         CreateBottomNavButton(page.transform, "BottomMailButton", "邮件", new Vector2(518f, 0f), ShowMailContent);
@@ -222,11 +735,8 @@ public partial class HomePageUI : MonoBehaviour
         CreateBottomNavButton(page.transform, "BottomLotteryButton", "抽奖", new Vector2(1030f, 0f), ShowLotteryContent);
         CreateBottomNavButton(page.transform, "BottomRechargeButton", "充值", new Vector2(1158f, 0f), ShowRechargeContent);
         CreateBottomNavButton(page.transform, "BottomTaskButton", "任务", new Vector2(1286f, 0f), ShowTaskContent);
-
         statusText = CreateText("Status", page.transform, string.Empty, 18, FontStyle.Normal, new Color(1f, 0.86f, 0.58f, 1f), TextAnchor.MiddleLeft);
         SetRect(statusText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1430f, -1008f), new Vector2(460f, 32f));
-        ShowMapSelectionContent();
-        ShowAnnouncement();
     }
 
     private Image CreatePage(string name, Transform parent)
@@ -549,13 +1059,6 @@ public partial class HomePageUI : MonoBehaviour
 
         Button battleButton = CreatePanelBottomButton(page, "BattleButton", "对战", new Vector2(0f, -828f));
         battleButton.onClick.AddListener(ShowBattleContent);
-
-        Button buildButton = CreatePanelBottomButton(page, "BuildButton", "建造", new Vector2(68f, -828f));
-        buildButton.onClick.AddListener(ShowBuildContent);
-
-        Button manageButton = CreatePanelBottomButton(page, "ManageButton", "经营", new Vector2(136f, -828f));
-        manageButton.onClick.AddListener(ShowManageContent);
-
         statusText = CreateText("Status", page, string.Empty, 16, FontStyle.Normal, DisabledTextColor, TextAnchor.MiddleLeft);
         SetRect(statusText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(220f, -828f), new Vector2(520f, 28f));
         ShowAnnouncement();
@@ -774,6 +1277,7 @@ public partial class HomePageUI : MonoBehaviour
     private void ShowMailContent()
     {
         MarkTaskProgress("TaskMailOpened", "TaskMailDate");
+        mailShowingNotifications = false;
 
         if (!HasAuthSession())
         {
@@ -789,7 +1293,6 @@ public partial class HomePageUI : MonoBehaviour
     {
         MarkTaskProgress("TaskBagOpened");
         activeInventoryCategory = "all";
-        inventoryStallMode = false;
         selectedInventoryItemKey = string.Empty;
 
         if (!HasAuthSession())
@@ -847,7 +1350,7 @@ public partial class HomePageUI : MonoBehaviour
         MarkTaskProgress("TaskLotteryOpened");
         if (HasAuthSession())
         {
-            ShowLotteryPanel("账号模式暂无服务端抽奖接口，本次不会消耗机会或发放本地奖励。", string.Empty, 0, false);
+            OpenServerLottery();
             return;
         }
 
@@ -859,7 +1362,7 @@ public partial class HomePageUI : MonoBehaviour
     {
         if (HasAuthSession())
         {
-            ShowLotteryPanel("账号模式暂无服务端抽奖接口，已阻止本地资源变更。", string.Empty, 0, false);
+            BeginServerCardDraw("SINGLE");
             return;
         }
 
@@ -934,7 +1437,7 @@ public partial class HomePageUI : MonoBehaviour
         int signedDays = PlayerPrefs.GetInt("DailySignDays", 0);
         if (HasAuthSession())
         {
-            ShowDailySignPanel(signedDays, signedDate == today, "账号模式暂无服务端签到接口，已阻止本地资源变更。");
+            OpenServerSignIn("MONTHLY");
             return;
         }
 
@@ -957,7 +1460,7 @@ public partial class HomePageUI : MonoBehaviour
         int signedDays = PlayerPrefs.GetInt("NewbieSignDays", 0);
         if (HasAuthSession())
         {
-            ShowNewbieSignPanel(signedDays, "账号模式暂无服务端新手签到接口，已阻止本地资源变更。");
+            OpenServerSignIn("NEWBIE");
             return;
         }
 
@@ -994,6 +1497,12 @@ public partial class HomePageUI : MonoBehaviour
 
     private void ShowTaskContent()
     {
+        if (HasAuthSession())
+        {
+            OpenServerTasks("daily");
+            return;
+        }
+
         ShowTaskPanel("daily", "每日任务会在次日刷新，完成后记得领取奖励");
     }
 
@@ -1233,6 +1742,11 @@ public partial class HomePageUI : MonoBehaviour
 
     private TaskDisplayItem[] BuildTaskItems(string category)
     {
+        if (HasAuthSession())
+        {
+            return BuildServerTaskItems(category);
+        }
+
         string today = GetTaskDate();
         int newbieDays = PlayerPrefs.GetInt("NewbieSignDays", 0);
 
@@ -1242,7 +1756,6 @@ public partial class HomePageUI : MonoBehaviour
             {
                 new TaskDisplayItem("main_bag", "整理随身背包", "打开背包，确认领地物资与道具。", PlayerPrefs.GetInt("TaskBagOpened", 0), 1, "Gold", "金币", 200, false, ShowBagContent),
                 new TaskDisplayItem("main_mail", "查看系统邮件", "查看一次系统邮件或活动通知。", PlayerPrefs.GetInt("TaskMailOpened", 0), 1, "Wood", "木材", 150, false, ShowMailContent),
-                new TaskDisplayItem("main_build", "准备建造领地", "在首页选择建造模式。", PlayerPrefs.GetString("HomeSelectedMode", string.Empty) == "build" ? 1 : 0, 1, "Stone", "石材", 150, false, ShowBuildContent),
                 new TaskDisplayItem("main_map", "踏入第一块领地", "选择任意区域并进入地图。", PlayerPrefs.GetInt("TaskMapEntered", 0), 1, "EquipmentChest", "装备宝箱", 1, false, EnterSelectedArea)
             };
         }
@@ -1252,8 +1765,6 @@ public partial class HomePageUI : MonoBehaviour
             return new[]
             {
                 new TaskDisplayItem("growth_level", "领主等级达到 Lv.2", "通过经营与对战积累成长经验。", PlayerPrefs.GetInt("PlayerLv", 1), 2, "Gold", "金币", 300, false, ShowBattleContent),
-                new TaskDisplayItem("growth_gold", "累计拥有 1500 金币", "经营领地并领取任务奖励。", PlayerPrefs.GetInt("Gold", 1000), 1500, "Crystal", "蓝晶", 20, false, ShowManageContent),
-                new TaskDisplayItem("growth_wood", "累计拥有 800 木材", "通过经营模式收集木材资源。", PlayerPrefs.GetInt("Wood", 500), 800, "Stone", "石材", 200, false, ShowManageContent),
                 new TaskDisplayItem("growth_chest", "获得 1 个装备宝箱", "完成签到或主线任务获得宝箱。", PlayerPrefs.GetInt("EquipmentChest", 0), 1, "LotteryTicket", "抽奖券", 1, false, ShowBagContent)
             };
         }
@@ -1280,7 +1791,7 @@ public partial class HomePageUI : MonoBehaviour
 
     private string GetTaskCategoryTitle(string category)
     {
-        if (category == "main") return "主线任务";
+        if (category == "main") return HasAuthSession() ? "每周任务" : "主线任务";
         if (category == "growth") return "成长任务";
         if (category == "activity") return "活动任务";
         return "每日任务";
@@ -1288,14 +1799,19 @@ public partial class HomePageUI : MonoBehaviour
 
     private string GetTaskCategoryNote(string category)
     {
-        if (category == "main") return "推进领地基础功能，奖励仅可领取一次";
+        if (category == "main") return HasAuthSession() ? "每周任务按服务端北京时间周期刷新" : "推进领地基础功能，奖励仅可领取一次";
         if (category == "growth") return "达到资源与等级目标后即可领取";
         if (category == "activity") return "参与签到、抽奖与商店活动";
-        return "每日 00:00 刷新完成状态与奖励";
+        return HasAuthSession() ? "每日任务按服务端北京时间周期刷新" : "每日 00:00 刷新完成状态与奖励";
     }
 
     private bool IsTaskClaimed(TaskDisplayItem task)
     {
+        if (task != null && task.serverBacked)
+        {
+            return string.Equals(task.serverStatus, "CLAIMED", StringComparison.OrdinalIgnoreCase);
+        }
+
         return PlayerPrefs.GetInt(GetTaskClaimKey(task), 0) == 1;
     }
 
@@ -1313,7 +1829,7 @@ public partial class HomePageUI : MonoBehaviour
 
         if (HasAuthSession())
         {
-            ShowTaskPanel(activeTaskCategory, "账号模式暂无服务端任务奖励接口，已阻止本地资源变更。");
+            BeginClaimServerTask(task);
             return;
         }
 
@@ -1369,10 +1885,14 @@ public partial class HomePageUI : MonoBehaviour
         {
             InventoryItemResponse item = items[i];
             string key = NormalizeInventoryKey(GetInventoryItemKey(item));
-            if (key == "gold" || key == "wood" || key == "stone" || key == "iron" || key == "crystal" || key == "soulcrystal" || key == "soul_crystal")
+            if (key == "gold" || key == "wood" || key == "stone" || key == "iron" || key == "diamond" || key == "crystal" || key == "soulcrystal" || key == "soul_crystal")
             {
                 string localKey = key.Replace("_", string.Empty);
-                if (localKey == "soulcrystal")
+                if (localKey == "diamond" || localKey == "crystal")
+                {
+                    localKey = "Crystal";
+                }
+                else if (localKey == "soulcrystal")
                 {
                     localKey = "SoulCrystal";
                 }
@@ -1386,6 +1906,7 @@ public partial class HomePageUI : MonoBehaviour
         }
 
         PlayerPrefs.Save();
+        RefreshHomeResourceMetrics();
     }
 
     private void RenderInventoryPanel()
@@ -1457,15 +1978,14 @@ public partial class HomePageUI : MonoBehaviour
         SetRect(back.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(32f, -27f), new Vector2(72f, 48f));
         ConfigureClearButtonLabel(back, 30);
 
-        Text title = CreateMailText("InventoryTitle", panel.transform, inventoryStallMode ? "摆摊" : "储物", 36, FontStyle.Bold, new Color(1f, 0.88f, 0.47f, 1f), TextAnchor.MiddleLeft);
+        Text title = CreateMailText("InventoryTitle", panel.transform, "背包", 36, FontStyle.Bold, new Color(1f, 0.88f, 0.47f, 1f), TextAnchor.MiddleLeft);
         SetRect(title.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(120f, -28f), new Vector2(170f, 52f));
 
-        Text subtitle = CreateMailText("InventorySubtitle", panel.transform, inventoryStallMode ? "选择物品进行上架或出售" : "领地物资与道具管理", 17, FontStyle.Bold, new Color(1f, 0.89f, 0.67f, 0.88f), TextAnchor.MiddleLeft);
+        Text subtitle = CreateMailText("InventorySubtitle", panel.transform, "领地物资与道具管理", 17, FontStyle.Bold, new Color(1f, 0.89f, 0.67f, 0.88f), TextAnchor.MiddleLeft);
         SetRect(subtitle.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(298f, -30f), new Vector2(280f, 42f));
 
         AddInventoryResourceBadge(panel.transform, new Vector2(620f, -24f), "金币", "Gold", new Color(1f, 0.74f, 0.14f, 1f));
-        AddInventoryResourceBadge(panel.transform, new Vector2(900f, -24f), "蓝晶", "Crystal", new Color(0.26f, 0.70f, 1f, 1f));
-        AddInventoryResourceBadge(panel.transform, new Vector2(1180f, -24f), "魂晶", "SoulCrystal", new Color(1f, 0.42f, 0.16f, 1f));
+        AddInventoryResourceBadge(panel.transform, new Vector2(900f, -24f), "钻石", "Crystal", new Color(0.26f, 0.70f, 1f, 1f));
 
         Button close = CreateButton(panel.transform, "InventoryCloseButton", "X", new Color(0.72f, 0.22f, 0.12f, 1f), Color.white);
         close.onClick.AddListener(HideInventoryPanel);
@@ -1479,15 +1999,14 @@ public partial class HomePageUI : MonoBehaviour
         AddInventoryCategoryButton(sidebar.transform, "equipment", "装备", new Vector2(16f, -106f), activeInventoryCategory == "equipment");
         AddInventoryCategoryButton(sidebar.transform, "medicine", "药品", new Vector2(16f, -194f), activeInventoryCategory == "medicine");
         AddInventoryCategoryButton(sidebar.transform, "other", "其它", new Vector2(16f, -282f), activeInventoryCategory == "other");
-        AddInventoryCategoryButton(sidebar.transform, "pet", "灵宠", new Vector2(16f, -370f), activeInventoryCategory == "pet");
 
         Button expand = CreateButton(sidebar.transform, "InventoryExpandButton", "扩充格子", new Color(0.88f, 0.58f, 0.20f, 1f), new Color(0.35f, 0.15f, 0.04f, 1f));
         expand.onClick.AddListener(ExpandInventorySlots);
-        SetRect(expand.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(16f, -548f), new Vector2(178f, 54f));
+        SetRect(expand.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(16f, -458f), new Vector2(178f, 54f));
         ConfigureClearButtonLabel(expand, 17);
 
         Text sidebarHint = CreateMailText("InventorySidebarHint", sidebar.transform, inventoryServerBacked ? "服务器库存\n仅支持查看" : "本地库存\n可使用与出售", 16, FontStyle.Bold, new Color(1f, 0.87f, 0.60f, 0.94f), TextAnchor.MiddleCenter);
-        SetRect(sidebarHint.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(18f, -610f), new Vector2(174f, 48f));
+        SetRect(sidebarHint.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(18f, -540f), new Vector2(174f, 48f));
 
         Image gridFrame = CreateImage("InventoryGridFrame", panel.transform, new Color(0.48f, 0.23f, 0.08f, 1f));
         SetRect(gridFrame.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(258f, -108f), new Vector2(1060f, 678f));
@@ -1497,7 +2016,7 @@ public partial class HomePageUI : MonoBehaviour
         SetRect(gridPaper.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(12f, -12f), new Vector2(1036f, 654f));
         gridPaper.raycastTarget = false;
 
-        Text gridTitle = CreateMailText("InventoryGridTitle", panel.transform, inventoryStallMode ? "选择要上架的物品" : "物品栏", 22, FontStyle.Bold, new Color(0.42f, 0.19f, 0.05f, 1f), TextAnchor.MiddleLeft);
+        Text gridTitle = CreateMailText("InventoryGridTitle", panel.transform, "物品栏", 22, FontStyle.Bold, new Color(0.42f, 0.19f, 0.05f, 1f), TextAnchor.MiddleLeft);
         SetRect(gridTitle.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(286f, -120f), new Vector2(260f, 34f));
 
         Vector2 slotStart = new Vector2(286f, -158f);
@@ -1518,9 +2037,8 @@ public partial class HomePageUI : MonoBehaviour
         }
 
         AddInventoryFooter(panel.transform, ownedCount, visibleItems.Count, unlockedSlots);
-        AddInventorySideAction(panel.transform, new Vector2(1450f, -154f), "仓库", "仓", !inventoryStallMode, () => SetInventoryStallMode(false));
-        AddInventorySideAction(panel.transform, new Vector2(1450f, -314f), "摆摊", "摊", inventoryStallMode, () => SetInventoryStallMode(true));
-        AddInventorySideAction(panel.transform, new Vector2(1450f, -474f), "商店", "店", false, ShowShopContent);
+        AddInventorySideAction(panel.transform, new Vector2(1450f, -234f), "仓库", "仓", true, null);
+        AddInventorySideAction(panel.transform, new Vector2(1450f, -414f), "商店", "店", false, ShowShopContent);
 
         selectedIndex = FindFilteredInventoryIndex(visibleItems, selectedInventoryItemKey);
         if (selectedIndex >= 0)
@@ -1541,20 +2059,15 @@ public partial class HomePageUI : MonoBehaviour
         int ownedCount,
         int unlockedSlots)
     {
-        view.SetMode(inventoryStallMode, inventoryServerBacked);
+        view.SetMode(inventoryServerBacked);
         view.SetResourceValue("Gold", GetInventoryResourceValue("Gold"));
         view.SetResourceValue("Crystal", GetInventoryResourceValue("Crystal"));
-        view.SetResourceValue("SoulCrystal", GetInventoryResourceValue("SoulCrystal"));
         view.SetCounts(ownedCount, visibleItems.Count, InventoryCapacity, unlockedSlots);
         view.SetStatus(inventoryStatusMessage);
         view.SetEmptyVisible(visibleItems.Count == 0);
         view.BindChromeActions(HideInventoryPanel, ExpandInventorySlots, SortInventoryItems, ShowRechargeContent);
         view.BindCategoryActions(activeInventoryCategory, SetInventoryCategory);
-        view.BindSideActions(
-            inventoryStallMode,
-            () => SetInventoryStallMode(false),
-            () => SetInventoryStallMode(true),
-            ShowShopContent);
+        view.BindSideActions(null, ShowShopContent);
 
         int slotCount = Mathf.Min(InventoryCapacity, view.SlotCount);
         for (int slotIndex = 0; slotIndex < slotCount; slotIndex++)
@@ -1618,7 +2131,7 @@ public partial class HomePageUI : MonoBehaviour
             : slotPosition + new Vector2(112f, -4f);
         InventoryItemResponse selectedItem = visibleItems[selectedIndex];
         string contextHint = inventoryServerBacked ? "服务端暂未开放操作接口" : "操作 1 件物品";
-        string primaryLabel = inventoryStallMode ? "上架" : GetInventoryActionLabel(selectedItem);
+        string primaryLabel = GetInventoryActionLabel(selectedItem);
 
         view.ShowContextMenu(
             menuPosition,
@@ -1640,7 +2153,6 @@ public partial class HomePageUI : MonoBehaviour
         string category = GetInventoryCategory(item);
         if (category == "equipment") return new Color(0.35f, 0.47f, 0.78f, 1f);
         if (category == "medicine") return new Color(0.25f, 0.68f, 0.38f, 1f);
-        if (category == "pet") return new Color(0.76f, 0.33f, 0.68f, 1f);
         return new Color(0.80f, 0.38f, 0.14f, 1f);
     }
 
@@ -1656,7 +2168,6 @@ public partial class HomePageUI : MonoBehaviour
             CreateLocalInventoryItem(6, "SpeedItem", "加速卷轴", "CONSUMABLE", "speed", GetLocalQuantity("SpeedItem", 2)),
             CreateLocalInventoryItem(7, "BeginnerSword", "新手短剑", "EQUIPMENT", "sword", GetLocalQuantity("BeginnerSword", 1)),
             CreateLocalInventoryItem(8, "ClothArmor", "布甲", "EQUIPMENT", "armor", GetLocalQuantity("ClothArmor", 1)),
-            CreateLocalInventoryItem(9, "PetEgg", "灵宠蛋", "PET", "pet", GetLocalQuantity("PetEgg", 1)),
             CreateLocalInventoryItem(10, "EquipmentChest", "装备宝箱", "CHEST", "chest", GetLocalQuantity("EquipmentChest", 0)),
             CreateLocalInventoryItem(11, "HeroChest", "英雄宝箱", "CHEST", "hero_chest", GetLocalQuantity("HeroChest", 0)),
             CreateLocalInventoryItem(12, "AdvancedHeroChest", "高级英雄箱", "CHEST", "advanced_chest", GetLocalQuantity("AdvancedHeroChest", 0)),
@@ -1775,11 +2286,6 @@ public partial class HomePageUI : MonoBehaviour
             return "equipment";
         }
 
-        if (IsPetItem(item))
-        {
-            return "pet";
-        }
-
         if (IsMedicineItem(item))
         {
             return "medicine";
@@ -1790,8 +2296,49 @@ public partial class HomePageUI : MonoBehaviour
 
     private bool IsTopCurrencyItem(InventoryItemResponse item)
     {
-        string key = NormalizeInventoryKey(GetInventoryItemKey(item));
-        return key == "gold" || key == "crystal" || key == "soulcrystal" || key == "purplecrystal";
+        if (item == null)
+        {
+            return false;
+        }
+
+        string key = CompactInventoryIdentifier(item.itemKey);
+        string name = CompactInventoryIdentifier(item.name);
+        string icon = CompactInventoryIdentifier(item.icon);
+        string type = CompactInventoryIdentifier(item.itemType);
+        return type == "currency"
+            || IsInventoryCurrencyIdentifier(key)
+            || IsInventoryCurrencyIdentifier(name)
+            || IsInventoryCurrencyIdentifier(icon);
+    }
+
+    private bool IsInventoryCurrencyIdentifier(string value)
+    {
+        return value == "gold"
+            || value == "coin"
+            || value == "coins"
+            || value == "goldcoin"
+            || value == "currencygold"
+            || value == "金币"
+            || value == "金幣"
+            || value == "crystal"
+            || value == "diamond"
+            || value == "钻石"
+            || value == "鑽石"
+            || value == "bluecrystal"
+            || value == "蓝晶"
+            || value == "藍晶"
+            || value == "soulcrystal"
+            || value == "魂晶"
+            || value == "purplecrystal"
+            || value == "紫晶";
+    }
+
+    private string CompactInventoryIdentifier(string value)
+    {
+        return NormalizeInventoryKey(value)
+            .Replace("_", string.Empty)
+            .Replace("-", string.Empty)
+            .Replace(" ", string.Empty);
     }
 
     private bool IsPetItem(InventoryItemResponse item)
@@ -1844,19 +2391,10 @@ public partial class HomePageUI : MonoBehaviour
         RenderInventoryPanel();
     }
 
-    private void SetInventoryStallMode(bool stallMode)
-    {
-        inventoryStallMode = stallMode;
-        selectedInventoryItemKey = string.Empty;
-        inventoryStatusMessage = stallMode ? "摆摊模式：选择物品后可上架或出售" : "已返回仓库视图";
-        RenderInventoryPanel();
-    }
-
     private string GetInventoryCategoryLabel(string category)
     {
         if (category == "equipment") return "装备分类";
         if (category == "medicine") return "药品分类";
-        if (category == "pet") return "灵宠分类";
         if (category == "other") return "其它分类";
         return "全部物品";
     }
@@ -1870,41 +2408,152 @@ public partial class HomePageUI : MonoBehaviour
             return;
         }
 
-        Array.Sort(currentInventoryItems, CompareInventoryItems);
-        PlayerPrefs.SetInt("InventorySorted", 1);
-        PlayerPrefs.Save();
+        int mergedGroupCount;
+        int releasedSlotCount;
+        currentInventoryItems = MergeAndSortInventoryItems(currentInventoryItems, out mergedGroupCount, out releasedSlotCount);
         selectedInventoryItemKey = string.Empty;
-        inventoryStatusMessage = inventoryServerBacked ? "已按分类整理当前服务器列表（仅改变显示顺序）" : "背包整理完成";
+        if (inventoryServerBacked)
+        {
+            SyncInventoryResourceValues(currentInventoryItems);
+        }
+
+        if (GetOwnedInventoryCount() == 0)
+        {
+            inventoryStatusMessage = "当前没有可整理的物品";
+            RenderInventoryPanel();
+            return;
+        }
+
+        string serverSuffix = inventoryServerBacked ? "（仅改变当前显示，服务器数据未修改）" : string.Empty;
+        inventoryStatusMessage = mergedGroupCount > 0
+            ? $"整理完成：合并 {mergedGroupCount} 组物品，释放 {releasedSlotCount} 个背包格{serverSuffix}"
+            : "整理完成：未发现可合并物品，已按数量从多到少排列" + serverSuffix;
         RenderInventoryPanel();
     }
 
-    private int CompareInventoryItems(InventoryItemResponse left, InventoryItemResponse right)
+    private InventoryItemResponse[] MergeAndSortInventoryItems(
+        InventoryItemResponse[] sourceItems,
+        out int mergedGroupCount,
+        out int releasedSlotCount)
+    {
+        List<InventoryMergeStack> stacks = new List<InventoryMergeStack>();
+        Dictionary<string, InventoryMergeStack> stacksByKey = new Dictionary<string, InventoryMergeStack>(StringComparer.Ordinal);
+
+        for (int sourceIndex = 0; sourceIndex < sourceItems.Length; sourceIndex++)
+        {
+            InventoryItemResponse sourceItem = sourceItems[sourceIndex];
+            if (sourceItem == null || sourceItem.quantity <= 0)
+            {
+                continue;
+            }
+
+            string stackKey = GetInventoryStackKey(sourceItem, sourceIndex);
+            InventoryMergeStack stack;
+            if (!stacksByKey.TryGetValue(stackKey, out stack))
+            {
+                stack = new InventoryMergeStack
+                {
+                    stackKey = stackKey,
+                    item = CloneInventoryItem(sourceItem),
+                    sourceCount = 1
+                };
+                stacksByKey.Add(stackKey, stack);
+                stacks.Add(stack);
+                continue;
+            }
+
+            long mergedQuantity = (long)stack.item.quantity + sourceItem.quantity;
+            stack.item.quantity = (int)Math.Min(mergedQuantity, int.MaxValue);
+            stack.sourceCount++;
+            FillMissingInventoryMetadata(stack.item, sourceItem);
+        }
+
+        mergedGroupCount = 0;
+        releasedSlotCount = 0;
+        for (int stackIndex = 0; stackIndex < stacks.Count; stackIndex++)
+        {
+            InventoryMergeStack stack = stacks[stackIndex];
+            if (stack.sourceCount > 1 && !IsTopCurrencyItem(stack.item))
+            {
+                mergedGroupCount++;
+                releasedSlotCount += stack.sourceCount - 1;
+            }
+        }
+
+        stacks.Sort(CompareMergedInventoryStacks);
+        InventoryItemResponse[] mergedItems = new InventoryItemResponse[stacks.Count];
+        for (int stackIndex = 0; stackIndex < stacks.Count; stackIndex++)
+        {
+            mergedItems[stackIndex] = stacks[stackIndex].item;
+        }
+
+        return mergedItems;
+    }
+
+    private string GetInventoryStackKey(InventoryItemResponse item, int sourceIndex)
+    {
+        string itemKey = NormalizeInventoryKey(item.itemKey);
+        if (!string.IsNullOrEmpty(itemKey))
+        {
+            return "key:" + itemKey;
+        }
+
+        if (item.itemId != 0)
+        {
+            return "id:" + item.itemId;
+        }
+
+        string name = NormalizeInventoryKey(item.name);
+        string itemType = NormalizeInventoryKey(item.itemType);
+        string icon = NormalizeInventoryKey(item.icon);
+        if (!string.IsNullOrEmpty(name) || !string.IsNullOrEmpty(itemType) || !string.IsNullOrEmpty(icon))
+        {
+            return $"metadata:{name.Length}:{name}{itemType.Length}:{itemType}{icon.Length}:{icon}";
+        }
+
+        return "anonymous:" + sourceIndex;
+    }
+
+    private InventoryItemResponse CloneInventoryItem(InventoryItemResponse sourceItem)
+    {
+        return new InventoryItemResponse
+        {
+            itemId = sourceItem.itemId,
+            itemKey = sourceItem.itemKey,
+            name = sourceItem.name,
+            itemType = sourceItem.itemType,
+            icon = sourceItem.icon,
+            quantity = sourceItem.quantity
+        };
+    }
+
+    private void FillMissingInventoryMetadata(InventoryItemResponse targetItem, InventoryItemResponse sourceItem)
+    {
+        if (targetItem.itemId == 0) targetItem.itemId = sourceItem.itemId;
+        if (string.IsNullOrWhiteSpace(targetItem.itemKey)) targetItem.itemKey = sourceItem.itemKey;
+        if (string.IsNullOrWhiteSpace(targetItem.name)) targetItem.name = sourceItem.name;
+        if (string.IsNullOrWhiteSpace(targetItem.itemType)) targetItem.itemType = sourceItem.itemType;
+        if (string.IsNullOrWhiteSpace(targetItem.icon)) targetItem.icon = sourceItem.icon;
+    }
+
+    private int CompareMergedInventoryStacks(InventoryMergeStack left, InventoryMergeStack right)
     {
         if (left == null) return 1;
         if (right == null) return -1;
 
-        int categoryCompare = GetInventoryCategoryOrder(left).CompareTo(GetInventoryCategoryOrder(right));
-        if (categoryCompare != 0)
-        {
-            return categoryCompare;
-        }
-
-        int quantityCompare = right.quantity.CompareTo(left.quantity);
+        int quantityCompare = right.item.quantity.CompareTo(left.item.quantity);
         if (quantityCompare != 0)
         {
             return quantityCompare;
         }
 
-        return string.Compare(left.name, right.name, StringComparison.Ordinal);
-    }
+        int nameCompare = string.Compare(left.item.name, right.item.name, StringComparison.Ordinal);
+        if (nameCompare != 0)
+        {
+            return nameCompare;
+        }
 
-    private int GetInventoryCategoryOrder(InventoryItemResponse item)
-    {
-        string category = GetInventoryCategory(item);
-        if (category == "equipment") return 0;
-        if (category == "medicine") return 1;
-        if (category == "pet") return 2;
-        return 3;
+        return string.Compare(left.stackKey, right.stackKey, StringComparison.Ordinal);
     }
 
     private void AddInventoryResourceBadge(Transform parent, Vector2 position, string label, string key, Color iconColor)
@@ -2033,7 +2682,6 @@ public partial class HomePageUI : MonoBehaviour
         string category = GetInventoryCategory(item);
         if (category == "equipment") fallbackColor = new Color(0.35f, 0.47f, 0.78f, 1f);
         if (category == "medicine") fallbackColor = new Color(0.25f, 0.68f, 0.38f, 1f);
-        if (category == "pet") fallbackColor = new Color(0.76f, 0.33f, 0.68f, 1f);
         AddMiniGem(parent, position + new Vector2(10f, -10f), size - new Vector2(20f, 20f), fallbackColor);
 
         string firstLetter = string.IsNullOrEmpty(item.name) ? "物" : item.name.Substring(0, 1);
@@ -2085,7 +2733,7 @@ public partial class HomePageUI : MonoBehaviour
         Image footer = CreateImage("InventoryFooter", parent, new Color(0.50f, 0.24f, 0.08f, 1f));
         SetRect(footer.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(258f, -800f), new Vector2(1060f, 64f));
 
-        Text capacity = CreateMailText("InventoryCapacity", footer.transform, $"储物袋空间：{ownedCount:00}/{InventoryCapacity}", 18, FontStyle.Bold, new Color(1f, 0.86f, 0.48f, 1f), TextAnchor.MiddleLeft);
+        Text capacity = CreateMailText("InventoryCapacity", footer.transform, $"背包空间：{ownedCount:00}/{InventoryCapacity}", 18, FontStyle.Bold, new Color(1f, 0.86f, 0.48f, 1f), TextAnchor.MiddleLeft);
         SetRect(capacity.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(20f, -10f), new Vector2(250f, 34f));
 
         Text visible = CreateMailText("InventoryVisibleCount", footer.transform, $"当前分类 {visibleCount} 件  已开放 {unlockedSlots} 格", 15, FontStyle.Normal, new Color(1f, 0.78f, 0.48f, 0.90f), TextAnchor.MiddleLeft);
@@ -2114,7 +2762,10 @@ public partial class HomePageUI : MonoBehaviour
         shadow.raycastTarget = false;
 
         Button button = CreateButton(parent, "InventorySideAction_" + label, string.Empty, selected ? new Color(0.91f, 0.49f, 0.16f, 1f) : new Color(0.69f, 0.38f, 0.14f, 1f), Color.white);
-        button.onClick.AddListener(action);
+        if (action != null)
+        {
+            button.onClick.AddListener(action);
+        }
         SetRect(button.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, new Vector2(154f, 126f));
 
         Text icon = CreateMailText("InventorySideIcon", button.transform, iconText, 34, FontStyle.Bold, new Color(1f, 0.91f, 0.66f, 1f), TextAnchor.MiddleCenter);
@@ -2140,12 +2791,12 @@ public partial class HomePageUI : MonoBehaviour
         Text type = CreateMailText("InventoryContextType", menu.transform, $"{GetInventoryTypeLabel(item)}  x{item.quantity}", 14, FontStyle.Normal, new Color(1f, 0.77f, 0.45f, 0.90f), TextAnchor.MiddleLeft);
         SetRect(type.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(12f, -34f), new Vector2(160f, 24f));
 
-        Button primary = CreateButton(menu.transform, "InventoryPrimaryAction", inventoryStallMode ? "上架" : GetInventoryActionLabel(item), new Color(0.30f, 0.68f, 0.14f, 1f), Color.white);
+        Button primary = CreateButton(menu.transform, "InventoryPrimaryAction", GetInventoryActionLabel(item), new Color(0.30f, 0.68f, 0.14f, 1f), Color.white);
         primary.onClick.AddListener(HandlePrimaryInventoryAction);
         SetRect(primary.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(10f, -64f), new Vector2(78f, 40f));
         ConfigureClearButtonLabel(primary, 16);
 
-        Button sell = CreateButton(menu.transform, "InventorySellAction", inventoryStallMode ? "出售" : "出售", new Color(0.91f, 0.37f, 0.13f, 1f), Color.white);
+        Button sell = CreateButton(menu.transform, "InventorySellAction", "出售", new Color(0.91f, 0.37f, 0.13f, 1f), Color.white);
         sell.onClick.AddListener(SellSelectedInventoryItem);
         SetRect(sell.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(96f, -64f), new Vector2(78f, 40f));
         ConfigureClearButtonLabel(sell, 16);
@@ -2172,7 +2823,6 @@ public partial class HomePageUI : MonoBehaviour
         string category = GetInventoryCategory(item);
         if (category == "equipment") return "装备";
         if (category == "medicine") return "药品";
-        if (category == "pet") return "灵宠";
         if (IsChestItem(item)) return "宝箱";
         if ((item.itemType ?? string.Empty).IndexOf("TICKET", StringComparison.OrdinalIgnoreCase) >= 0) return "道具";
         return "材料";
@@ -2193,12 +2843,6 @@ public partial class HomePageUI : MonoBehaviour
 
     private void HandlePrimaryInventoryAction()
     {
-        if (inventoryStallMode)
-        {
-            SellSelectedInventoryItem();
-            return;
-        }
-
         UseSelectedInventoryItem();
     }
 
@@ -2223,15 +2867,6 @@ public partial class HomePageUI : MonoBehaviour
             PlayerPrefs.SetString("EquippedItemKey", GetInventoryItemKey(item));
             PlayerPrefs.Save();
             inventoryStatusMessage = $"已装备：{item.name}";
-            RenderInventoryPanel();
-            return;
-        }
-
-        if (IsPetItem(item))
-        {
-            PlayerPrefs.SetString("EquippedPetKey", GetInventoryItemKey(item));
-            PlayerPrefs.Save();
-            inventoryStatusMessage = $"已设置灵宠：{item.name}";
             RenderInventoryPanel();
             return;
         }
@@ -2318,8 +2953,7 @@ public partial class HomePageUI : MonoBehaviour
         AddLocalResource("Gold", price);
         PlayerPrefs.Save();
 
-        string mode = inventoryStallMode ? "已从摊位出售" : "已出售";
-        inventoryStatusMessage = $"{mode}：{item.name} x1，获得金币 x{price}";
+        inventoryStatusMessage = $"已出售：{item.name} x1，获得金币 x{price}";
         currentInventoryItems = BuildLocalInventoryItems();
         InventoryItemResponse remaining = FindCurrentInventoryItem(selectedInventoryItemKey);
         if (remaining == null || remaining.quantity <= 0)
@@ -2334,7 +2968,6 @@ public partial class HomePageUI : MonoBehaviour
         if (IsEquipmentItem(item)) return 220;
         if (IsChestItem(item)) return 120;
         if (IsMedicineItem(item)) return 25;
-        if (GetInventoryCategory(item) == "pet") return 300;
         return 10;
     }
 
@@ -2397,7 +3030,7 @@ public partial class HomePageUI : MonoBehaviour
         int unlocked = GetInventoryUnlockedSlots();
         if (unlocked >= InventoryCapacity)
         {
-            inventoryStatusMessage = "储物袋已扩充到最大容量";
+            inventoryStatusMessage = "背包已扩充到最大容量";
             RenderInventoryPanel();
             return;
         }
@@ -2415,7 +3048,7 @@ public partial class HomePageUI : MonoBehaviour
         PlayerPrefs.SetInt("InventoryUnlockedSlots", Mathf.Min(InventoryCapacity, unlocked + 8));
         PlayerPrefs.Save();
         currentInventoryItems = BuildLocalInventoryItems();
-        inventoryStatusMessage = "储物袋已扩充 8 格";
+        inventoryStatusMessage = "背包已扩充 8 格";
         RenderInventoryPanel();
     }
 
@@ -2428,23 +3061,6 @@ public partial class HomePageUI : MonoBehaviour
         );
     }
 
-    private void ShowBuildContent()
-    {
-        SelectHomeMode(
-            "build",
-            "建造模式",
-            "已选择建造模式。\n\n当前状态：点击右侧“进入地图”进入建造地图\n\n功能内容\n1. 放置地块\n2. 建造建筑\n3. 升级建筑\n4. 查看建筑队列\n\n项目里已有 MapScene、LandBuildPanel、BuildPanel、BuildingManager，进入地图后可以继续使用现有建造流程。"
-        );
-    }
-
-    private void ShowManageContent()
-    {
-        SelectHomeMode(
-            "manage",
-            "经营模式",
-            "已选择经营模式。\n\n当前状态：点击右侧“进入地图”进入经营地图\n\n功能内容\n1. 查看生产队列\n2. 收取资源产出\n3. 查看建筑收益\n4. 管理 NPC 入驻\n\n接口文档已有经营产出和 NPC 相关接口，后续可在 MapScene 内继续接入生产列表、详情和一键收取。"
-        );
-    }
 
     private void SelectHomeMode(string mode, string title, string body)
     {
@@ -2491,6 +3107,15 @@ public partial class HomePageUI : MonoBehaviour
 
         announcementPanelView.gameObject.SetActive(true);
         announcementPanelView.transform.SetAsLastSibling();
+        if (HasAuthSession())
+        {
+            announcementPanelView.SetAnnouncement("游戏公告", "正在同步服务器公告", string.Empty, "正在读取当前有效公告...");
+            announcementPanelView.BindClose(HideAnnouncementPanel);
+            StartCoroutine(GetServerAnnouncements());
+            SetStatus("正在读取服务器公告");
+            return;
+        }
+
         announcementPanelView.SetAnnouncement(
             "游戏公告",
             "版本 1.0 · 首页功能更新",
@@ -2519,7 +3144,7 @@ public partial class HomePageUI : MonoBehaviour
             "3. 建造、对战、经营三个模式已加入右侧功能区。",
             string.Empty,
             "二、系统功能补充",
-            "1. 背包支持装备、药品、其它和灵宠分类，可进行使用、出售、整理与扩容。",
+            "1. 背包支持装备、药品和其它分类，可进行使用、出售、整理与扩容。",
             "2. 任务列表包含每日任务、主线任务、成长任务和活动任务。",
             "3. 系统邮件、充值商店和幸运抽奖界面已补充完整。",
             string.Empty,
@@ -2614,7 +3239,8 @@ public partial class HomePageUI : MonoBehaviour
         SetRect(tipText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(18f, -34f), new Vector2(520f, 24f));
 
         Button guide = CreateButton(panel.transform, "RechargeGuideButton", "贵族特权", new Color(0.54f, 0.40f, 0.22f, 0.92f), new Color(1f, 0.90f, 0.66f, 1f));
-        guide.onClick.AddListener(() => SetStatus("贵族特权：充值获得贵族经验，特权接口待后续接入。"));
+        guide.onClick.AddListener(ShowRefundCenter);
+        SetSceneButtonText(guide, HasAuthSession() ? "退款/进度" : "账号功能");
         SetRect(guide.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1168f, -72f), new Vector2(168f, 54f));
         ConfigureClearButtonLabel(guide, 21);
 
@@ -4540,11 +5166,29 @@ public partial class HomePageUI : MonoBehaviour
 
     private Sprite LoadSpriteFromAsset(string relativePath)
     {
-        string path = Path.Combine(Application.dataPath, relativePath.Replace("/", Path.DirectorySeparatorChar.ToString()));
+        string normalizedPath = relativePath.Replace("/", Path.DirectorySeparatorChar.ToString());
+        string path = Path.Combine(Application.dataPath, normalizedPath);
+        if (!File.Exists(path))
+        {
+            path = Path.Combine(Application.dataPath, "_Imported", "weijun-game-project", "Assets", normalizedPath);
+        }
+
         if (!File.Exists(path))
         {
             return null;
         }
+
+#if UNITY_EDITOR
+        if (!Application.isPlaying)
+        {
+            string assetPath = "Assets" + path.Substring(Application.dataPath.Length).Replace(Path.DirectorySeparatorChar, '/');
+            Sprite assetSprite = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
+            if (assetSprite != null)
+            {
+                return assetSprite;
+            }
+        }
+#endif
 
         byte[] bytes = File.ReadAllBytes(path);
         Texture2D texture = new Texture2D(2, 2);
@@ -4865,8 +5509,15 @@ public partial class HomePageUI : MonoBehaviour
         public readonly int rewardAmount;
         public readonly bool daily;
         public readonly Action goAction;
+        public readonly bool serverBacked;
+        public readonly long serverTaskId;
+        public readonly string serverStatus;
 
-        public bool IsComplete => current >= target;
+        public bool IsComplete => serverBacked
+            ? string.Equals(serverStatus, "COMPLETED", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(serverStatus, "CLAIMED", StringComparison.OrdinalIgnoreCase)
+                || current >= target
+            : current >= target;
 
         public TaskDisplayItem(
             string id,
@@ -4878,7 +5529,10 @@ public partial class HomePageUI : MonoBehaviour
             string rewardName,
             int rewardAmount,
             bool daily,
-            Action goAction)
+            Action goAction,
+            bool serverBacked = false,
+            long serverTaskId = 0,
+            string serverStatus = null)
         {
             this.id = id;
             this.title = title;
@@ -4890,6 +5544,9 @@ public partial class HomePageUI : MonoBehaviour
             this.rewardAmount = rewardAmount;
             this.daily = daily;
             this.goAction = goAction;
+            this.serverBacked = serverBacked;
+            this.serverTaskId = serverTaskId;
+            this.serverStatus = serverStatus;
         }
     }
 
@@ -4916,6 +5573,28 @@ public partial class HomePageUI : MonoBehaviour
         public string itemType;
         public string icon;
         public int quantity;
+        public long playerEquipmentId;
+        public int equipmentId;
+        public string equipmentKey;
+        public string equipmentType;
+        public string quality;
+        public string modelKey;
+        public string description;
+        public string attributesJson;
+        public int level;
+        public string status;
+        public bool locked;
+        public int healthBonus;
+        public int attackBonus;
+        public int defenseBonus;
+        public string acquireTime;
+    }
+
+    private sealed class InventoryMergeStack
+    {
+        public string stackKey;
+        public InventoryItemResponse item;
+        public int sourceCount;
     }
 
     [Serializable]

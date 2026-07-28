@@ -334,7 +334,6 @@ public partial class HomePageUI
 
         HideShopPanel();
         activeInventoryCategory = "all";
-        inventoryStallMode = false;
         selectedInventoryItemKey = string.Empty;
         ShowInventoryPanel(
             BuildLocalInventoryItems(),

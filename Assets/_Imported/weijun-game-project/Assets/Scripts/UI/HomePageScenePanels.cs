@@ -49,5 +49,10 @@ public sealed class HomePageScenePanels : MonoBehaviour
         panels = scenePanels ?? Array.Empty<HomePageScenePanel>();
         schemaVersion = version;
     }
+
+    public void EditorSetSchemaVersion(int version)
+    {
+        schemaVersion = version;
+    }
 #endif
 }

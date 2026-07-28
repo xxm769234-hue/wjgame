@@ -63,6 +63,11 @@ public partial class HomePageUI
             string title = string.IsNullOrEmpty(realtimeEvent.data.title) ? "收到新的领地提醒" : realtimeEvent.data.title;
             SetStatus(title);
 
+            if (mailShowingNotifications && mailPanelObject != null)
+            {
+                StartCoroutine(GetNotificationCenterList());
+            }
+
             if (realtimeEvent.data.type == "MAIL_RECEIVED" && mailPanelObject != null)
             {
                 StartCoroutine(GetMailList());
@@ -247,6 +252,7 @@ public partial class HomePageUI
     private void OnDestroy()
     {
         StopRealtimeConnection();
+        WeChatPlatformBridge.DestroyFriendGiftPage();
     }
 
 #pragma warning disable 0649

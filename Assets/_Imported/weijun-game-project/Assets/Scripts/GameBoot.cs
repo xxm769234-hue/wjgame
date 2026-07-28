@@ -561,7 +561,15 @@ public class GameBoot : MonoBehaviour
             user.gold,
             user.wood,
             user.stone,
-            user.iron);
+            user.iron,
+            user.diamond,
+            user.totalExperience,
+            user.levelCurveRevision,
+            user.currentLevelExperience,
+            user.requiredExperienceForNextLevel,
+            user.experienceProgressBps,
+            user.maxLevel,
+            user.economyFrozen);
     }
 
     private void SaveGuestLoginState()
@@ -810,10 +818,18 @@ public class GameBoot : MonoBehaviour
         public string username;
         public string nickname;
         public int level;
+        public long totalExperience;
+        public int levelCurveRevision;
+        public int currentLevelExperience;
+        public int requiredExperienceForNextLevel;
+        public int experienceProgressBps;
+        public bool maxLevel;
+        public bool economyFrozen;
         public int gold;
         public int wood;
         public int stone;
         public int iron;
+        public int diamond;
         public ItemData[] items;
     }
 

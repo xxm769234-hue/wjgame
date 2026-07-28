@@ -5,6 +5,12 @@ mergeInto(LibraryManager.library, {
     generation: 0
   },
 
+  $WJFriendGiftState: {
+    manager: null,
+    openlink: '',
+    generation: 0
+  },
+
   $WJRealtimeNotify: function (method, value) {
     var receiverName = WJRealtimeState.receiverName;
     if (!receiverName) {
@@ -82,6 +88,205 @@ mergeInto(LibraryManager.library, {
         send('OnWeChatPaymentFailed', error && error.errMsg ? error.errMsg : '微信支付调用失败');
       }
     });
+  },
+
+  WJ_WeChatShowRewardedVideo: function (receiverNamePtr, watchIdPtr, adUnitIdPtr) {
+    var receiverName = UTF8ToString(receiverNamePtr);
+    var watchId = UTF8ToString(watchIdPtr);
+    var adUnitId = UTF8ToString(adUnitIdPtr);
+    var send = function (method, value) {
+      if (typeof SendMessage === 'function') {
+        SendMessage(receiverName, method, value || '');
+      } else if (typeof GameGlobal !== 'undefined' && GameGlobal.Module && GameGlobal.Module.SendMessage) {
+        GameGlobal.Module.SendMessage(receiverName, method, value || '');
+      }
+    };
+
+    if (typeof wx === 'undefined' || typeof wx.createRewardedVideoAd !== 'function') {
+      send('OnWeChatRewardedVideoFailed', '当前环境不支持 wx.createRewardedVideoAd');
+      return;
+    }
+    if (!adUnitId) {
+      send('OnWeChatRewardedVideoFailed', '服务器未返回广告位 ID');
+      return;
+    }
+
+    var ad = wx.createRewardedVideoAd({ adUnitId: adUnitId });
+    var settled = false;
+    var cleanup = function () {
+      if (ad.offClose) ad.offClose(onClose);
+      if (ad.offError) ad.offError(onError);
+    };
+    var onClose = function (result) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (result && result.isEnded === true) {
+        send('OnWeChatRewardedVideoCompleted', watchId);
+      } else {
+        send('OnWeChatRewardedVideoClosed', watchId);
+      }
+    };
+    var onError = function (error) {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      send('OnWeChatRewardedVideoFailed', error && error.errMsg ? error.errMsg : '激励视频加载失败');
+    };
+
+    ad.onClose(onClose);
+    ad.onError(onError);
+    ad.show().catch(function () {
+      return ad.load().then(function () { return ad.show(); });
+    }).catch(onError);
+  },
+
+  WJ_WeChatRequestSubscribeMessages: function (receiverNamePtr, requestJsonPtr) {
+    var receiverName = UTF8ToString(receiverNamePtr);
+    var send = function (method, value) {
+      if (typeof SendMessage === 'function') {
+        SendMessage(receiverName, method, value || '');
+      } else if (typeof GameGlobal !== 'undefined' && GameGlobal.Module && GameGlobal.Module.SendMessage) {
+        GameGlobal.Module.SendMessage(receiverName, method, value || '');
+      }
+    };
+
+    if (typeof wx === 'undefined' || typeof wx.requestSubscribeMessage !== 'function') {
+      send('OnWeChatSubscribeFailed', '当前环境不支持 wx.requestSubscribeMessage');
+      return;
+    }
+
+    var request;
+    try {
+      request = JSON.parse(UTF8ToString(requestJsonPtr));
+    } catch (error) {
+      send('OnWeChatSubscribeFailed', '订阅模板参数格式错误');
+      return;
+    }
+    var templateIds = request && request.templateIds ? request.templateIds : [];
+    if (!templateIds.length) {
+      send('OnWeChatSubscribeFailed', '没有可申请的订阅模板');
+      return;
+    }
+
+    wx.requestSubscribeMessage({
+      tmplIds: templateIds,
+      success: function (result) {
+        var items = [];
+        for (var i = 0; i < templateIds.length; i++) {
+          var templateId = templateIds[i];
+          items.push({
+            templateId: templateId,
+            status: result && result[templateId] ? result[templateId] : 'reject'
+          });
+        }
+        send('OnWeChatSubscribeResult', JSON.stringify({ results: items }));
+      },
+      fail: function (error) {
+        send('OnWeChatSubscribeFailed', error && error.errMsg ? error.errMsg : '微信订阅授权失败');
+      }
+    });
+  },
+
+  WJ_WeChatSyncFriendLevel: function (level) {
+    if (typeof wx === 'undefined' || typeof wx.setUserCloudStorage !== 'function') {
+      return;
+    }
+
+    wx.setUserCloudStorage({
+      KVDataList: [
+        { key: 'player_level', value: String(Math.max(0, level || 0)) }
+      ],
+      fail: function (error) {
+        if (typeof console !== 'undefined' && console.warn) {
+          console.warn('同步微信好友等级失败', error);
+        }
+      }
+    });
+  },
+
+  WJ_WeChatOpenFriendGiftPage__deps: ['$WJFriendGiftState'],
+  WJ_WeChatOpenFriendGiftPage: function (receiverNamePtr, openlinkPtr, minimumVersionPtr) {
+    var receiverName = UTF8ToString(receiverNamePtr);
+    var openlink = UTF8ToString(openlinkPtr);
+    var minimumVersion = UTF8ToString(minimumVersionPtr);
+    var send = function (method, value) {
+      if (typeof SendMessage === 'function') {
+        SendMessage(receiverName, method, value || '');
+      } else if (typeof GameGlobal !== 'undefined' && GameGlobal.Module && GameGlobal.Module.SendMessage) {
+        GameGlobal.Module.SendMessage(receiverName, method, value || '');
+      }
+    };
+    var versionAtLeast = function (current, minimum) {
+      if (!minimum) return true;
+      var currentParts = String(current || '').split('.');
+      var minimumParts = String(minimum || '').split('.');
+      var length = Math.max(currentParts.length, minimumParts.length);
+      for (var i = 0; i < length; i++) {
+        var currentPart = parseInt(currentParts[i] || '0', 10) || 0;
+        var minimumPart = parseInt(minimumParts[i] || '0', 10) || 0;
+        if (currentPart > minimumPart) return true;
+        if (currentPart < minimumPart) return false;
+      }
+      return true;
+    };
+
+    if (typeof wx === 'undefined' || typeof wx.createPageManager !== 'function') {
+      send('OnWeChatFriendGiftPageFailed', '当前微信基础库不支持好友赠礼页面');
+      return;
+    }
+    if (!openlink) {
+      send('OnWeChatFriendGiftPageFailed', '服务器未返回好友赠礼 OPENLINK');
+      return;
+    }
+
+    var sdkVersion = '';
+    try {
+      sdkVersion = wx.getSystemInfoSync && wx.getSystemInfoSync().SDKVersion
+        ? wx.getSystemInfoSync().SDKVersion
+        : '';
+    } catch (ignored) {}
+    if (!versionAtLeast(sdkVersion, minimumVersion)) {
+      send('OnWeChatFriendGiftPageFailed', '微信基础库版本过低，需要 ' + minimumVersion + ' 或更高版本');
+      return;
+    }
+
+    if (WJFriendGiftState.manager && WJFriendGiftState.openlink !== openlink) {
+      try { WJFriendGiftState.manager.destroy(); } catch (ignored) {}
+      WJFriendGiftState.manager = null;
+    }
+    if (!WJFriendGiftState.manager) {
+      WJFriendGiftState.manager = wx.createPageManager();
+      WJFriendGiftState.openlink = openlink;
+    }
+
+    var generation = ++WJFriendGiftState.generation;
+    var manager = WJFriendGiftState.manager;
+    var options = { openlink: openlink };
+    Promise.resolve(manager.load(options))
+      .then(function () { return manager.show(options); })
+      .then(function () {
+        if (generation === WJFriendGiftState.generation) {
+          send('OnWeChatFriendGiftPageOpened', 'opened');
+        }
+      })
+      .catch(function (error) {
+        if (generation === WJFriendGiftState.generation) {
+          send(
+            'OnWeChatFriendGiftPageFailed',
+            error && error.errMsg ? error.errMsg : '微信好友赠礼页面打开失败');
+        }
+      });
+  },
+
+  WJ_WeChatDestroyFriendGiftPage__deps: ['$WJFriendGiftState'],
+  WJ_WeChatDestroyFriendGiftPage: function () {
+    WJFriendGiftState.generation++;
+    if (WJFriendGiftState.manager) {
+      try { WJFriendGiftState.manager.destroy(); } catch (ignored) {}
+    }
+    WJFriendGiftState.manager = null;
+    WJFriendGiftState.openlink = '';
   },
 
   WJ_RealtimeConnect__deps: ['$WJRealtimeState', '$WJRealtimeNotify'],

@@ -86,7 +86,15 @@ public static class GameSession
         int gold,
         int wood,
         int stone,
-        int iron)
+        int iron,
+        int diamond = 0,
+        long totalExperience = 0,
+        int levelCurveRevision = 0,
+        int currentLevelExperience = 0,
+        int requiredExperienceForNextLevel = 0,
+        int experienceProgressBps = 0,
+        bool maxLevel = false,
+        bool economyFrozen = false)
     {
         if (IsGuest)
         {
@@ -109,7 +117,16 @@ public static class GameSession
         PlayerPrefs.SetInt("Wood", wood);
         PlayerPrefs.SetInt("Stone", stone);
         PlayerPrefs.SetInt("Iron", iron);
+        PlayerPrefs.SetInt("Crystal", diamond);
+        PlayerPrefs.SetString("PlayerTotalExperience", Math.Max(0L, totalExperience).ToString());
+        PlayerPrefs.SetInt("PlayerLevelCurveRevision", Math.Max(0, levelCurveRevision));
+        PlayerPrefs.SetInt("PlayerCurrentLevelExperience", Math.Max(0, currentLevelExperience));
+        PlayerPrefs.SetInt("PlayerRequiredExperience", Math.Max(0, requiredExperienceForNextLevel));
+        PlayerPrefs.SetInt("PlayerExperienceProgressBps", Mathf.Clamp(experienceProgressBps, 0, 10000));
+        PlayerPrefs.SetInt("PlayerMaxLevel", maxLevel ? 1 : 0);
+        PlayerPrefs.SetInt("PlayerEconomyFrozen", economyFrozen ? 1 : 0);
         PlayerPrefs.Save();
+        WeChatPlatformBridge.SyncFriendLevel(level);
     }
 
     public static void SaveGuest(string nickname)

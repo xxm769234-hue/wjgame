@@ -38,6 +38,7 @@ Desktop.ini
 
 # Unity crash reports
 sysinfo.txt
+*.log
 
 # Plastic SCM local metadata
 .plastic/

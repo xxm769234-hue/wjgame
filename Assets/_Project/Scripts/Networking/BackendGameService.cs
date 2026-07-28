@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using UnityEngine;
 
 public sealed class BackendGameService : MonoBehaviour
@@ -14,6 +15,8 @@ public sealed class BackendGameService : MonoBehaviour
     private const string HomePlayerIdKey = "PlayerId";
     private const string HomeSessionModeKey = "SessionMode";
     private const string HomeTokenExpiresAtKey = "TokenExpiresAtUtc";
+    private const string ApiOverrideKey = "ApiBaseUrlOverride";
+    private const string ApiEnvironmentVariableName = "WEIJUN_API_BASE_URL";
 
     public static BackendGameService Instance { get; private set; }
 
@@ -68,9 +71,92 @@ public sealed class BackendGameService : MonoBehaviour
 
         Instance = this;
         DontDestroyOnLoad(gameObject);
+        if (TryResolveConfiguredBaseUrl(out string configuredBaseUrl, out string configurationError))
+        {
+            baseUrl = configuredBaseUrl;
+        }
+        else
+        {
+            Debug.LogWarning("Backend API 地址配置无效：" + configurationError, this);
+        }
         Token = PlayerPrefs.GetString(TokenKey, string.Empty);
         PlayerId = PlayerPrefs.GetInt(PlayerIdKey, 0);
         observedSessionRevision = PlayerPrefs.GetInt(SessionRevisionKey, 0);
+    }
+
+    private static bool TryResolveConfiguredBaseUrl(out string configuredBaseUrl, out string error)
+    {
+        if (TryNormalizeBaseUrl(PlayerPrefs.GetString(ApiOverrideKey, string.Empty), out configuredBaseUrl, out error))
+        {
+            return true;
+        }
+
+        if (TryNormalizeBaseUrl(Environment.GetEnvironmentVariable(ApiEnvironmentVariableName), out configuredBaseUrl, out error))
+        {
+            return true;
+        }
+
+        TextAsset configAsset = Resources.Load<TextAsset>("ApiConfig");
+        BackendApiConfigData config = null;
+        if (configAsset != null && !string.IsNullOrWhiteSpace(configAsset.text))
+        {
+            try
+            {
+                config = JsonUtility.FromJson<BackendApiConfigData>(configAsset.text);
+            }
+            catch (Exception exception)
+            {
+                error = "ApiConfig.json 解析失败：" + exception.Message;
+                configuredBaseUrl = string.Empty;
+                return false;
+            }
+        }
+
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        string candidate = config != null ? config.developmentBaseUrl : string.Empty;
+#else
+        string candidate = config != null ? config.productionBaseUrl : string.Empty;
+#endif
+        if (TryNormalizeBaseUrl(candidate, out configuredBaseUrl, out error))
+        {
+            return true;
+        }
+
+        configuredBaseUrl = string.Empty;
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
+        error = "开发接口地址无效，请检查 Resources/ApiConfig.json。";
+#else
+        error = "尚未配置生产接口地址，请设置 ApiConfig.json 的 productionBaseUrl。";
+#endif
+        return false;
+    }
+
+    private static bool TryNormalizeBaseUrl(string rawUrl, out string normalizedUrl, out string error)
+    {
+        normalizedUrl = string.Empty;
+        error = string.Empty;
+        if (string.IsNullOrWhiteSpace(rawUrl))
+        {
+            return false;
+        }
+
+        string candidate = rawUrl.Trim().TrimEnd('/');
+        if (!Uri.TryCreate(candidate, UriKind.Absolute, out Uri uri)
+            || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        {
+            error = "接口地址格式无效：" + candidate;
+            return false;
+        }
+
+        normalizedUrl = candidate;
+        return true;
+    }
+
+    [Serializable]
+    private class BackendApiConfigData
+    {
+        public string developmentBaseUrl;
+        public string productionBaseUrl;
     }
 
     private void Start()
@@ -597,6 +683,7 @@ public sealed class BackendGameService : MonoBehaviour
             PlayerId = CurrentUser.id;
             PlayerPrefs.SetInt(PlayerIdKey, PlayerId);
             PlayerPrefs.Save();
+            SyncWeChatFriendLevel(CurrentUser.level);
             Debug.Log($"Backend user loaded: {CurrentUser.nickname} gold={CurrentUser.gold} wood={CurrentUser.wood} stone={CurrentUser.stone} iron={CurrentUser.iron}", this);
         }
         else if (result != null && result.HttpStatus == 401)
@@ -1245,6 +1332,10 @@ public sealed class BackendGameService : MonoBehaviour
             (DateTimeOffset.UtcNow.ToUnixTimeSeconds() + Math.Max(1, response.expiresIn)).ToString());
         observedSessionRevision = IncrementSessionRevision();
         PlayerPrefs.Save();
+        if (CurrentUser != null)
+        {
+            SyncWeChatFriendLevel(CurrentUser.level);
+        }
         Debug.Log($"Backend login succeeded: playerId={PlayerId}", this);
     }
 
@@ -1303,4 +1394,16 @@ public sealed class BackendGameService : MonoBehaviour
         if (result == null) return "No backend response.";
         return string.IsNullOrEmpty(result.Message) ? $"HTTP {result.HttpStatus}" : result.Message;
     }
+
+    private static void SyncWeChatFriendLevel(int level)
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        WJ_WeChatSyncFriendLevel(Mathf.Max(0, level));
+#endif
+    }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+    [DllImport("__Internal")]
+    private static extern void WJ_WeChatSyncFriendLevel(int level);
+#endif
 }

@@ -6,6 +6,8 @@ using UnityEngine.UI;
 [DisallowMultipleComponent]
 public sealed class InventoryPanelView : MonoBehaviour
 {
+    [SerializeField, HideInInspector] private int schemaVersion;
+
     [Serializable]
     public sealed class ResourceControl
     {
@@ -66,16 +68,13 @@ public sealed class InventoryPanelView : MonoBehaviour
     [SerializeField] private Button contextDismissButton;
 
     [Header("Editable Copy")]
-    [SerializeField] private string inventoryTitle = "储物";
-    [SerializeField] private string stallTitle = "摆摊";
+    [SerializeField] private string inventoryTitle = "背包";
     [SerializeField] private string inventorySubtitle = "领地物资与道具管理";
-    [SerializeField] private string stallSubtitle = "选择物品进行上架或出售";
     [SerializeField] private string inventoryGridTitle = "物品栏";
-    [SerializeField] private string stallGridTitle = "选择要上架的物品";
     [SerializeField] private string localInventoryHint = "本地库存\n可使用与出售";
     [SerializeField] private string serverInventoryHint = "服务器库存\n仅支持查看";
     [SerializeField] private string emptyCategoryText = "当前分类暂无物品";
-    [SerializeField] private string capacityFormat = "储物袋空间：{0:00}/{1}";
+    [SerializeField] private string capacityFormat = "背包空间：{0:00}/{1}";
     [SerializeField] private string visibleCountFormat = "当前分类 {0} 件  已开放 {1} 格";
 
     [Header("Category Style")]
@@ -91,17 +90,18 @@ public sealed class InventoryPanelView : MonoBehaviour
     [SerializeField] private Color sideSelectedTextColor = Color.white;
 
     public int SlotCount => slots == null ? 0 : slots.Length;
+    public int SchemaVersion => schemaVersion;
 
     public InventorySlotView GetSlot(int index)
     {
         return slots != null && index >= 0 && index < slots.Length ? slots[index] : null;
     }
 
-    public void SetMode(bool stallMode, bool serverBacked)
+    public void SetMode(bool serverBacked)
     {
-        SetText(titleText, stallMode ? stallTitle : inventoryTitle);
-        SetText(subtitleText, stallMode ? stallSubtitle : inventorySubtitle);
-        SetText(gridTitleText, stallMode ? stallGridTitle : inventoryGridTitle);
+        SetText(titleText, inventoryTitle);
+        SetText(subtitleText, inventorySubtitle);
+        SetText(gridTitleText, inventoryGridTitle);
         SetText(sidebarHintText, serverBacked ? serverInventoryHint : localInventoryHint);
         SetText(emptyText, emptyCategoryText);
     }
@@ -205,9 +205,7 @@ public sealed class InventoryPanelView : MonoBehaviour
     }
 
     public void BindSideActions(
-        bool stallMode,
         UnityAction warehouseAction,
-        UnityAction stallAction,
         UnityAction storeAction)
     {
         if (sideActions == null)
@@ -223,7 +221,7 @@ public sealed class InventoryPanelView : MonoBehaviour
                 continue;
             }
 
-            bool selected = control.Id == "warehouse" && !stallMode || control.Id == "stall" && stallMode;
+            bool selected = control.Id == "warehouse";
             if (control.Background != null)
             {
                 control.Background.color = selected ? sideSelectedColor : sideNormalColor;
@@ -234,11 +232,7 @@ public sealed class InventoryPanelView : MonoBehaviour
                 control.Label.color = selected ? sideSelectedTextColor : sideNormalTextColor;
             }
 
-            UnityAction action = control.Id == "warehouse"
-                ? warehouseAction
-                : control.Id == "stall"
-                    ? stallAction
-                    : storeAction;
+            UnityAction action = control.Id == "warehouse" ? warehouseAction : storeAction;
             Bind(control.Button, action);
         }
     }
@@ -369,6 +363,11 @@ public sealed class InventoryPanelView : MonoBehaviour
         contextPrimaryButton = primaryButton;
         contextSellButton = sellButton;
         contextDismissButton = dismissButton;
+    }
+
+    public void EditorSetSchemaVersion(int version)
+    {
+        schemaVersion = version;
     }
 #endif
 }

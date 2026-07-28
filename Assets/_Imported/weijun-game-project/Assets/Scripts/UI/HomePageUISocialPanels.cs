@@ -15,6 +15,8 @@ public partial class HomePageUI
     private GameObject guestProfilePanelObject;
     private GameObject friendsPanelObject;
     private LocalFriendStore localFriendStore;
+    private LocalFriendStore serverFriendStore = new LocalFriendStore();
+    private ServerDailyGiftStatus serverDailyGiftStatus;
     private bool profileRefreshRunning;
     private bool profileSwitchLoginConfirmation;
     private bool friendDeleteConfirmation;
@@ -23,6 +25,8 @@ public partial class HomePageUI
     private string friendsSearchQuery = string.Empty;
     private string selectedFriendId = string.Empty;
     private string friendsStatusMessage = string.Empty;
+    private bool serverFriendsLoading;
+    private bool serverFriendMutationRunning;
 
     private void ShowGuestProfilePanel()
     {
@@ -223,12 +227,23 @@ public partial class HomePageUI
         PlayerPrefs.SetString("LoginUsername", profile.username ?? string.Empty);
         PlayerPrefs.SetString("PlayerNickname", profile.nickname ?? string.Empty);
         PlayerPrefs.SetInt("PlayerLv", profile.level);
+        PlayerPrefs.SetString("PlayerTotalExperience", Math.Max(0L, profile.totalExperience).ToString());
+        PlayerPrefs.SetInt("PlayerLevelCurveRevision", Mathf.Max(0, profile.levelCurveRevision));
+        PlayerPrefs.SetInt("PlayerCurrentLevelExperience", Mathf.Max(0, profile.currentLevelExperience));
+        PlayerPrefs.SetInt("PlayerRequiredExperience", Mathf.Max(0, profile.requiredExperienceForNextLevel));
+        PlayerPrefs.SetInt("PlayerExperienceProgressBps", Mathf.Clamp(profile.experienceProgressBps, 0, 10000));
+        PlayerPrefs.SetInt("PlayerMaxLevel", profile.maxLevel ? 1 : 0);
+        PlayerPrefs.SetInt("PlayerEconomyFrozen", profile.economyFrozen ? 1 : 0);
         PlayerPrefs.SetInt("Gold", profile.gold);
         PlayerPrefs.SetInt("Wood", profile.wood);
         PlayerPrefs.SetInt("Stone", profile.stone);
         PlayerPrefs.SetInt("Iron", profile.iron);
+        PlayerPrefs.SetInt("Crystal", Mathf.Max(0, profile.diamond));
         PlayerPrefs.SetString("ProfileLastSync", DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
         PlayerPrefs.Save();
+        WeChatPlatformBridge.SyncFriendLevel(profile.level);
+        SyncInventoryResourceValues(profile.items);
+        RefreshHomeResourceMetrics();
         UpdateHomeAvatarNickname(profile.nickname);
     }
 
@@ -323,7 +338,19 @@ public partial class HomePageUI
 
         friendsPanelObject = panel.gameObject;
         friendDeleteConfirmation = false;
-        RefreshFriendsScenePanel(panel.PanelRoot, "好友名册已打开");
+        ResetWeChatFriendGiftCatalog();
+        if (HasAuthSession())
+        {
+            friendsOnlineOnly = false;
+            serverFriendStore = new LocalFriendStore();
+            serverDailyGiftStatus = null;
+            RefreshFriendsScenePanel(panel.PanelRoot, "正在同步服务器好友...");
+            StartCoroutine(GetServerFriends(panel.PanelRoot));
+        }
+        else
+        {
+            RefreshFriendsScenePanel(panel.PanelRoot, "游客好友名册已打开");
+        }
         SetStatus("已打开好友列表");
     }
 
@@ -355,6 +382,7 @@ public partial class HomePageUI
             friendDeleteConfirmation = false;
         }
 
+        bool serverBacked = HasAuthSession();
         int onlineCount = 0;
         for (int i = 0; i < store.friends.Count; i++)
         {
@@ -364,7 +392,10 @@ public partial class HomePageUI
             }
         }
 
-        SetSceneText(root, "FriendsCount", $"好友 {filtered.Count}/{store.friends.Count}    在线 {onlineCount}");
+        string countText = serverBacked
+            ? BuildServerFriendCountText(filtered.Count, store.friends.Count)
+            : $"好友 {filtered.Count}/{store.friends.Count}    在线 {onlineCount}";
+        SetSceneText(root, "FriendsCount", countText);
         SetSceneText(root, "FriendsPageText", $"{friendsPageIndex + 1} / {pageCount}");
         SetSceneText(root, "FriendsStatus", friendsStatusMessage);
 
@@ -386,20 +417,38 @@ public partial class HomePageUI
         if (addInput != null)
         {
             addInput.characterLimit = 12;
+            if (addInput.placeholder is Text placeholder)
+            {
+                placeholder.text = serverBacked ? "输入玩家ID" : "输入好友昵称";
+            }
+            addInput.interactable = !serverFriendMutationRunning;
         }
 
         ConfigureFriendFilterButton(FindSceneComponent<Button>(root, "FriendsFilterAll"), !friendsOnlineOnly);
         ConfigureFriendFilterButton(FindSceneComponent<Button>(root, "FriendsFilterOnline"), friendsOnlineOnly);
+        Button onlineFilter = FindSceneComponent<Button>(root, "FriendsFilterOnline");
+        if (onlineFilter != null)
+        {
+            onlineFilter.interactable = !serverBacked;
+            SetSceneButtonText(onlineFilter, serverBacked ? "服务器" : "在线");
+        }
         BindSceneButton(FindSceneComponent<Button>(root, "FriendsFilterAll"), () => SetFriendFilter(root, false));
-        BindSceneButton(FindSceneComponent<Button>(root, "FriendsFilterOnline"), () => SetFriendFilter(root, true));
+        BindSceneButton(onlineFilter, serverBacked ? null : (Action)(() => SetFriendFilter(root, true)));
         BindSceneButton(FindSceneComponent<Button>(root, "FriendsClearSearchButton"), () => ClearFriendSearch(root));
         BindSceneButton(FindSceneComponent<Button>(root, "FriendsAddButton"), () => AddLocalFriend(root));
         BindSceneButton(FindSceneComponent<Button>(root, "FriendsCloseButton"), HideFriendsPanel);
+        ConfigureWeChatFriendGiftButton(root);
 
         Button previousButton = FindSceneComponent<Button>(root, "FriendsPreviousButton");
         Button nextButton = FindSceneComponent<Button>(root, "FriendsNextButton");
-        previousButton.interactable = friendsPageIndex > 0;
-        nextButton.interactable = friendsPageIndex < pageCount - 1;
+        if (previousButton != null)
+        {
+            previousButton.interactable = friendsPageIndex > 0 && !serverFriendsLoading;
+        }
+        if (nextButton != null)
+        {
+            nextButton.interactable = friendsPageIndex < pageCount - 1 && !serverFriendsLoading;
+        }
         BindSceneButton(previousButton, () => ChangeFriendsPage(root, -1));
         BindSceneButton(nextButton, () => ChangeFriendsPage(root, 1));
 
@@ -444,8 +493,14 @@ public partial class HomePageUI
 
             SetSceneText(row, "FriendRowAvatar" + rowIndex, GetNicknameInitial(friend.nickname));
             SetSceneText(row, "FriendRowName" + rowIndex, friend.nickname);
-            SetSceneText(row, "FriendRowMeta" + rowIndex, $"Lv.{friend.level}    亲密度 {friend.intimacy}");
-            SetSceneText(row, "FriendRowState" + rowIndex, friend.online ? "在线" : friend.lastSeen);
+            SetSceneText(
+                row,
+                "FriendRowMeta" + rowIndex,
+                friend.serverBacked ? $"Lv.{friend.level}    好友自 {friend.friendsSince}" : $"Lv.{friend.level}    亲密度 {friend.intimacy}");
+            SetSceneText(
+                row,
+                "FriendRowState" + rowIndex,
+                friend.serverBacked ? (friend.dailyGiftSent ? "今日已赠" : "今日可赠") : (friend.online ? "在线" : friend.lastSeen));
             Button rowButton = row.GetComponent<Button>();
             string friendId = friend.id;
             BindSceneButton(rowButton, () => SelectFriend(root, friendId));
@@ -474,17 +529,34 @@ public partial class HomePageUI
         SetSceneText(root, "FriendDetailName", friend.nickname);
         SetSceneText(root, "FriendDetailId", $"好友编号  {friend.id}");
         SetSceneText(root, "FriendDetailLevel", $"领主等级  Lv.{friend.level}");
-        SetSceneText(root, "FriendDetailOnline", friend.online ? "当前在线" : $"离线 · {friend.lastSeen}");
-        SetSceneText(root, "FriendDetailIntimacy", $"亲密度  {friend.intimacy}");
+        SetSceneText(
+            root,
+            "FriendDetailOnline",
+            friend.serverBacked ? $"成为好友：{friend.friendsSince}" : (friend.online ? "当前在线" : $"离线 · {friend.lastSeen}"));
+        SetSceneText(
+            root,
+            "FriendDetailIntimacy",
+            friend.serverBacked ? (friend.dailyGiftReceived ? "今日已收到该好友赠礼" : "今日尚未收到该好友赠礼") : $"亲密度  {friend.intimacy}");
 
-        bool giftedToday = friend.lastGiftDate == GetFriendDate();
-        SetSceneText(root, "FriendGiftHint", giftedToday ? "今日体力已经赠送" : "今日可赠送 5 点体力");
+        bool giftedToday = friend.serverBacked ? friend.dailyGiftSent : friend.lastGiftDate == GetFriendDate();
+        bool giftEnabled = !friend.serverBacked || (serverDailyGiftStatus != null && serverDailyGiftStatus.enabled);
+        string giftHint = friend.serverBacked
+            ? BuildServerFriendGiftHint(friend)
+            : (giftedToday ? "今日体力已经赠送" : "今日可赠送 5 点体力");
+        SetSceneText(root, "FriendGiftHint", giftHint);
         Button giftButton = FindSceneComponent<Button>(root, "FriendsGiftButton");
-        giftButton.interactable = !giftedToday;
-        SetSceneButtonText(giftButton, giftedToday ? "今日已赠" : "赠送体力");
+        if (giftButton != null)
+        {
+            giftButton.interactable = !giftedToday && giftEnabled && !serverFriendMutationRunning;
+        }
+        SetSceneButtonText(giftButton, giftedToday ? "今日已赠" : (friend.serverBacked ? "发送赠礼" : "赠送体力"));
         BindSceneButton(giftButton, () => GiftFriendStamina(root, friend.id));
 
         Button deleteButton = FindSceneComponent<Button>(root, "FriendsDeleteButton");
+        if (deleteButton != null)
+        {
+            deleteButton.interactable = !serverFriendMutationRunning;
+        }
         SetSceneButtonText(deleteButton, friendDeleteConfirmation ? "确认删除" : "删除好友");
         BindSceneButton(deleteButton, () => RequestDeleteFriend(root, friend.id));
     }
@@ -523,6 +595,24 @@ public partial class HomePageUI
     {
         InputField input = FindSceneComponent<InputField>(root, "FriendsAddInput");
         string nickname = input != null ? input.text.Trim() : string.Empty;
+        if (HasAuthSession())
+        {
+            if (!int.TryParse(nickname, out int friendPlayerId) || friendPlayerId <= 0)
+            {
+                RefreshFriendsScenePanel(root, "请输入正确的玩家 ID");
+                return;
+            }
+
+            if (friendPlayerId == GameSession.PlayerId)
+            {
+                RefreshFriendsScenePanel(root, "不能添加自己为好友");
+                return;
+            }
+
+            StartCoroutine(AddServerFriend(root, friendPlayerId));
+            return;
+        }
+
         if (nickname.Length < 2 || nickname.Length > 12)
         {
             RefreshFriendsScenePanel(root, "好友昵称需要保持在 2-12 个字符之间");
@@ -574,6 +664,17 @@ public partial class HomePageUI
             return;
         }
 
+        if (friend.serverBacked)
+        {
+            if (!int.TryParse(friend.id, out int friendPlayerId))
+            {
+                RefreshFriendsScenePanel(root, "好友玩家 ID 无效");
+                return;
+            }
+            StartCoroutine(SendServerDailyFriendGift(root, friendPlayerId));
+            return;
+        }
+
         if (friend.lastGiftDate == GetFriendDate())
         {
             RefreshFriendsScenePanel(root, "今天已经向该好友赠送过体力");
@@ -602,6 +703,17 @@ public partial class HomePageUI
         {
             friendDeleteConfirmation = true;
             RefreshFriendsScenePanel(root, $"再次点击“确认删除”移除 {friend.nickname}");
+            return;
+        }
+
+        if (friend.serverBacked)
+        {
+            if (!int.TryParse(friend.id, out int friendPlayerId))
+            {
+                RefreshFriendsScenePanel(root, "好友玩家 ID 无效");
+                return;
+            }
+            StartCoroutine(DeleteServerFriend(root, friendPlayerId, friend.nickname));
             return;
         }
 
@@ -636,6 +748,19 @@ public partial class HomePageUI
 
         filtered.Sort((left, right) =>
         {
+            if (HasAuthSession())
+            {
+                int levelOrder = right.level.CompareTo(left.level);
+                if (levelOrder != 0)
+                {
+                    return levelOrder;
+                }
+
+                int.TryParse(left.id, out int leftId);
+                int.TryParse(right.id, out int rightId);
+                return leftId.CompareTo(rightId);
+            }
+
             int onlineOrder = right.online.CompareTo(left.online);
             return onlineOrder != 0
                 ? onlineOrder
@@ -665,6 +790,11 @@ public partial class HomePageUI
 
     private LocalFriendStore LoadLocalFriendStore()
     {
+        if (HasAuthSession())
+        {
+            return serverFriendStore ?? (serverFriendStore = new LocalFriendStore());
+        }
+
         if (localFriendStore != null)
         {
             return localFriendStore;
@@ -694,6 +824,11 @@ public partial class HomePageUI
 
     private void SaveLocalFriendStore()
     {
+        if (HasAuthSession())
+        {
+            return;
+        }
+
         if (localFriendStore == null)
         {
             return;
@@ -818,10 +953,292 @@ public partial class HomePageUI
         public string username;
         public string nickname;
         public int level;
+        public long totalExperience;
+        public int levelCurveRevision;
+        public int currentLevelExperience;
+        public int requiredExperienceForNextLevel;
+        public int experienceProgressBps;
+        public bool maxLevel;
+        public bool economyFrozen;
         public int gold;
         public int wood;
         public int stone;
         public int iron;
+        public int diamond;
+        public InventoryItemResponse[] items;
+    }
+
+    private IEnumerator GetServerFriends(Transform root)
+    {
+        if (serverFriendsLoading)
+        {
+            yield break;
+        }
+
+        serverFriendsLoading = true;
+        List<LocalFriendData> loadedFriends = new List<LocalFriendData>();
+        int cursorLevel = 0;
+        int cursorPlayerId = 0;
+        bool hasCursor = false;
+        bool hasMore = true;
+        int pageGuard = 0;
+
+        while (hasMore && pageGuard++ < 50)
+        {
+            string path = hasCursor
+                ? $"/friends?cursorLevel={cursorLevel}&cursorPlayerId={cursorPlayerId}&limit=100"
+                : "/friends?limit=100";
+            UnityWebRequest request = CreateAuthorizedGet(path);
+            if (request == null)
+            {
+                serverFriendsLoading = false;
+                RefreshFriendsScenePanel(root, requestCreationError);
+                yield break;
+            }
+
+            using (request)
+            {
+                yield return request.SendWebRequest();
+                if (HandleUnauthorizedResponse(request))
+                {
+                    serverFriendsLoading = false;
+                    yield break;
+                }
+
+                ServerFriendListApiResponse response = ParseJson<ServerFriendListApiResponse>(request.downloadHandler.text);
+                if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+                {
+                    serverFriendsLoading = false;
+                    RefreshFriendsScenePanel(root, "好友同步失败：" + (response == null
+                        ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                        : GetApiError(response)));
+                    yield break;
+                }
+
+                if (response.data.items != null)
+                {
+                    for (int i = 0; i < response.data.items.Length; i++)
+                    {
+                        ServerFriendResponse item = response.data.items[i];
+                        if (item != null)
+                        {
+                            loadedFriends.Add(ConvertServerFriend(item));
+                        }
+                    }
+                }
+
+                if (response.data.dailyGift != null)
+                {
+                    serverDailyGiftStatus = response.data.dailyGift;
+                }
+
+                hasMore = response.data.hasMore && response.data.nextCursor != null;
+                if (hasMore)
+                {
+                    int nextLevel = response.data.nextCursor.level;
+                    int nextPlayerId = response.data.nextCursor.playerId;
+                    if (hasCursor && nextLevel == cursorLevel && nextPlayerId == cursorPlayerId)
+                    {
+                        hasMore = false;
+                    }
+                    else
+                    {
+                        cursorLevel = nextLevel;
+                        cursorPlayerId = nextPlayerId;
+                        hasCursor = true;
+                    }
+                }
+            }
+        }
+
+        serverFriendStore = new LocalFriendStore { friends = loadedFriends };
+        serverFriendsLoading = false;
+        friendsPageIndex = Mathf.Clamp(friendsPageIndex, 0, Mathf.Max(0, Mathf.CeilToInt(loadedFriends.Count / (float)FriendsPerPage) - 1));
+        RefreshFriendsScenePanel(root, $"服务器好友同步完成，共 {loadedFriends.Count} 人");
+    }
+
+    private IEnumerator AddServerFriend(Transform root, int friendPlayerId)
+    {
+        if (serverFriendMutationRunning)
+        {
+            yield break;
+        }
+
+        serverFriendMutationRunning = true;
+        RefreshFriendsScenePanel(root, "正在添加服务器好友...");
+        if (!TryCreateAuthorizedPost($"/friends/{friendPlayerId}", "{}", out UnityWebRequest request, out string error))
+        {
+            serverFriendMutationRunning = false;
+            RefreshFriendsScenePanel(root, error);
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (HandleUnauthorizedResponse(request))
+            {
+                serverFriendMutationRunning = false;
+                yield break;
+            }
+
+            ServerFriendMutationApiResponse response = ParseJson<ServerFriendMutationApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200)
+            {
+                serverFriendMutationRunning = false;
+                RefreshFriendsScenePanel(root, "添加失败：" + (response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                    : GetApiError(response)));
+                yield break;
+            }
+        }
+
+        serverFriendMutationRunning = false;
+        selectedFriendId = friendPlayerId.ToString();
+        InputField input = FindSceneComponent<InputField>(root, "FriendsAddInput");
+        if (input != null)
+        {
+            input.SetTextWithoutNotify(string.Empty);
+        }
+        yield return GetServerFriends(root);
+    }
+
+    private IEnumerator DeleteServerFriend(Transform root, int friendPlayerId, string nickname)
+    {
+        if (serverFriendMutationRunning)
+        {
+            yield break;
+        }
+
+        serverFriendMutationRunning = true;
+        RefreshFriendsScenePanel(root, "正在删除服务器好友...");
+        if (!ApiRequestUtility.TryCreateJsonRequest(
+            $"/friends/{friendPlayerId}",
+            UnityWebRequest.kHttpVerbDELETE,
+            string.Empty,
+            true,
+            out UnityWebRequest request,
+            out string error))
+        {
+            serverFriendMutationRunning = false;
+            RefreshFriendsScenePanel(root, error);
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (HandleUnauthorizedResponse(request))
+            {
+                serverFriendMutationRunning = false;
+                yield break;
+            }
+
+            BasicApiResponse response = ParseJson<BasicApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200)
+            {
+                serverFriendMutationRunning = false;
+                RefreshFriendsScenePanel(root, "删除失败：" + (response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                    : GetApiError(response)));
+                yield break;
+            }
+        }
+
+        serverFriendMutationRunning = false;
+        friendDeleteConfirmation = false;
+        selectedFriendId = string.Empty;
+        friendsPageIndex = 0;
+        yield return GetServerFriends(root);
+        RefreshFriendsScenePanel(root, $"已删除好友：{nickname}");
+    }
+
+    private IEnumerator SendServerDailyFriendGift(Transform root, int friendPlayerId)
+    {
+        if (serverFriendMutationRunning)
+        {
+            yield break;
+        }
+
+        serverFriendMutationRunning = true;
+        RefreshFriendsScenePanel(root, "正在发送每日好友赠礼...");
+        if (!TryCreateAuthorizedPost($"/friends/{friendPlayerId}/gifts/daily", "{}", out UnityWebRequest request, out string error))
+        {
+            serverFriendMutationRunning = false;
+            RefreshFriendsScenePanel(root, error);
+            yield break;
+        }
+
+        ServerDailyGiftSendResponse gift = null;
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (HandleUnauthorizedResponse(request))
+            {
+                serverFriendMutationRunning = false;
+                yield break;
+            }
+
+            ServerDailyGiftApiResponse response = ParseJson<ServerDailyGiftApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+            {
+                serverFriendMutationRunning = false;
+                RefreshFriendsScenePanel(root, "赠礼发送失败：" + (response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                    : GetApiError(response)));
+                yield break;
+            }
+            gift = response.data;
+        }
+
+        serverFriendMutationRunning = false;
+        friendDeleteConfirmation = false;
+        yield return GetServerFriends(root);
+        string replay = gift.replayed ? "（重复请求，未再次发放）" : string.Empty;
+        RefreshFriendsScenePanel(root, $"赠礼已发送：{gift.itemKey} x{gift.quantity}{replay}");
+    }
+
+    private static LocalFriendData ConvertServerFriend(ServerFriendResponse item)
+    {
+        return new LocalFriendData
+        {
+            id = item.playerId.ToString(),
+            nickname = string.IsNullOrEmpty(item.nickname) ? $"玩家 {item.playerId}" : item.nickname,
+            level = Mathf.Max(1, item.level),
+            online = false,
+            lastSeen = string.Empty,
+            intimacy = 0,
+            lastGiftDate = string.Empty,
+            serverBacked = true,
+            friendsSince = item.friendsSince ?? string.Empty,
+            dailyGiftSent = item.dailyGiftSent,
+            dailyGiftReceived = item.dailyGiftReceived
+        };
+    }
+
+    private string BuildServerFriendCountText(int filteredCount, int totalCount)
+    {
+        if (serverDailyGiftStatus == null)
+        {
+            return $"好友 {filteredCount}/{totalCount}    服务器同步";
+        }
+
+        return $"好友 {filteredCount}/{totalCount}    今日赠礼 {serverDailyGiftStatus.sentCount}/{serverDailyGiftStatus.dailySendLimit}";
+    }
+
+    private string BuildServerFriendGiftHint(LocalFriendData friend)
+    {
+        if (serverDailyGiftStatus == null || !serverDailyGiftStatus.enabled)
+        {
+            return "服务器每日好友赠礼当前未开启";
+        }
+
+        if (friend.dailyGiftSent)
+        {
+            return "今天已经向该好友发送过赠礼";
+        }
+
+        return $"系统赠送 {serverDailyGiftStatus.itemKey} x{serverDailyGiftStatus.quantity}，今日剩余 {serverDailyGiftStatus.remainingSendCount} 次";
     }
 
     [Serializable]
@@ -840,6 +1257,88 @@ public partial class HomePageUI
         public string lastSeen;
         public int intimacy;
         public string lastGiftDate;
+        public bool serverBacked;
+        public string friendsSince;
+        public bool dailyGiftSent;
+        public bool dailyGiftReceived;
+    }
+
+    [Serializable]
+    private class ServerFriendListApiResponse : BasicApiResponse
+    {
+        public ServerFriendListData data;
+    }
+
+    [Serializable]
+    private class ServerFriendListData
+    {
+        public ServerFriendResponse[] items;
+        public ServerFriendCursor nextCursor;
+        public bool hasMore;
+        public ServerDailyGiftStatus dailyGift;
+    }
+
+    [Serializable]
+    private class ServerFriendResponse
+    {
+        public int playerId;
+        public string nickname;
+        public int level;
+        public string friendsSince;
+        public bool dailyGiftSent;
+        public bool dailyGiftReceived;
+    }
+
+    [Serializable]
+    private class ServerFriendCursor
+    {
+        public int level;
+        public int playerId;
+    }
+
+    [Serializable]
+    private class ServerDailyGiftStatus
+    {
+        public bool enabled;
+        public string periodKey;
+        public int itemId;
+        public string itemKey;
+        public int quantity;
+        public int dailySendLimit;
+        public int sentCount;
+        public int remainingSendCount;
+        public int dailyReceiveLimit;
+        public int receivedCount;
+        public int remainingReceiveCount;
+        public int configVersion;
+    }
+
+    [Serializable]
+    private class ServerFriendMutationApiResponse : BasicApiResponse
+    {
+        public ServerFriendResponse data;
+    }
+
+    [Serializable]
+    private class ServerDailyGiftApiResponse : BasicApiResponse
+    {
+        public ServerDailyGiftSendResponse data;
+    }
+
+    [Serializable]
+    private class ServerDailyGiftSendResponse
+    {
+        public long recordId;
+        public int senderPlayerId;
+        public int receiverPlayerId;
+        public string periodKey;
+        public int itemId;
+        public string itemKey;
+        public int quantity;
+        public int receiverBalanceAfter;
+        public int configVersion;
+        public string sentTime;
+        public bool replayed;
     }
 #pragma warning restore 0649
 }

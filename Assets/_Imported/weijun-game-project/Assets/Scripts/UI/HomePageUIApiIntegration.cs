@@ -385,7 +385,10 @@ public partial class HomePageUI
             if (request.result == UnityWebRequest.Result.Success && response != null && response.code == 200 && response.data != null)
             {
                 SaveUserProfile(response.data);
-                SetStatus(successMessage);
+                if (!string.IsNullOrEmpty(successMessage))
+                {
+                    SetStatus(successMessage);
+                }
             }
             else
             {
