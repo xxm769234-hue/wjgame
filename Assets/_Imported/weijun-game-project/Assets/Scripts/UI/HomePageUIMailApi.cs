@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
@@ -208,6 +209,7 @@ public partial class HomePageUI
             if (response.data != null)
             {
                 SyncInventoryResourceValues(response.data.items);
+                yield return RefreshMailRewardState(response.data.attachments, null, response.data.items != null);
             }
         }
 
@@ -261,6 +263,7 @@ public partial class HomePageUI
             {
                 claimedCount = response.data.claimedCount;
                 SyncInventoryResourceValues(response.data.items);
+                yield return RefreshMailRewardState(null, response.data.mails, response.data.items != null);
             }
         }
 
@@ -337,17 +340,127 @@ public partial class HomePageUI
                 continue;
             }
 
-            string name = string.IsNullOrEmpty(attachment.itemName)
-                ? (string.IsNullOrEmpty(attachment.name) ? attachment.itemKey : attachment.name)
-                : attachment.itemName;
+            bool claimed = !string.IsNullOrEmpty(attachment.claimedTime)
+                || !string.IsNullOrEmpty(attachment.grantedRewardType);
+            string name = claimed && !string.IsNullOrEmpty(attachment.grantedRewardName)
+                ? attachment.grantedRewardName
+                : (!string.IsNullOrEmpty(attachment.rewardName)
+                    ? attachment.rewardName
+                    : (string.IsNullOrEmpty(attachment.itemName)
+                        ? (string.IsNullOrEmpty(attachment.name) ? attachment.itemKey : attachment.name)
+                        : attachment.itemName));
+            long quantity = claimed && attachment.grantedQuantity > 0
+                ? attachment.grantedQuantity
+                : attachment.quantity;
             if (summary.Length > 0)
             {
                 summary += "  ";
             }
-            summary += $"{name} x{attachment.quantity}";
+            summary += $"{name} x{quantity}";
         }
 
         return string.IsNullOrEmpty(summary) ? "附件待领取" : summary;
+    }
+
+    private IEnumerator RefreshMailRewardState(
+        MailAttachmentResponse[] attachments,
+        MailResponse[] mails,
+        bool inventoryAlreadySynced)
+    {
+        bool needsInventoryRefresh = false;
+        bool needsEquipmentRefresh = false;
+        bool needsNpcRefresh = false;
+        AccumulateMailRewardRefreshFlags(
+            attachments,
+            ref needsInventoryRefresh,
+            ref needsEquipmentRefresh,
+            ref needsNpcRefresh);
+        if (mails != null)
+        {
+            for (int i = 0; i < mails.Length; i++)
+            {
+                AccumulateMailRewardRefreshFlags(
+                    mails[i] == null ? null : mails[i].attachments,
+                    ref needsInventoryRefresh,
+                    ref needsEquipmentRefresh,
+                    ref needsNpcRefresh);
+            }
+        }
+
+        List<string> syncedCategories = new List<string>();
+        List<string> failedCategories = new List<string>();
+        if (needsInventoryRefresh)
+        {
+            if (inventoryAlreadySynced)
+            {
+                syncedCategories.Add("背包");
+            }
+            else
+            {
+                yield return RefreshCardDrawInventoryState(syncedCategories, failedCategories);
+            }
+        }
+        if (needsEquipmentRefresh)
+        {
+            yield return RefreshCardDrawEquipmentState(syncedCategories, failedCategories);
+        }
+        if (needsNpcRefresh)
+        {
+            yield return RefreshCardDrawNpcState(syncedCategories, failedCategories);
+        }
+
+        if (inventoryPanelObject != null && inventoryPanelObject.activeInHierarchy && needsInventoryRefresh)
+        {
+            inventoryStatusMessage = "邮件奖励已同步";
+            RenderInventoryPanel();
+        }
+        if (equipmentPanelObject != null && equipmentPanelObject.activeInHierarchy && (needsEquipmentRefresh || needsNpcRefresh))
+        {
+            RebuildServerEquipmentItems();
+            equipmentStatusMessage = "邮件奖励已同步";
+            RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+        }
+        if (failedCategories.Count > 0)
+        {
+            SetStatus("邮件领取成功，但部分奖励同步失败：" + string.Join("；", failedCategories.ToArray()));
+        }
+    }
+
+    private static void AccumulateMailRewardRefreshFlags(
+        MailAttachmentResponse[] attachments,
+        ref bool needsInventoryRefresh,
+        ref bool needsEquipmentRefresh,
+        ref bool needsNpcRefresh)
+    {
+        if (attachments == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < attachments.Length; i++)
+        {
+            MailAttachmentResponse attachment = attachments[i];
+            if (attachment == null)
+            {
+                continue;
+            }
+
+            string rewardType = string.IsNullOrWhiteSpace(attachment.grantedRewardType)
+                ? attachment.attachmentType
+                : attachment.grantedRewardType;
+            switch ((rewardType ?? string.Empty).Trim().ToUpperInvariant())
+            {
+                case "ITEM":
+                    needsInventoryRefresh = true;
+                    break;
+                case "EQUIPMENT":
+                    needsEquipmentRefresh = true;
+                    break;
+                case "NPC":
+                    needsNpcRefresh = true;
+                    break;
+            }
+        }
     }
 
     private MailResponse FindCurrentMail(long mailId)
@@ -437,12 +550,28 @@ public partial class HomePageUI
     private class MailAttachmentResponse
     {
         public long attachmentId;
-        public int itemId;
+        public string attachmentType;
+        public long assetId;
+        public string rewardKey;
+        public string rewardName;
+        public string rewardCategory;
+        public string rewardIcon;
+        public long itemId;
         public string itemKey;
         public string itemName;
         public string name;
+        public string itemType;
         public string icon;
-        public int quantity;
+        public long quantity;
+        public string grantedRewardType;
+        public long grantedAssetId;
+        public string grantedRewardKey;
+        public string grantedRewardName;
+        public string grantedRewardCategory;
+        public string grantedRewardIcon;
+        public long grantedQuantity;
+        public bool fallbackApplied;
+        public string claimedTime;
     }
 #pragma warning restore 0649
 }

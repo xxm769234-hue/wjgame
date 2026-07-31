@@ -269,13 +269,13 @@ public partial class HomePageUI
             FindSceneComponent<Button>(root, "RechargeGuideButton"),
             HasAuthSession() ? "退款/进度" : "账号功能");
 
+        SetSceneText(root, "RechargeTitle", "钻石充值");
         SetSceneText(root, "RechargeGoldText", $"金币  {PlayerPrefs.GetInt("Gold", 1000)}");
-        SetSceneText(root, "RechargeSoulCrystalText", $"魂晶  {PlayerPrefs.GetInt("SoulCrystal", 1200)}");
-        SetSceneText(root, "RechargeCrystalText", $"蓝晶  {PlayerPrefs.GetInt("Crystal", 427)}");
-        SetSceneText(root, "RechargePurpleCrystalText", $"紫晶  {PlayerPrefs.GetInt("PurpleCrystal", 0)}");
+        SetSceneText(root, "RechargeCrystalText", $"钻石  {PlayerPrefs.GetInt("Crystal", 0)}");
+        SetSceneObjectActive(root, "RechargeSoulCrystalTextBadge", false);
+        SetSceneObjectActive(root, "RechargePurpleCrystalTextBadge", false);
         SetSceneText(root, "RechargeStatus", status);
 
-        PaymentProductResponse[] defaults = GetDefaultRechargeProducts();
         int count = Mathf.Min(products != null ? products.Length : 0, 8);
         for (int i = 0; i < 8; i++)
         {
@@ -292,23 +292,27 @@ public partial class HomePageUI
                 continue;
             }
 
-            PaymentProductResponse product = products[i] ?? defaults[i];
-            string productName = string.IsNullOrEmpty(product.name) ? $"魂晶x{GetDefaultRechargeReward(i)}" : product.name;
-            string rewardName = string.IsNullOrEmpty(product.rewardItemName) ? "魂晶" : product.rewardItemName;
+            PaymentProductResponse product = products[i];
+            string productName = GetRechargeProductName(product);
+            string rewardName = GetRechargeRewardName(product);
             int apiRewardAmount = GetShopRewardAmount(product);
-            int rewardQuantity = apiRewardAmount <= 0 ? GetDefaultRechargeReward(i) : apiRewardAmount;
-            int bonus = Mathf.Max(0, Mathf.RoundToInt(rewardQuantity * GetFirstRechargeBonusRate(i)));
+            int rewardQuantity = Mathf.Max(0, apiRewardAmount);
+            int bonus = 0;
 
             SetSceneText(card, "ProductName", productName);
             SetSceneText(card, "HeaderText", $"{rewardName}x{rewardQuantity}");
             SetSceneText(card, "RewardAmount", rewardQuantity.ToString());
-            SetSceneText(card, "BonusText", bonus > 0 ? $"首充赠 x{bonus}" : "首充赠礼");
+            SetSceneText(card, "BonusText", string.IsNullOrWhiteSpace(product.description) ? "后端定价商品" : product.description);
 
             Button priceButton = FindSceneComponent<Button>(card, "RechargePriceButton");
-            SetSceneButtonText(priceButton, FormatRechargePrice(product, i));
+            SetSceneButtonText(priceButton, FormatRechargePrice(product));
             BindSceneButton(
                 priceButton,
                 () => HandleRechargeProductSelected(product, productName, rewardName, rewardQuantity, bonus, disabled));
+            if (priceButton != null)
+            {
+                priceButton.interactable = !disabled;
+            }
         }
 
         SetStatus(status);

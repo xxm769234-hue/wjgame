@@ -1,4 +1,6 @@
 {
   "developmentBaseUrl": "http://192.168.1.186:8080/api",
-  "productionBaseUrl": ""
+  "productionBaseUrl": "",
+  "clientChannel": "DEFAULT",
+  "clientVersionCode": 10001
 }

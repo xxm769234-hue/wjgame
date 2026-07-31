@@ -32,7 +32,8 @@ public partial class HomePageUI : MonoBehaviour
     private static readonly Color PrimaryColor = new Color(0.23f, 0.39f, 0.63f, 1f);
     private static readonly Color DisabledTextColor = new Color(0.63f, 0.58f, 0.49f, 1f);
 
-    private Font defaultFont;
+    [SerializeField] private Font defaultFont;
+    private Font fallbackFont;
     private Transform mainPageTransform;
     private HomePageBookView boundBookView;
     private HomePageBookStyle bookStyle;
@@ -116,7 +117,11 @@ public partial class HomePageUI : MonoBehaviour
             return;
         }
 
-        defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        fallbackFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (defaultFont == null)
+        {
+            defaultFont = fallbackFont;
+        }
         scenePanels = FindObjectOfType<HomePageScenePanels>(true);
         if (scenePanels != null)
         {
@@ -125,6 +130,7 @@ public partial class HomePageUI : MonoBehaviour
 
         EnsureEventSystem();
         Build();
+        RefreshCurrentAvatarVisuals();
         if (HasAuthSession())
         {
             StartCoroutine(RefreshAccountSnapshot(string.Empty));
@@ -234,6 +240,11 @@ public partial class HomePageUI : MonoBehaviour
     }
 
 #if UNITY_EDITOR
+    public void EditorSetFont(Font value)
+    {
+        defaultFont = value;
+    }
+
     public void EditorRebuildBookPreview()
     {
         RectTransform root = transform as RectTransform;
@@ -242,7 +253,11 @@ public partial class HomePageUI : MonoBehaviour
             return;
         }
 
-        defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        fallbackFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        if (defaultFont == null)
+        {
+            defaultFont = fallbackFont;
+        }
         bookStyle = GetComponent<HomePageBookStyle>();
         if (bookStyle == null)
         {
@@ -1294,10 +1309,11 @@ public partial class HomePageUI : MonoBehaviour
         MarkTaskProgress("TaskBagOpened");
         activeInventoryCategory = "all";
         selectedInventoryItemKey = string.Empty;
+        ResetResourceSaleForInventory();
 
         if (!HasAuthSession())
         {
-            ShowInventoryPanel(BuildLocalInventoryItems(), false, "游客背包：使用、出售和整理功能均可使用");
+            ShowInventoryPanel(BuildLocalInventoryItems(), false, "游客背包：可使用和整理物品；玩家资源出售需要登录账号");
             return;
         }
 
@@ -1337,7 +1353,7 @@ public partial class HomePageUI : MonoBehaviour
 
         if (!HasAuthSession())
         {
-            ShowRechargePanel(GetDefaultRechargeProducts(), "游客模式不能充值，请使用账号或微信登录后购买。", true);
+            ShowRechargePanel(Array.Empty<PaymentProductResponse>(), "游客模式不能充值，请使用账号或微信登录后购买。", true);
             return;
         }
 
@@ -1776,7 +1792,7 @@ public partial class HomePageUI : MonoBehaviour
                 new TaskDisplayItem("activity_newbie_one", "领取新手签到奖励", "完成新手签到第 1 天。", newbieDays, 1, "Gold", "金币", 100, false, ShowNewbieSignContent),
                 new TaskDisplayItem("activity_newbie_three", "完成三日新手签到", "累计领取全部三天新手奖励。", newbieDays, 3, "LotteryTicket", "抽奖券", 1, false, ShowNewbieSignContent),
                 new TaskDisplayItem("activity_lottery", "浏览幸运抽奖机", "打开抽奖中心并查看当前机会。", PlayerPrefs.GetInt("TaskLotteryOpened", 0), 1, "Gold", "金币", 100, false, ShowLotteryContent),
-                new TaskDisplayItem("activity_recharge", "浏览充值商店", "打开充值页面查看魂晶档位。", PlayerPrefs.GetInt("TaskRechargeOpened", 0), 1, "SoulCrystal", "魂晶", 10, false, ShowRechargeContent)
+                new TaskDisplayItem("activity_recharge", "浏览充值商店", "打开充值页面查看钻石档位。", PlayerPrefs.GetInt("TaskRechargeOpened", 0), 1, "Crystal", "钻石", 10, false, ShowRechargeContent)
             };
         }
 
@@ -2005,7 +2021,7 @@ public partial class HomePageUI : MonoBehaviour
         SetRect(expand.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(16f, -458f), new Vector2(178f, 54f));
         ConfigureClearButtonLabel(expand, 17);
 
-        Text sidebarHint = CreateMailText("InventorySidebarHint", sidebar.transform, inventoryServerBacked ? "服务器库存\n仅支持查看" : "本地库存\n可使用与出售", 16, FontStyle.Bold, new Color(1f, 0.87f, 0.60f, 0.94f), TextAnchor.MiddleCenter);
+        Text sidebarHint = CreateMailText("InventorySidebarHint", sidebar.transform, GetInventorySidebarHint(), 16, FontStyle.Bold, new Color(1f, 0.87f, 0.60f, 0.94f), TextAnchor.MiddleCenter);
         SetRect(sidebarHint.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(18f, -540f), new Vector2(174f, 48f));
 
         Image gridFrame = CreateImage("InventoryGridFrame", panel.transform, new Color(0.48f, 0.23f, 0.08f, 1f));
@@ -2060,6 +2076,7 @@ public partial class HomePageUI : MonoBehaviour
         int unlockedSlots)
     {
         view.SetMode(inventoryServerBacked);
+        view.SetSidebarHint(GetInventorySidebarHint());
         view.SetResourceValue("Gold", GetInventoryResourceValue("Gold"));
         view.SetResourceValue("Crystal", GetInventoryResourceValue("Crystal"));
         view.SetCounts(ownedCount, visibleItems.Count, InventoryCapacity, unlockedSlots);
@@ -2130,7 +2147,7 @@ public partial class HomePageUI : MonoBehaviour
             ? slotPosition + new Vector2(-190f, -4f)
             : slotPosition + new Vector2(112f, -4f);
         InventoryItemResponse selectedItem = visibleItems[selectedIndex];
-        string contextHint = inventoryServerBacked ? "服务端暂未开放操作接口" : "操作 1 件物品";
+        string contextHint = GetInventorySaleContextHint(selectedItem);
         string primaryLabel = GetInventoryActionLabel(selectedItem);
 
         view.ShowContextMenu(
@@ -2801,7 +2818,7 @@ public partial class HomePageUI : MonoBehaviour
         SetRect(sell.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(96f, -64f), new Vector2(78f, 40f));
         ConfigureClearButtonLabel(sell, 16);
 
-        Text hint = CreateMailText("InventoryContextHint", menu.transform, inventoryServerBacked ? "服务端暂未开放操作接口" : "操作 1 件物品", 12, FontStyle.Normal, new Color(1f, 0.82f, 0.57f, 0.86f), TextAnchor.MiddleCenter);
+        Text hint = CreateMailText("InventoryContextHint", menu.transform, GetInventorySaleContextHint(item), 12, FontStyle.Normal, new Color(1f, 0.82f, 0.57f, 0.86f), TextAnchor.MiddleCenter);
         SetRect(hint.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(10f, -112f), new Vector2(164f, 22f));
 
         Button dismiss = CreateButton(menu.transform, "InventoryContextDismiss", "x", new Color(0.52f, 0.24f, 0.09f, 1f), Color.white);
@@ -2935,40 +2952,7 @@ public partial class HomePageUI : MonoBehaviour
 
     private void SellSelectedInventoryItem()
     {
-        InventoryItemResponse item = FindCurrentInventoryItem(selectedInventoryItemKey);
-        if (item == null)
-        {
-            return;
-        }
-
-        if (inventoryServerBacked)
-        {
-            inventoryStatusMessage = "当前接口只提供背包查询，出售接口尚未开放，未修改服务器库存";
-            RenderInventoryPanel();
-            return;
-        }
-
-        int price = GetInventorySellPrice(item);
-        ChangeLocalInventoryQuantity(item, -1);
-        AddLocalResource("Gold", price);
-        PlayerPrefs.Save();
-
-        inventoryStatusMessage = $"已出售：{item.name} x1，获得金币 x{price}";
-        currentInventoryItems = BuildLocalInventoryItems();
-        InventoryItemResponse remaining = FindCurrentInventoryItem(selectedInventoryItemKey);
-        if (remaining == null || remaining.quantity <= 0)
-        {
-            selectedInventoryItemKey = string.Empty;
-        }
-        RenderInventoryPanel();
-    }
-
-    private int GetInventorySellPrice(InventoryItemResponse item)
-    {
-        if (IsEquipmentItem(item)) return 220;
-        if (IsChestItem(item)) return 120;
-        if (IsMedicineItem(item)) return 25;
-        return 10;
+        BeginSelectedInventorySale();
     }
 
     private bool IsChestItem(InventoryItemResponse item)
@@ -3194,7 +3178,7 @@ public partial class HomePageUI : MonoBehaviour
         HideShopPanel();
         HideAnnouncementPanel();
 
-        PaymentProductResponse[] displayProducts = NormalizeRechargeProducts(products);
+        PaymentProductResponse[] displayProducts = GetAvailableRechargeProducts(products);
 
         if (TryShowRechargeScenePanel(displayProducts, status, disabled))
         {
@@ -3218,9 +3202,7 @@ public partial class HomePageUI : MonoBehaviour
 
         AddRechargeVipBadge(panel.transform, new Vector2(88f, -28f));
         AddRechargeResourceBadge(panel.transform, new Vector2(300f, -20f), "金币", PlayerPrefs.GetInt("Gold", 1000));
-        AddRechargeResourceBadge(panel.transform, new Vector2(548f, -20f), "魂晶", PlayerPrefs.GetInt("SoulCrystal", 1200));
-        AddRechargeResourceBadge(panel.transform, new Vector2(796f, -20f), "蓝晶", PlayerPrefs.GetInt("Crystal", 427));
-        AddRechargeResourceBadge(panel.transform, new Vector2(1044f, -20f), "紫晶", PlayerPrefs.GetInt("PurpleCrystal", 0));
+        AddRechargeResourceBadge(panel.transform, new Vector2(548f, -20f), "钻石", PlayerPrefs.GetInt("Crystal", 0));
 
         Image vipPanel = CreateImage("RechargeVipPanel", panel.transform, new Color(0.62f, 0.37f, 0.18f, 0.55f));
         SetRect(vipPanel.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(214f, -68f), new Vector2(850f, 64f));
@@ -3272,11 +3254,11 @@ public partial class HomePageUI : MonoBehaviour
 
     private void AddRechargeProductCard(Transform parent, PaymentProductResponse product, int index, Vector2 position, bool disabled)
     {
-        string name = string.IsNullOrEmpty(product.name) ? $"魂晶x{GetDefaultRechargeReward(index)}" : product.name;
-        string rewardName = string.IsNullOrEmpty(product.rewardItemName) ? "魂晶" : product.rewardItemName;
+        string name = GetRechargeProductName(product);
+        string rewardName = GetRechargeRewardName(product);
         int apiRewardAmount = GetShopRewardAmount(product);
-        int rewardQuantity = apiRewardAmount <= 0 ? GetDefaultRechargeReward(index) : apiRewardAmount;
-        int bonus = Mathf.Max(0, Mathf.RoundToInt(rewardQuantity * GetFirstRechargeBonusRate(index)));
+        int rewardQuantity = Mathf.Max(0, apiRewardAmount);
+        int bonus = 0;
 
         Image shadow = CreateImage("RechargeProductShadow", parent, new Color(0.12f, 0.05f, 0.02f, 0.24f));
         SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(6f, -6f), new Vector2(250f, 248f));
@@ -3299,7 +3281,7 @@ public partial class HomePageUI : MonoBehaviour
 
         Image tag = CreateImage("FirstRechargeTag", card.transform, new Color(0.72f, 0.16f, 0.10f, 1f));
         SetRect(tag.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(164f, -92f), new Vector2(70f, 70f));
-        Text tagText = CreateMailText("TagText", tag.transform, bonus > 0 ? $"首充\n赠" : "首充\n赠", 17, FontStyle.Bold, new Color(1f, 0.88f, 0.48f, 1f), TextAnchor.MiddleCenter);
+        Text tagText = CreateMailText("TagText", tag.transform, "钻石\n充值", 17, FontStyle.Bold, new Color(1f, 0.88f, 0.48f, 1f), TextAnchor.MiddleCenter);
         Stretch(tagText.rectTransform);
 
         Image crystalLine = CreateImage("CrystalLine", card.transform, new Color(0.36f, 0.24f, 0.14f, 0.55f));
@@ -3308,8 +3290,9 @@ public partial class HomePageUI : MonoBehaviour
         Text amount = CreateMailText("RewardAmount", card.transform, $"{rewardQuantity}", 21, FontStyle.Bold, new Color(0.82f, 0.72f, 1f, 1f), TextAnchor.MiddleLeft);
         SetRect(amount.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(96f, -159f), new Vector2(100f, 26f));
 
-        Button price = CreateButton(card.transform, "RechargePriceButton", FormatRechargePrice(product, index), new Color(0.58f, 0.20f, 0.16f, 1f), new Color(1f, 0.86f, 0.48f, 1f));
+        Button price = CreateButton(card.transform, "RechargePriceButton", FormatRechargePrice(product), new Color(0.58f, 0.20f, 0.16f, 1f), new Color(1f, 0.86f, 0.48f, 1f));
         price.onClick.AddListener(() => HandleRechargeProductSelected(product, name, rewardName, rewardQuantity, bonus, disabled));
+        price.interactable = !disabled;
         SetRect(price.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(0f, -196f), new Vector2(250f, 52f));
         ConfigureClearButtonLabel(price, 27);
     }
@@ -3462,71 +3445,98 @@ public partial class HomePageUI : MonoBehaviour
         shine.raycastTarget = false;
     }
 
-    private string FormatRechargePrice(PaymentProductResponse product, int index)
+    private string FormatRechargePrice(PaymentProductResponse product)
     {
-        int priceFen = product.priceFen > 0 ? product.priceFen : GetDefaultRechargePriceFen(index);
-        return $"￥{priceFen / 100f:0.##}";
-    }
-
-    private int GetDefaultRechargeReward(int index)
-    {
-        int[] rewards = { 60, 300, 680, 980, 1280, 1980, 3280, 6480 };
-        return rewards[Mathf.Clamp(index, 0, rewards.Length - 1)];
-    }
-
-    private int GetDefaultRechargePriceFen(int index)
-    {
-        int[] prices = { 600, 3000, 6800, 9800, 12800, 19800, 32800, 64800 };
-        return prices[Mathf.Clamp(index, 0, prices.Length - 1)];
-    }
-
-    private float GetFirstRechargeBonusRate(int index)
-    {
-        float[] rates = { 1f, 1f, 1f, 1f, 1f, 1f, 1f, 1f };
-        return rates[Mathf.Clamp(index, 0, rates.Length - 1)];
-    }
-
-    private PaymentProductResponse[] NormalizeRechargeProducts(PaymentProductResponse[] products)
-    {
-        PaymentProductResponse[] defaults = GetDefaultRechargeProducts();
-        if (products == null || products.Length == 0)
+        if (product == null || product.priceFen <= 0)
         {
-            return defaults;
+            return "价格异常";
         }
 
-        for (int i = 0; i < Mathf.Min(products.Length, defaults.Length); i++)
+        if (string.IsNullOrEmpty(product.currency) || string.Equals(product.currency, "CNY", StringComparison.OrdinalIgnoreCase))
         {
-            if (products[i] != null)
+            return $"￥{product.priceFen / 100f:0.##}";
+        }
+
+        return $"{product.priceFen / 100f:0.##} {product.currency}";
+    }
+
+    private string GetRechargeProductName(PaymentProductResponse product)
+    {
+        return product == null || string.IsNullOrWhiteSpace(product.name) ? "钻石商品" : product.name;
+    }
+
+    private string GetRechargeRewardName(PaymentProductResponse product)
+    {
+        return product == null || string.IsNullOrWhiteSpace(product.rewardItemName) ? "钻石" : product.rewardItemName;
+    }
+
+    private PaymentProductResponse[] GetAvailableRechargeProducts(PaymentProductResponse[] products)
+    {
+        if (products == null || products.Length == 0)
+        {
+            return Array.Empty<PaymentProductResponse>();
+        }
+
+        List<PaymentProductResponse> available = new List<PaymentProductResponse>();
+        for (int i = 0; i < products.Length && available.Count < 8; i++)
+        {
+            PaymentProductResponse product = products[i];
+            if (product != null
+                && !string.IsNullOrWhiteSpace(product.productCode)
+                && product.priceFen > 0
+                && GetShopRewardAmount(product) > 0
+                && string.Equals(product.rewardItemKey, "diamond", StringComparison.OrdinalIgnoreCase))
             {
-                defaults[i] = products[i];
+                available.Add(product);
             }
         }
 
-        return defaults;
+        return available.ToArray();
     }
 
-    private PaymentProductResponse[] GetDefaultRechargeProducts()
+    private void SetRechargeEntryVisible(bool visible)
     {
-        int[] rewards = { 60, 300, 680, 980, 1280, 1980, 3280, 6480 };
-        int[] prices = { 600, 3000, 6800, 9800, 12800, 19800, 32800, 64800 };
-        PaymentProductResponse[] products = new PaymentProductResponse[rewards.Length];
-        for (int i = 0; i < products.Length; i++)
+        if (boundBookView != null)
         {
-            products[i] = new PaymentProductResponse
+            Button[] metricPlusButtons = boundBookView.MetricPlusButtons;
+            if (metricPlusButtons != null && metricPlusButtons.Length > 1 && metricPlusButtons[1] != null)
             {
-                productCode = "local_recharge_" + (i + 1),
-                name = $"魂晶x{rewards[i]}",
-                priceFen = prices[i],
-                currency = "CNY",
-                rewardItemKey = "SoulCrystal",
-                rewardItemName = "魂晶",
-                rewardAmount = rewards[i],
-                rewardQuantity = rewards[i],
-                description = "本地默认充值档位"
-            };
+                metricPlusButtons[1].gameObject.SetActive(visible);
+            }
+
+            if (boundBookView.RechargeButton != null)
+            {
+                boundBookView.RechargeButton.gameObject.SetActive(visible);
+            }
+
+            if (boundBookView.BottomRechargeTab != null)
+            {
+                boundBookView.BottomRechargeTab.gameObject.SetActive(visible);
+            }
         }
 
-        return products;
+        if (mainPageTransform == null)
+        {
+            return;
+        }
+
+        Button[] buttons = mainPageTransform.GetComponentsInChildren<Button>(true);
+        for (int i = 0; i < buttons.Length; i++)
+        {
+            Button button = buttons[i];
+            if (button == null)
+            {
+                continue;
+            }
+
+            string buttonName = button.name;
+            if (buttonName == "RechargeButton"
+                || buttonName == "BottomRechargeButton"
+                || buttonName == "BottomRechargeTab")
+            {
+                button.gameObject.SetActive(visible);
+            }
+        }
     }
 
     private void ShowLotteryPanel(string status, string rewardName, int rewardValue, bool hasResult, bool isRolling = false)
@@ -4434,6 +4444,7 @@ public partial class HomePageUI : MonoBehaviour
 
     private void HideInventoryPanel()
     {
+        HideResourceSaleDialog();
         if (HideRegisteredScenePanel(HomePageScenePanelType.Inventory, ref inventoryPanelObject))
         {
             inventoryPanelView = null;
@@ -4652,7 +4663,7 @@ public partial class HomePageUI : MonoBehaviour
         UnityWebRequest request = CreateAuthorizedGet("/payment/product/list");
         if (request == null)
         {
-            ShowRechargePanel(GetDefaultRechargeProducts(), requestCreationError, true);
+            ShowRechargePanel(Array.Empty<PaymentProductResponse>(), requestCreationError, true);
             yield break;
         }
 
@@ -4667,18 +4678,29 @@ public partial class HomePageUI : MonoBehaviour
 
             if (request.result != UnityWebRequest.Result.Success)
             {
-                ShowRechargePanel(GetDefaultRechargeProducts(), $"请求失败：{ApiRequestUtility.GetErrorMessage(request, "服务器连接失败")}\n接口地址：{ApiRuntimeConfig.GetDisplayBaseUrl()}", true);
+                ShowRechargePanel(Array.Empty<PaymentProductResponse>(), $"请求失败：{ApiRequestUtility.GetErrorMessage(request, "服务器连接失败")}\n接口地址：{ApiRuntimeConfig.GetDisplayBaseUrl()}", true);
                 yield break;
             }
 
             PaymentProductListApiResponse response = ParseJson<PaymentProductListApiResponse>(request.downloadHandler.text);
             if (response == null || response.code != 200)
             {
-                ShowRechargePanel(GetDefaultRechargeProducts(), GetApiError(response), true);
+                ShowRechargePanel(Array.Empty<PaymentProductResponse>(), GetApiError(response), true);
                 yield break;
             }
 
-            ShowRechargePanel(response.data, "已刷新充值商品", false);
+            PaymentProductResponse[] products = GetAvailableRechargeProducts(response.data);
+            SetRechargeEntryVisible(true);
+            if (products.Length == 0)
+            {
+                string message = response.data == null || response.data.Length == 0
+                    ? "支付功能暂未开启。"
+                    : "充值商品配置无效，请联系运营人员检查钻石商品配置。";
+                ShowRechargePanel(products, message, true);
+                yield break;
+            }
+
+            ShowRechargePanel(products, "已刷新钻石充值商品", false);
         }
     }
 
@@ -5357,10 +5379,11 @@ public partial class HomePageUI : MonoBehaviour
         obj.transform.SetParent(parent, false);
 
         Text label = obj.GetComponent<Text>();
-        label.font = defaultFont;
+        Font resolvedFont = ResolveFont(text);
+        label.font = resolvedFont;
         label.text = text;
         label.fontSize = size;
-        label.fontStyle = style;
+        label.fontStyle = resolvedFont == defaultFont ? FontStyle.Normal : style;
         label.color = color;
         label.alignment = alignment;
         label.resizeTextForBestFit = true;
@@ -5368,6 +5391,24 @@ public partial class HomePageUI : MonoBehaviour
         label.resizeTextMaxSize = size;
         label.raycastTarget = false;
         return label;
+    }
+
+    private Font ResolveFont(string text)
+    {
+        if (defaultFont == null || string.IsNullOrEmpty(text))
+        {
+            return defaultFont ?? fallbackFont;
+        }
+
+        foreach (char character in text)
+        {
+            if (!char.IsControl(character) && !char.IsSurrogate(character) && !defaultFont.HasCharacter(character))
+            {
+                return fallbackFont ?? defaultFont;
+            }
+        }
+
+        return defaultFont;
     }
 
     private Text CreateMailText(string name, Transform parent, string text, int size, FontStyle style, Color color, TextAnchor alignment)

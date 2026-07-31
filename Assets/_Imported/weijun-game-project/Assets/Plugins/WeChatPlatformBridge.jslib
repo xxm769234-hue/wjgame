@@ -188,6 +188,131 @@ mergeInto(LibraryManager.library, {
     });
   },
 
+  WJ_WeChatChooseAvatar: function (receiverNamePtr) {
+    var receiverName = UTF8ToString(receiverNamePtr);
+    var send = function (method, value) {
+      if (typeof SendMessage === 'function') {
+        SendMessage(receiverName, method, value || '');
+      } else if (typeof GameGlobal !== 'undefined' && GameGlobal.Module && GameGlobal.Module.SendMessage) {
+        GameGlobal.Module.SendMessage(receiverName, method, value || '');
+      }
+    };
+
+    if (typeof wx !== 'undefined' && typeof wx.chooseMedia === 'function' && typeof wx.getFileSystemManager === 'function') {
+      wx.chooseMedia({
+        count: 1,
+        mediaType: ['image'],
+        sourceType: ['album', 'camera'],
+        sizeType: ['compressed'],
+        success: function (result) {
+          var file = result && result.tempFiles && result.tempFiles.length ? result.tempFiles[0] : null;
+          var filePath = file && file.tempFilePath ? file.tempFilePath : '';
+          if (!filePath) {
+            send('OnAvatarSelectionFailed', '微信未返回头像临时文件');
+            return;
+          }
+
+          wx.getFileSystemManager().readFile({
+            filePath: filePath,
+            encoding: 'base64',
+            success: function (readResult) {
+              var lowerPath = filePath.toLowerCase();
+              var isPng = lowerPath.lastIndexOf('.png') === lowerPath.length - 4;
+              send('OnAvatarSelected', JSON.stringify({
+                fileName: isPng ? 'avatar.png' : 'avatar.jpg',
+                mimeType: isPng ? 'image/png' : 'image/jpeg',
+                base64Data: readResult && readResult.data ? readResult.data : ''
+              }));
+            },
+            fail: function (error) {
+              send('OnAvatarSelectionFailed', error && error.errMsg ? error.errMsg : '读取头像文件失败');
+            }
+          });
+        },
+        fail: function (error) {
+          send('OnAvatarSelectionFailed', error && error.errMsg ? error.errMsg : '头像选择已取消');
+        }
+      });
+      return;
+    }
+
+    if (typeof document === 'undefined' || typeof FileReader === 'undefined') {
+      send('OnAvatarSelectionFailed', '当前运行环境不支持系统图片选择');
+      return;
+    }
+
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.jpg,.jpeg,.png,image/jpeg,image/png';
+    input.style.position = 'fixed';
+    input.style.left = '-10000px';
+    input.style.top = '-10000px';
+    document.body.appendChild(input);
+
+    var finished = false;
+    var selectionStarted = false;
+    var focusTimer = 0;
+    var handleWindowFocus = function () {
+      clearTimeout(focusTimer);
+      focusTimer = setTimeout(function () {
+        if (!finished && !selectionStarted && (!input.files || !input.files.length)) {
+          finish('OnAvatarSelectionFailed', '头像选择已取消');
+        }
+      }, 300);
+    };
+    var cleanup = function () {
+      clearTimeout(focusTimer);
+      input.onchange = null;
+      input.oncancel = null;
+      window.removeEventListener('focus', handleWindowFocus);
+      if (input.parentNode) {
+        input.parentNode.removeChild(input);
+      }
+    };
+    var finish = function (method, value) {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      cleanup();
+      send(method, value);
+    };
+
+    input.onchange = function () {
+      var file = input.files && input.files.length ? input.files[0] : null;
+      if (!file) {
+        finish('OnAvatarSelectionFailed', '头像选择已取消');
+        return;
+      }
+      selectionStarted = true;
+      if (file.size > 16 * 1024 * 1024) {
+        finish('OnAvatarSelectionFailed', '头像源文件超过 16 MB，请重新选择较小图片');
+        return;
+      }
+
+      var reader = new FileReader();
+      reader.onload = function () {
+        var dataUrl = String(reader.result || '');
+        var separator = dataUrl.indexOf(',');
+        var base64Data = separator >= 0 ? dataUrl.substring(separator + 1) : '';
+        finish('OnAvatarSelected', JSON.stringify({
+          fileName: file.name || 'avatar.jpg',
+          mimeType: file.type || 'image/jpeg',
+          base64Data: base64Data
+        }));
+      };
+      reader.onerror = function () {
+        finish('OnAvatarSelectionFailed', '读取头像文件失败');
+      };
+      reader.readAsDataURL(file);
+    };
+    input.oncancel = function () {
+      finish('OnAvatarSelectionFailed', '头像选择已取消');
+    };
+    window.addEventListener('focus', handleWindowFocus);
+    input.click();
+  },
+
   WJ_WeChatSyncFriendLevel: function (level) {
     if (typeof wx === 'undefined' || typeof wx.setUserCloudStorage !== 'function') {
       return;

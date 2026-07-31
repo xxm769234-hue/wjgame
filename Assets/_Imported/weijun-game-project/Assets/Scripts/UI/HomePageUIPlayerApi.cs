@@ -44,6 +44,8 @@ public partial class HomePageUI
             SetBookMetricValue(boundBookView.MetricTexts, 5, PlayerPrefs.GetInt("Iron", 300).ToString());
         }
 
+        RefreshOpenProfileResourceCards();
+
         if (popupLevelText != null)
         {
             popupLevelText.text = $"等级：Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}";
@@ -58,6 +60,21 @@ public partial class HomePageUI
                 $"石材：{PlayerPrefs.GetInt("Stone", 500)}\n" +
                 $"铁矿：{PlayerPrefs.GetInt("Iron", 300)}";
         }
+    }
+
+    private void RefreshOpenProfileResourceCards()
+    {
+        HomePageScenePanel profilePanel = GetRegisteredScenePanel(HomePageScenePanelType.GuestProfile);
+        if (profilePanel == null || !profilePanel.gameObject.activeInHierarchy || profilePanel.PanelRoot == null)
+        {
+            return;
+        }
+
+        Transform root = profilePanel.PanelRoot;
+        SetSceneText(root, "ProfileGold", PlayerPrefs.GetInt("Gold", 1000).ToString());
+        SetSceneText(root, "ProfileWood", PlayerPrefs.GetInt("Wood", 500).ToString());
+        SetSceneText(root, "ProfileStone", PlayerPrefs.GetInt("Stone", 500).ToString());
+        SetSceneText(root, "ProfileIron", PlayerPrefs.GetInt("Iron", 300).ToString());
     }
 
     private void OpenServerTasks(string category)
@@ -530,8 +547,79 @@ public partial class HomePageUI
 
             serverSignMutationRunning = false;
             serverSignStatus = BuildSignClaimResult(response.data);
+            yield return RefreshSignInRewardState(response.data);
             StartCoroutine(RefreshAccountSnapshot(string.Empty));
             yield return GetServerSignInOverview();
+        }
+    }
+
+    private IEnumerator RefreshSignInRewardState(SignInClaimData data)
+    {
+        bool needsInventoryRefresh = false;
+        bool needsEquipmentRefresh = false;
+        bool needsNpcRefresh = false;
+        if (data != null && data.rewards != null)
+        {
+            for (int i = 0; i < data.rewards.Length; i++)
+            {
+                SignInGrantedReward reward = data.rewards[i];
+                if (reward == null)
+                {
+                    continue;
+                }
+
+                switch ((reward.grantedRewardType ?? string.Empty).Trim().ToUpperInvariant())
+                {
+                    case "ITEM":
+                        needsInventoryRefresh = true;
+                        break;
+                    case "EQUIPMENT":
+                        needsEquipmentRefresh = true;
+                        break;
+                    case "NPC":
+                        needsNpcRefresh = true;
+                        break;
+                }
+            }
+        }
+
+        List<string> syncedCategories = new List<string>();
+        List<string> failedCategories = new List<string>();
+        if (needsInventoryRefresh)
+        {
+            if (data != null && data.items != null)
+            {
+                syncedCategories.Add("背包");
+            }
+            else
+            {
+                yield return RefreshCardDrawInventoryState(syncedCategories, failedCategories);
+            }
+        }
+        if (needsEquipmentRefresh)
+        {
+            yield return RefreshCardDrawEquipmentState(syncedCategories, failedCategories);
+        }
+        if (needsNpcRefresh)
+        {
+            yield return RefreshCardDrawNpcState(syncedCategories, failedCategories);
+        }
+
+        if (inventoryPanelObject != null && inventoryPanelObject.activeInHierarchy && needsInventoryRefresh)
+        {
+            inventoryStatusMessage = "签到奖励已同步";
+            RenderInventoryPanel();
+        }
+        if (equipmentPanelObject != null && equipmentPanelObject.activeInHierarchy && (needsEquipmentRefresh || needsNpcRefresh))
+        {
+            RebuildServerEquipmentItems();
+            equipmentStatusMessage = "签到奖励已同步";
+            RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+        }
+
+        if (failedCategories.Count > 0)
+        {
+            serverSignStatus += "；同步失败：" + string.Join("；", failedCategories.ToArray());
         }
     }
 
@@ -550,7 +638,10 @@ public partial class HomePageUI
                 SignInGrantedReward reward = data.rewards[i];
                 if (reward != null)
                 {
-                    rewards.Add($"{GetRewardDisplayName(reward.grantedRewardType, reward.grantedRewardKey)}x{reward.grantedRewardAmount}");
+                    string rewardName = string.IsNullOrWhiteSpace(reward.grantedRewardName)
+                        ? GetRewardDisplayName(reward.grantedRewardType, reward.grantedRewardKey)
+                        : reward.grantedRewardName;
+                    rewards.Add($"{rewardName}x{reward.grantedRewardAmount}");
                 }
             }
         }
@@ -578,7 +669,9 @@ public partial class HomePageUI
                 continue;
             }
 
-            names.Add(GetRewardDisplayName(reward.rewardType, reward.rewardKey));
+            names.Add(string.IsNullOrWhiteSpace(reward.rewardName)
+                ? GetRewardDisplayName(reward.rewardType, reward.rewardKey)
+                : reward.rewardName);
             totalAmount += Mathf.Max(0, reward.rewardAmount);
         }
 
@@ -747,7 +840,227 @@ public partial class HomePageUI
             }
 
             ShowServerLotteryState();
-            StartCoroutine(RefreshAccountSnapshot(string.Empty));
+            StartCoroutine(RefreshCardDrawRewardState(response.data));
+        }
+    }
+
+    private IEnumerator RefreshCardDrawRewardState(CardDrawData drawData)
+    {
+        bool needsInventoryRefresh = false;
+        bool needsEquipmentRefresh = false;
+        bool needsNpcRefresh = false;
+        if (drawData != null && drawData.results != null)
+        {
+            for (int i = 0; i < drawData.results.Length; i++)
+            {
+                CardDrawResultResponse result = drawData.results[i];
+                if (result == null)
+                {
+                    continue;
+                }
+
+                switch ((result.grantedRewardType ?? string.Empty).Trim().ToUpperInvariant())
+                {
+                    case "ITEM":
+                        needsInventoryRefresh = true;
+                        break;
+                    case "EQUIPMENT":
+                        needsEquipmentRefresh = true;
+                        break;
+                    case "NPC":
+                        needsNpcRefresh = true;
+                        break;
+                }
+            }
+        }
+
+        List<string> syncedCategories = new List<string>();
+        List<string> failedCategories = new List<string>();
+        if (needsInventoryRefresh)
+        {
+            yield return RefreshCardDrawInventoryState(syncedCategories, failedCategories);
+        }
+
+        if (needsNpcRefresh)
+        {
+            yield return RefreshCardDrawNpcState(syncedCategories, failedCategories);
+        }
+
+        if (needsEquipmentRefresh)
+        {
+            yield return RefreshCardDrawEquipmentState(syncedCategories, failedCategories);
+        }
+
+        if (inventoryPanelObject != null && inventoryPanelObject.activeInHierarchy && needsInventoryRefresh)
+        {
+            inventoryStatusMessage = "抽奖奖励已同步";
+            RenderInventoryPanel();
+        }
+
+        if (equipmentPanelObject != null && equipmentPanelObject.activeInHierarchy && (needsNpcRefresh || needsEquipmentRefresh))
+        {
+            RebuildServerEquipmentItems();
+            equipmentStatusMessage = "抽奖奖励已同步";
+            RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+        }
+
+        if (syncedCategories.Count == 0 && failedCategories.Count == 0)
+        {
+            yield break;
+        }
+
+        string syncMessage = syncedCategories.Count > 0
+            ? "已同步：" + string.Join("、", syncedCategories.ToArray())
+            : string.Empty;
+        if (failedCategories.Count > 0)
+        {
+            string failureMessage = "同步失败：" + string.Join("；", failedCategories.ToArray());
+            syncMessage = string.IsNullOrEmpty(syncMessage) ? failureMessage : syncMessage + "。" + failureMessage;
+        }
+
+        serverLotteryStatus = BuildCardDrawResultText(drawData) + "\n" + syncMessage;
+        if (lotteryPanelObject != null && lotteryPanelObject.activeInHierarchy)
+        {
+            ShowServerLotteryState();
+        }
+        else
+        {
+            SetStatus(syncMessage);
+        }
+    }
+
+    private IEnumerator RefreshCardDrawInventoryState(List<string> syncedCategories, List<string> failedCategories)
+    {
+        int playerId = GameSession.PlayerId;
+        if (playerId <= 0)
+        {
+            failedCategories.Add("背包（玩家信息无效）");
+            yield break;
+        }
+
+        UnityWebRequest request = CreateAuthorizedGet($"/inventory/list/{playerId}");
+        if (request == null)
+        {
+            failedCategories.Add("背包（" + requestCreationError + "）");
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (HandleUnauthorizedResponse(request))
+            {
+                failedCategories.Add("背包（登录已失效）");
+                yield break;
+            }
+
+            InventoryListApiResponse response = ParseJson<InventoryListApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200)
+            {
+                string error = response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                    : GetApiError(response);
+                failedCategories.Add("背包（" + error + "）");
+                yield break;
+            }
+
+            currentInventoryItems = response.data ?? new InventoryItemResponse[0];
+            inventoryServerBacked = true;
+            SyncInventoryResourceValues(currentInventoryItems);
+            syncedCategories.Add("背包");
+        }
+    }
+
+    private IEnumerator RefreshCardDrawNpcState(List<string> syncedCategories, List<string> failedCategories)
+    {
+        int playerId = GameSession.PlayerId;
+        if (playerId <= 0)
+        {
+            failedCategories.Add("灵宠列表（玩家信息无效）");
+            yield break;
+        }
+
+        long selectedNpcId = GetCurrentEquipmentNpc() != null ? GetCurrentEquipmentNpc().playerNpcId : 0;
+        UnityWebRequest request = CreateAuthorizedGet($"/npc/list/{playerId}");
+        if (request == null)
+        {
+            failedCategories.Add("灵宠列表（" + requestCreationError + "）");
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (HandleUnauthorizedResponse(request))
+            {
+                failedCategories.Add("灵宠列表（登录已失效）");
+                yield break;
+            }
+
+            PlayerNpcListApiResponse response = ParseJson<PlayerNpcListApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200)
+            {
+                string error = response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                    : GetApiError(response);
+                failedCategories.Add("灵宠列表（" + error + "）");
+                yield break;
+            }
+
+            serverPlayerNpcs = response.data ?? new PlayerNpcResponse[0];
+            selectedEquipmentNpcIndex = 0;
+            if (selectedNpcId > 0)
+            {
+                for (int i = 0; i < serverPlayerNpcs.Length; i++)
+                {
+                    if (serverPlayerNpcs[i] != null && serverPlayerNpcs[i].playerNpcId == selectedNpcId)
+                    {
+                        selectedEquipmentNpcIndex = i;
+                        break;
+                    }
+                }
+            }
+
+            syncedCategories.Add("灵宠列表");
+        }
+    }
+
+    private IEnumerator RefreshCardDrawEquipmentState(List<string> syncedCategories, List<string> failedCategories)
+    {
+        UnityWebRequest request = CreateAuthorizedGet("/equipment/warehouse");
+        if (request == null)
+        {
+            failedCategories.Add("装备仓库（" + requestCreationError + "）");
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (HandleUnauthorizedResponse(request))
+            {
+                failedCategories.Add("装备仓库（登录已失效）");
+                yield break;
+            }
+
+            EquipmentWarehouseApiResponse response = ParseJson<EquipmentWarehouseApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200)
+            {
+                string error = response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                    : GetApiError(response);
+                failedCategories.Add("装备仓库（" + error + "）");
+                yield break;
+            }
+
+            serverEquipmentWarehouse = response.data ?? new InventoryItemResponse[0];
+            for (int i = 0; i < serverEquipmentWarehouse.Length; i++)
+            {
+                NormalizeServerEquipmentItem(serverEquipmentWarehouse[i], "WAREHOUSE");
+            }
+
+            RebuildServerEquipmentItems();
+            syncedCategories.Add("装备仓库");
         }
     }
 
@@ -775,6 +1088,11 @@ public partial class HomePageUI
         if (result == null)
         {
             return "奖励";
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.grantedRewardName))
+        {
+            return result.grantedRewardName;
         }
 
         CardDrawCardResponse card = FindCardDrawCard(result.winningSlot);
@@ -1381,19 +1699,29 @@ public partial class HomePageUI
         public int rewardSeq;
         public string rewardType;
         public string rewardKey;
+        public long rewardAssetId;
+        public string rewardName;
+        public string rewardIcon;
+        public string rewardCategory;
         public int rewardAmount;
         public string fallbackCondition;
         public string fallbackRewardType;
         public string fallbackRewardKey;
+        public long fallbackRewardAssetId;
+        public string fallbackRewardName;
+        public string fallbackRewardIcon;
+        public string fallbackRewardCategory;
         public int fallbackRewardAmount;
     }
 
     [Serializable]
     private class SignInCostResponse
     {
+        public long itemId;
         public string itemKey;
         public string itemName;
         public string icon;
+        public string itemCategory;
         public int amount;
     }
 
@@ -1437,9 +1765,17 @@ public partial class HomePageUI
         public int rewardSeq;
         public string configuredRewardType;
         public string configuredRewardKey;
+        public long configuredAssetId;
+        public string configuredRewardName;
+        public string configuredRewardIcon;
+        public string configuredRewardCategory;
         public int configuredRewardAmount;
         public string grantedRewardType;
         public string grantedRewardKey;
+        public long grantedAssetId;
+        public string grantedRewardName;
+        public string grantedRewardIcon;
+        public string grantedRewardCategory;
         public int grantedRewardAmount;
         public bool fallbackApplied;
     }
@@ -1468,8 +1804,10 @@ public partial class HomePageUI
         public int slotNo;
         public string rewardType;
         public string rewardKey;
+        public long rewardAssetId;
         public string rewardName;
         public string icon;
+        public string rewardCategory;
         public int rewardAmount;
         public int weight;
         public float probability;
@@ -1523,9 +1861,17 @@ public partial class HomePageUI
         public int winningSlot;
         public string configuredRewardType;
         public string configuredRewardKey;
+        public long configuredAssetId;
+        public string configuredRewardName;
+        public string configuredRewardIcon;
+        public string configuredRewardCategory;
         public int configuredRewardAmount;
         public string grantedRewardType;
         public string grantedRewardKey;
+        public long grantedAssetId;
+        public string grantedRewardName;
+        public string grantedRewardIcon;
+        public string grantedRewardCategory;
         public int grantedRewardAmount;
         public bool duplicateNpcConverted;
     }

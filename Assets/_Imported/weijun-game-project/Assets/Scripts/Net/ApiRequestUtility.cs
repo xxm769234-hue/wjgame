@@ -90,6 +90,10 @@ public static class ApiRequestUtility
     {
         request.downloadHandler = request.downloadHandler ?? new DownloadHandlerBuffer();
         request.SetRequestHeader("Content-Type", "application/json; charset=UTF-8");
+        request.SetRequestHeader("X-Client-Channel", ApiRuntimeConfig.GetClientChannel());
+        request.SetRequestHeader(
+            "X-Client-Version-Code",
+            ApiRuntimeConfig.GetClientVersionCode().ToString(System.Globalization.CultureInfo.InvariantCulture));
         request.timeout = DefaultTimeoutSeconds;
         if (authorized)
         {

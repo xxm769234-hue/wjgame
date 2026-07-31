@@ -82,6 +82,7 @@ public partial class HomePageUI
         SetSceneText(root, "ProfileSyncText", GetProfileSyncText(isAuthenticated));
         SetSceneText(root, "ProfileStatus", status);
         SetSceneText(root, "ProfileNicknameHint", isAuthenticated ? "账号昵称由服务器资料管理" : "昵称长度为 2-12 个字符");
+        ConfigureProfileAvatarControls(root, isAuthenticated, nickname);
 
         InputField nicknameInput = FindSceneComponent<InputField>(root, "ProfileNicknameInput");
         if (nicknameInput != null)
@@ -239,6 +240,7 @@ public partial class HomePageUI
         PlayerPrefs.SetInt("Stone", profile.stone);
         PlayerPrefs.SetInt("Iron", profile.iron);
         PlayerPrefs.SetInt("Crystal", Mathf.Max(0, profile.diamond));
+        SaveCurrentAvatarState(profile.avatarUrl, profile.avatarSource, profile.avatarVersion, profile.avatarUpdatedTime);
         PlayerPrefs.SetString("ProfileLastSync", DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
         PlayerPrefs.Save();
         WeChatPlatformBridge.SyncFriendLevel(profile.level);
@@ -341,11 +343,9 @@ public partial class HomePageUI
         ResetWeChatFriendGiftCatalog();
         if (HasAuthSession())
         {
-            friendsOnlineOnly = false;
-            serverFriendStore = new LocalFriendStore();
-            serverDailyGiftStatus = null;
-            RefreshFriendsScenePanel(panel.PanelRoot, "正在同步服务器好友...");
-            StartCoroutine(GetServerFriends(panel.PanelRoot));
+            ResetServerFriendRequestPanel();
+            RefreshFriendsScenePanel(panel.PanelRoot, "正在同步服务器好友和申请摘要...");
+            StartCoroutine(RefreshServerFriendRequestState(panel.PanelRoot, true, "服务器好友同步完成"));
         }
         else
         {
@@ -360,6 +360,14 @@ public partial class HomePageUI
         {
             return;
         }
+
+        if (HasAuthSession())
+        {
+            RefreshServerFriendRequestPanel(root, status);
+            return;
+        }
+
+        ConfigureGuestFriendRequestCompatibility(root);
 
         if (!string.IsNullOrEmpty(status))
         {
@@ -507,6 +515,26 @@ public partial class HomePageUI
         }
 
         RefreshFriendDetail(root, selected);
+    }
+
+    private void ConfigureGuestFriendRequestCompatibility(Transform root)
+    {
+        SetSceneText(root, "FriendsTitle", "好友名册");
+        SetSceneText(root, "FriendsSubtitle", "本地好友");
+        SetSceneObjectActive(root, "FriendsFilterOutgoing", false);
+        SetSceneObjectActive(root, "FriendsRequestPrimaryButton", false);
+        SetSceneObjectActive(root, "FriendsRequestSecondaryButton", false);
+        SetSceneObjectActive(root, "FriendsGiftButton", true);
+        SetSceneObjectActive(root, "FriendsDeleteButton", true);
+
+        Button allFilter = FindSceneComponent<Button>(root, "FriendsFilterAll");
+        Button onlineFilter = FindSceneComponent<Button>(root, "FriendsFilterOnline");
+        Button addButton = FindSceneComponent<Button>(root, "FriendsAddButton");
+        SetSceneButtonText(allFilter, "全部");
+        SetSceneButtonText(onlineFilter, "在线");
+        SetSceneButtonText(addButton, "添加好友");
+        BindSceneButton(FindSceneComponent<Button>(root, "FriendsRequestPrimaryButton"), null);
+        BindSceneButton(FindSceneComponent<Button>(root, "FriendsRequestSecondaryButton"), null);
     }
 
     private void RefreshFriendDetail(Transform root, LocalFriendData friend)
@@ -923,6 +951,7 @@ public partial class HomePageUI
 
         friendsPanelObject = null;
         friendDeleteConfirmation = false;
+        InvalidateServerFriendRequestPanel();
     }
 
     private void HidePanelsBehindSocialOverlay()
@@ -965,6 +994,10 @@ public partial class HomePageUI
         public int stone;
         public int iron;
         public int diamond;
+        public string avatarUrl;
+        public string avatarSource;
+        public long avatarVersion;
+        public string avatarUpdatedTime;
         public InventoryItemResponse[] items;
     }
 
@@ -1205,14 +1238,20 @@ public partial class HomePageUI
             id = item.playerId.ToString(),
             nickname = string.IsNullOrEmpty(item.nickname) ? $"玩家 {item.playerId}" : item.nickname,
             level = Mathf.Max(1, item.level),
-            online = false,
-            lastSeen = string.Empty,
+            online = string.Equals(item.onlineStatus, "ONLINE", StringComparison.OrdinalIgnoreCase),
+            lastSeen = string.Equals(item.onlineStatus, "OFFLINE", StringComparison.OrdinalIgnoreCase)
+                ? (item.lastOfflineTime ?? string.Empty)
+                : (item.lastActiveTime ?? string.Empty),
             intimacy = 0,
             lastGiftDate = string.Empty,
             serverBacked = true,
             friendsSince = item.friendsSince ?? string.Empty,
             dailyGiftSent = item.dailyGiftSent,
-            dailyGiftReceived = item.dailyGiftReceived
+            dailyGiftReceived = item.dailyGiftReceived,
+            onlineStatus = item.onlineStatus ?? "UNKNOWN",
+            presenceVersion = item.presenceVersion,
+            lastActiveTime = item.lastActiveTime ?? string.Empty,
+            lastOfflineTime = item.lastOfflineTime ?? string.Empty
         };
     }
 
@@ -1261,6 +1300,12 @@ public partial class HomePageUI
         public string friendsSince;
         public bool dailyGiftSent;
         public bool dailyGiftReceived;
+        public string onlineStatus;
+        public long presenceVersion;
+        public string lastActiveTime;
+        public string lastOfflineTime;
+        public string avatarUrl;
+        public long avatarVersion;
     }
 
     [Serializable]
@@ -1285,8 +1330,14 @@ public partial class HomePageUI
         public string nickname;
         public int level;
         public string friendsSince;
+        public string avatarUrl;
+        public long avatarVersion;
         public bool dailyGiftSent;
         public bool dailyGiftReceived;
+        public string onlineStatus;
+        public long presenceVersion;
+        public string lastActiveTime;
+        public string lastOfflineTime;
     }
 
     [Serializable]

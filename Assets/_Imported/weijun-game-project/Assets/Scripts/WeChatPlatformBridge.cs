@@ -83,6 +83,11 @@ public static class WeChatPlatformBridge
 #endif
     }
 
+    public static void RequestAvatarSelection(MonoBehaviour receiver)
+    {
+        AvatarSelectionBridge.Request(receiver);
+    }
+
     public static void SyncFriendLevel(int level)
     {
 #if UNITY_WEBGL && !UNITY_EDITOR

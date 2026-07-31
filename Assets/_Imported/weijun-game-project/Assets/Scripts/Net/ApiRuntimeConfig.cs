@@ -7,6 +7,8 @@ public static class ApiRuntimeConfig
     private const string OverrideKey = "ApiBaseUrlOverride";
     private const string EnvironmentVariableName = "WEIJUN_API_BASE_URL";
     private const string DefaultDevelopmentUrl = "http://localhost:8080/api";
+    private const string DefaultClientChannel = "DEFAULT";
+    private const long DefaultClientVersionCode = 10001L;
 
     private static ApiConfigData cachedConfig;
     private static bool configLoaded;
@@ -50,6 +52,20 @@ public static class ApiRuntimeConfig
     public static string GetDisplayBaseUrl()
     {
         return TryGetBaseUrl(out string baseUrl, out string error) ? baseUrl : error;
+    }
+
+    public static string GetClientChannel()
+    {
+        string channel = LoadConfig().clientChannel;
+        return string.IsNullOrWhiteSpace(channel)
+            ? DefaultClientChannel
+            : channel.Trim().ToUpperInvariant();
+    }
+
+    public static long GetClientVersionCode()
+    {
+        long versionCode = LoadConfig().clientVersionCode;
+        return versionCode > 0L ? versionCode : DefaultClientVersionCode;
     }
 
     public static void SetRuntimeOverride(string baseUrl)
@@ -116,7 +132,9 @@ public static class ApiRuntimeConfig
         cachedConfig = new ApiConfigData
         {
             developmentBaseUrl = DefaultDevelopmentUrl,
-            productionBaseUrl = string.Empty
+            productionBaseUrl = string.Empty,
+            clientChannel = DefaultClientChannel,
+            clientVersionCode = DefaultClientVersionCode
         };
 
         TextAsset configAsset = Resources.Load<TextAsset>(ResourceName);
@@ -167,5 +185,7 @@ public static class ApiRuntimeConfig
     {
         public string developmentBaseUrl;
         public string productionBaseUrl;
+        public string clientChannel;
+        public long clientVersionCode;
     }
 }

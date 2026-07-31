@@ -15,8 +15,10 @@ public static class HomePageScenePanelsBuilder
     private const int MinimumComponentizedBookSchemaVersion = 8;
     private const int ScenePanelsSchemaVersion = 10;
     private const int EquipmentRows = 6;
+    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy)_爱给网_aigei_com.ttf";
 
     private static Font defaultFont;
+    private static Font fallbackFont;
 
     [InitializeOnLoadMethod]
     private static void BuildMissingPanelsAfterReload()
@@ -105,8 +107,8 @@ public static class HomePageScenePanelsBuilder
 
     private static void BuildScenePanels(Scene scene, bool saveScene)
     {
-        defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-
+        fallbackFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        defaultFont = AssetDatabase.LoadAssetAtPath<Font>(FontPath) ?? fallbackFont;
         EnsureTestNode(scene);
 
         GameObject existing = FindRoot(scene, CanvasName);
@@ -206,6 +208,7 @@ public static class HomePageScenePanelsBuilder
 
         Sprite background = AssetDatabase.LoadAssetAtPath<Sprite>(HomeBackgroundPath);
         style.EditorSetDefaultSprites(background);
+        homePage.EditorSetFont(defaultFont);
         homePage.EditorRebuildBookPreview();
         EditorUtility.SetDirty(style);
         EditorUtility.SetDirty(homePage);
@@ -397,13 +400,11 @@ public static class HomePageScenePanelsBuilder
 
         Button close = CreateButton("RechargeCloseButton", panel.transform, "<", new Color(0.30f, 0.17f, 0.09f, 1f), new Color(1f, 0.86f, 0.58f, 1f), 28);
         SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(24f, -24f), new Vector2(48f, 48f));
-        Text title = CreateText("RechargeTitle", panel.transform, "魂晶商店", 34, FontStyle.Bold, new Color(0.39f, 0.17f, 0.06f, 1f), TextAnchor.MiddleLeft);
+        Text title = CreateText("RechargeTitle", panel.transform, "钻石充值", 34, FontStyle.Bold, new Color(0.39f, 0.17f, 0.06f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(title.rectTransform, new Vector2(92f, -24f), new Vector2(220f, 48f));
 
         BuildRechargeResource(panel.transform, "RechargeGoldText", "金币  1000", new Vector2(330f, -22f), new Color(1f, 0.72f, 0.18f, 1f));
-        BuildRechargeResource(panel.transform, "RechargeSoulCrystalText", "魂晶  1200", new Vector2(566f, -22f), new Color(0.95f, 0.38f, 0.17f, 1f));
-        BuildRechargeResource(panel.transform, "RechargeCrystalText", "蓝晶  427", new Vector2(802f, -22f), new Color(0.25f, 0.67f, 1f, 1f));
-        BuildRechargeResource(panel.transform, "RechargePurpleCrystalText", "紫晶  0", new Vector2(1038f, -22f), new Color(0.72f, 0.34f, 0.92f, 1f));
+        BuildRechargeResource(panel.transform, "RechargeCrystalText", "钻石  0", new Vector2(566f, -22f), new Color(0.25f, 0.67f, 1f, 1f));
 
         Button guide = CreateButton("RechargeGuideButton", panel.transform, "贵族特权", new Color(0.54f, 0.40f, 0.22f, 1f), new Color(1f, 0.90f, 0.66f, 1f), 20);
         SetTopLeft(guide.GetComponent<RectTransform>(), new Vector2(1190f, -22f), new Vector2(166f, 48f));
@@ -445,11 +446,11 @@ public static class HomePageScenePanelsBuilder
 
         Text title = CreateText("ShopTitle", header.transform, "领地商城", 36, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
         SetTopLeft(title.rectTransform, new Vector2(30f, -12f), new Vector2(230f, 48f));
-        Text subtitle = CreateText("ShopSubtitle", header.transform, "使用金币或钻石补给背包", 17, FontStyle.Bold, new Color(0.86f, 0.96f, 0.90f, 0.90f), TextAnchor.MiddleLeft);
+        Text subtitle = CreateText("ShopSubtitle", header.transform, "选择金币或钻石购买服务器商品", 17, FontStyle.Bold, new Color(0.86f, 0.96f, 0.90f, 0.90f), TextAnchor.MiddleLeft);
         SetTopLeft(subtitle.rectTransform, new Vector2(242f, -20f), new Vector2(320f, 34f));
 
         BuildShopResourceBadge(header.transform, "ShopGoldText", new Vector2(650f, -16f), "金币  1000", new Color(1f, 0.72f, 0.18f, 1f));
-        BuildShopResourceBadge(header.transform, "ShopCrystalText", new Vector2(852f, -16f), "钻石  427", new Color(0.34f, 0.72f, 0.94f, 1f));
+        BuildShopResourceBadge(header.transform, "ShopCrystalText", new Vector2(850f, -16f), "钻石  0", new Color(0.30f, 0.78f, 0.95f, 1f));
 
         Button refresh = CreateButton("ShopRefreshButton", header.transform, "刷新", new Color(0.94f, 0.72f, 0.30f, 1f), new Color(0.25f, 0.15f, 0.07f, 1f), 17);
         SetTopLeft(refresh.GetComponent<RectTransform>(), new Vector2(1090f, -14f), new Vector2(112f, 44f));
@@ -463,21 +464,19 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(sidebar.rectTransform, new Vector2(34f, -120f), new Vector2(182f, 626f));
         Text categoryTitle = CreateText("ShopCategoryTitle", sidebar.transform, "商品分类", 22, FontStyle.Bold, new Color(0.31f, 0.16f, 0.07f, 1f), TextAnchor.MiddleCenter);
         SetTopLeft(categoryTitle.rectTransform, new Vector2(12f, -18f), new Vector2(158f, 38f));
-        BuildShopCategoryButton(sidebar.transform, "featured", "推荐", new Vector2(12f, -76f));
-        BuildShopCategoryButton(sidebar.transform, "resource", "资源", new Vector2(12f, -148f));
-        BuildShopCategoryButton(sidebar.transform, "item", "道具", new Vector2(12f, -220f));
-        BuildShopCategoryButton(sidebar.transform, "growth", "成长", new Vector2(12f, -292f));
+        BuildShopCategoryButton(sidebar.transform, "gold", "金币", new Vector2(12f, -76f));
+        BuildShopCategoryButton(sidebar.transform, "diamond", "钻石", new Vector2(12f, -148f));
 
         Image sidebarNote = CreateImage("ShopSidebarNote", sidebar.transform, new Color(0.23f, 0.47f, 0.42f, 0.96f));
-        SetTopLeft(sidebarNote.rectTransform, new Vector2(12f, -408f), new Vector2(158f, 176f));
-        Text noteTitle = CreateText("ShopSidebarNoteTitle", sidebarNote.transform, "商城说明", 18, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+        SetTopLeft(sidebarNote.rectTransform, new Vector2(12f, -250f), new Vector2(158f, 176f));
+        Text noteTitle = CreateText("ShopSidebarNoteTitle", sidebarNote.transform, "商城规则", 18, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
         SetTopLeft(noteTitle.rectTransform, new Vector2(12f, -14f), new Vector2(134f, 28f));
-        Text note = CreateText("ShopSidebarNoteText", sidebarNote.transform, "购买后直接放入\n本地背包\n\n支持金币或钻石", 15, FontStyle.Normal, new Color(0.92f, 1f, 0.96f, 1f), TextAnchor.UpperCenter);
+        Text note = CreateText("ShopSidebarNoteText", sidebarNote.transform, "商品、价格和限额\n均由服务器结算\n\n金币与钻石独立结算", 15, FontStyle.Normal, new Color(0.92f, 1f, 0.96f, 1f), TextAnchor.UpperCenter);
         SetTopLeft(note.rectTransform, new Vector2(12f, -48f), new Vector2(134f, 112f));
 
         Image catalog = CreateImage("ShopCatalog", panel.transform, new Color(0.98f, 0.86f, 0.62f, 1f));
         SetTopLeft(catalog.rectTransform, new Vector2(228f, -120f), new Vector2(790f, 626f));
-        Text resultCount = CreateText("ShopResultCount", catalog.transform, "推荐  0 件商品", 20, FontStyle.Bold, new Color(0.33f, 0.18f, 0.08f, 1f), TextAnchor.MiddleLeft);
+        Text resultCount = CreateText("ShopResultCount", catalog.transform, "金币  0 件商品", 20, FontStyle.Bold, new Color(0.33f, 0.18f, 0.08f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(resultCount.rectTransform, new Vector2(18f, -12f), new Vector2(300f, 34f));
         Button previous = CreateButton("ShopPreviousButton", catalog.transform, "<", new Color(0.36f, 0.58f, 0.54f, 1f), Color.white, 20);
         SetTopLeft(previous.GetComponent<RectTransform>(), new Vector2(624f, -10f), new Vector2(42f, 36f));
@@ -516,23 +515,29 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(reward.rectTransform, new Vector2(22f, -262f), new Vector2(372f, 34f));
         Text price = CreateText("ShopDetailPrice", detail.transform, "价格  --", 20, FontStyle.Bold, new Color(0.78f, 0.24f, 0.17f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(price.rectTransform, new Vector2(22f, -304f), new Vector2(372f, 38f));
-        Button buyGold = CreateButton("ShopBuyGoldButton", detail.transform, "金币购买", new Color(0.88f, 0.57f, 0.16f, 1f), new Color(0.31f, 0.17f, 0.06f, 1f), 19);
+        Button buyGold = CreateButton("ShopBuyGoldButton", detail.transform, "购买", new Color(0.88f, 0.57f, 0.16f, 1f), new Color(0.31f, 0.17f, 0.06f, 1f), 19);
         SetTopLeft(buyGold.GetComponent<RectTransform>(), new Vector2(22f, -354f), new Vector2(180f, 50f));
-        Button buyCrystal = CreateButton("ShopBuyCrystalButton", detail.transform, "钻石购买", new Color(0.22f, 0.62f, 0.78f, 1f), Color.white, 19);
+        Button buyCrystal = CreateButton("ShopBuyCrystalButton", detail.transform, "购买记录", new Color(0.30f, 0.57f, 0.52f, 1f), Color.white, 19);
         SetTopLeft(buyCrystal.GetComponent<RectTransform>(), new Vector2(214f, -354f), new Vector2(180f, 50f));
 
         Image purchase = CreateImage("ShopPurchaseBox", detail.transform, new Color(1f, 0.91f, 0.70f, 1f));
         SetTopLeft(purchase.rectTransform, new Vector2(22f, -418f), new Vector2(372f, 186f));
         Text purchaseTitle = CreateText("ShopPurchaseTitle", purchase.transform, "购买信息", 18, FontStyle.Bold, new Color(0.35f, 0.19f, 0.09f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(purchaseTitle.rectTransform, new Vector2(14f, -10f), new Vector2(150f, 28f));
-        Text purchaseSummary = CreateText("ShopPurchaseSummary", purchase.transform, "请选择商品和购买货币", 14, FontStyle.Normal, new Color(0.42f, 0.30f, 0.18f, 1f), TextAnchor.MiddleLeft);
+        Text purchaseSummary = CreateText("ShopPurchaseSummary", purchase.transform, "请选择服务器商品", 14, FontStyle.Normal, new Color(0.42f, 0.30f, 0.18f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(purchaseSummary.rectTransform, new Vector2(14f, -42f), new Vector2(344f, 30f));
         Text ownedCount = CreateText("ShopOwnedCount", purchase.transform, "背包已拥有  --", 15, FontStyle.Bold, new Color(0.19f, 0.43f, 0.37f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(ownedCount.rectTransform, new Vector2(14f, -76f), new Vector2(344f, 30f));
-        Text storageMode = CreateText("ShopStorageModeText", purchase.transform, "当前为本地商城存档", 13, FontStyle.Normal, new Color(0.48f, 0.31f, 0.17f, 0.88f), TextAnchor.MiddleLeft);
-        SetTopLeft(storageMode.rectTransform, new Vector2(14f, -124f), new Vector2(190f, 34f));
+        Text storageMode = CreateText("ShopStorageModeText", purchase.transform, "商品以服务器目录为准", 13, FontStyle.Normal, new Color(0.48f, 0.31f, 0.17f, 0.88f), TextAnchor.MiddleLeft);
+        SetTopLeft(storageMode.rectTransform, new Vector2(14f, -104f), new Vector2(132f, 30f));
+        Button lotDecrease = CreateButton("ShopLotDecreaseButton", purchase.transform, "-", new Color(0.67f, 0.46f, 0.22f, 1f), Color.white, 16);
+        SetTopLeft(lotDecrease.GetComponent<RectTransform>(), new Vector2(152f, -101f), new Vector2(38f, 34f));
+        Text lotCount = CreateText("ShopLotCountText", purchase.transform, "批次 --", 14, FontStyle.Bold, new Color(0.27f, 0.16f, 0.08f, 1f), TextAnchor.MiddleCenter);
+        SetTopLeft(lotCount.rectTransform, new Vector2(192f, -101f), new Vector2(74f, 34f));
+        Button lotIncrease = CreateButton("ShopLotIncreaseButton", purchase.transform, "+", new Color(0.31f, 0.62f, 0.45f, 1f), Color.white, 16);
+        SetTopLeft(lotIncrease.GetComponent<RectTransform>(), new Vector2(268f, -101f), new Vector2(38f, 34f));
         Button openBag = CreateButton("ShopOpenBagButton", purchase.transform, "打开背包", new Color(0.30f, 0.57f, 0.52f, 1f), Color.white, 17);
-        SetTopLeft(openBag.GetComponent<RectTransform>(), new Vector2(214f, -120f), new Vector2(144f, 42f));
+        SetTopLeft(openBag.GetComponent<RectTransform>(), new Vector2(214f, -142f), new Vector2(144f, 34f));
 
         Image footer = CreateImage("ShopFooter", panel.transform, new Color(0.17f, 0.37f, 0.33f, 1f));
         SetTopLeft(footer.rectTransform, new Vector2(34f, -772f), new Vector2(1412f, 40f));
@@ -580,7 +585,7 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(reward.rectTransform, new Vector2(18f, -122f), new Vector2(204f, 30f));
         Image priceBar = CreateImage("ShopPriceBar", card.transform, new Color(0.90f, 0.68f, 0.32f, 1f));
         SetTopLeft(priceBar.rectTransform, new Vector2(18f, -170f), new Vector2(204f, 42f));
-        Text price = CreateText("ShopProductPrice", priceBar.transform, "金币0  钻石0", 15, FontStyle.Bold, new Color(0.36f, 0.17f, 0.07f, 1f), TextAnchor.MiddleCenter);
+        Text price = CreateText("ShopProductPrice", priceBar.transform, "金币0/批", 15, FontStyle.Bold, new Color(0.36f, 0.17f, 0.07f, 1f), TextAnchor.MiddleCenter);
         Stretch(price.rectTransform);
     }
 
@@ -603,9 +608,9 @@ public static class HomePageScenePanelsBuilder
 
         Image header = CreateImage("ProductHeader", card.transform, new Color(0.82f, 0.62f, 0.30f, 1f));
         SetTopLeft(header.rectTransform, Vector2.zero, new Vector2(250f, 42f));
-        Text headerText = CreateText("HeaderText", header.transform, $"魂晶x{reward}", 20, FontStyle.Bold, new Color(0.30f, 0.17f, 0.08f, 1f), TextAnchor.MiddleCenter);
+        Text headerText = CreateText("HeaderText", header.transform, $"钻石x{reward}", 20, FontStyle.Bold, new Color(0.30f, 0.17f, 0.08f, 1f), TextAnchor.MiddleCenter);
         Stretch(headerText.rectTransform);
-        Text name = CreateText("ProductName", card.transform, $"魂晶礼包 {index + 1}", 17, FontStyle.Bold, new Color(1f, 0.89f, 0.65f, 1f), TextAnchor.MiddleCenter);
+        Text name = CreateText("ProductName", card.transform, $"钻石礼包 {index + 1}", 17, FontStyle.Bold, new Color(1f, 0.89f, 0.65f, 1f), TextAnchor.MiddleCenter);
         SetTopLeft(name.rectTransform, new Vector2(18f, -52f), new Vector2(214f, 28f));
 
         Image crystal = CreateImage("ProductCrystal", card.transform, new Color(0.35f, 0.69f, 1f, 1f));
@@ -614,7 +619,7 @@ public static class HomePageScenePanelsBuilder
         Stretch(crystalText.rectTransform);
         Text amount = CreateText("RewardAmount", card.transform, reward.ToString(), 23, FontStyle.Bold, new Color(0.83f, 0.75f, 1f, 1f), TextAnchor.MiddleCenter);
         SetTopLeft(amount.rectTransform, new Vector2(70f, -156f), new Vector2(110f, 30f));
-        Text bonus = CreateText("BonusText", card.transform, $"首充赠 x{reward}", 15, FontStyle.Bold, new Color(1f, 0.82f, 0.38f, 1f), TextAnchor.MiddleCenter);
+        Text bonus = CreateText("BonusText", card.transform, "后端定价商品", 15, FontStyle.Bold, new Color(1f, 0.82f, 0.38f, 1f), TextAnchor.MiddleCenter);
         SetTopLeft(bonus.rectTransform, new Vector2(20f, -182f), new Vector2(210f, 24f));
 
         Button priceButton = CreateButton("RechargePriceButton", card.transform, $"￥{price}", new Color(0.58f, 0.20f, 0.16f, 1f), new Color(1f, 0.86f, 0.48f, 1f), 25);
@@ -1090,28 +1095,30 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(header.rectTransform, new Vector2(24f, -24f), new Vector2(1452f, 76f));
         Text title = CreateText("FriendsTitle", panel.transform, "好友名册", 38, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
         SetTopLeft(title.rectTransform, new Vector2(58f, -34f), new Vector2(250f, 54f));
-        Text subtitle = CreateText("FriendsSubtitle", panel.transform, "领地伙伴", 18, FontStyle.Bold, new Color(0.90f, 1f, 0.94f, 0.88f), TextAnchor.MiddleLeft);
+        Text subtitle = CreateText("FriendsSubtitle", panel.transform, "正式好友", 18, FontStyle.Bold, new Color(0.90f, 1f, 0.94f, 0.88f), TextAnchor.MiddleLeft);
         SetTopLeft(subtitle.rectTransform, new Vector2(310f, -45f), new Vector2(180f, 32f));
         Text count = CreateText("FriendsCount", panel.transform, "好友 0/0    在线 0", 19, FontStyle.Bold, Color.white, TextAnchor.MiddleRight);
         SetTopLeft(count.rectTransform, new Vector2(1030f, -43f), new Vector2(330f, 40f));
         Button close = CreateButton("FriendsCloseButton", panel.transform, "X", new Color(0.90f, 0.30f, 0.25f, 1f), Color.white, 24);
         SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(1408f, -36f), new Vector2(50f, 50f));
 
-        InputField search = CreateSceneInputField("FriendsSearchInput", panel.transform, "搜索好友昵称或编号", 18);
-        SetTopLeft(search.GetComponent<RectTransform>(), new Vector2(42f, -122f), new Vector2(344f, 50f));
+        InputField search = CreateSceneInputField("FriendsSearchInput", panel.transform, "筛选当前列表", 18);
+        SetTopLeft(search.GetComponent<RectTransform>(), new Vector2(42f, -122f), new Vector2(270f, 50f));
         Button clearSearch = CreateButton("FriendsClearSearchButton", panel.transform, "X", new Color(0.79f, 0.66f, 0.47f, 1f), Color.white, 18);
-        SetTopLeft(clearSearch.GetComponent<RectTransform>(), new Vector2(396f, -122f), new Vector2(50f, 50f));
-        Button filterAll = CreateButton("FriendsFilterAll", panel.transform, "全部", new Color(0.20f, 0.56f, 0.66f, 1f), Color.white, 18);
-        SetTopLeft(filterAll.GetComponent<RectTransform>(), new Vector2(466f, -122f), new Vector2(112f, 50f));
-        Button filterOnline = CreateButton("FriendsFilterOnline", panel.transform, "在线", new Color(0.90f, 0.79f, 0.59f, 1f), new Color(0.36f, 0.20f, 0.10f, 1f), 18);
-        SetTopLeft(filterOnline.GetComponent<RectTransform>(), new Vector2(592f, -122f), new Vector2(112f, 50f));
+        SetTopLeft(clearSearch.GetComponent<RectTransform>(), new Vector2(322f, -122f), new Vector2(46f, 50f));
+        Button filterAll = CreateButton("FriendsFilterAll", panel.transform, "好友", new Color(0.20f, 0.56f, 0.66f, 1f), Color.white, 18);
+        SetTopLeft(filterAll.GetComponent<RectTransform>(), new Vector2(382f, -122f), new Vector2(90f, 50f));
+        Button filterOnline = CreateButton("FriendsFilterOnline", panel.transform, "收到", new Color(0.90f, 0.79f, 0.59f, 1f), new Color(0.36f, 0.20f, 0.10f, 1f), 18);
+        SetTopLeft(filterOnline.GetComponent<RectTransform>(), new Vector2(482f, -122f), new Vector2(100f, 50f));
+        Button filterOutgoing = CreateButton("FriendsFilterOutgoing", panel.transform, "发出", new Color(0.90f, 0.79f, 0.59f, 1f), new Color(0.36f, 0.20f, 0.10f, 1f), 18);
+        SetTopLeft(filterOutgoing.GetComponent<RectTransform>(), new Vector2(592f, -122f), new Vector2(90f, 50f));
         Button weChatGift = CreateButton("FriendsWeChatGiftButton", panel.transform, "微信好友赠礼", new Color(0.16f, 0.61f, 0.35f, 1f), Color.white, 18);
-        SetTopLeft(weChatGift.GetComponent<RectTransform>(), new Vector2(718f, -122f), new Vector2(208f, 50f));
+        SetTopLeft(weChatGift.GetComponent<RectTransform>(), new Vector2(692f, -122f), new Vector2(176f, 50f));
 
-        InputField addInput = CreateSceneInputField("FriendsAddInput", panel.transform, "输入好友昵称", 18);
-        SetTopLeft(addInput.GetComponent<RectTransform>(), new Vector2(944f, -122f), new Vector2(292f, 50f));
-        Button addButton = CreateButton("FriendsAddButton", panel.transform, "添加好友", new Color(0.33f, 0.66f, 0.36f, 1f), Color.white, 19);
-        SetTopLeft(addButton.GetComponent<RectTransform>(), new Vector2(1252f, -122f), new Vector2(206f, 50f));
+        InputField addInput = CreateSceneInputField("FriendsAddInput", panel.transform, "输入玩家 ID", 18);
+        SetTopLeft(addInput.GetComponent<RectTransform>(), new Vector2(880f, -122f), new Vector2(246f, 50f));
+        Button addButton = CreateButton("FriendsAddButton", panel.transform, "搜索玩家", new Color(0.33f, 0.66f, 0.36f, 1f), Color.white, 19);
+        SetTopLeft(addButton.GetComponent<RectTransform>(), new Vector2(1140f, -122f), new Vector2(318f, 50f));
 
         Image listArea = CreateImage("FriendsListArea", panel.transform, new Color(1f, 0.84f, 0.58f, 1f));
         SetTopLeft(listArea.rectTransform, new Vector2(42f, -196f), new Vector2(870f, 498f));
@@ -1364,6 +1371,10 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(gift.GetComponent<RectTransform>(), new Vector2(72f, -416f), new Vector2(174f, 50f));
         Button delete = CreateButton("FriendsDeleteButton", content.transform, "删除好友", new Color(0.84f, 0.38f, 0.30f, 1f), Color.white, 19);
         SetTopLeft(delete.GetComponent<RectTransform>(), new Vector2(276f, -416f), new Vector2(174f, 50f));
+        Button requestPrimary = CreateButton("FriendsRequestPrimaryButton", content.transform, "同意", new Color(0.32f, 0.66f, 0.38f, 1f), Color.white, 19);
+        SetTopLeft(requestPrimary.GetComponent<RectTransform>(), new Vector2(72f, -416f), new Vector2(174f, 50f));
+        Button requestSecondary = CreateButton("FriendsRequestSecondaryButton", content.transform, "拒绝", new Color(0.84f, 0.38f, 0.30f, 1f), Color.white, 19);
+        SetTopLeft(requestSecondary.GetComponent<RectTransform>(), new Vector2(276f, -416f), new Vector2(174f, 50f));
     }
 
     private static InputField CreateSceneInputField(string name, Transform parent, string placeholder, int fontSize)
@@ -1621,10 +1632,11 @@ public static class HomePageScenePanelsBuilder
         target.layer = LayerMask.NameToLayer("UI");
         target.transform.SetParent(parent, false);
         Text label = target.GetComponent<Text>();
-        label.font = defaultFont;
+        Font resolvedFont = ResolveFont(value);
+        label.font = resolvedFont;
         label.text = value;
         label.fontSize = fontSize;
-        label.fontStyle = style;
+        label.fontStyle = resolvedFont == defaultFont ? FontStyle.Normal : style;
         label.color = color;
         label.alignment = alignment;
         label.resizeTextForBestFit = true;
@@ -1634,6 +1646,24 @@ public static class HomePageScenePanelsBuilder
         label.verticalOverflow = VerticalWrapMode.Truncate;
         label.raycastTarget = false;
         return label;
+    }
+
+    private static Font ResolveFont(string value)
+    {
+        if (defaultFont == null || string.IsNullOrEmpty(value))
+        {
+            return defaultFont ?? fallbackFont;
+        }
+
+        foreach (char character in value)
+        {
+            if (!char.IsControl(character) && !char.IsSurrogate(character) && !defaultFont.HasCharacter(character))
+            {
+                return fallbackFont ?? defaultFont;
+            }
+        }
+
+        return defaultFont;
     }
 
     private static GameObject CreateRectObject(string name, Transform parent)

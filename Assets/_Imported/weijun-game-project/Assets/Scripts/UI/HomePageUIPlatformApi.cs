@@ -27,6 +27,7 @@ public partial class HomePageUI
     private string pendingRefundIdempotencyKey = string.Empty;
     private string pendingRefundOrderNo = string.Empty;
     private string pendingRefundReason = string.Empty;
+    private readonly HashSet<string> refundAccountSyncKeys = new HashSet<string>();
 
     private void ShowNotificationCenter()
     {
@@ -847,10 +848,14 @@ public partial class HomePageUI
             RefundApiResponse response = ParseJson<RefundApiResponse>(request.downloadHandler.text);
             if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
-                bool definitiveFailure = response != null
-                    && response.code != 200
-                    && request.result != UnityWebRequest.Result.ConnectionError
-                    && (request.responseCode == 0 || request.responseCode < 500);
+                bool hasDefinitiveClientResponse = request.responseCode >= 400 && request.responseCode < 500;
+                bool outcomeUncertain = request.result == UnityWebRequest.Result.ConnectionError
+                    || request.result == UnityWebRequest.Result.DataProcessingError
+                    || request.responseCode >= 500
+                    || (!hasDefinitiveClientResponse && response == null);
+                bool definitiveFailure = !outcomeUncertain
+                    && response != null
+                    && response.code != 200;
                 if (definitiveFailure)
                 {
                     pendingRefundIdempotencyKey = string.Empty;
@@ -942,6 +947,7 @@ public partial class HomePageUI
             refundRequestRunning = false;
             refundStatusMessage = $"{item.requestNo}\n{item.statusMessage}\n订单：{item.orderNo}\n更新时间：{item.updateTime}";
             RenderRefundCenter();
+            RefreshAccountForRefundStatus(item);
         }
     }
 
@@ -1033,7 +1039,40 @@ public partial class HomePageUI
                 refundStatusMessage = "退款记录已刷新。";
             }
             RenderRefundCenter();
+            for (int i = 0; i < currentRefunds.Length; i++)
+            {
+                RefreshAccountForRefundStatus(currentRefunds[i]);
+            }
         }
+    }
+
+    private void RefreshAccountForRefundStatus(RefundResponse refund)
+    {
+        if (refund == null || string.IsNullOrEmpty(refund.requestNo))
+        {
+            return;
+        }
+
+        string status = refund.status ?? string.Empty;
+        bool requiresAccountRefresh = status == "APPROVED"
+            || status == "PROCESSING"
+            || status == "MANUAL_REVIEW"
+            || status == "SUCCESS";
+        if (!requiresAccountRefresh)
+        {
+            return;
+        }
+
+        string syncKey = refund.requestNo + "|" + status;
+        if (!refundAccountSyncKeys.Add(syncKey))
+        {
+            return;
+        }
+
+        string message = status == "SUCCESS"
+            ? "退款已完成，账户资源已从服务器刷新。"
+            : "退款处理中，账户经济状态已从服务器刷新。";
+        StartCoroutine(RefreshAccountSnapshot(message));
     }
 
     private void HideRefundCenter()

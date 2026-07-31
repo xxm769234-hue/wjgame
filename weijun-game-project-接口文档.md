@@ -1,8 +1,8 @@
 # Weijun Game Project 后端接口文档
 
 重新生成时间：2026-07-13
-更新日期：2026-07-27
-同步说明：已同步当前代码，包括 V15 审核全额退款、V16/V17 Idle Adventure 26 条 Unity 契约、V18/V19 运营配置中心、V20 装备速度、V21/V22 运营登录与密码安全、V23 配置化补签、V24 默认配置中文显示名、V25-V29 玩家经验等级、建筑升级经验、配置刷新 Outbox、日常/周常任务和游戏内好友，以及 V30 微信官方好友赠礼、消息安全回调和管理端礼包配置。当前数据库迁移为 Flyway V1 至 V30。
+更新日期：2026-07-31
+同步说明：已同步当前代码至 Flyway V48；新增激励广告管理、客户端版本与维护、通知策略、经济护栏、头像策略、公告/邮件模板和统一活动日历。Unity/微信小游戏启动接口、登录请求头、管理端接口和安全边界已补齐。当前数据库迁移为 Flyway V1 至 V48。
 客户端：Unity / 微信小游戏前端
 后端基础地址：`http://localhost:8080/api`
 统一 Content-Type：`application/json; charset=UTF-8`
@@ -103,6 +103,7 @@ Authorization: Bearer <token>
 | `POST /api/user/login` | 账号密码登录 |
 | `POST /api/user/register` | 账号注册 |
 | `POST /api/user/wx-login` | 微信小游戏登录 |
+| `GET /api/client/runtime-policy` | 客户端启动时查询版本、强制更新和维护状态 |
 | `POST /api/payment/notify/wechat` | 微信支付服务器回调，不使用业务 token |
 | `POST /api/ops/auth/login` | 独立运营账号登录，不使用玩家 token |
 | `GET /api/ops/auth/context` | 运营登录页的系统、版本和环境信息，不使用玩家 token |
@@ -1117,6 +1118,8 @@ Authorization: Bearer <token>
       "name": "田园管家",
       "icon": "Npc_1",
       "modelKey": "npc_field_steward",
+      "description": "擅长农田管理的生产型 NPC",
+      "combatAttribute": "WOOD",
       "produceBonusRate": 0.2
     },
     "produceIntervalSeconds": 3600,
@@ -1298,8 +1301,8 @@ Authorization: Bearer <token>
 后端处理：
 
 1. 校验 token。
-2. 查询 `npc_config` 中 `enabled = true` 的 NPC 配置。
-3. 按 `npc_id` 升序返回 NPC 图鉴展示字段和实时产出加成配置。
+2. 查询 `npc_config` 中 `enabled = true` 的 NPC 配置；`obtainable=false` 的已停获 NPC 仍可展示并服务已有玩家。
+3. 按 `sortOrder`、`npcId` 升序返回 NPC 图鉴展示、战斗属性、等级上限和实时产出加成配置。
 
 返回 data：`NpcConfigResponse[]`
 
@@ -1311,7 +1314,11 @@ Authorization: Bearer <token>
     "name": "田园管家",
     "icon": "Npc_1",
     "modelKey": "npc_field_steward",
-    "produceBonusRate": 0.2
+    "description": "擅长农田管理的生产型 NPC",
+    "combatAttribute": "WOOD",
+    "maxLevel": 100,
+    "produceBonusRate": 0.2,
+    "obtainable": true
   }
 ]
 ```
@@ -1325,7 +1332,11 @@ Authorization: Bearer <token>
 | name | string | NPC 名称 |
 | icon | string | Unity 图标资源 Key |
 | modelKey | string | Unity 模型资源 Key |
+| description | string / null | NPC 展示说明 |
+| combatAttribute | string | `PHYSICAL/FIRE/WATER/WOOD/EARTH/ICE/THUNDER` |
+| maxLevel | number | 当前 NPC 等级上限，Unity 升级按钮必须以该值为准 |
 | produceBonusRate | number | 资源产出加成比例，例如 `0.2` 表示 +20% |
+| obtainable | boolean | 是否允许抽卡、签到等新渠道继续发放；不代表玩家已拥有 NPC 是否可用 |
 
 ### 5.6 查询玩家拥有的全部 NPC
 
@@ -1362,6 +1373,9 @@ Authorization: Bearer <token>
     "name": "田园管家",
     "icon": "Npc_1",
     "modelKey": "npc_field_steward",
+    "description": "擅长农田管理的生产型 NPC",
+    "combatAttribute": "WOOD",
+    "maxLevel": 100,
     "level": 1,
     "state": "IDLE",
     "settledPlayerBuildingId": null,
@@ -1369,6 +1383,8 @@ Authorization: Bearer <token>
   }
 ]
 ```
+
+`NpcResponse` 新增字段与图鉴接口含义一致：`description` 用于详情展示，`combatAttribute` 用于战斗属性图标，`maxLevel` 用于升级 UI 上限。玩家拥有列表不返回 `obtainable`；停获只阻止新发放，不影响已经拥有的 NPC。
 
 说明：前端安排 NPC 入驻时传的是 `playerNpcId`，也就是 `player_npc.id`；不是 `npc_config.npc_id`。
 
@@ -1408,6 +1424,9 @@ Authorization: Bearer <token>
     "name": "田园管家",
     "icon": "Npc_1",
     "modelKey": "npc_field_steward",
+    "description": "擅长农田管理的生产型 NPC",
+    "combatAttribute": "WOOD",
+    "maxLevel": 100,
     "level": 1,
     "state": "IDLE",
     "settledPlayerBuildingId": null,
@@ -2863,7 +2882,10 @@ Authorization: Bearer <token>
 | config_refresh_outbox | 配置事务内写入、事务外通过 Redis 发布的可靠刷新事件 | 多节点等级曲线缓存刷新 |
 | player_task_config / player_task | 日常/周常任务定义和带奖励快照的玩家周期实例 | 任务概览、进度和领取 |
 | player_task_progress_event | 可信业务来源的幂等任务进度流水 | 建筑完成和升级任务进度 |
-| player_friend | 以较小玩家 ID 在前保存的一条无向好友关系 | 好友添加、删除和等级排序列表 |
+| player_friend | 以较小玩家 ID 在前保存的一条无向好友关系，并记录建立关系的申请来源 | 申请同意、好友删除和等级排序列表 |
+| player_friend_request_policy | 好友容量、待处理容量、北京时间每日额度、冷却和有效期策略 | 管理端好友申请策略发布、申请摘要 |
+| player_friend_request | 好友申请、处理终态、过期状态和关系终止时间 | 收到/发出列表、同意、拒绝、取消、过期扫描 |
+| player_friend_gift_record | 游戏好友每日赠礼的奖励及余额不可变快照 | 每日赠礼幂等、发送和接收额度 |
 | wechat_friend_gift_config | 微信 MP 礼包 ID、类型、每日领取上限、发送开关和配置版本 | 微信赠礼目录、运营配置、回调发货 |
 | wechat_friend_gift_reward | 微信道具 ID/数量到游戏内物品 ID/数量的不可变映射 | 回调道具校验、背包资源发放 |
 | wechat_gift_delivery_record | 微信 `OrderId`、平台道具、游戏奖励和接收玩家的幂等快照 | 官方好友赠礼与送礼任务礼包发货审计 |
@@ -2876,10 +2898,13 @@ Authorization: Bearer <token>
 | notification_reminder_claim | 多实例提醒任务领取去重占位 | 离线资源提醒跨实例幂等 |
 | player_mail | 玩家邮件主体、已读、领取、删除和过期状态 | 邮件列表、详情、已读、领取、删除 |
 | player_mail_attachment | 邮件附件物品和数量 | 邮件详情、附件领取、一键领取 |
+| resource_sale_policy / resource_sale_option | 资源出售全局开关、正式版本和整数批次兑换规则 | 管理端兑换配置、玩家正式报价 |
+| player_resource_sale_daily_usage | 每种来源资源的北京时间每日出售用量 | 每日额度并发控制 |
+| player_resource_sale_order | 资源扣减、金币发放和前后余额不可变快照 | 成交幂等重放、历史查询和对账 |
 
 ### 11.1 数据库外键约束
 
-V1 至 V30 数据库迁移已补充外键约束、安全清理、令牌摘要、支付对账与审核退款、签到/成长/抽卡、建筑快照、Idle Adventure、运营配置中心、登录与密码安全、补签费用快照、默认中文显示名、玩家经验等级、任务、游戏内好友和微信官方好友赠礼；`init.sql` 只包含 V1 手工初始化结构：
+V1 至 V48 数据库迁移已补充外键约束、安全清理、令牌摘要、支付对账与审核退款、签到/成长/抽卡、建筑快照、Idle Adventure、运营配置中心、登录与密码安全、补签费用快照、默认中文显示名、玩家经验等级、任务、好友与在线状态、运营消息、资源出售、两类商城、统一资产、旧邮件回填和运行策略管理；`init.sql` 只包含 V1 手工初始化结构：
 
 | 外键 | 说明 |
 | --- | --- |
@@ -2913,6 +2938,9 @@ V1 至 V30 数据库迁移已补充外键约束、安全清理、令牌摘要、
 | `player_mail_attachment.mail_id -> player_mail.id` | 邮件附件必须对应有效邮件 |
 | `player_mail_attachment.player_id -> users.id` | 邮件附件必须对应本地用户 |
 | `player_mail_attachment.item_id -> item_config.item_id` | 邮件附件物品必须对应有效物品配置 |
+| `player_friend_request.requester_player_id -> users.id` | 好友申请发起方必须对应有效玩家，账号物理删除时级联清理 |
+| `player_friend_request.recipient_player_id -> users.id` | 好友申请接收方必须对应有效玩家，账号物理删除时级联清理 |
+| `player_friend.accepted_request_id -> player_friend_request.id` | V37 后建立的正式关系可追踪原始同意申请，申请删除时置空 |
 | `wechat_friend_gift_reward.gift_config_id -> wechat_friend_gift_config.id` | 微信道具奖励必须对应已发布礼包映射 |
 | `wechat_friend_gift_reward.item_id -> item_config.item_id` | 微信赠礼只能发放有效的游戏内物品 |
 | `wechat_gift_delivery_record.player_id -> users.id` | 微信赠礼发货流水必须对应本地玩家 |
@@ -2945,7 +2973,7 @@ V1 至 V30 数据库迁移已补充外键约束、安全清理、令牌摘要、
 
 ### 11.2 Flyway 版本迁移和测试数据边界
 
-先创建空数据库，应用启动时 Flyway 自动执行 `src/main/resources/db/migration` 下的版本脚本。当前新库依次执行 V1 至 V30。`FLYWAY_BASELINE_ON_MIGRATE` 默认是 `false`。
+先创建空数据库，应用启动时 Flyway 自动执行 `src/main/resources/db/migration` 下的版本脚本。当前新库依次执行 V1 至 V37。`FLYWAY_BASELINE_ON_MIGRATE` 默认是 `false`。
 
 只有“已有业务表但没有 `flyway_schema_history`”的旧库首次接入时，才在完整备份后临时设置 `FLYWAY_BASELINE_ON_MIGRATE=true`。当前 `baseline-version=0`，会先记录版本 0，再执行 V1 到最新版本。迁移成功并核对记录后必须立即恢复为 `false`，防止误连其他非空数据库时被自动基线化。已经由 Flyway 管理的环境升级时始终保持 `false`。
 
@@ -2981,6 +3009,13 @@ V1 至 V30 数据库迁移已补充外键约束、安全清理、令牌摘要、
 - `V28__add_player_task_system.sql`：增加日常/周常任务配置、玩家周期快照和可信进度幂等流水。
 - `V29__add_player_friend_system.sql`：增加规范化无向好友关系及双向查询索引。
 - `V30__add_wechat_friend_gift_system.sql`：增加微信官方好友赠礼礼包、不可变道具映射和按 `OrderId` 幂等的发货流水。
+- `V31__add_operator_announcement_and_system_reward.sql`：增加运营公告、系统奖励模板、发送活动、目标快照、租约和审计。
+- `V32__add_operator_system_mail_campaign.sql`：增加管理端普通无附件系统邮件活动。
+- `V33__add_operator_mail_campaign_creation_lock.sql`：增加普通邮件活动创建串行锁，防止并发重复创建。
+- `V34__add_daily_friend_gift_system.sql`：增加游戏好友每日赠礼策略和不可变发放流水。
+- `V35__add_resource_sale_system.sql`：增加资源出售策略、整数兑换规则、北京时间每日额度和不可变成交订单。
+- `V36__harden_resource_sale_constraints.sql`：在不修改 V35 校验和的前提下加固安全整数、成交乘积和余额恒等式约束。
+- `V37__add_player_friend_request_system.sql`：增加好友申请策略、完整申请历史、单一待处理约束和正式关系来源追踪。
 
 ```bash
 mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS game_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
@@ -3000,7 +3035,7 @@ mysql -u root -p < src/main/resources/db/dev-seed.sql
 
 `dev-seed.sql` 会创建使用 BCrypt 密码散列的测试账号，以及对应背包、NPC、地图、地块和建筑数据。生产环境禁止执行该文件。
 
-已有数据库升级时不要手工执行任何版本迁移；保持 `FLYWAY_ENABLED=true`，启动一个应用实例完成迁移后再启动其他实例。手工执行 `init.sql` 后数据库已经非空，首次启动也必须临时开启一次 baseline，成功后再关闭。V1 至 V30 成功执行后禁止修改；后续正式变化从 V31 开始新增迁移。旧迁移中的 MySQL `VALUES()` 弃用警告不能通过修改历史文件消除，新迁移必须使用别名语法。
+已有数据库升级时不要手工执行任何版本迁移；保持 `FLYWAY_ENABLED=true`，启动一个应用实例完成迁移后再启动其他实例。手工执行 `init.sql` 后数据库已经非空，首次启动也必须临时开启一次 baseline，成功后再关闭。V1 至 V37 成功执行后禁止修改；后续正式变化从 V38 开始新增迁移。旧迁移中的 MySQL `VALUES()` 弃用警告不能通过修改历史文件消除，新迁移必须使用别名语法。
 
 ## 12. 当前实现注意事项
 
@@ -3422,7 +3457,7 @@ Authorization: Bearer <token>
 4. 玩家 `users` 行使用 `SELECT ... FOR UPDATE` 锁定，数据库还有“玩家+计划+周期+日期档位”和“玩家+计划+领取自然日”两个唯一键。6 个并发领取请求的真实 MySQL 测试结果是 1 个成功、其余返回业务异常，资源只入账一次。
 5. 主领取记录、背包物品、装备实例、NPC、fallback 和实际奖励流水都在同一个事务内。任一写入失败会整体回滚。
 6. `users.first_login_time` 在首次成功签发 token 的事务中通过 `WHERE first_login_time IS NULL` 原子初始化，之后不修改。V6 升级时已有账号使用原 `create_time` 回填，不会被当成当天新玩家。
-7. V1 至 V30 成功执行后禁止直接修改迁移文件。以后正式调整奖励、装备、补偿或上限，应从 V31 开始新增迁移；本地临时联调才可直接更新测试数据库。详细 SQL 示例见 `docs/database-script-guide.md`。
+7. V1 至 V37 成功执行后禁止直接修改迁移文件。以后正式调整奖励、装备、补偿或上限，应从 V38 开始新增迁移；本地临时联调才可直接更新测试数据库。详细 SQL 示例见 `docs/database-script-guide.md`。
 8. V6 默认共有 42 条奖励配置记录，因为一条记录表示一项奖励而不是一天：新手第 1 天 5 条资源、第 2 天 5 条装备、第 3 天 1 条 NPC，加上月度 1 至 31 日各 1 条，共 `5+5+1+31=42` 条。
 9. `ITEM` 和 NPC 的 ITEM fallback 数量可配置为正数，但当前没有计划级物品数量上限。不要配置接近 Java/MySQL 有符号 `BIGINT` 上限的数值；玩家现有数量与奖励相加溢出时，数据库会拒绝写入并使整次领取事务回滚。
 10. 新手计划和月度计划彼此独立。新玩家前 3 个自然日可以每天分别领取一次 `NEWBIE` 和 `MONTHLY`；第 4 天起新手计划不再显示或领取，月度计划仍可在每个北京时间自然日领取一次。
@@ -3475,6 +3510,7 @@ Authorization: Bearer <token>
     "npcId": 3001,
     "npcCode": "field_steward",
     "name": "田园管家",
+    "combatAttribute": "WOOD",
     "fromLevel": 19,
     "level": 20,
     "goldCost": 3900,
@@ -3798,7 +3834,7 @@ Idempotency-Key: 8ec0abef-2863-4f36-a681-6ff06e3f38b2
 
 ### 17.1 接口清单
 
-管理端当前使用 17 个通用认证/配置/审计接口，并增加 3 个玩家成长运营接口：
+管理端当前使用 18 个通用认证/配置/引用统计/审计接口，并增加 3 个玩家成长运营接口：
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
@@ -3809,6 +3845,7 @@ Idempotency-Key: 8ec0abef-2863-4f36-a681-6ff06e3f38b2
 | `PUT` | `/api/ops/auth/password` | 验证旧密码并修改本人密码；成功后注销全部会话 |
 | `GET` | `/api/ops/config/modules` | 可管理模块和配置键目录 |
 | `GET` | `/api/ops/config/dictionaries` | 已启用物品、装备和 NPC 选择字典 |
+| `GET` | `/api/ops/config/asset-references/npcs` | 批量查询 NPC 本体和专属碎片引用统计 |
 | `GET` | `/api/ops/config/{moduleCode}/{configKey}` | 正式配置、草稿、版本和实时指纹 |
 | `POST` | `/api/ops/config/{moduleCode}/{configKey}/validate` | 校验完整配置，不写数据库 |
 | `PUT` | `/api/ops/config/{moduleCode}/{configKey}/draft` | 新建或更新唯一草稿 |
@@ -3835,7 +3872,10 @@ Authorization: Bearer <operator-token>
 | --- | --- | --- |
 | `SIGN_IN` | 新手/月度每日多项奖励、补签开关与费用、NPC 重复补偿 | `NEWBIE:DEFAULT`、`MONTHLY:yyyy-MM` |
 | `CARD_DRAW` | 当前活动池、1 至 100 个奖项、百分比概率、单抽/五连钻石价格 | `ACTIVE_POOL` |
-| `NPC_GROWTH` | NPC 展示、专属碎片、1 至 100 级属性、突破和金币曲线 | NPC ID |
+| `ITEM_CATALOG` | 物品基础资料、新增物品、启停和引用保护 | `ITEMS` |
+| `EQUIPMENT_CATALOG` | 装备基础资料、新增装备、启停和引用保护 | `EQUIPMENTS` |
+| `NPC_CATALOG` | NPC 基础资料、新增 NPC、专属碎片、运行/获取状态和引用保护 | `NPCS` |
+| `NPC_GROWTH` | NPC 1 至 100 级战斗属性和每 20 级专属碎片突破消耗 | NPC ID |
 | `EQUIPMENT_GROWTH` | 装备展示、1 至 100 级生命/攻击/防御/速度加成、突破和金币曲线 | 装备 ID |
 | `UPGRADE_CURVE` | NPC/装备每个目标等级的明确金币成本 | 曲线编码 |
 | `IDLE_ADVENTURE` | 完整玩法版本、状态、技能、敌人、关卡、奖励、克制和挂机规则 | `IDLE_ADVENTURE` |
@@ -3843,8 +3883,14 @@ Authorization: Bearer <operator-token>
 | `PLAYER_PROGRESSION` | 只追加的玩家等级和累计经验门槛 | `LEVEL_CURVE` |
 | `PLAYER_TASK` | 日常/周常任务目标、经验奖励、排序和启用状态 | `TASKS` |
 | `WECHAT_FRIEND_GIFT` | 微信 MP 礼包、微信道具到游戏资源的固化映射、领取上限和发送开关 | `GIFT_PACKAGES` |
+| `SYSTEM_REWARD` | 系统奖励包名称、启用状态和多项附件资源 | 奖励包编码 |
+| `PLAYER_FRIEND_GIFT` | 游戏好友每日赠礼资源、发送上限和接收上限 | `DAILY_GIFT` |
+| `PLAYER_FRIEND_REQUEST` | 好友申请开关、好友容量、待处理容量、每日额度、冷却和有效期 | `POLICY` |
+| `RESOURCE_SALE` | 资源到金币的整数兑换比例、单笔批次、北京时间每日额度和全局开关 | `EXCHANGE_OPTIONS` |
 
 界面将地块/建筑类型、装备部位/品质、曲线适用类型和字典名称显示为中文，但请求和数据库仍使用稳定编码。V24 只转换仍等于系统英文默认值的名称，不覆盖已由运营自定义的名称。
+
+`ITEM_CATALOG`、`EQUIPMENT_CATALOG`、`NPC_CATALOG`、`SYSTEM_REWARD`、`PLAYER_FRIEND_GIFT`、`PLAYER_FRIEND_REQUEST` 和 `RESOURCE_SALE` 标记为敏感配置。`CONFIG_VIEWER` 与 `CONFIG_EDITOR` 可以读取，只有 `CONFIG_ADMIN` 可以保存、发布、丢弃或创建回滚草稿。
 
 ### 17.3 草稿、发布和并发参数
 
@@ -4054,16 +4100,16 @@ Authorization: Bearer <player-token>
 
 ### 19.4 游戏内好友列表（非微信好友）
 
-当前实现是按本项目玩家 ID 建立、立即生效的双向好友关系，不包含申请/审批状态。它不是微信好友关系链，不会读取微信昵称、头像、openid 或云存储，也不能替代微信开放数据域的好友列表。微信官方好友和赠礼能力见第 20 章；客户端不得把 `/api/friends` 返回结果冒充微信好友。
+当前实现按本项目玩家 ID 发起申请，必须由接收方明确同意后才建立双向好友关系。它不是微信好友关系链，不会读取微信昵称、头像、openid 或云存储，也不能替代微信开放数据域的好友列表。微信官方好友和赠礼能力见第 20 章；完整搜索、申请列表、同意、拒绝、取消和过期规则见第 26 章。
 
-#### 添加好友
+#### 发起好友申请（旧客户端兼容入口）
 
 ```http
 POST /api/friends/{friendPlayerId}
 Authorization: Bearer <player-token>
 ```
 
-重复添加按成功处理并返回同一好友资料。不能添加自己，目标玩家必须存在。
+V37 起该接口只创建或返回一条 `PENDING` 好友申请，不再立即写入 `player_friend`。推荐新客户端改用 `POST /api/friends/requests`；不能申请自己，目标玩家必须存在，双方已经是正式好友时返回 `6708`。
 
 #### 删除好友
 
@@ -4080,6 +4126,8 @@ Authorization: Bearer <player-token>
 GET /api/friends?limit=20
 Authorization: Bearer <player-token>
 ```
+
+V38 起，每个好友对象同时返回 `onlineStatus`、`presenceVersion`、`lastActiveTime` 和 `lastOfflineTime`。客户端合并在线增量时只能接受版本更大的状态，完整契约见第 27 章。
 
 固定排序：`level DESC, playerId ASC`。后续页必须把上一页 `nextCursor.level` 和 `nextCursor.playerId` 同时传回：
 
@@ -4111,7 +4159,7 @@ GET /api/friends?cursorLevel=12&cursorPlayerId=205&limit=20
 }
 ```
 
-`cursorLevel` 和 `cursorPlayerId` 必须同时为空或同时存在，`limit` 范围为 1 至 100。数据库只保存一条规范化关系：`lower_player_id < higher_player_id`，并以唯一键防止并发重复添加。
+`cursorLevel` 和 `cursorPlayerId` 必须同时为空或同时存在，`limit` 范围为 1 至 100。数据库只保存一条规范化关系：`lower_player_id < higher_player_id`，并以唯一键防止并发重复建立。V37 后由申请建立的关系还保存 `accepted_request_id`，删除后会在原申请写入 `relationshipEndedTime`，旧同意请求不能复活关系。
 
 ### 19.5 运营增加玩家经验
 
@@ -4337,8 +4385,8 @@ LIMIT 100;
 3. V25 先为每名历史玩家写入一条 `SYSTEM_BACKFILL / V25_PLAYER_LEVEL_BACKFILL` 流水，再把累计经验回填为其原等级最低门槛。
 4. BI 的“正常经验产出”必须过滤 `SYSTEM_BACKFILL`，避免把迁移创建的基准经验计入运营产出。
 5. V26 的 `building_task.experience_reward` 默认值为 0；历史进行中和已完成任务不补发。
-6. 迁移完成后确认 `flyway_schema_history` 到 V30，再依次启动其他节点并观察等级曲线缓存 revision。
-7. 已执行的 V25-V30 文件禁止修改，下一次正式数据库变化从 V31 新增。
+6. 迁移完成后确认 `flyway_schema_history` 到 V37，再依次启动其他节点并观察等级曲线缓存 revision。
+7. 已执行的 V25-V37 文件禁止修改，下一次正式数据库变化从 V38 新增。
 
 ### 19.10 新增业务错误码
 
@@ -4354,6 +4402,19 @@ LIMIT 100;
 | 6604 | 玩家任务状态已变化，请刷新后重试 | 并发领取或状态条件更新失败 |
 | 6605 | 任务进度幂等请求与原请求不一致 | 同一可信来源重复提交不同进度 |
 | 6701 | 不能将自己添加为好友 | `friendPlayerId` 等于当前玩家 |
+| 6708 | 双方已经是游戏好友 | 对正式好友重复发起申请 |
+| 6709 | 游戏内好友申请当前未开放 | 正式策略禁止新建申请 |
+| 6710 | 好友申请不存在 | 申请 ID 不存在或已被级联清理 |
+| 6711 | 该好友申请已过期，请重新发起 | 实时到期检查或过期终态 |
+| 6712 | 好友申请状态已变化，请刷新后重试 | 使用不匹配动作处理其他终态 |
+| 6713 | 你无权处理该好友申请 | 非接收方同意/拒绝或非发起方取消 |
+| 6714 | 你或对方的好友数量已达上限 | 同意时任一方达到正式策略上限 |
+| 6715 | 待处理的发出申请数量已达上限 | 发起方有效待处理数量超限 |
+| 6716 | 对方待处理的收到申请数量已达上限 | 接收方有效待处理数量超限 |
+| 6717 | 今日发起好友申请次数已达上限 | 北京时间自然日创建总数超限 |
+| 6718 | 好友申请仍在重新发送冷却期内 | 同方向拒绝后未过冷却时间 |
+| 6719 | 好友申请正式配置不可用 | 策略缺失、损坏或版本无效 |
+| 6720 | 该好友申请已不能用于建立好友关系 | 旧关系已删除后重放原同意申请 |
 | 6801 | 微信好友赠礼配置错误 | 礼包、类型、奖励映射或正式配置不完整 |
 | 6802 | 微信礼包道具与已发布配置不一致 | 回调 `GoodsList` 与固化的微信道具 ID/数量不一致 |
 | 6803 | 微信礼包订单与首次请求不一致 | 同一 `OrderId` 被重放为其他玩家或其他请求内容 |
@@ -5610,3 +5671,2681 @@ mvn -q "-Dmaven.resources.skip=true" "-Dtest=FlywayMigrationIntegrationTest,Busi
 npm.cmd --prefix admin-web run build
 git diff --check
 ```
+
+## 24. 中文注释与维护契约审计
+
+审计日期：2026-07-27（Asia/Shanghai）。本轮只调整注释和开发文档，不改变接口、数据库结构或业务行为。
+
+### 24.1 覆盖范围与注释准则
+
+本轮检查了以下范围：
+
+1. `src/main/java/com/game/server` 下 666 个生产 Java 文件。
+2. `src/test/java` 下 103 个 Java 测试文件。
+3. `admin-web/src` 下的 Vue、TypeScript 和 JavaScript 源码。
+4. `src/main/resources` 下的 MyBatis XML、YAML 和 properties 配置。
+5. `scripts` 下的 PowerShell 运维脚本。
+
+统一准则如下：
+
+1. 生产代码顶层 `class`、`interface`、`record`、`enum` 必须有准确的中文职责说明。
+2. Service、Controller、Scheduler、Configuration、协议与安全组件的非覆写公共方法，必须说明真实业务契约；涉及事务、幂等、锁顺序、缓存、租约、鉴权或失败降级时必须明确边界。
+3. `@Override` 方法继承父接口契约，不重复粘贴同义注释；Mapper 的直观增删改查、DTO/VO/Entity 的简单访问器也不添加流水账注释。
+4. Redis、WebSocket、HTTP、SQL、ID、API、NPC、JSON 等技术标识可以保留；完整英文业务句子必须翻译为中文。
+5. 注释必须解释职责和约束，不能只把方法名机械翻译一遍，也不能描述显而易见的赋值步骤。
+
+### 24.2 审计与补全结果
+
+| 审计项 | 结果 |
+| --- | --- |
+| 生产 Java 顶层类型缺少类级说明 | 0 |
+| 业务层非覆写公共方法缺少契约说明 | 0 |
+| 生产/测试 Java 中纯英文业务注释 | 0 |
+| Vue/TypeScript/XML/YAML/PowerShell 中纯英文业务注释 | 0 |
+| 前端保留项 | `admin-web/src/env.d.ts` 的 `/// <reference types="vite/client" />`，这是 TypeScript 编译指令，不是业务注释 |
+
+本轮重点补全了玩家成长与任务、好友赠礼、运营认证、经验调整与对账、配置 Outbox、邮件与通知、公告调度、支付退款、Redis Streams 发货、WebSocket 多实例会话、签到、微信消息安全等模块。关键说明已经覆盖玩家聚合锁顺序、经验发放幂等回放、失败计数提交、令牌轮换、退款租约、配置快照原子替换和直接会话发送的鉴权前提。
+
+### 24.3 Flyway 历史迁移例外
+
+`src/main/resources/db/migration/V*.sql` 中仍有少量已发布英文注释，本轮有意不修改。Flyway 校验和包含脚本文本和注释，翻译已执行迁移中的注释会使现有数据库在启动时产生 checksum mismatch。
+
+处理规则：
+
+1. 已发布迁移保持字节级不变，不能为了统一注释执行无依据的 `flyway repair`。
+2. 新迁移从创建时开始使用中文业务注释。
+3. 如需修正历史迁移表达，写入开发文档或新增后续迁移说明，不覆盖生产库已经确认的校验和。
+
+### 24.4 验证结果
+
+| 验证项 | 结果 |
+| --- | --- |
+| 后端全量测试 | 411 个测试，0 failure，0 error，49 个外部环境用例按条件跳过 |
+| 管理端生产构建 | `vue-tsc --noEmit && vite build` 通过，3496 个模块完成转换 |
+| 补丁格式检查 | `git diff --check` 通过，仅有工作树原有行尾转换提示 |
+| Java 英文注释扫描 | 无命中 |
+| 业务公共方法契约扫描 | `missingCount=0` |
+
+验证命令：
+
+```powershell
+rg -n -P --glob '*.java' '^\s*(?://|/\*\*?|\*)(?!.*\p{Han}).*[A-Za-z]' src/main/java/com/game/server src/test/java
+mvn -q "-Dmaven.resources.skip=true" test
+npm.cmd --prefix admin-web run build
+git diff --check
+```
+
+## 25. 玩家资源出售（V35）
+
+### 25.1 功能语义与边界
+
+玩家可以把管理端正式配置允许的 `RESOURCE` 或 `PRODUCT` 类型物品按整数批次出售给系统，第一期只结算金币 `gold`。
+
+1. 接口只操作当前登录玩家，不接受客户端提交 `playerId`。
+2. 玩家先读取正式报价和当日额度，再携带配置版本确认出售。
+3. 每种来源资源分别按北京时间 UTC+8 自然日统计额度，客户端不能提交日期。
+4. 资源扣减、金币增加、每日额度和不可变订单在同一事务中提交。
+5. 相同幂等键和相同请求完整重放第一次成交，不会重复扣资源或发金币。
+6. V35 部署后默认关闭，且不预置任何兑换比例；配置管理员发布后才可开放。
+7. V35 保持已发布校验和不变，V36 单独加强客户端安全整数、成交乘积和余额恒等式约束。
+
+当前 P0 由客户端生成并持久化标准 UUID `Idempotency-Key`。尚未提供服务端预生成幂等键接口，也没有向小游戏端广播 `RESOURCE_SALE_CONFIG_UPDATED`；客户端收到 HTTP 409 后主动刷新报价。
+
+### 25.2 查询可出售资源
+
+```http
+GET /api/resource-sales/options
+Authorization: Bearer <player-token>
+```
+
+响应示例：
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "enabled": true,
+    "configRevision": 3,
+    "usageDate": "2026-07-28",
+    "options": [
+      {
+        "sourceItemId": 2,
+        "sourceItemKey": "wood",
+        "sourceItemName": "木材",
+        "sourceItemType": "RESOURCE",
+        "sourceItemIcon": "wood",
+        "targetItemId": 1,
+        "targetItemKey": "gold",
+        "targetItemName": "金币",
+        "targetItemIcon": "gold",
+        "sourceQuantityPerLot": 10,
+        "targetQuantityPerLot": 3,
+        "minLotsPerOrder": 1,
+        "maxLotsPerOrder": 100,
+        "dailySourceQuantityLimit": 10000,
+        "usedSourceQuantity": 120,
+        "remainingDailySourceQuantity": 9880,
+        "sourceBalance": 560,
+        "maxSellableLots": 56
+      }
+    ]
+  }
+}
+```
+
+`maxSellableLots` 已综合全局开关、来源余额、北京时间当日剩余额度和单笔最大批次。若不足单笔最小批次则返回 `0`。
+
+### 25.3 确认出售
+
+```http
+POST /api/resource-sales
+Authorization: Bearer <player-token>
+Idempotency-Key: c40f79ec-820d-4f30-a120-f9ec2d8fd21f
+Content-Type: application/json
+```
+
+```json
+{
+  "sourceItemId": 2,
+  "lotCount": 20,
+  "expectedConfigRevision": 3
+}
+```
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "资源出售成功",
+  "data": {
+    "orderId": 9001,
+    "orderNo": "4077e190-d445-40fd-94bd-17a03e9eb94c",
+    "usageDate": "2026-07-28",
+    "sourceItemId": 2,
+    "sourceItemKey": "wood",
+    "targetItemId": 1,
+    "targetItemKey": "gold",
+    "sourceQuantityPerLot": 10,
+    "targetQuantityPerLot": 3,
+    "lotCount": 20,
+    "soldQuantity": 200,
+    "grantedQuantity": 60,
+    "sourceBalanceBefore": 560,
+    "sourceBalanceAfter": 360,
+    "targetBalanceBefore": 1000,
+    "targetBalanceAfter": 1060,
+    "configRevision": 3,
+    "createTime": "2026-07-28T16:30:00.123456",
+    "replayed": false
+  }
+}
+```
+
+幂等键使用规则：
+
+1. 玩家进入确认动作时生成一个 UUID，并持久化到该待提交动作。
+2. 网络超时或响应丢失时复用相同 UUID 和完全相同的请求体。
+3. 玩家修改来源资源、批次数或重新确认最新报价时生成新 UUID。
+4. 相同键、相同请求返回第一次订单的完整快照并设置 `replayed=true`。
+5. 相同键、不同请求返回 `7208`，客户端不得继续复用该键。
+
+配置版本发生变化时返回结构化 HTTP 409：
+
+```json
+{
+  "code": 7203,
+  "message": "资源出售配置已更新，请刷新后重新确认",
+  "data": {
+    "latestRevision": 4,
+    "refreshRequired": true
+  }
+}
+```
+
+客户端必须重新读取 `/resource-sales/options` 并让玩家确认最新比例，不能静默按新报价成交。
+
+### 25.4 查询出售历史
+
+```http
+GET /api/resource-sales/history?beforeId=9001&limit=20
+Authorization: Bearer <player-token>
+```
+
+`beforeId` 可选，使用上一页 `nextCursor`；`limit` 默认 20，范围 1～100。订单按主键倒序返回，仅当 `hasMore=true` 时继续请求下一页。
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "items": [
+      {
+        "orderId": 9000,
+        "orderNo": "e23ed902-ce9d-4f19-aee0-7fa1bf7052d6",
+        "usageDate": "2026-07-28",
+        "sourceItemId": 2,
+        "sourceItemKey": "wood",
+        "targetItemId": 1,
+        "targetItemKey": "gold",
+        "lotCount": 20,
+        "soldQuantity": 200,
+        "grantedQuantity": 60,
+        "sourceBalanceAfter": 360,
+        "targetBalanceAfter": 1060,
+        "configRevision": 3,
+        "createTime": "2026-07-28T16:30:00.123456"
+      }
+    ],
+    "nextCursor": 9000,
+    "hasMore": true
+  }
+}
+```
+
+### 25.5 管理端配置
+
+入口：
+
+```text
+配置中心 -> 资源出售 -> 资源兑换规则
+moduleCode = RESOURCE_SALE
+configKey  = EXCHANGE_OPTIONS
+```
+
+配置快照：
+
+```json
+{
+  "enabled": false,
+  "configRevision": 1,
+  "options": [
+    {
+      "sourceItemId": 2,
+      "sourceItemKey": "wood",
+      "targetItemId": 1,
+      "targetItemKey": "gold",
+      "sourceQuantityPerLot": 10,
+      "targetQuantityPerLot": 3,
+      "minLotsPerOrder": 1,
+      "maxLotsPerOrder": 100,
+      "dailySourceQuantityLimit": 10000,
+      "sortOrder": 10,
+      "enabled": true
+    }
+  ]
+}
+```
+
+发布约束：
+
+1. 来源必须是已启用的 `RESOURCE` 或 `PRODUCT`，同一来源只能配置一条规则。
+2. 目标必须是已启用的 `CURRENCY` 类型 `gold`。
+3. 每批数量和单笔批次范围均为 1～1,000,000,000。
+4. 每日来源数量上限不超过 9,000,000,000,000,000，且不能小于单笔最大来源数量。
+5. 单笔最大来源和目标成交数量不能超过客户端安全整数上限。
+6. 全局开放时至少有一条启用规则。
+7. `configRevision` 由后端维护，实际配置变化后递增，页面只读。
+
+该模块标记为 `adminOnlyWrite=true`。查看员和普通配置编辑员可以读取；只有 `CONFIG_ADMIN` 可以保存草稿、发布、丢弃和创建回滚草稿。
+
+### 25.6 事务、锁顺序和幂等
+
+新成交事务固定执行：
+
+```text
+锁定 users 玩家聚合行
+  -> 查询 player_resource_sale_order 幂等订单 FOR UPDATE
+  -> 校验经济冻结和退款活动状态
+  -> 共享锁定 resource_sale_policy
+  -> 共享锁定 resource_sale_option
+  -> 按 item_id 升序锁定 player_item
+  -> 锁定 player_resource_sale_daily_usage
+  -> 扣资源
+  -> 加金币
+  -> 增加每日额度
+  -> 写入不可变订单
+  -> 提交事务
+```
+
+幂等订单在当前经济冻结和当前配置之前查询；玩家首次成功后即使后来被冻结、规则停用或价格变化，重试仍能拿到第一次的完整结果。配置发布按策略、规则的同向顺序加锁，不与成交形成反向等待。所有写入使用同一个默认 `REQUIRED` 事务，不使用 `REQUIRES_NEW`。
+
+### 25.7 V35 数据表
+
+| 表 | 用途 | 关键约束 |
+| --- | --- | --- |
+| `resource_sale_policy` | 全局开关与正式配置版本 | 单例 `id=1`、默认关闭、版本大于 0 |
+| `resource_sale_option` | 整数批次兑换规则 | 来源物品唯一、物品外键、数量和批次检查 |
+| `player_resource_sale_daily_usage` | 每种资源的北京时间每日用量 | `(player_id, usage_date, source_item_id)` 唯一 |
+| `player_resource_sale_order` | 不可变成功成交快照 | `(player_id, idempotency_key)` 唯一、兑换乘积和前后余额检查 |
+
+### 25.8 新增业务错误码
+
+| code | message | 客户端处理 |
+| --- | --- | --- |
+| 7201 | 资源出售当前未开放 | 关闭入口并刷新配置 |
+| 7202 | 资源出售规则不存在或未启用 | 重新查询可出售资源 |
+| 7203 | 资源出售配置已更新，请刷新后重新确认 | HTTP 409，刷新报价 |
+| 7204 | 出售批次数量不符合当前规则 | 修正批次数 |
+| 7205 | 可出售资源不足 | 刷新余额 |
+| 7206 | 该资源今日出售额度不足 | 刷新当日额度 |
+| 7207 | 出售结算后余额超出系统上限 | 停止重试并告警 |
+| 7208 | 出售幂等请求与首次请求不一致 | 为新意图生成新 UUID |
+| 7209 | 资源出售正式配置不可用 | 关闭入口并告警运营 |
+| 7210 | 资源余额已变化，请刷新后重试 | 刷新余额并使用新 UUID |
+
+玩家处于退款经济冻结状态时返回 `6401`；请求字段或 UUID 格式错误返回 `400`。
+
+### 25.9 上线检查
+
+1. 备份数据库并由单节点执行 Flyway 至 V36，确认四张表、外键、唯一索引和 V36 加固约束存在。
+2. 确认默认单例 `enabled=false`、`config_revision=1`，并确认没有预置价格。
+3. 配置管理员创建草稿，复核兑换比例、单笔范围和每日额度，再发布开放。
+4. 验证正常成交、相同键重放、同键异参、余额不足、额度不足和旧报价 HTTP 409。
+5. 对账资源、金币、每日额度和订单快照，任何失败不得留下部分写入。
+6. 监控数据库死锁、`7209` 配置损坏和 `7207` 余额溢出后再逐步放量。
+
+若启动时出现 V35 checksum mismatch，禁止直接修改 `flyway_schema_history` 或盲目执行 `repair`。当前 V35 已发布校验和为 `-1093160282`，约束增强必须由 V36 追加执行。
+
+仓库中的独立维护文档：`docs/resource-sale-api.md`。
+
+### 25.10 本次验证结果
+
+验证日期：2026-07-28（Asia/Shanghai）。
+
+| 验证项 | 结果 |
+| --- | --- |
+| 后端全量测试 | 430 项，0 failure，0 error；50 项外部环境用例按条件跳过 |
+| 资源出售定向测试 | 服务、配置、经济冻结与 HTTP 409 契约共 21 项通过 |
+| MySQL 8 迁移测试 | 旧库从 V16 升级至 V36，20 个待执行迁移、新表、唯一键、检查约束和默认策略全部通过 |
+| MySQL 8 并发测试 | 37 项全部通过；六个同键出售请求仅扣资源、发金币、写订单和累计额度一次，其余五次完整重放 |
+| 本机开发库启动 | V35 校验和 `-1093160282` 验证通过，V36 成功执行，应用在随机验证端口完整启动后已关闭 |
+| 管理端生产构建 | `vue-tsc --noEmit && vite build` 通过，3499 个模块完成转换 |
+| 补丁格式检查 | `git diff --check` 通过，仅有工作树原有行尾转换提示 |
+
+验证命令：
+
+```powershell
+mvn -q test
+$env:RUN_MYSQL_INTEGRATION_TESTS='true'
+mvn -q "-Dtest=FlywayMigrationIntegrationTest" test
+mvn -q "-Dtest=BusinessConcurrencyIntegrationTest" test
+npm.cmd --prefix admin-web run build
+git diff --check
+```
+
+## 26. 游戏内好友申请（V37）
+
+### 26.1 最终效果与边界
+
+玩家现在通过“精确输入玩家 ID、发送申请、对方同意”建立游戏好友，不再由任意一方单方面添加成功。
+
+1. 搜索只支持精确 `users.id`，不提供昵称模糊搜索或全服玩家枚举。
+2. 收到和发出的多条申请分别使用游标分页展示，第一版逐条同意、拒绝或取消，不提供批量处理。
+3. 只有申请接收方可以同意或拒绝，只有申请发起方可以取消。
+4. 只有同意成功后才写入 `player_friend`；好友列表继续按 `level DESC, playerId ASC` 排序。
+5. 成为正式好友后可以继续使用第 23 章的每日好友金币赠礼，申请本身不携带资源。
+6. 本模块不是微信官方好友关系链；真实微信好友昵称、头像和平台赠礼仍由第 20 章的开放数据域负责。
+7. 自然日申请额度统一使用数据库北京时间，即 UTC+8 的 `00:00:00` 重置。
+
+所有玩家接口都必须携带：
+
+```http
+Authorization: Bearer <player-token>
+```
+
+### 26.2 精确搜索与发起申请
+
+#### 精确搜索玩家
+
+```http
+GET /api/friends/search?playerId=20002
+Authorization: Bearer <player-token>
+```
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "playerId": 20002,
+    "nickname": "玩家乙",
+    "level": 18,
+    "relationshipStatus": "NONE",
+    "pendingRequestId": null
+  }
+}
+```
+
+`relationshipStatus` 取值：
+
+| 值 | 说明 |
+| --- | --- |
+| `SELF` | 查询的是当前玩家自己 |
+| `FRIEND` | 双方已经是正式游戏好友 |
+| `NONE` | 当前没有正式关系或有效待处理申请 |
+| `OUTGOING_PENDING` | 当前玩家是待处理申请发起方 |
+| `INCOMING_PENDING` | 当前玩家是待处理申请接收方 |
+
+搜索结果只暴露 `playerId/nickname/level`，不会返回用户名、openid、背包、金币或钻石。目标不存在返回 `2001`。
+
+#### 发起申请
+
+推荐接口：
+
+```http
+POST /api/friends/requests
+Authorization: Bearer <player-token>
+Content-Type: application/json
+```
+
+```json
+{
+  "recipientPlayerId": 20002
+}
+```
+
+旧客户端兼容入口：
+
+```http
+POST /api/friends/20002
+Authorization: Bearer <player-token>
+```
+
+两个入口都只创建或返回申请。成功响应中的核心结构：
+
+```json
+{
+  "code": 200,
+  "message": "好友申请已提交或已存在",
+  "data": {
+    "requestId": 91001,
+    "direction": "OUTGOING",
+    "requesterPlayerId": 10001,
+    "requesterNickname": "玩家甲",
+    "requesterLevel": 12,
+    "recipientPlayerId": 20002,
+    "recipientNickname": "玩家乙",
+    "recipientLevel": 18,
+    "status": "PENDING",
+    "createTime": "2026-07-28 16:00:00",
+    "expireTime": "2026-08-04 16:00:00",
+    "resolvedTime": null,
+    "resolutionReason": null,
+    "relationshipEndedTime": null,
+    "canAccept": false,
+    "canReject": false,
+    "canCancel": true
+  }
+}
+```
+
+同一对玩家任意方向最多只有一条有效 `PENDING` 申请。A 已向 B 申请时，B 再向 A 发起不会自动同意，而是返回原申请并标记 `direction=INCOMING`。申请有效期在创建时按正式策略冻结；后续调整策略不会追溯修改已有申请。
+
+### 26.3 申请列表与摘要
+
+收到的申请：
+
+```http
+GET /api/friends/requests/incoming?status=PENDING&limit=20
+Authorization: Bearer <player-token>
+```
+
+发出的申请：
+
+```http
+GET /api/friends/requests/outgoing?status=PENDING&limit=20
+Authorization: Bearer <player-token>
+```
+
+查询参数：
+
+| 参数 | 必填 | 规则 |
+| --- | --- | --- |
+| `status` | 否 | 默认 `PENDING`；支持六种持久化状态和 `ALL`，不区分大小写 |
+| `beforeId` | 否 | 上一页 `nextCursor`，必须为正整数 |
+| `limit` | 否 | 默认 20，范围 1 至 100 |
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "items": [],
+    "nextCursor": null,
+    "hasMore": false
+  }
+}
+```
+
+分页按申请主键倒序。仅当 `hasMore=true` 时继续携带 `nextCursor`。默认 `PENDING` 会过滤实时已到期申请；查询 `EXPIRED` 会同时返回已固化和等待扫描固化的到期记录。
+
+申请摘要：
+
+```http
+GET /api/friends/requests/summary
+Authorization: Bearer <player-token>
+```
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "enabled": true,
+    "friendCount": 28,
+    "maxFriendCount": 200,
+    "pendingOutgoingCount": 2,
+    "maxPendingOutgoing": 50,
+    "pendingIncomingCount": 5,
+    "maxPendingIncoming": 100,
+    "usageDate": "2026-07-28",
+    "dailyRequestCount": 3,
+    "dailyRequestLimit": 30,
+    "resendCooldownHours": 24,
+    "requestExpirationDays": 7,
+    "configVersion": 1
+  }
+}
+```
+
+客户端可用摘要显示申请角标、容量和当日余量；写接口仍会在事务内重新校验，不能把摘要当作授权凭证。
+
+### 26.4 同意、拒绝和取消
+
+```http
+POST   /api/friends/requests/{requestId}/accept
+POST   /api/friends/requests/{requestId}/reject
+DELETE /api/friends/requests/{requestId}
+Authorization: Bearer <player-token>
+```
+
+三个接口均不需要请求体，并返回第一次形成的完整申请终态：
+
+| 状态 | 形成方式 | 后续语义 |
+| --- | --- | --- |
+| `PENDING` | 发起申请 | 接收方可同意/拒绝，发起方可取消 |
+| `ACCEPTED` | 接收方同意 | 正式关系存在时，同意可完整幂等重放 |
+| `REJECTED` | 接收方拒绝 | 相同拒绝动作完整幂等重放 |
+| `CANCELLED` | 发起方取消 | 相同取消动作完整幂等重放 |
+| `EXPIRED` | 超过有效期 | 不可处理，必须重新申请 |
+| `INVALIDATED` | 账号生命周期或一致性修复 | 不可处理 |
+
+删除由该申请建立的好友关系后，原申请会记录 `relationshipEndedTime`。此后重放旧同意操作返回 `6720`，不会恢复关系，双方必须创建并同意一条新申请。删除好友不会自动取消双方另一条仍为 `PENDING` 的申请；该申请仍可按正常规则处理。玩家账号物理删除时，关联申请通过外键级联清理，列表不会返回缺失玩家资料。
+
+### 26.5 正式好友与每日赠礼衔接
+
+同意成功后查询正式好友：
+
+```http
+GET /api/friends?limit=20
+Authorization: Bearer <player-token>
+```
+
+删除正式好友：
+
+```http
+DELETE /api/friends/{friendPlayerId}
+Authorization: Bearer <player-token>
+```
+
+向正式好友发送北京时间当日赠礼：
+
+```http
+POST /api/friends/{friendPlayerId}/gifts/daily
+Authorization: Bearer <player-token>
+```
+
+赠礼资源、发送上限和接收上限继续由 `PLAYER_FRIEND_GIFT / DAILY_GIFT` 管理，与好友申请策略独立。非正式好友发送返回 `6702`。
+
+### 26.6 管理端好友申请策略
+
+入口：
+
+```text
+配置中心 -> 游戏好友申请 -> 好友申请策略
+moduleCode = PLAYER_FRIEND_REQUEST
+configKey  = POLICY
+```
+
+配置快照：
+
+```json
+{
+  "enabled": true,
+  "maxFriendCount": 200,
+  "maxPendingOutgoing": 50,
+  "maxPendingIncoming": 100,
+  "dailyRequestLimit": 30,
+  "resendCooldownHours": 24,
+  "requestExpirationDays": 7,
+  "configVersion": 1
+}
+```
+
+| 字段 | 范围 | 说明 |
+| --- | ---: | --- |
+| `enabled` | `true/false` | 关闭后阻止新建申请，已有申请仍可查询和处理 |
+| `maxFriendCount` | 1 至 1000 | 同意时双方都必须未达到上限 |
+| `maxPendingOutgoing` | 1 至 1000 | 每名发起方有效待处理上限 |
+| `maxPendingIncoming` | 1 至 1000 | 每名接收方有效待处理上限 |
+| `dailyRequestLimit` | 1 至 1000 | 北京时间自然日创建总数上限 |
+| `resendCooldownHours` | 0 至 720 | 同方向被拒绝后的再次申请冷却 |
+| `requestExpirationDays` | 1 至 365 | 只冻结到新申请的有效期 |
+| `configVersion` | 正整数 | 后端乐观版本，页面只读 |
+
+该模块 `adminOnlyWrite=true`。`CONFIG_VIEWER` 和 `CONFIG_EDITOR` 可以读取；只有 `CONFIG_ADMIN` 可以保存、发布、丢弃或创建回滚草稿。发布复用 `/api/ops/config/**` 通用接口、数据库锁、草稿修订、正式指纹、版本历史和追加审计。
+
+### 26.7 数据库、锁顺序与过期扫描
+
+V37 新增或调整：
+
+| 表或字段 | 用途 | 关键约束 |
+| --- | --- | --- |
+| `player_friend_request_policy` | 单例正式策略 | `id=1`、字段范围检查、配置版本 |
+| `player_friend_request` | 申请和完整处理历史 | 规范化玩家对、单一待处理、状态/原因/时间检查、双方外键 |
+| `player_friend.accepted_request_id` | 当前关系的来源申请 | 唯一外键，迁移前好友允许为 `NULL` |
+
+所有申请写事务固定锁序：
+
+```text
+较小 users.id
+  -> 较大 users.id
+  -> player_friend 规范化关系
+  -> player_friend_request 申请记录
+```
+
+同意申请在同一个默认 `REQUIRED` 事务中推进状态并写入正式关系，任何一步失败都整体回滚。玩家主行锁同时保护好友容量、待处理数量和当日创建额度，A→B 与 B→A 并发申请不会产生两条待处理记录。
+
+后台默认每 60 秒最多固化 500 条到期记录：
+
+```text
+FRIEND_REQUEST_EXPIRATION_ENABLED
+FRIEND_REQUEST_EXPIRATION_BATCH_SIZE
+FRIEND_REQUEST_EXPIRATION_INITIAL_DELAY_MS
+FRIEND_REQUEST_EXPIRATION_FIXED_DELAY_MS
+```
+
+接口本身始终按数据库北京时间实时判断是否到期，因此扫描延迟或短暂停止不会让过期申请被接受。
+
+### 26.8 业务错误码
+
+| code | message | 客户端处理 |
+| --- | --- | --- |
+| 2001 | 玩家不存在 | 检查输入 ID 或刷新目标资料 |
+| 6701 | 不能将自己添加为好友 | 禁止向自己提交 |
+| 6708 | 双方已经是游戏好友 | 刷新正式好友状态 |
+| 6709 | 游戏内好友申请当前未开放 | 关闭新增入口，已有申请仍可展示 |
+| 6710 | 好友申请不存在 | 从列表移除该记录 |
+| 6711 | 该好友申请已过期，请重新发起 | 刷新列表并允许重新申请 |
+| 6712 | 好友申请状态已变化，请刷新后重试 | 重新读取申请终态 |
+| 6713 | 你无权处理该好友申请 | 校验当前玩家和动作按钮 |
+| 6714 | 你或对方的好友数量已达上限 | 清理好友后重试 |
+| 6715 | 待处理的发出申请数量已达上限 | 取消或等待已有发出申请 |
+| 6716 | 对方待处理的收到申请数量已达上限 | 稍后重试 |
+| 6717 | 今日发起好友申请次数已达上限 | 等待北京时间次日重置 |
+| 6718 | 好友申请仍在重新发送冷却期内 | 按服务端提示时间等待 |
+| 6719 | 好友申请正式配置不可用 | 关闭入口并告警运营 |
+| 6720 | 该好友申请已不能用于建立好友关系 | 创建并处理一条新申请 |
+
+请求参数错误返回 `400`，未登录返回 HTTP 401。好友申请业务错误使用统一响应体 `code`。
+
+### 26.9 上线与验收
+
+1. 备份数据库并由单节点执行 Flyway 至 V38，确认申请结构和好友在线状态快照字段存在。
+2. 由配置管理员复核默认容量、每日额度、冷却和有效期，再决定是否调整并发布。
+3. 客户端把旧“添加成功”交互改为“申请等待”，实现收到/发出多条申请和逐条操作。
+4. 验证 A→B 与 B→A 并发申请只产生一条待处理记录，重复同意只产生一条正式关系。
+5. 验证拒绝冷却、北京时间额度、实时过期、扫描固化、删除后重新申请和账号物理删除级联。
+6. 验证正式好友列表仍按等级排序，每日好友金币赠礼不受申请流程升级影响。
+
+仓库中的独立维护文档：`docs/friend-request-api.md`。
+
+验证命令：
+
+```powershell
+mvn -q test
+$env:RUN_MYSQL_INTEGRATION_TESTS='true'
+mvn -q test
+npm.cmd --prefix admin-web run build
+git diff --check
+```
+
+本次验证结果（2026-07-28，Asia/Shanghai）：
+
+| 验证项 | 结果 |
+| --- | --- |
+| 后端全量测试 | 458 项，0 failure，0 error；58 项外部环境用例按条件跳过 |
+| 好友申请专项单测 | 服务 6 项、正式好友服务 5 项、管理端策略 5 项，全部通过 |
+| Flyway、Redis 与业务并发 | MySQL 8 的 V1 至 V38、Redis 多节点 Presence 集成和业务并发测试通过 |
+| 管理端生产构建 | `vue-tsc --noEmit && vite build` 通过，3502 个模块完成转换 |
+| 补丁格式检查 | `git diff --check` 通过，仅有现有行尾转换提示 |
+| 进程复核 | Spring Boot 与 Vite 开发服务均已关闭，验证端口无监听 |
+
+V1 至 V38 已发布迁移禁止修改；后续变化必须新增 V39 或更高版本。
+
+## 27. 游戏好友在线状态（V38）
+
+### 27.1 最终效果与边界
+
+1. 玩家建立有效 WebSocket 连接后，正式游戏好友显示 `ONLINE`。
+2. 同一玩家多个设备同时连接时，首个连接触发上线，最后一个连接消失才触发离线。
+3. HTTP 登录和普通接口请求只更新最近活跃时间，不会把玩家误判为 WebSocket 在线。
+4. 本功能只服务 `player_friend` 正式游戏好友，不读取微信官方好友关系或开放数据域。
+5. 多实例模式以 Redis 会话租约为实时真相；`player_online_state.online` 只用于审计和对账。
+6. Redis 不可用时状态返回 `UNKNOWN`，好友列表接口仍成功，不影响好友申请、删除或赠礼。
+
+### 27.2 正式好友列表字段
+
+```http
+GET /api/friends?limit=20
+Authorization: Bearer <player-token>
+```
+
+固定排序仍为 `level DESC, playerId ASC`，分页继续使用 `cursorLevel + cursorPlayerId` 复合游标。好友对象示例：
+
+```json
+{
+  "playerId": 20002,
+  "nickname": "玩家乙",
+  "level": 18,
+  "friendsSince": "2026-07-20 12:00:00",
+  "dailyGiftSent": false,
+  "dailyGiftReceived": true,
+  "onlineStatus": "ONLINE",
+  "presenceVersion": 1785232800123,
+  "lastActiveTime": "2026-07-28 18:00:00",
+  "lastOfflineTime": "2026-07-28 10:00:00"
+}
+```
+
+| 字段 | 说明 |
+| --- | --- |
+| `onlineStatus` | `ONLINE`、`OFFLINE` 或 `UNKNOWN` |
+| `presenceVersion` | 状态单调版本；客户端增量合并的唯一顺序依据 |
+| `lastActiveTime` | 最近登录、HTTP 活动或 WebSocket 心跳的北京时间，可为空 |
+| `lastOfflineTime` | 数据库最后一次确认离线的北京时间，可为空 |
+
+客户端不得根据最近活跃时间自行覆盖 `onlineStatus`。服务端对一页好友执行一次公开资料 SQL 和一次 Redis Pipeline，不存在按好友逐条查询的 N+1 问题。
+
+### 27.3 WebSocket 状态推送
+
+仍使用现有连接：
+
+```text
+ws://localhost:8080/api/ws/realtime
+wss://你的域名/api/ws/realtime
+Authorization: Bearer <player-token>
+```
+
+状态切换在默认 500 毫秒窗口内合并，只向当前在线的正式好友推送：
+
+```json
+{
+  "type": "FRIEND_PRESENCE_CHANGED",
+  "eventId": "0f230407-5dd8-4da3-8b16-12cb4cc2ca81",
+  "playerId": 10001,
+  "data": {
+    "playerId": 20002,
+    "onlineStatus": "OFFLINE",
+    "presenceVersion": 1785232805123,
+    "lastActiveTime": "2026-07-28 18:00:00",
+    "lastOfflineTime": "2026-07-28 18:00:05"
+  },
+  "serverTime": "2026-07-28 18:00:05"
+}
+```
+
+外层 `playerId` 是消息接收玩家，`data.playerId` 是状态发生变化的好友。
+
+客户端必须按以下规则实现：
+
+1. 首次读取好友列表时保存每名好友的 `presenceVersion`。
+2. 推送版本小于等于本地版本时直接丢弃。
+3. 只有更大版本可以覆盖状态和时间字段。
+4. WebSocket 重连成功后重新读取好友列表，恢复可能漏掉的增量。
+5. 在线状态推送不离线补发，核心好友和赠礼业务不得依赖该消息成功。
+
+### 27.4 Redis、版本与对账
+
+默认 Redis 键：
+
+```text
+realtime:presence:{playerId}:sessions   ZSet，会话和租约到期毫秒
+realtime:presence:{playerId}:meta       Hash，状态、版本和切换时间
+realtime:presence:{publish}:versions    Hash，永久事件版本水位
+realtime:presence:{publish}:payloads    Hash，最新待推送载荷
+realtime:presence:{publish}:due         ZSet，合并窗口到期时间
+realtime:presence:reconcile:lock        String，对账任务所有者令牌
+```
+
+建连、续租、断连、对账和事件领取均由 Lua 原子执行。租约使用 Redis `TIME`，ZSet TTL 精确等于最晚会话剩余时间，空集合立即删除。已领取版本水位不会删除，旧事件不能在推送后倒灌；消费前再次核对当前状态，已被新版本替代的事件直接丢弃。
+
+后台默认每 30 秒使用 `(last_active_time, player_id)` 复合游标扫描数据库在线快照，每批 200 条，单轮预算 15 秒。多实例使用带随机所有者令牌的 Redis 锁和 Lua 比较续租/删除。Redis 不可用时立即停止本轮，不会批量写成离线。
+
+### 27.5 数据库迁移
+
+V38 对 `player_online_state` 增加：
+
+| 字段或索引 | 用途 |
+| --- | --- |
+| `last_offline_time` | 最后一次确认离线时间 |
+| `status_version` | 只允许更高版本覆盖的数据库快照版本 |
+| `idx_online_active_player (online, last_active_time, player_id)` | 对账候选过滤与稳定游标分页 |
+
+`online` 列保留，但只作为审计和对账快照。实时好友状态必须通过 Presence 服务读取 Redis 租约，禁止 Mapper 或业务模块直接以数据库列作为在线依据。
+
+### 27.6 生产配置
+
+单实例可使用 `REALTIME_PUSH_MODE=local_only`。多实例生产必须让所有节点连接同一 Redis 并配置：
+
+```text
+REALTIME_PUSH_MODE=redis_pubsub
+REALTIME_PRESENCE_KEY_PREFIX=realtime:presence
+REALTIME_PRESENCE_TTL_SECONDS=90
+REALTIME_PRESENCE_REFRESH_INTERVAL_MS=30000
+PRESENCE_RECONCILIATION_ENABLED=true
+PRESENCE_RECONCILIATION_FIXED_DELAY_MS=30000
+PRESENCE_RECONCILIATION_BATCH_SIZE=200
+PRESENCE_RECONCILIATION_MAX_RUN_MS=15000
+PRESENCE_RECONCILIATION_STALE_SECONDS=120
+PRESENCE_RECONCILIATION_LOCK_TTL_MS=24000
+PRESENCE_RECONCILIATION_LOCK_RENEW_INTERVAL_MS=8000
+PRESENCE_EVENT_COALESCE_DELAY_MS=500
+PRESENCE_EVENT_PUBLISH_BATCH_SIZE=100
+PRESENCE_EVENT_PUBLISH_FIXED_DELAY_MS=100
+```
+
+续租间隔必须小于有效租约 TTL 的一半，否则集群模式启动失败。Presence 属于基础设施配置，不开放给普通管理端运营人员修改。
+
+### 27.7 验收结果
+
+本轮已验证：
+
+- Maven 全量测试：458 项，0 failure，0 error，58 项外部环境测试按条件跳过。
+- 真实 Redis：全局连接上限、精确 TTL、多设备首连/末连、批量查询、自然过期版本和已发布事件防重通过。
+- MySQL 8：V1 至 V38 全量迁移、字段和复合索引验证通过，临时测试库已自动删除。
+- 补丁格式：`git diff --check` 通过后再交付。
+
+仓库中的独立维护文档：`docs/friend-presence-api.md`。
+
+
+## 28. 玩家微信选择头像（V39）
+
+本文档对应 Flyway `V39__add_player_avatar_system.sql`。第一版只开放玩家主动选择的微信头像文件，不接收网络 URL，也不开放未经内容审核的自定义头像。
+
+基础地址：`http://localhost:8080/api`
+
+### 28.1 最终业务效果
+
+1. 玩家在微信客户端主动选择头像后，客户端读取临时文件字节并上传到服务端。
+2. 服务端不信任原文件名和 `Content-Type`，会按真实图片内容解码、居中裁剪，并统一重编码为 256×256 JPEG。
+3. 更新成功后，登录响应、`GET /api/user/me`、好友列表、玩家搜索和好友申请都会返回最新头像。
+4. 玩家恢复默认头像后，接口返回 `avatarUrl = null`，Unity 使用包内默认头像资源。
+5. `avatarVersion` 在头像状态实际变化时单调递增，Unity 可用它丢弃乱序响应并管理本地缓存。
+6. 更换与删除旧头像采用可靠 Outbox 清理，存储服务短暂异常不会让数据库重新指向旧对象。
+
+### 28.2 第一版边界
+
+- 允许上传真实 JPEG 或 PNG，服务端最终只保存 JPEG。
+- 单文件最大 2 MB，宽高均不得超过 4096，像素总数不得超过 1600 万。
+- 每名玩家北京时间自然日最多成功更换 5 次，`00:00:00` 重置。
+- 恢复默认头像不占用每日更换次数；已经是默认头像时重复删除保持幂等。
+- 不接收微信头像 URL、任意远程 URL、Base64 JSON 或对象存储键，避免 SSRF 和越权引用。
+- `CUSTOM` 仅为后续内容审核状态机预留，第一版没有对外上传入口。
+- 服务端只能验证图片安全性，不能从 multipart 字节证明图片一定来自微信。客户端必须只在微信授权选择流程后调用上传接口。
+
+### 28.3 头像字段统一约定
+
+| 字段 | 类型 | 可空 | 说明 |
+| --- | --- | --- | --- |
+| `avatarUrl` | string | 是 | 当前头像访问地址；为 `null` 时展示 Unity 内置默认头像 |
+| `avatarSource` | string | 否 | `DEFAULT` 或 `WECHAT_SELECTED`；`CUSTOM` 为后续版本预留 |
+| `avatarVersion` | long | 否 | 头像状态单调版本，默认从 0 开始 |
+| `avatarUpdatedTime` | datetime | 是 | 最近一次头像状态变化的北京时间 |
+
+开发环境默认返回相对地址，例如：
+
+```text
+/api/media/avatars/10001/550e8400-e29b-41d4-a716-446655440000.jpg
+```
+
+Unity 需要把相对地址拼到服务器源站 `http://localhost:8080`。生产环境应通过 `OBJECT_STORAGE_PUBLIC_BASE_URL` 返回完整 CDN HTTPS 地址，例如：
+
+```text
+https://cdn.example.com/game-media/avatars/10001/550e8400-e29b-41d4-a716-446655440000.jpg
+```
+
+数据库只保存稳定的对象键，不保存 CDN 域名。客户端不得自行拼对象键，也不得依赖 URL 的目录结构。
+
+### 28.4 更新当前玩家头像
+
+```http
+PUT /api/user/avatar
+Authorization: Bearer <player-token>
+Content-Type: multipart/form-data; boundary=<boundary>
+```
+
+multipart 字段：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `file` | binary | 是 | 微信选择后读取出的 JPEG 或 PNG 字节，最大 2 MB |
+
+不要把请求发送成 JSON，也不要只发送临时文件路径。微信临时路径只在客户端本地有效，必须先读取为字节。
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "头像更新成功",
+  "data": {
+    "avatarUrl": "https://cdn.example.com/game-media/avatars/10001/550e8400-e29b-41d4-a716-446655440000.jpg",
+    "avatarSource": "WECHAT_SELECTED",
+    "avatarVersion": 6,
+    "avatarUpdatedTime": "2026-07-29 14:30:00"
+  }
+}
+```
+
+只有 `code = 200` 才能替换本地头像。HTTP 状态非 2xx 时仍应尝试解析统一 JSON 响应，以便显示具体业务错误。
+
+### 28.5 恢复默认头像
+
+```http
+DELETE /api/user/avatar
+Authorization: Bearer <player-token>
+```
+
+不需要请求体。成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "已恢复默认头像",
+  "data": {
+    "avatarUrl": null,
+    "avatarSource": "DEFAULT",
+    "avatarVersion": 7,
+    "avatarUpdatedTime": "2026-07-29 14:35:00"
+  }
+}
+```
+
+已经是默认头像时重复调用仍返回成功，版本不会无意义递增。Unity 收到 `avatarUrl = null` 后应立即释放或取消当前远程头像引用并展示内置默认头像。
+
+### 28.6 好友头像读取
+
+### 6.1 推荐：直接使用好友相关接口字段
+
+以下现有响应已经直接包含头像，不需要再逐个请求：
+
+| 接口 | 头像字段 |
+| --- | --- |
+| 登录和 `GET /api/user/me` | `avatarUrl/avatarSource/avatarVersion/avatarUpdatedTime` |
+| `GET /api/friends` | `avatarUrl/avatarVersion` |
+| `GET /api/friends/search` | `avatarUrl/avatarVersion` |
+| 好友申请创建、列表和处理响应 | `requesterAvatarUrl/requesterAvatarVersion`、`recipientAvatarUrl/recipientAvatarVersion` |
+
+好友列表头像和公开资料通过同一页 SQL 联表返回，不存在按好友逐条查询数据库的 N+1 问题。
+
+### 6.2 可选：按当前好友页批量刷新
+
+仅当页面停留期间需要主动刷新头像时调用：
+
+```http
+POST /api/friends/avatars/batch
+Authorization: Bearer <player-token>
+Content-Type: application/json
+```
+
+```json
+{
+  "playerIds": [20002, 20003, 20004]
+}
+```
+
+规则：
+
+- 单次 1 至 100 个正整数玩家 ID。
+- 所有目标都必须是当前玩家的正式游戏好友；任意一个不是好友时整次请求返回 `6702`。
+- 重复 ID 会去重，结果保持每个 ID 第一次出现的顺序。
+- 目标账号不存在时返回 `2001`。
+- 禁止 Unity 为每名好友分别调用该接口。
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": [
+    {
+      "playerId": 20002,
+      "avatarUrl": "https://cdn.example.com/game-media/avatars/20002/a.jpg",
+      "avatarVersion": 9
+    },
+    {
+      "playerId": 20003,
+      "avatarUrl": null,
+      "avatarVersion": 2
+    }
+  ]
+}
+```
+
+### 28.7 Unity 调用示例
+
+下面示例使用 Unity 自带 `UnityWebRequest`，无需额外网络库。`apiBaseUrl` 应为包含 `/api` 的地址，`serverOrigin` 只包含协议、域名和端口。
+
+```csharp
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using System.Text;
+using UnityEngine;
+using UnityEngine.Networking;
+
+[Serializable]
+public sealed class AvatarDto
+{
+    public string avatarUrl;
+    public string avatarSource;
+    public long avatarVersion;
+    public string avatarUpdatedTime;
+}
+
+[Serializable]
+public sealed class AvatarApiResult
+{
+    public int code;
+    public string message;
+    public AvatarDto data;
+}
+
+public sealed class AvatarApiClient : MonoBehaviour
+{
+    [SerializeField] private string apiBaseUrl = "http://localhost:8080/api";
+    [SerializeField] private string serverOrigin = "http://localhost:8080";
+
+    public IEnumerator UploadWechatAvatar(
+        byte[] imageBytes,
+        string token,
+        Action<AvatarDto> onSuccess,
+        Action<int, string> onFailure)
+    {
+        var sections = new List<IMultipartFormSection>
+        {
+            new MultipartFormFileSection(
+                "file", imageBytes, "avatar.jpg", "image/jpeg")
+        };
+        byte[] boundary = UnityWebRequest.GenerateBoundary();
+        byte[] body = UnityWebRequest.SerializeFormSections(sections, boundary);
+
+        using (var request = new UnityWebRequest(apiBaseUrl + "/user/avatar", "PUT"))
+        {
+            request.uploadHandler = new UploadHandlerRaw(body);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.timeout = 20;
+            request.SetRequestHeader("Authorization", "Bearer " + token);
+            request.SetRequestHeader(
+                "Content-Type",
+                "multipart/form-data; boundary=" + Encoding.UTF8.GetString(boundary));
+
+            yield return request.SendWebRequest();
+            HandleAvatarResponse(request, onSuccess, onFailure);
+        }
+    }
+
+    public IEnumerator ResetAvatar(
+        string token,
+        Action<AvatarDto> onSuccess,
+        Action<int, string> onFailure)
+    {
+        using (var request = new UnityWebRequest(apiBaseUrl + "/user/avatar", "DELETE"))
+        {
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.timeout = 15;
+            request.SetRequestHeader("Authorization", "Bearer " + token);
+
+            yield return request.SendWebRequest();
+            HandleAvatarResponse(request, onSuccess, onFailure);
+        }
+    }
+
+    public string ResolveAvatarUrl(string avatarUrl)
+    {
+        if (string.IsNullOrEmpty(avatarUrl))
+        {
+            return null;
+        }
+        if (Uri.TryCreate(avatarUrl, UriKind.Absolute, out Uri absolute))
+        {
+            return absolute.ToString();
+        }
+        return new Uri(new Uri(serverOrigin), avatarUrl).ToString();
+    }
+
+    private static void HandleAvatarResponse(
+        UnityWebRequest request,
+        Action<AvatarDto> onSuccess,
+        Action<int, string> onFailure)
+    {
+        AvatarApiResult response = null;
+        string json = request.downloadHandler == null
+            ? string.Empty
+            : request.downloadHandler.text;
+        if (!string.IsNullOrEmpty(json))
+        {
+            try
+            {
+                response = JsonUtility.FromJson<AvatarApiResult>(json);
+            }
+            catch (ArgumentException)
+            {
+                response = null;
+            }
+        }
+
+        if (response != null && response.code == 200 && response.data != null)
+        {
+            onSuccess?.Invoke(response.data);
+            return;
+        }
+
+        int code = response == null ? (int)request.responseCode : response.code;
+        string message = response == null
+            ? request.error ?? "头像请求失败"
+            : response.message;
+        onFailure?.Invoke(code, message);
+    }
+}
+```
+
+Unity 接入规则：
+
+1. 微信选择组件返回临时路径后，通过微信小游戏桥接层读取字节，再调用 `UploadWechatAvatar`。
+2. 上传前可在客户端压缩以改善体验，但服务端仍会独立验证和重编码。
+3. 本地保存每名玩家最近的 `avatarVersion`；收到更小版本时丢弃，避免慢请求覆盖新头像。
+4. 远程纹理缓存至少按 `playerId + avatarVersion` 隔离，并同时保存当时的 `avatarUrl`；版本或 URL 任意一个变化都必须重新下载。切换 CDN 域名不会批量增加玩家头像版本。
+5. `avatarUrl = null` 时禁止发起图片下载，直接显示包内默认头像。
+6. 好友页面优先使用列表内已有头像；只有页面内批量刷新才调用 `/friends/avatars/batch`。
+
+### 28.8 错误码与 HTTP 状态
+
+| HTTP | code | message | Unity 处理 |
+| ---: | ---: | --- | --- |
+| 400 | `7301` | 请选择要上传的头像图片 | 检查 multipart 字段名必须为 `file` |
+| 413 | `7302` | 头像文件大小超过限制 | 压缩到 2 MB 以下后重试 |
+| 400 | `7303` | 仅支持真实的JPEG或PNG图片 | 重新选择或正确编码图片 |
+| 400 | `7304` | 头像图片尺寸或像素数量超过限制 | 缩小图片后重试 |
+| 503 | `7305` | 头像存储服务暂时不可用，请稍后重试 | 保留旧头像并延迟重试 |
+| 429 | `7306` | 今日头像更换次数已达上限 | 等待北京时间次日重置 |
+| 409 | `7307` | 头像状态已变化，请重试 | 先刷新 `/user/me` 再重试 |
+| 401 | `401` | 未登录或登录已过期 | 重新登录，不要继续上传 |
+
+错误响应的 `data` 为 `null`。`7305` 表示存储故障，不代表头像对象不存在，客户端不得自动改为默认头像。
+
+### 28.9 存储部署与供应商切换
+
+开发环境默认写入 `./data/media`，并通过 `/api/media/**` 访问。生产环境使用 AWS SDK v2 `S3Client` 和私有桶，公开读取地址由带回源鉴权或防盗链的 CDN 提供。
+
+生产环境核心变量：
+
+```text
+OBJECT_STORAGE_TYPE=s3
+OBJECT_STORAGE_PUBLIC_BASE_URL=https://cdn.example.com/game-media
+OBJECT_STORAGE_ENDPOINT=
+OBJECT_STORAGE_REGION=ap-southeast-1
+OBJECT_STORAGE_BUCKET=game-avatar-production
+OBJECT_STORAGE_CREDENTIALS_MODE=STATIC
+OBJECT_STORAGE_ACCESS_KEY=...
+OBJECT_STORAGE_SECRET_KEY=...
+OBJECT_STORAGE_PATH_STYLE_ACCESS_ENABLED=false
+OBJECT_STORAGE_CHUNKED_ENCODING_ENABLED=true
+```
+
+切换规则：
+
+- 同一供应商仅轮换访问密钥，且 endpoint、region、bucket、CDN 都不变时，只需要更换密钥或云主机角色。
+- 更换供应商通常还必须调整 endpoint、region、bucket、路径风格、分块编码和 CDN 地址，不能只改密钥。
+- 切换前要把旧桶中的 `avatars/**` 对象按原对象键完整迁移到新桶；对象键保持不变时无需更新 `users` 表。
+- 切换前先等待 `player_avatar_cleanup_outbox` 中旧供应商清理任务处理完成，避免新配置去错误供应商删除旧对象。
+- 切换后接口会按新的 `OBJECT_STORAGE_PUBLIC_BASE_URL` 立即组装新 URL，但 `avatarVersion` 不会因此变化；Unity 必须同时比较 URL，旧 CDN 也建议保留一个客户端过渡周期。
+- 各厂商 S3 兼容行为不同，MinIO 等服务通常需要路径风格并关闭分块编码；最终值必须以供应商当前官方文档和测试环境验证为准。
+- 业务层只依赖 `ObjectStorageService`，正确完成配置和对象迁移后不需要修改头像业务代码。
+
+存储桶不要开放公共列举权限。生产 CDN 域名必须使用 HTTPS，并在微信后台加入合法下载域名。
+
+### 28.10 数据库与可靠性
+
+V39 新增：
+
+| 表或字段 | 用途 |
+| --- | --- |
+| `users.avatar_object_key` | 当前头像对象键；默认头像为空 |
+| `users.avatar_source` | `DEFAULT/WECHAT_SELECTED/CUSTOM` |
+| `users.avatar_version` | 乐观更新和客户端乱序保护版本 |
+| `users.avatar_updated_time` | 最近头像状态变化时间 |
+| `player_avatar_daily_usage` | 北京时间每日成功更换次数，主键为 `(player_id, usage_date)` |
+| `player_avatar_cleanup_outbox` | 替换、重置或事务补偿后的可靠对象删除任务 |
+
+更新顺序为：安全处理图片、上传新对象、锁定玩家并切换数据库、事务内登记旧对象 Outbox、提交后异步删除旧对象。数据库事务失败时会立即补偿删除新对象；补偿失败时同样进入 Outbox 重试。
+
+### 28.11 上线验收
+
+1. 单节点执行 Flyway 至 V39，确认头像字段、每日次数表和清理 Outbox 已创建。
+2. 开发环境验证相对 URL 能经 `/api/media/**` 下载；生产环境验证私有桶不能匿名访问且 CDN 可正常回源。
+3. 验证伪造扩展名、伪造 Content-Type、非图片、超大文件、超大尺寸均被拒绝。
+4. 验证透明 PNG 会生成白色背景的 256×256 JPEG，输出不保留 EXIF。
+5. 验证每日第 6 次更换返回 `7306`，恢复默认不计次数，次日北京时间重置。
+6. 验证登录、本人资料、好友列表、搜索和申请响应均携带一致版本的头像字段。
+7. 验证替换与恢复默认后旧对象最终删除，临时存储故障会重试且不影响当前数据库头像。
+8. 验证 Unity 对 `null`、相对 URL、绝对 CDN URL和乱序版本都能正确处理。
+
+验证命令：
+
+```powershell
+mvn -q test
+$env:RUN_MYSQL_INTEGRATION_TESTS='true'; mvn -q test
+git diff --check
+```
+
+本次验证结果（2026-07-29，Asia/Shanghai）：
+
+| 验证项 | 结果 |
+| --- | --- |
+| 头像专项测试 | 图片处理、事务、批量好友头像、本地/S3存储和 Outbox 测试全部通过 |
+| 后端全量测试 | 487 项，0 failure，0 error；59 项外部环境用例按条件跳过 |
+| 真实 MySQL 8 | 39 个版本校验通过，V17 至 V39 执行 23 个迁移，重复执行为 0 |
+| 真实 MySQL 业务 | 42 项全部通过；头像 6 路并发严格得到 2 次成功和 4 次限额拒绝 |
+| 补丁格式 | `git diff --check` 通过 |
+
+## 29. 金币商城（V40）
+
+### 29.1 最终效果与边界
+
+玩家可以使用金币 `gold` 购买管理端正式发布的以下内容：
+
+- `RESOURCE`：木材、石材、铁等普通资源。
+- `PRODUCT`：现有物品目录中的产品。
+- `NPC_FRAGMENT`：指定 NPC 的专属碎片。
+- `EQUIPMENT`：每件创建一个独立的 1 级、未锁定、仓库状态装备实例。
+
+禁止购买金币、钻石及其他所有 `CURRENCY` 类型物品。支付货币也固定为已启用的 `CURRENCY:gold`，管理端不能改为钻石。每个商品按实际发放数量执行北京时间自然日上限，日界为 UTC+8 的 `00:00:00`。
+
+客户端不能提交 `playerId`、价格或奖励内容。服务端根据登录 token、正式商品和正式配置版本结算。金币扣除、奖励发放、每日用量和不可变订单在同一事务中提交。
+
+### 29.2 查询商城目录
+
+```http
+GET /api/coin-shop/catalog
+Authorization: Bearer <player-token>
+```
+
+响应示例：
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "enabled": true,
+    "configRevision": 2,
+    "usageDate": "2026-07-30",
+    "goldItemId": 1,
+    "goldItemKey": "gold",
+    "goldItemName": "金币",
+    "goldItemIcon": "gold",
+    "goldBalance": 12000,
+    "products": [
+      {
+        "productId": 1,
+        "productCode": "WOOD_PACK",
+        "displayName": "木材包",
+        "description": "使用金币购买木材",
+        "productIcon": "shop_wood_pack",
+        "rewardType": "ITEM",
+        "rewardItemId": 2,
+        "rewardEquipmentId": null,
+        "rewardKey": "wood",
+        "rewardName": "木材",
+        "rewardCategory": "RESOURCE",
+        "rewardIcon": "wood",
+        "rewardQuantityPerLot": 100,
+        "goldPricePerLot": 30,
+        "minLotsPerOrder": 1,
+        "maxLotsPerOrder": 20,
+        "dailyRewardQuantityLimit": 2000,
+        "usedRewardQuantity": 300,
+        "remainingDailyRewardQuantity": 1700,
+        "maxPurchasableLots": 17
+      }
+    ]
+  }
+}
+```
+
+字段规则：
+
+| 字段 | Unity 用途 |
+| --- | --- |
+| `enabled` | 全局关闭时禁用整个商城 |
+| `configRevision` | 确认购买时原样提交，不能自行加减 |
+| `usageDate` | 服务端统一生成的北京时间日期 |
+| `goldBalance` | 当前登录玩家金币余额 |
+| `rewardType` | `ITEM` 或 `EQUIPMENT` |
+| `rewardItemId` | 物品奖励时有值，装备奖励时为 `null` |
+| `rewardEquipmentId` | 装备奖励时有值，物品奖励时为 `null` |
+| `dailyRewardQuantityLimit` | 每日实际奖励数量上限，不是批次数 |
+| `maxPurchasableLots` | 已综合金币、当日额度、单笔上限和全局开关；为 0 时禁止提交 |
+
+目录只返回已启用且未归档的商品。`productIcon=null` 时 Unity 使用 `rewardIcon` 回退展示。
+
+### 29.3 确认购买与幂等重试
+
+```http
+POST /api/coin-shop/purchases
+Authorization: Bearer <player-token>
+Idempotency-Key: 83fa2b54-4b76-42a5-9579-d665b8a3dfa4
+Content-Type: application/json
+```
+
+```json
+{
+  "productId": 1,
+  "lotCount": 2,
+  "expectedConfigRevision": 2
+}
+```
+
+成功响应：
+
+```json
+{
+  "code": 200,
+  "message": "购买成功",
+  "data": {
+    "orderId": 9001,
+    "orderNo": "f50dd60a-cda5-4a15-b761-bfbc76b4f3af",
+    "usageDate": "2026-07-30",
+    "productId": 1,
+    "productCode": "WOOD_PACK",
+    "productName": "木材包",
+    "productIcon": "shop_wood_pack",
+    "rewardType": "ITEM",
+    "rewardItemId": 2,
+    "rewardEquipmentId": null,
+    "rewardKey": "wood",
+    "rewardName": "木材",
+    "rewardIcon": "wood",
+    "rewardQuantityPerLot": 100,
+    "goldPricePerLot": 30,
+    "lotCount": 2,
+    "chargedGold": 60,
+    "grantedQuantity": 200,
+    "goldItemId": 1,
+    "goldItemKey": "gold",
+    "goldBalanceBefore": 12000,
+    "goldBalanceAfter": 11940,
+    "rewardItemBalanceBefore": 5000,
+    "rewardItemBalanceAfter": 5200,
+    "configRevision": 2,
+    "createTime": "2026-07-30T16:30:00.123456",
+    "replayed": false
+  }
+}
+```
+
+装备订单的 `rewardItemBalanceBefore/rewardItemBalanceAfter` 均为 `null`，`grantedQuantity` 是创建的独立装备实例数。
+
+Unity 必须在第一次发请求前持久化：
+
+```text
+Idempotency-Key + productId + lotCount + expectedConfigRevision
+```
+
+网络超时或没有收到明确结果时，必须复用同一个 UUID 和完全相同的请求体。相同请求重试会返回第一次订单，只有 `replayed=true`；不会再次扣金币、发奖励或占用额度。同一个 UUID 改变任一请求字段会返回 `7408`。
+
+UUID 使用：
+
+```csharp
+string idempotencyKey = Guid.NewGuid().ToString("D");
+```
+
+不要让 HTTP 重试器每次自动生成新 UUID，也不要把一个固定 UUID 用于多次不同购买。
+
+配置发布后旧请求固定返回 HTTP 409：
+
+```json
+{
+  "code": 7403,
+  "message": "金币商城配置已更新，请刷新后重新确认",
+  "data": {
+    "latestRevision": 3,
+    "refreshRequired": true
+  }
+}
+```
+
+收到 409 后重新拉目录、展示新价格、让玩家重新确认，并为新的业务意图生成新 UUID。服务端不会静默按新价格成交。
+
+### 29.4 查询购买历史
+
+```http
+GET /api/coin-shop/purchases/history?beforeId=9001&limit=20
+Authorization: Bearer <player-token>
+```
+
+`beforeId` 可省略；`limit` 默认 20，范围 1 至 100。响应按订单 ID 倒序：
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "items": [
+      {
+        "orderId": 9000,
+        "orderNo": "e6be59a8-aa68-4327-ab93-e6a0e26de6f4",
+        "usageDate": "2026-07-30",
+        "productId": 1,
+        "productCode": "WOOD_PACK",
+        "productName": "木材包",
+        "productIcon": "shop_wood_pack",
+        "rewardType": "ITEM",
+        "rewardItemId": 2,
+        "rewardEquipmentId": null,
+        "rewardKey": "wood",
+        "rewardName": "木材",
+        "rewardIcon": "wood",
+        "lotCount": 2,
+        "chargedGold": 60,
+        "grantedQuantity": 200,
+        "goldBalanceAfter": 11940,
+        "rewardItemBalanceAfter": 5200,
+        "configRevision": 2,
+        "createTime": "2026-07-30T16:30:00.123456"
+      }
+    ],
+    "nextCursor": 9000,
+    "hasMore": true
+  }
+}
+```
+
+仅当 `hasMore=true` 时继续携带 `nextCursor` 查询下一页。
+
+### 29.5 Unity DTO 和调用顺序
+
+金额、数量、ID 和版本都必须使用 C# `long`；可能为 JSON `null` 的物品/装备 ID 和物品余额使用 `long?`。不要使用 `int`、`float` 或 `double`。推荐使用 Newtonsoft Json，避免 `JsonUtility` 对可空值和泛型响应的限制。
+
+```csharp
+using System;
+using System.Collections.Generic;
+using Newtonsoft.Json;
+
+[Serializable]
+public sealed class ApiResult<T>
+{
+    [JsonProperty("code")] public int Code;
+    [JsonProperty("message")] public string Message;
+    [JsonProperty("data")] public T Data;
+}
+
+[Serializable]
+public sealed class CoinShopPurchaseRequest
+{
+    [JsonProperty("productId")] public long ProductId;
+    [JsonProperty("lotCount")] public long LotCount;
+    [JsonProperty("expectedConfigRevision")] public long ExpectedConfigRevision;
+}
+
+[Serializable]
+public sealed class CoinShopProduct
+{
+    [JsonProperty("productId")] public long ProductId;
+    [JsonProperty("productCode")] public string ProductCode;
+    [JsonProperty("displayName")] public string DisplayName;
+    [JsonProperty("description")] public string Description;
+    [JsonProperty("productIcon")] public string ProductIcon;
+    [JsonProperty("rewardType")] public string RewardType;
+    [JsonProperty("rewardItemId")] public long? RewardItemId;
+    [JsonProperty("rewardEquipmentId")] public long? RewardEquipmentId;
+    [JsonProperty("rewardKey")] public string RewardKey;
+    [JsonProperty("rewardName")] public string RewardName;
+    [JsonProperty("rewardCategory")] public string RewardCategory;
+    [JsonProperty("rewardIcon")] public string RewardIcon;
+    [JsonProperty("rewardQuantityPerLot")] public long RewardQuantityPerLot;
+    [JsonProperty("goldPricePerLot")] public long GoldPricePerLot;
+    [JsonProperty("minLotsPerOrder")] public long MinLotsPerOrder;
+    [JsonProperty("maxLotsPerOrder")] public long MaxLotsPerOrder;
+    [JsonProperty("dailyRewardQuantityLimit")] public long DailyRewardQuantityLimit;
+    [JsonProperty("usedRewardQuantity")] public long UsedRewardQuantity;
+    [JsonProperty("remainingDailyRewardQuantity")] public long RemainingDailyRewardQuantity;
+    [JsonProperty("maxPurchasableLots")] public long MaxPurchasableLots;
+}
+
+[Serializable]
+public sealed class CoinShopPurchaseResult
+{
+    [JsonProperty("orderId")] public long OrderId;
+    [JsonProperty("orderNo")] public string OrderNo;
+    [JsonProperty("productId")] public long ProductId;
+    [JsonProperty("rewardType")] public string RewardType;
+    [JsonProperty("rewardItemId")] public long? RewardItemId;
+    [JsonProperty("rewardEquipmentId")] public long? RewardEquipmentId;
+    [JsonProperty("lotCount")] public long LotCount;
+    [JsonProperty("chargedGold")] public long ChargedGold;
+    [JsonProperty("grantedQuantity")] public long GrantedQuantity;
+    [JsonProperty("goldBalanceBefore")] public long GoldBalanceBefore;
+    [JsonProperty("goldBalanceAfter")] public long GoldBalanceAfter;
+    [JsonProperty("rewardItemBalanceBefore")] public long? RewardItemBalanceBefore;
+    [JsonProperty("rewardItemBalanceAfter")] public long? RewardItemBalanceAfter;
+    [JsonProperty("configRevision")] public long ConfigRevision;
+    [JsonProperty("createTime")] public string CreateTime;
+    [JsonProperty("replayed")] public bool Replayed;
+}
+```
+
+推荐流程：
+
+1. `GET /coin-shop/catalog`，保存目录和 `configRevision`。
+2. 限制玩家输入在 `minLotsPerOrder` 至 `maxPurchasableLots` 之间。
+3. 确认后生成 UUID，先持久化 UUID 与请求体，再调用购买接口。
+4. 同时检查 HTTP 状态和响应体 `code`；`HTTP 200 + code=200` 才是成功。
+5. 网络结果不确定时原样重试；`replayed=true` 仍按成功处理。
+6. HTTP 409 重新加载并重新确认；余额或额度错误也重新拉目录。
+7. 成功后用响应里的余额立即更新界面，并按需刷新背包或装备仓库。
+
+### 29.6 WebSocket 购买通知
+
+首次成交事务提交后，玩家在线会话收到：
+
+```json
+{
+  "type": "COIN_SHOP_PURCHASED",
+  "requestId": null,
+  "eventId": "5dac9e88-2ee4-4c0d-8f57-169624208f86",
+  "playerId": 1,
+  "data": {
+    "orderId": 9001,
+    "orderNo": "f50dd60a-cda5-4a15-b761-bfbc76b4f3af",
+    "goldBalanceAfter": 11940,
+    "rewardItemBalanceAfter": 5200,
+    "replayed": false
+  },
+  "serverTime": "2026-07-30T16:30:00.130"
+}
+```
+
+实际 `data` 是完整 `CoinShopPurchaseResult`。幂等重放不再次推送。该消息用于同账号其他在线界面刷新，不是唯一成交凭证；断线恢复以 HTTP 响应、购买历史和背包接口为准。客户端可按 `eventId` 和 `orderId` 去重。
+
+### 29.7 管理端商品配置
+
+配置中心标识：
+
+```text
+moduleCode = COIN_SHOP
+configKey  = PRODUCT_CATALOG
+```
+
+管理端支持全局启停、商品新增/启停/归档、名称说明、图标、物品或装备奖励、每批奖励、每批金币价格、单笔最小/最大批次、北京时间每日实际奖励上限和排序。
+
+只有 `CONFIG_ADMIN` 可以保存草稿、发布、丢弃和创建回滚草稿。发布校验包括：
+
+- 支付固定为 `gold`，所有 `CURRENCY` 奖励都禁止。
+- 物品奖励只允许 `RESOURCE`、`PRODUCT`、`NPC_FRAGMENT`。
+- 装备固定发 1 级、未锁定、仓库实例。
+- 同一种奖励同时只能有一条已启用商品。
+- 商品编码及奖励身份发布后不可修改；换奖励必须创建新商品编码。
+- 删除正式商品只归档，历史订单不删除。
+- 每日上限按实际奖励数量计算，不能小于单笔最大奖励数。
+- 无业务变化的重复发布不递增 `configRevision`；真实变化发布后加一。
+
+### 29.8 业务错误码
+
+| code | message | Unity 处理 |
+| --- | --- | --- |
+| `7401` | 金币商城当前未开放 | 关闭入口并刷新目录 |
+| `7402` | 金币商城商品不存在或未启用 | 刷新目录 |
+| `7403` | 金币商城配置已更新，请刷新后重新确认 | HTTP 409，刷新并重新确认 |
+| `7404` | 购买批次数量不符合当前规则 | 修正购买批次 |
+| `7405` | 金币余额不足 | 刷新余额 |
+| `7406` | 该商品今日可购买数量不足 | 刷新当日额度 |
+| `7407` | 购买结算后物品余额超出系统上限 | 停止重试并上报 |
+| `7408` | 购买幂等请求与首次请求不一致 | 检查本地请求状态，新意图使用新 UUID |
+| `7409` | 金币商城正式配置不可用 | 关闭入口并告警 |
+| `7410` | 金币或背包余额已变化，请刷新后重试 | 刷新后使用新 UUID 重试 |
+
+退款经济冻结还会返回 `6401`；参数或 UUID 格式错误返回 `400`；未登录返回 HTTP 401。
+
+### 29.9 数据库、事务与并发
+
+V40 新增：
+
+| 表 | 用途 |
+| --- | --- |
+| `coin_shop_policy` | 全局开关、固定金币物品和正式版本 |
+| `coin_shop_product` | 正式商品、启用/归档状态和价格数量规则 |
+| `player_coin_shop_daily_usage` | `(player_id, usage_date, product_id)` 唯一的北京时间每日用量 |
+| `player_coin_shop_order` | `(player_id, idempotency_key)` 唯一的不可变成功订单快照 |
+
+新购买固定顺序：
+
+```text
+users 玩家聚合行锁
+  -> 幂等订单查询锁
+  -> 活动退款状态 NOWAIT 共享锁
+  -> 商城正式配置共享锁
+  -> player_item 按 item_id 升序锁定金币行及物品奖励行
+  -> 当日用量行锁
+  -> 扣金币、写订单、发奖励、增加用量
+  -> 提交后推送
+```
+
+六个相同 UUID 的并发请求只允许一笔真实成交，其余完整重放；六个不同 UUID 争抢同一每日额度时，只允许额度内订单成功。数据库唯一键、条件更新和事务回滚共同防止重复扣款、超发和部分提交。
+
+### 29.10 上线检查
+
+1. 单节点执行 Flyway 至 V40，确认四张表和约束建立成功。
+2. 确认初始 `coin_shop_policy.enabled=false`、版本为 1、支付 Key 为 `gold`。
+3. 由 `CONFIG_ADMIN` 创建并发布审核后的商品草稿，不直接在线修改正式表。
+4. 验证普通物品、NPC 碎片和装备实例购买，确认钻石与金币奖励无法发布。
+5. 验证同键重试、同键异参、配置 409、余额不足、每日额度和并发争抢。
+6. 对账金币、奖励、每日用量、订单和 WebSocket 刷新，确认失败事务无残留。
+
+仓库内更完整的字段说明、Unity DTO 和运维约束见 `docs/coin-shop-api.md`。
+
+### 29.11 本次实现验证
+
+验收时间：2026-07-30，时区：Asia/Shanghai。
+
+| 验证项 | 结果 |
+| --- | --- |
+| 后端全量测试 | 507 项，0 failure，0 error；56 项外部环境用例按条件跳过 |
+| 真实 MySQL 配置中心 | 6 项全部通过，空库完成 V1 至 V40 共 40 个迁移 |
+| 真实 MySQL 并发与迁移 | 44 项业务并发测试和 1 项 Flyway 升级测试全部通过 |
+| 管理端生产构建 | `vue-tsc --noEmit && vite build` 通过，共转换 3505 个模块 |
+| 补丁格式 | `git diff --check` 通过，仅存在仓库既有的行尾转换提示 |
+
+---
+
+## 30. 钻石商城（V41）
+
+### 30.1 功能效果
+
+钻石商城是“高级货币购买已发布商品”的白名单商城。玩家只能购买管理端 `DIAMOND_SHOP / PRODUCT_CATALOG` 已发布且启用的商品；没有配置、已停用、已归档或配置版本已变化时，后端会拒绝购买。
+
+第一版支持：
+
+- 钻石购买金币 `gold`。
+- 钻石购买已启用的非货币物品，例如资源、产品、NPC 碎片。
+- 钻石购买装备，后端创建独立 1 级仓库装备实例。
+- 管理端配置每批奖励数量、每批钻石价格、单笔最小/最大批次、北京时间每日奖励上限、排序、图标、说明、启停。
+- 禁止奖励钻石本身，禁止奖励除金币以外的其他货币。
+- 幂等订单、余额快照、每日额度、配置版本冲突 HTTP 409、购买成功 WebSocket 推送。
+
+### 30.2 Unity 玩家接口
+
+```http
+GET /api/diamond-shop/catalog
+Authorization: Bearer <token>
+```
+
+返回字段重点：
+
+- `enabled`：钻石商城是否开放。
+- `configRevision`：正式目录版本，购买时必须原样传回。
+- `usageDate`：北京时间自然日。
+- `diamondBalance`：玩家当前钻石余额。
+- `products[]`：已发布且启用的商品。
+- `products[].maxPurchasableLots`：当前最多可买批次，已综合钻石余额和每日额度。
+
+```http
+POST /api/diamond-shop/purchases
+Authorization: Bearer <token>
+Idempotency-Key: <标准UUID>
+Content-Type: application/json
+```
+
+```json
+{
+  "productId": 1,
+  "lotCount": 2,
+  "expectedConfigRevision": 3
+}
+```
+
+成功返回不可变订单快照，包含：
+
+- `chargedDiamond`：实际扣除钻石。
+- `grantedQuantity`：实际发放奖励数量。
+- `diamondBalanceBefore / diamondBalanceAfter`：扣钻石前后余额。
+- `rewardItemBalanceBefore / rewardItemBalanceAfter`：物品奖励前后余额，装备奖励时为 `null`。
+- `replayed`：同一幂等键重放时为 `true`。
+
+```http
+GET /api/diamond-shop/purchases/history?beforeId=1001&limit=20
+Authorization: Bearer <token>
+```
+
+购买成功后，在线会话会收到 WebSocket 类型：`DIAMOND_SHOP_PURCHASED`。Unity 仍应以 HTTP 返回、背包查询和历史订单作为恢复依据。
+
+### 30.3 配置变化
+
+Unity 如果使用旧目录提交购买，返回 HTTP 409：
+
+```json
+{
+  "code": 7503,
+  "message": "钻石商城配置已更新，请刷新后重新确认",
+  "data": {
+    "latestRevision": 4,
+    "refreshRequired": true
+  }
+}
+```
+
+处理方式：重新调用 `GET /api/diamond-shop/catalog`，刷新 UI 后让玩家重新确认购买。
+
+### 30.4 管理端配置
+
+模块：`DIAMOND_SHOP`
+
+配置键：`PRODUCT_CATALOG`
+
+只有 `CONFIG_ADMIN` 可以保存、发布、回滚。管理端已提供钻石商城表格化编辑器，可直接通过开关、商品行、奖励类型、奖励内容、每批钻石价格、单笔批次、北京时间每日上限、排序、图标和说明配置，不需要手写 JSON。正式配置初始关闭且没有预置商品。
+
+示例商品：
+
+```json
+{
+  "enabled": true,
+  "configRevision": 1,
+  "diamondItemId": 6,
+  "diamondItemKey": "diamond",
+  "products": [
+    {
+      "productId": null,
+      "productCode": "DIAMOND_GOLD_10000",
+      "displayName": "10000金币",
+      "description": "钻石兑换金币",
+      "icon": "gold",
+      "rewardType": "ITEM",
+      "rewardItemId": 1,
+      "rewardItemKey": "gold",
+      "rewardEquipmentId": null,
+      "rewardEquipmentKey": null,
+      "rewardQuantityPerLot": 10000,
+      "diamondPricePerLot": 10,
+      "minLotsPerOrder": 1,
+      "maxLotsPerOrder": 10,
+      "dailyRewardQuantityLimit": 100000,
+      "sortOrder": 10,
+      "enabled": true
+    }
+  ]
+}
+```
+
+已发布商品的 `productCode` 和奖励身份不能原地替换；需要换奖励对象时，新建商品编码，旧商品停用或归档。
+
+### 30.5 错误码
+
+| code | 含义 |
+| --- | --- |
+| 7501 | 钻石商城当前未开放 |
+| 7502 | 商品不存在或未启用 |
+| 7503 | 配置版本变化，Unity 需要重新拉目录 |
+| 7504 | 购买批次数量不符合当前规则 |
+| 7505 | 钻石余额不足 |
+| 7506 | 当日额度不足 |
+| 7507 | 结算后物品余额超上限 |
+| 7508 | 幂等请求与首次请求不一致 |
+| 7509 | 正式配置不可用 |
+| 7510 | 钻石或背包余额并发变化 |
+
+### 30.6 本次验证
+
+- `mvn -q test`：通过。
+- `RUN_MYSQL_INTEGRATION_TESTS=true` 的 `FlywayMigrationIntegrationTest`：通过，V41 四张钻石商城表可从历史版本顺序创建。
+
+
+## 31. 物品基础资料配置（V42）
+
+### 31.1 功能效果
+
+管理端新增 `ITEM_CATALOG / ITEMS` 配置模块，用于维护 `item_config` 物品基础资料。运营可以新增金币、资源、产物、NPC 碎片等基础物品，也可以修改展示名称、图标、说明、排序和启停状态。已发布物品不能删除，只能停用。
+
+新增物品的 `itemId` 不由运营填写，后端通过 `config_asset_id_sequence` 在发布事务内串行分配，默认从 `200000` 以上开始，避免和历史迁移写死的物品 ID 冲突。
+
+### 31.2 管理端配置
+
+配置中心标识：
+
+```text
+moduleCode = ITEM_CATALOG
+configKey  = ITEMS
+```
+
+该模块属于高风险经济配置，`adminOnlyWrite=true`：`CONFIG_VIEWER` 和 `CONFIG_EDITOR` 可以读取，只有 `CONFIG_ADMIN` 可以保存草稿、发布、丢弃或创建回滚草稿。
+
+管理端提供表格化编辑器：
+
+- 新增物品：填写 `itemKey`、名称、类型、图标、说明、排序和启停。
+- 修改展示：名称、图标、说明、排序、启停可改。
+- 删除规则：新草稿里尚未发布的物品可以删除；已发布物品只能停用。
+- 引用展示：展开物品行可查看被玩家背包、商城、资源出售、签到、抽卡、系统奖励、邮件附件、好友赠礼、广告奖励、充值商品、NPC 碎片和放置冒险等模块引用的数量。
+
+### 31.3 字段规则
+
+| 字段 | 说明 | 修改规则 |
+| --- | --- | --- |
+| `itemId` | 数据库主键 | 后端分配，运营不填写 |
+| `itemKey` | 稳定业务编码，如 `wood`、`magic_dust`、`npc_fragment_mage` | 被引用后禁止修改 |
+| `name` | 展示名称 | 可修改 |
+| `itemType` | `CURRENCY`、`RESOURCE`、`PRODUCT`、`NPC_FRAGMENT` | 被引用后禁止修改 |
+| `icon` | Unity 图标资源 Key | 可修改 |
+| `description` | 说明 | 可修改 |
+| `sortOrder` | 管理端和字典排序 | 可修改 |
+| `enabled` | 是否可被新配置引用 | 可修改，停用不影响历史数据 |
+| `createdByType` | `MANUAL` 或 `SYSTEM` | 只读；运营新增默认为 `MANUAL` |
+
+### 31.4 Unity 调用说明
+
+Unity 不直接调用 `ITEM_CATALOG` 运营接口。客户端仍通过各业务接口获取可购买、可出售、可奖励的正式目录，例如金币商城、钻石商城、资源出售、签到和背包接口。
+
+Unity 需要稳定使用：
+
+- `itemId`：服务端结算和背包主键。
+- `itemKey`：客户端资源映射和埋点识别。
+- `name / icon / description`：展示文本和图标。
+- `itemType`：区分货币、资源、产物、NPC 碎片。
+
+当管理端修改名称或图标后，Unity 下次拉取对应业务目录或背包列表即可展示新内容；历史订单和历史邮件仍以创建时快照为准。
+
+### 31.5 本次验证
+
+- `mvn -q test`：通过。
+- `npm.cmd run build`：通过。
+- `git diff --check`：通过，仅有 Windows 行尾转换提示。
+## 32. 装备基础资料配置（V43）
+
+### 32.1 功能效果
+
+管理端新增 `EQUIPMENT_CATALOG / EQUIPMENTS` 配置模块，用于维护 `equipment_config` 装备基础资料。运营可以新增自己想要的装备，也可以修改名称、图标、模型、说明、扩展属性、金币曲线、最高等级、排序和启停状态。已发布装备不能删除，只能停用。
+
+新增装备的 `equipmentId` 不由运营填写，后端通过 `config_asset_id_sequence` 在发布事务内串行分配，装备 ID 固定从 `300000` 以上开始；物品为 `200000+`，后续 NPC 为 `400000+`，方便排查和避免跨类型冲突。
+
+新增装备发布时会自动初始化成长数据：
+
+- 自动绑定 `EQUIPMENT_COMMON_V1` 金币曲线；如果不存在，则使用第一个启用的 `EQUIPMENT` 曲线；没有任何可用曲线时阻断发布。
+- 自动生成 1 到 `maxLevel` 的装备等级属性，默认生命 +10、攻击 +1、防御 +1、速度 +0。
+- 自动生成 `maxLevel` 范围内 20/40/60/80/100 的突破配置，同款 1 级装备消耗默认随突破点递增。
+
+### 32.2 管理端配置
+
+配置中心标识：
+
+```text
+moduleCode = EQUIPMENT_CATALOG
+configKey  = EQUIPMENTS
+```
+
+该模块属于高风险经济和战斗配置，`adminOnlyWrite=true`：`CONFIG_VIEWER` 和 `CONFIG_EDITOR` 可以读取，只有 `CONFIG_ADMIN` 可以保存草稿、发布、丢弃或创建回滚草稿。
+
+管理端提供表格化编辑器：
+
+- 新增装备：填写 `equipmentKey`、名称、部位、品质、图标、模型、说明、扩展属性、金币曲线、最高等级、排序和启停。
+- 修改展示：名称、图标、模型、说明、扩展属性、排序、启停可改。
+- 删除规则：新草稿里尚未发布的装备可以删除；已发布装备只能停用。
+- 引用展示：展开装备行可查看被玩家装备实例、NPC 穿戴、装备升级、签到、抽卡、金币商城和钻石商城引用的数量。
+- 锁定规则：装备被引用后，`equipmentKey`、`equipmentType`、`quality` 禁止修改；需要新部位或新品质时应新增一个装备。
+
+### 32.3 字段规则
+
+| 字段 | 说明 | 修改规则 |
+| --- | --- | --- |
+| `equipmentId` | 数据库主键 | 后端分配，运营不填写 |
+| `equipmentKey` | 稳定业务编码，如 `moon_blade` | 被引用后禁止修改 |
+| `name` | 展示名称 | 可修改 |
+| `equipmentType` | 部位编码，如 `WEAPON`、`HELMET`、`ARMOR` | 被引用后禁止修改 |
+| `quality` | 品质编码，如 `COMMON`、`RARE`、`EPIC` | 被引用后禁止修改 |
+| `icon` | Unity 图标资源 Key | 可修改 |
+| `modelKey` | Unity 模型资源 Key | 可修改 |
+| `description` | 装备说明 | 可修改 |
+| `attributesJson` | 扩展属性 JSON 对象 | 可修改，会影响实时读取配置的展示/战斗 |
+| `goldCurveCode` | 装备升级金币曲线编码 | 可修改，曲线必须启用且覆盖 `maxLevel` |
+| `maxLevel` | 装备最高等级，1 到 100 | 可修改，但不能低于玩家已拥有该装备的最高等级 |
+| `sortOrder` | 管理端和字典排序 | 可修改 |
+| `enabled` | 是否可被新配置引用和发放 | 可修改，停用不删除玩家已有装备 |
+| `createdByType` | `MANUAL` 或 `SYSTEM` | 只读；运营新增默认为 `MANUAL` |
+
+### 32.4 与装备成长页的关系
+
+`EQUIPMENT_CATALOG` 负责新增装备和基础资料边界；`EQUIPMENT_GROWTH` 负责已有装备的逐级属性、突破材料和成长细节。成长页现在禁止修改装备品质和启停状态，这两个字段统一由基础资料页管理。
+
+当前 `player_equipment` 没有创建时属性快照，仓库、穿戴和战斗计算会实时关联 `equipment_config` 与成长配置。因此修改 `attributesJson` 或成长属性会影响已有玩家装备；运营发布前应查看引用范围并确认影响。
+
+### 32.5 Unity 调用说明
+
+Unity 不直接调用 `EQUIPMENT_CATALOG` 运营接口。客户端仍通过业务接口获取装备信息，例如金币商城、钻石商城、抽卡、签到、背包仓库和 NPC 穿戴接口。
+
+Unity 需要稳定使用：
+
+- `equipmentId`：服务端装备模板主键。
+- `equipmentKey`：客户端资源映射和埋点识别。
+- `equipmentType`：部位和穿戴槽位判断。
+- `quality`：品质展示和筛选。
+- `name / icon / modelKey / description`：展示文本、图标和模型资源。
+- `maxLevel`：升级 UI 上限。
+
+当管理端修改名称、图标或模型后，Unity 下次拉取对应业务目录或仓库列表即可展示新内容。已创建的商城订单、邮件或奖励流水仍以创建时快照为准。
+
+### 32.6 本次验证
+
+- `mvn -q test`：通过。
+- `npm.cmd run build`：通过。
+- `git diff --check`：通过，仅有 Windows 行尾转换提示。
+
+## 33. NPC 基础资料配置（V44）
+
+### 33.1 功能效果
+
+管理端新增 `NPC_CATALOG / NPCS` 配置模块。运营可以新增 NPC，维护名称、图标、模型、说明、战斗属性、固定建筑增产比例、专属碎片、重复转换数量、金币曲线、最高等级、排序以及运行/获取状态，不再需要手写 NPC 新增 SQL。
+
+新增 NPC 的 `npcId` 由服务端通过 `config_asset_id_sequence` 串行分配，固定从 `400000` 段开始。专属碎片支持两种模式：
+
+- `AUTO`：自动创建 `npc_fragment_{npcCode}`，物品 ID 从 `200000` 段分配，类型固定为 `NPC_FRAGMENT`，`createdByType=SYSTEM`。
+- `EXISTING`：绑定物品基础资料中已经启用的 `NPC_FRAGMENT`，且同一种碎片只能归属一个 NPC。
+
+新增 NPC 会自动生成成长数据：
+
+- 1 到 `maxLevel` 的战斗属性，Lv.1 默认为生命 100、攻击 10、防御 5、速度 100，后续每级分别增加 10/1/1/1。
+- `maxLevel` 范围内 20/40/60/80/100 的突破配置，消耗本 NPC 专属碎片 1/2/3/4/5 个。
+- 金币曲线优先使用填写的 NPC 曲线；留空时优先选择 `NPC_COMMON_V1`，没有可用 NPC 曲线时拒绝发布。
+
+### 33.2 生命周期
+
+`enabled` 和 `obtainable` 语义不同：
+
+| 字段 | 含义 |
+| --- | --- |
+| `enabled` | 已有 NPC 是否允许运行、升级、入驻和出现在图鉴中 |
+| `obtainable` | 抽卡、签到和管理端新奖励配置是否允许继续发放该 NPC |
+
+新 NPC 首次发布必须为 `enabled=true, obtainable=false`。系统完成默认成长初始化后，运营应进入 `NPC_GROWTH` 检查逐级属性和突破消耗，再回到基础资料页开放获取。后端在 `false -> true` 时会再次校验 1 到最高等级的属性、每 20 级突破、专属碎片和金币曲线，任一缺失都拒绝发布。
+
+停获推荐顺序：先从活动卡池和签到配置移除 NPC 并发布，再设置 `obtainable=false`。如果先停获，仍引用该 NPC 的活动配置会被运行时判定为无效，从而拒绝整次抽卡或领取，避免继续错误发放。
+
+玩家已经拥有 NPC 后，`combatAttribute` 和 `produceBonusRate` 会被锁定，避免实时战斗与生产语义突然变化。`maxLevel` 不得低于玩家已拥有的最高等级；稳定 `npcCode` 永久不可修改；专属碎片被玩家背包、商城、奖励、签到、抽卡等外部模块引用后不能更换。已发布 NPC 不能删除，只能按引用保护规则停获或停用。
+
+### 33.3 管理端接口
+
+配置中心标识：
+
+```text
+moduleCode = NPC_CATALOG
+configKey  = NPCS
+```
+
+读取、校验、草稿、发布、历史和回滚继续使用第 17 章通用配置接口。NPC 引用统计使用独立只读接口，不进入草稿指纹：
+
+```http
+GET /api/ops/config/asset-references/npcs
+Authorization: Bearer <operator-token>
+```
+
+响应示例：
+
+```json
+[
+  {
+    "npcId": 3001,
+    "npcCode": "field_steward",
+    "npcReferenceCount": 8,
+    "fragmentReferenceCount": 3,
+    "references": [
+      {
+        "referenceScope": "NPC",
+        "moduleCode": "PLAYER_NPC",
+        "moduleName": "玩家拥有",
+        "referenceCount": 8
+      },
+      {
+        "referenceScope": "FRAGMENT",
+        "moduleCode": "COIN_SHOP",
+        "moduleName": "金币商城商品",
+        "referenceCount": 3
+      }
+    ]
+  }
+]
+```
+
+发布锁顺序固定为：配置中心全局发布锁 -> `item_config` -> `npc_config` -> NPC 成长数据。自动碎片、NPC 主记录、逐级属性、突破配置、正式版本和审计在同一个事务中提交，任何写入失败都会整体回滚。
+
+### 33.4 配置字段
+
+| 字段 | 说明 | 规则 |
+| --- | --- | --- |
+| `npcId` | NPC 模板 ID | 新增时为 `null`，发布后由服务端分配 `400000+` |
+| `npcCode` | 稳定业务编码 | 小写字母开头，只能含小写字母、数字、下划线；发布后不可改 |
+| `name` | NPC 名称 | 可修改 |
+| `icon` | Unity 图标资源 Key | 可修改 |
+| `modelKey` | Unity 模型资源 Key | 可修改 |
+| `description` | NPC 展示说明 | 可修改 |
+| `combatAttribute` | 战斗属性 | `PHYSICAL/FIRE/WATER/WOOD/EARTH/ICE/THUNDER`；玩家拥有后不可改 |
+| `fragmentMode` | 专属碎片模式 | `AUTO` 或 `EXISTING` |
+| `fragmentItemKey` | 专属碎片编码 | 必须是启用的 `NPC_FRAGMENT`；外部引用后不可换 |
+| `duplicateFragmentAmount` | 重复获得时转换数量 | 1 到 1,000,000,000 |
+| `goldCurveCode` | NPC 金币曲线编码 | 必须启用、类型为 `NPC` 且覆盖 `maxLevel` |
+| `maxLevel` | 等级上限 | 1 到 100，不得低于玩家现有最高等级 |
+| `produceBonusRate` | 固定建筑增产比例 | 0 到 100，最多 4 位小数；玩家拥有后不可改 |
+| `sortOrder` | 图鉴和管理端排序 | 0 到 1,000,000 |
+| `enabled` | 已有 NPC 运行状态 | 有玩家或业务直接引用时不能关闭 |
+| `obtainable` | 新发放状态 | 可独立关闭；开启时必须同时 `enabled=true` 且成长完整 |
+| `createdByType` | 创建来源 | 只读，运营新增固定为 `MANUAL` |
+
+### 33.5 Unity 调用说明
+
+Unity 不调用 `/api/ops/**` 管理接口。NPC 基础资料发布后，客户端继续调用玩家业务接口：
+
+- `GET /api/npc/config/list`：返回图鉴配置，新增 `description`、`combatAttribute`、`maxLevel`、`obtainable`。
+- `GET /api/npc/list/{playerId}`：返回玩家拥有 NPC，新增 `description`、`combatAttribute`、`maxLevel`。
+- `GET /api/npc/available/{playerId}`：可入驻列表同步新增上述三个展示/战斗字段。
+- `POST /api/npc/upgrade`：升级结果新增 `combatAttribute`。
+- 建筑生产响应中的 `settledNpc`：新增 `description`、`combatAttribute`。
+
+Unity 应使用 `maxLevel` 控制升级按钮，使用 `combatAttribute` 显示属性图标，使用 `description` 展示详情。`obtainable=false` 只表示不能再从新渠道获得，不能据此隐藏或禁用玩家已经拥有的 NPC。
+
+### 33.6 本次验证
+
+- `mvn -q test`：全量测试通过。
+- `RUN_MYSQL_INTEGRATION_TESTS=true`：MySQL 8.0 临时库从 V1 顺序迁移至 V44 通过，迁移后结构、约束、索引和 ID 分段断言通过。
+- `npm.cmd run build`：Vue TypeScript 检查和 Vite 生产构建通过。
+
+<!-- unified-asset-reward:start -->
+## 34. 统一资产引用、奖励快照与管理端接入（V45-V46）
+本文档说明 V45、V46 后商城、抽卡、签到、系统奖励、邮件和资源出售对物品、装备、NPC 的统一引用方式，并给出 Unity 与运营管理端的实际接入约定。
+
+基础地址：`http://localhost:8080/api`
+
+### 一、能力矩阵
+
+| 模块 | ITEM | EQUIPMENT | NPC | 说明 |
+| --- | ---: | ---: | ---: | --- |
+| 抽卡 | 是 | 是 | 是 | 重复 NPC 自动转换为该 NPC 的专属碎片物品 |
+| 签到 | 是 | 是 | 是 | NPC 可配置“已拥有时转物品”回退奖励 |
+| 系统奖励模板与奖励邮件 | 是 | 是 | 是 | NPC 数量固定为 1，重复时按发布快照转专属碎片 |
+| 玩家邮件附件 | 是 | 是 | 是 | 已投递权益不因基础资料后来停用而失效 |
+| 金币商城 | 是 | 是 | 否 | NPC 碎片按 `ITEM / NPC_FRAGMENT` 配置 |
+| 钻石商城 | 是 | 是 | 否 | NPC 碎片按 `ITEM / NPC_FRAGMENT` 配置 |
+| 资源出售 | 是 | 否 | 否 | 来源限 `RESOURCE / PRODUCT`，目标当前固定为金币 |
+
+没有配置到对应业务模块的资产不能被购买、抽取、签到领取或发送。服务端在发布时重新读取基础资料并校验，不能通过管理端请求伪造名称、图标、分类或 NPC 重复补偿规则。
+
+### 二、统一资产字段
+
+统一资产身份由以下字段共同表达：
+
+| 字段 | 含义 |
+| --- | --- |
+| `rewardType` | `ITEM`、`EQUIPMENT` 或 `NPC` |
+| `assetId` | 数据库稳定主键；必须按 `rewardType` 解释 |
+| `rewardKey` | 稳定业务编码，如 `wood`、`iron_sword`、`sword_master` |
+| `rewardName` | 发布或业务发生时冻结的展示名称 |
+| `rewardIcon` | 发布或业务发生时冻结的 Unity 图标资源键；允许为 `null` |
+| `rewardCategory` | 物品类型、装备部位或固定值 `NPC` |
+| `rewardAmount` | 发放数量；NPC 奖励固定为 1 |
+
+同一个数字 ID 在不同资产表中可能重复，因此 Unity 不能只按 `assetId` 判断类型。缓存键、去重键和埋点键应使用 `rewardType + ":" + assetId`。
+
+不同接口为了表达业务语义会给字段加前缀：
+
+| 业务语义 | 类型字段 | ID 字段 |
+| --- | --- | --- |
+| 抽卡/签到配置奖励 | `configuredRewardType` | `configuredAssetId` |
+| 抽卡/签到实际奖励 | `grantedRewardType` | `grantedAssetId` |
+| 抽卡当前卡位 | `rewardType` | `rewardAssetId` |
+| 签到奖励预览 | `rewardType` | `rewardAssetId` |
+| 邮件承诺附件 | `attachmentType` | `assetId` |
+| 邮件实际领取 | `grantedRewardType` | `grantedAssetId` |
+
+### 三、两层快照语义
+
+系统保存两种不同快照，客户端必须区分：
+
+1. **发布快照**：运营发布时冻结资产 ID、编码、名称、图标和分类。目录、卡池、签到预览和邮件未领取附件展示这一层。
+2. **实际发放快照**：玩家发生购买、抽卡、签到或邮件领取时冻结最终到账内容。历史订单和已领取结果展示这一层。
+
+当 NPC 已拥有而转为碎片时，配置快照仍是 NPC，实际发放快照是 `ITEM`。因此结算动画、背包刷新和到账埋点必须使用 `granted*` 字段，不能继续使用 `configured*` 字段。
+
+基础资料后来改名、换图标或停用时：
+
+- 历史订单、历史抽卡结果、签到流水和邮件附件继续显示原快照，不联表读取当前名称。
+- 管理端编辑旧正式配置时保留只读快照，并标记“已停用或不可用”，不会把选项显示为空白。
+- 新草稿不能重新选择已停用资产；发布时后端再次校验正式基础资料。
+- 已经投递到玩家邮箱的附件属于已承诺权益，领取时允许使用承诺快照完成发放。
+- 普通运行配置发现资产引用损坏或当前不可发放时会失败并告警，不会静默换成另一项资产。
+
+### 四、玩家接口
+
+所有玩家接口都必须携带：
+
+```http
+Authorization: Bearer <player-token>
+```
+
+统一响应外层为：
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {}
+}
+```
+
+#### 4.1 抽卡
+
+查询当前卡池：
+
+```http
+GET /api/card-draw/current
+```
+
+每个 `cards[]` 现在返回：
+
+```json
+{
+  "slotNo": 1,
+  "rewardType": "NPC",
+  "rewardKey": "sword_master",
+  "rewardAssetId": 400001,
+  "rewardName": "剑圣",
+  "icon": "npc/sword_master",
+  "rewardCategory": "NPC",
+  "rewardAmount": 1,
+  "weight": 1000000,
+  "probability": 0.01
+}
+```
+
+执行抽卡：
+
+```http
+POST /api/card-draw/draw
+Idempotency-Key: 78f35dd7-1e7f-4275-963c-4ecbdfebda43
+Content-Type: application/json
+
+{
+  "optionCode": "FIVE"
+}
+```
+
+每个 `results[]` 同时返回配置奖励与实际奖励：
+
+```json
+{
+  "drawResultId": 91001,
+  "drawSequence": 2,
+  "winningSlot": 1,
+  "configuredRewardType": "NPC",
+  "configuredRewardKey": "sword_master",
+  "configuredAssetId": 400001,
+  "configuredRewardName": "剑圣",
+  "configuredRewardIcon": "npc/sword_master",
+  "configuredRewardCategory": "NPC",
+  "configuredRewardAmount": 1,
+  "grantedRewardType": "ITEM",
+  "grantedRewardKey": "npc_fragment_sword_master",
+  "grantedAssetId": 200015,
+  "grantedRewardName": "剑圣碎片",
+  "grantedRewardIcon": "item/npc_fragment_sword_master",
+  "grantedRewardCategory": "NPC_FRAGMENT",
+  "grantedRewardAmount": 5,
+  "duplicateNpcConverted": true
+}
+```
+
+相同 `Idempotency-Key` 和相同档位重试会重放第一次完整批次，不重复扣钻石或发奖。
+
+#### 4.2 签到
+
+```http
+GET /api/sign-in/overview
+POST /api/sign-in/claim
+POST /api/sign-in/makeup
+```
+
+普通领取请求：
+
+```json
+{
+  "planCode": "DEFAULT"
+}
+```
+
+补签请求额外携带 `rewardDay`。概览中的 `days[].rewards[]` 返回 `rewardType`、`rewardKey`、`rewardAssetId`、`rewardName`、`rewardIcon`、`rewardCategory`、`rewardAmount`，并在配置了 NPC 回退时返回同结构的 `fallback*` 字段。
+
+领取结果中的 `rewards[]` 返回配置与实际两组字段：
+
+```json
+{
+  "rewardSeq": 1,
+  "configuredRewardType": "NPC",
+  "configuredRewardKey": "sword_master",
+  "configuredAssetId": 400001,
+  "configuredRewardName": "剑圣",
+  "configuredRewardIcon": "npc/sword_master",
+  "configuredRewardCategory": "NPC",
+  "configuredRewardAmount": 1,
+  "grantedRewardType": "ITEM",
+  "grantedRewardKey": "npc_fragment_sword_master",
+  "grantedAssetId": 200015,
+  "grantedRewardName": "剑圣碎片",
+  "grantedRewardIcon": "item/npc_fragment_sword_master",
+  "grantedRewardCategory": "NPC_FRAGMENT",
+  "grantedRewardAmount": 5,
+  "fallbackApplied": true
+}
+```
+
+`cost` 返回补签实际消耗物品的 `itemId`、`itemKey`、`itemName`、`icon`、`itemCategory` 和 `amount` 快照。
+
+#### 4.3 邮件
+
+```http
+GET /api/mail/list/{playerId}?limit=50
+GET /api/mail/detail/{playerId}/{mailId}
+POST /api/mail/claim
+POST /api/mail/claim_all
+```
+
+未领取附件示例：
+
+```json
+{
+  "attachmentId": 7001,
+  "attachmentType": "NPC",
+  "assetId": 400001,
+  "rewardKey": "sword_master",
+  "rewardName": "剑圣",
+  "rewardCategory": "NPC",
+  "rewardIcon": "npc/sword_master",
+  "itemId": null,
+  "itemKey": null,
+  "name": "剑圣",
+  "itemType": null,
+  "icon": "npc/sword_master",
+  "quantity": 1,
+  "grantedRewardType": null,
+  "grantedAssetId": null,
+  "grantedQuantity": null,
+  "fallbackApplied": false,
+  "claimedTime": null
+}
+```
+
+领取后，同一附件补齐 `grantedRewardType`、`grantedAssetId`、`grantedRewardKey`、`grantedRewardName`、`grantedRewardCategory`、`grantedRewardIcon`、`grantedQuantity`、`fallbackApplied` 和 `claimedTime`。重复领取已成功邮件时返回相同实际发放快照，不再次发放。
+
+`itemId`、`itemKey`、`name`、`itemType`、`icon` 是旧 Unity 兼容字段。新客户端必须优先使用统一字段；非 ITEM 附件的 `itemId/itemKey/itemType` 为 `null`。
+
+#### 4.4 商城与资源出售
+
+- 金币商城完整契约：[`coin-shop-api.md`](coin-shop-api.md)
+- 钻石商城完整契约：[`diamond-shop-api.md`](diamond-shop-api.md)
+- 资源出售完整契约：[`resource-sale-api.md`](resource-sale-api.md)
+
+三类历史接口都返回业务发生时的名称、图标和分类快照，不受后来基础资料修改影响。
+
+### 五、管理端
+
+管理端启动后访问 `http://localhost:5173`：
+
+- `/configs`：物品、装备、NPC 基础资料，以及抽卡、签到、金币商城、钻石商城、资源出售和系统奖励模板。
+- `/system-rewards`：选择已发布奖励模板，创建立即或定时发送的奖励邮件活动。
+- `/system-mails`：发送普通无附件系统邮件；它与奖励邮件分开，避免误发资产。
+
+#### 5.1 基础字典
+
+```http
+GET /api/ops/config/dictionaries
+Authorization: Bearer <operator-token>
+```
+
+响应包含 `items`、`equipment`、`npcs` 三组可选项，每项结构为：
+
+```json
+{
+  "id": 400001,
+  "key": "sword_master",
+  "name": "剑圣",
+  "type": "NPC",
+  "icon": "npc/sword_master"
+}
+```
+
+编辑器统一提交“类型 + 资产 ID + 稳定编码”。名称、图标、分类快照只用于展示和冲突恢复；后端发布时会重新生成正式值。
+
+#### 5.2 配置模块
+
+| 页面模块 | 配置键 | 可选资产 |
+| --- | --- | --- |
+| `CARD_DRAW` | `ACTIVE_POOL` | ITEM / EQUIPMENT / NPC |
+| `SIGN_IN` | `planCode:DEFAULT` 或月份键 | ITEM / EQUIPMENT / NPC |
+| `SYSTEM_REWARD` | `PACKAGES` | ITEM / EQUIPMENT / NPC |
+| `COIN_SHOP` | `PRODUCT_CATALOG` | ITEM / EQUIPMENT |
+| `DIAMOND_SHOP` | `PRODUCT_CATALOG` | ITEM / EQUIPMENT |
+| `RESOURCE_SALE` | `EXCHANGE_OPTIONS` | ITEM |
+
+所有模块继续使用配置中心通用流程：读取正式配置、校验、保存草稿、发布、查看历史、创建回滚草稿。接口清单和权限见 [`operator-config-center.md`](operator-config-center.md)。
+
+#### 5.3 系统奖励发送
+
+查询可用模板：
+
+```http
+GET /api/ops/system-rewards/packages
+Authorization: Bearer <operator-token>
+```
+
+每个 `items[]` 返回 `rewardType`、`assetId`、`rewardKey`、展示快照和 NPC 重复碎片快照。创建活动：
+
+```http
+POST /api/ops/system-rewards/campaigns
+Authorization: Bearer <operator-token>
+Content-Type: application/json
+```
+
+```json
+{
+  "requestNo": "summer-2026-day1",
+  "packageCode": "SUMMER_REWARD",
+  "title": "夏日活动奖励",
+  "content": "请在有效期内领取。",
+  "senderName": "系统",
+  "targetType": "PLAYER_IDS",
+  "playerIds": [1, 2],
+  "scheduledTime": "2026-07-30 18:00:00",
+  "mailExpireTime": "2026-08-06 23:59:59",
+  "reason": "夏日活动第一日奖励"
+}
+```
+
+活动创建时再次冻结模板版本和全部资产快照；之后修改模板不会改变已经创建的活动或已投递邮件。
+
+### 六、Unity DTO 建议
+
+```csharp
+using Newtonsoft.Json;
+
+[System.Serializable]
+public sealed class AssetSnapshotDto
+{
+    [JsonProperty("rewardType")] public string RewardType;
+    [JsonProperty("assetId")] public long AssetId;
+    [JsonProperty("rewardKey")] public string RewardKey;
+    [JsonProperty("rewardName")] public string RewardName;
+    [JsonProperty("rewardIcon")] public string RewardIcon;
+    [JsonProperty("rewardCategory")] public string RewardCategory;
+    [JsonProperty("rewardAmount")] public long RewardAmount;
+}
+```
+
+具体接口中字段带有 `configured`、`granted`、`attachment` 等前缀，建议分别建立 DTO，不建议对原始 JSON 做字符串替换。客户端处理顺序：
+
+1. 先按 `rewardType` 选择背包、装备仓库或 NPC 图鉴界面。
+2. 结算结果优先读取 `granted*`；预览和未领取邮件读取配置/承诺字段。
+3. 图标为空时使用对应类型的 Unity 默认图标。
+4. 未识别的新 `rewardType` 不崩溃，展示通用奖励占位并上报日志。
+5. 订单、抽卡批次和邮件领取恢复以 HTTP 结果及历史数据为准，不以动画或 WebSocket 是否播放为准。
+
+### 七、迁移与兼容
+
+- V45 为抽卡、签到、金币商城、钻石商城和资源出售补齐稳定资产 ID 与展示快照。
+- V46 让系统奖励模板、投递活动和玩家邮件附件支持 ITEM / EQUIPMENT / NPC。
+- V47 为 V46 发布前已经领取的旧 ITEM 邮件补齐实际发放快照，不覆盖新类型奖励。
+- V1 至 V48 一旦由 Flyway 成功执行都不得修改；下一次结构变化从 V49 新建迁移。
+- 旧 ITEM 邮件字段继续返回，给旧 Unity 留出升级窗口；新功能不应继续依赖兼容字段。
+
+### 八、验收结果
+
+验证日期：2026-07-31（Asia/Shanghai）。
+
+| 验证项 | 结果 |
+| --- | --- |
+| 后端全量测试 | 556 项，0 failure，0 error；默认环境下 63 项外部依赖用例按条件跳过，MySQL 专项另行启用并通过 |
+| MySQL 8 Flyway | 1 项通过，空库按顺序验证并执行 V1 至 V48 共 48 个迁移 |
+| MySQL 8 配置中心 | 7 项全部通过，覆盖发布事务、审计回滚和基础资料联动 |
+| 管理端生产构建 | `vue-tsc --noEmit && vite build` 通过，共转换 3518 个模块 |
+| 文档示例 | 项目文档与桌面统一资产章节的全部 JSON 示例均通过解析校验 |
+<!-- unified-asset-reward:end -->
+
+## 35. 运行策略与运营内容管理（V48）
+
+### 35.1 最终效果
+
+V48 完成七项运营能力：
+
+| 能力 | 最终效果 |
+| --- | --- |
+| 激励广告奖励 | 管理端配置场景、广告位、奖励物品、数量、次数、冷却和观看时间 |
+| 客户端版本与维护 | Unity/微信小游戏启动查询版本策略，登录入口再次强制校验 |
+| 通知提醒策略 | 管理站内通知、微信订阅消息、资源提醒和建筑完成提醒业务参数 |
+| 经济安全阈值 | 限制系统奖励单次数量、活动人数和每日金币/钻石投放 |
+| 头像业务策略 | 管理头像启停、微信同步、每日次数和默认头像 |
+| 公告/邮件模板 | 公告、普通邮件和奖励邮件可选择模板填充表单 |
+| 统一活动日历 | 汇总正式配置，展示生效状态、即将到期和时间冲突 |
+
+六个可写模块统一走配置中心的“读取正式值 -> 校验 -> 保存草稿 -> 发布 -> 历史/回滚 -> 审计”流程。只有 `CONFIG_ADMIN` 可以写入，其他配置角色只读。
+
+### 35.2 客户端启动策略
+
+```http
+GET /api/client/runtime-policy?platform=UNITY&channel=DEFAULT&versionCode=10001
+```
+
+是否需要 token：否。
+
+参数：
+
+| 字段 | 必填 | 说明 |
+| --- | --- | --- |
+| `platform` | 是 | `UNITY` 或 `WECHAT_MINIGAME` |
+| `channel` | 否 | 默认 `DEFAULT`，使用大写稳定编码 |
+| `versionCode` | 正式客户端必须传 | 随客户端版本单调递增的正整数 |
+
+响应示例：
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "configured": true,
+    "platform": "UNITY",
+    "channelCode": "DEFAULT",
+    "currentVersionCode": 10001,
+    "minimumVersionCode": 10000,
+    "minimumVersionName": "1.0.0",
+    "latestVersionCode": 10100,
+    "latestVersionName": "1.1.0",
+    "updateAvailable": true,
+    "forceUpdate": false,
+    "updateUrl": "https://download.example.com/game",
+    "maintenanceActive": false,
+    "loginBlocked": false,
+    "maintenanceStartTime": null,
+    "maintenanceEndTime": null,
+    "message": null,
+    "serverTime": "2026-07-31T12:00:00.000000"
+  }
+}
+```
+
+判断顺序：
+
+1. `currentVersionCode < minimumVersionCode` 时始终强制更新。
+2. 低于最新版本且管理端开启“新版本强更”时强制更新。
+3. 维护窗口生效且“维护期间禁止登录”开启时阻断登录。
+4. 只发现可选更新或只展示维护提示时允许继续登录。
+5. 指定渠道不存在时回退同平台 `DEFAULT`；平台也没有策略时 `configured=false`。
+
+强制更新阻断登录返回 HTTP 426，维护阻断返回 HTTP 503。`serverTime` 和维护窗口均为数据库北京时间。
+
+账号登录、注册和微信登录必须继续携带：
+
+```http
+X-Client-Channel: DEFAULT
+X-Client-Version-Code: 10001
+```
+
+启动查询用于页面展示，登录请求头用于服务端兜底，二者不能互相替代。旧客户端暂时允许省略版本请求头，但会失去版本阻断能力。
+
+### 35.3 Unity DTO 与调用顺序
+
+```csharp
+using Newtonsoft.Json;
+
+public sealed class ClientRuntimePolicyDto
+{
+    [JsonProperty("configured")] public bool Configured;
+    [JsonProperty("platform")] public string Platform;
+    [JsonProperty("channelCode")] public string ChannelCode;
+    [JsonProperty("currentVersionCode")] public long? CurrentVersionCode;
+    [JsonProperty("minimumVersionCode")] public long? MinimumVersionCode;
+    [JsonProperty("minimumVersionName")] public string MinimumVersionName;
+    [JsonProperty("latestVersionCode")] public long? LatestVersionCode;
+    [JsonProperty("latestVersionName")] public string LatestVersionName;
+    [JsonProperty("updateAvailable")] public bool UpdateAvailable;
+    [JsonProperty("forceUpdate")] public bool ForceUpdate;
+    [JsonProperty("updateUrl")] public string UpdateUrl;
+    [JsonProperty("maintenanceActive")] public bool MaintenanceActive;
+    [JsonProperty("loginBlocked")] public bool LoginBlocked;
+    [JsonProperty("maintenanceStartTime")] public string MaintenanceStartTime;
+    [JsonProperty("maintenanceEndTime")] public string MaintenanceEndTime;
+    [JsonProperty("message")] public string Message;
+    [JsonProperty("serverTime")] public string ServerTime;
+}
+```
+
+Unity 推荐流程：
+
+1. 启动后请求 `/client/runtime-policy`。
+2. `forceUpdate=true` 时展示不可关闭更新页，并使用 `updateUrl`。
+3. `maintenanceActive=true && loginBlocked=true` 时展示维护页。
+4. 其余情况进入登录，登录请求补齐两个 `X-Client-*` 请求头。
+5. HTTP 426/503 时解析统一响应体中的 `message`，不要只展示通用网络错误。
+
+### 35.4 管理端配置模块
+
+管理端入口：`http://localhost:5173/configs`
+
+| 模块编码 | 配置键 | 主要字段 |
+| --- | --- | --- |
+| `AD_REWARD` | `SCENES` | `scene/adUnitId/rewardItemKey/rewardAmount/dailyLimit/cooldownSeconds/expireSeconds/minWatchSeconds/enabled` |
+| `CLIENT_RUNTIME` | `POLICIES` | `platform/channelCode/minimumVersionCode/latestVersionCode/forceUpdate/updateUrl/maintenance*` |
+| `NOTIFICATION_POLICY` | `BUSINESS` | 通知开关、离线分钟数、冷却、模板 ID、跳转页面 |
+| `ECONOMY_SAFETY` | `LIMITS` | 单次奖励、活动人数、每日金币/钻石阈值和阻断方式 |
+| `AVATAR_POLICY` | `BUSINESS` | `enabled/wechatSyncEnabled/dailyUpdateLimit/defaultAvatarUrl` |
+| `MESSAGE_TEMPLATE` | `TEMPLATES` | 模板编码、类型、标题、正文、发件人和默认有效期 |
+
+通用读取示例：
+
+```http
+GET /api/ops/config/CLIENT_RUNTIME/POLICIES
+Authorization: Bearer <operator-token>
+```
+
+所有模块继续使用配置中心通用接口：
+
+```text
+POST   /api/ops/config/{moduleCode}/{configKey}/validate
+PUT    /api/ops/config/{moduleCode}/{configKey}/draft
+POST   /api/ops/config/{moduleCode}/{configKey}/publish
+DELETE /api/ops/config/{moduleCode}/{configKey}/draft
+GET    /api/ops/config/{moduleCode}/{configKey}/history
+POST   /api/ops/config/{moduleCode}/{configKey}/rollback/{versionNo}
+```
+
+V48 迁移写入的默认业务配置会立即生效，但不会伪造运营发布人与审计历史。因此新模块首次进入页面时可能显示“正式版本：未纳入版本管理”；这不是 Git 状态或配置失效。管理员完成一次“保存草稿 -> 发布草稿”后会生成 `operator_config_release` 正式记录并显示 `v1`。
+
+已发布的场景编码、策略编码、平台、渠道、模板编码和模板类型不可修改；已发布记录不能删除，只能停用。
+
+### 35.5 各模块关键边界
+
+激励广告：
+
+- 奖励只能从当前启用的物品字典选择。
+- `scene` 发布后不可修改。
+- 广告验签密钥不进入页面；`AD_COMPLETION_PROOF_SECRET` 只能由服务端或可信回调服务持有。
+- 玩家仍使用既有 `prepare -> complete -> claim` 三步接口。
+
+通知提醒：
+
+- 只把业务开关、分钟数、模板 ID、跳转页等参数放入管理端。
+- 扫描批次、调度频率、后台密钥、微信 AppSecret 和 HTTP 超时仍放服务端配置。
+- 发布后各节点最多 30 秒刷新完整不可变快照；刷新失败继续使用上一版。
+
+头像策略：
+
+- 默认头像只能是 HTTPS 地址或以 `/` 开头的站内地址。
+- 图片字节、像素和解码限制、JPEG 重编码参数、对象存储密钥仍在服务端。
+- 恢复默认头像始终允许；上传和微信同步受业务开关控制。
+- 发布后各节点最多 30 秒刷新完整不可变快照。
+
+内容模板：
+
+- 类型为 `ANNOUNCEMENT/SYSTEM_MAIL/REWARD_MAIL`。
+- 模板只填充创建表单；实际提交仍保存最终内容快照。
+- 修改模板不会追溯修改已创建公告或邮件。
+
+### 35.6 经济安全接口与错误码
+
+查询北京时间指定自然日已承诺投放：
+
+```http
+GET /api/ops/economy-safety/daily-usage?date=2026-07-31
+Authorization: Bearer <operator-token>
+```
+
+响应中的 `projectedGoldAmount` 和 `projectedDiamondAmount` 是字符串，避免 JavaScript 大整数失真。预算按奖励活动的计划发送日期统计；撤销活动不计入，未撤销失败活动仍计入已承诺预算。
+
+| code | HTTP | 客户端/管理端处理 |
+| --- | ---: | --- |
+| `6402` | 200 | 超过硬性数量、人数或每日投放上限，不能绕过 |
+| `6403` | 409 | 弹出风险确认；确认后以 `economyRiskConfirmed=true` 重提一次 |
+
+并发创建奖励活动会锁定经济策略单例行，避免两个请求分别通过后共同超出每日预算。
+
+### 35.7 公告与邮件模板接口
+
+```http
+GET /api/ops/message-templates?type=ANNOUNCEMENT
+GET /api/ops/message-templates?type=SYSTEM_MAIL
+GET /api/ops/message-templates?type=REWARD_MAIL
+Authorization: Bearer <operator-token>
+```
+
+接口只返回已启用正式模板。管理端公告、普通邮件和奖励邮件创建页可选择模板；用户仍可在提交前修改标题、正文、发件人和有效期。
+
+### 35.8 统一活动日历
+
+管理端页面：`http://localhost:5173/activity-calendar`
+
+```http
+GET /api/ops/activity-calendar?from=2026-07-01T00:00:00&to=2026-10-31T23:59:59&expiringWithinHours=72
+Authorization: Bearer <operator-token>
+```
+
+可按 `sourceType` 和统一 `status` 筛选。状态值：
+
+```text
+UPCOMING / ACTIVE / EXPIRING / EXPIRED / PERMANENT / DISABLED
+```
+
+当前聚合抽卡、公告、系统奖励、普通邮件、维护、金币商城、钻石商城、签到、任务和激励广告。`issues` 返回到期或配置异常提示，`conflictWithCodes` 返回冲突的稳定编码；冲突检测覆盖同平台维护窗口和卡池窗口。
+
+活动日历只读正式表，不是玩家活动接口，也不改写各业务状态。
+
+### 35.9 数据库与安全边界
+
+V48 新增：
+
+- `client_runtime_policy`
+- `notification_business_policy`
+- `economy_safety_policy`
+- `avatar_business_policy`
+- `operator_message_template`
+- `ad_reward_config.config_version`
+
+以下内容永远不能进入管理端配置：
+
+- 微信 AppSecret、支付商户密钥和证书。
+- 广告验签密钥。
+- 数据库、Redis、对象存储账号和密钥。
+- 内部公告/邮件后台密钥。
+- 调度线程、扫描批次、租约和清理任务基础设施参数。
+
+V1 至 V48 已发布迁移禁止修改；下一次数据库变化必须新增 V49。
+
+### 35.10 本次验收
+
+验证日期：2026-07-31（Asia/Shanghai）。
+
+| 验证项 | 结果 |
+| --- | --- |
+| 后端编译 | 通过 |
+| 后端全量测试 | 556 项，0 failure，0 error |
+| 启动回归保护 | Mapper 扫描覆盖测试与 V48 已发布校验和防篡改测试通过 |
+| 管理端生产构建 | `vue-tsc --noEmit && vite build` 通过 |
+| MySQL 8 Flyway | 临时库从 V1 顺序迁移到 V48，重复迁移为 0 |
+| 活动日历 SQL | 在真实 V48 MySQL 临时库执行并校验 10 个返回字段别名 |
+| 真实应用启动 | 连接 `game_db` 完整启动，`GET /api/health` 返回 `UP`，验证进程已关闭 |
+
+仓库详细说明：`docs/runtime-operations-api.md`、`docs/operator-config-center.md`、`docs/database-script-guide.md`。

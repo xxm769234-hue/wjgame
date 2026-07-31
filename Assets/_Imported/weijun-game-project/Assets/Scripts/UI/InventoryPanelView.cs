@@ -71,8 +71,8 @@ public sealed class InventoryPanelView : MonoBehaviour
     [SerializeField] private string inventoryTitle = "背包";
     [SerializeField] private string inventorySubtitle = "领地物资与道具管理";
     [SerializeField] private string inventoryGridTitle = "物品栏";
-    [SerializeField] private string localInventoryHint = "本地库存\n可使用与出售";
-    [SerializeField] private string serverInventoryHint = "服务器库存\n仅支持查看";
+    [SerializeField] private string localInventoryHint = "游客背包\n出售功能需登录";
+    [SerializeField] private string serverInventoryHint = "服务器库存\n按正式报价出售";
     [SerializeField] private string emptyCategoryText = "当前分类暂无物品";
     [SerializeField] private string capacityFormat = "背包空间：{0:00}/{1}";
     [SerializeField] private string visibleCountFormat = "当前分类 {0} 件  已开放 {1} 格";
@@ -104,6 +104,11 @@ public sealed class InventoryPanelView : MonoBehaviour
         SetText(gridTitleText, inventoryGridTitle);
         SetText(sidebarHintText, serverBacked ? serverInventoryHint : localInventoryHint);
         SetText(emptyText, emptyCategoryText);
+    }
+
+    public void SetSidebarHint(string value)
+    {
+        SetText(sidebarHintText, value);
     }
 
     public void SetResourceValue(string key, int value)

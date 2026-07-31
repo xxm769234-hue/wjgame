@@ -43,6 +43,7 @@ public partial class HomePageUI
             StopCoroutine(realtimeHeartbeatCoroutine);
         }
         realtimeHeartbeatCoroutine = StartCoroutine(SendRealtimeHeartbeats());
+        RefreshV38FriendPresenceAfterRealtimeConnected();
 
         if (!realtimeBackfillRunning)
         {
@@ -55,6 +56,42 @@ public partial class HomePageUI
         RealtimeEvent realtimeEvent = ParseJson<RealtimeEvent>(json);
         if (realtimeEvent == null || string.IsNullOrEmpty(realtimeEvent.type))
         {
+            return;
+        }
+
+        if (realtimeEvent.type == "FRIEND_PRESENCE_CHANGED")
+        {
+            if (realtimeEvent.playerId != 0 && realtimeEvent.playerId != GameSession.PlayerId)
+            {
+                return;
+            }
+
+            FriendPresenceRealtimeEvent presenceEvent = ParseJson<FriendPresenceRealtimeEvent>(json);
+            ApplyV38FriendPresence(presenceEvent == null ? null : presenceEvent.data);
+            return;
+        }
+
+        if (realtimeEvent.type == "COIN_SHOP_PURCHASED")
+        {
+            if (realtimeEvent.playerId != 0 && realtimeEvent.playerId != GameSession.PlayerId)
+            {
+                return;
+            }
+
+            CoinShopPurchaseRealtimeEvent purchaseEvent = ParseJson<CoinShopPurchaseRealtimeEvent>(json);
+            HandleCoinShopPurchaseRealtime(purchaseEvent == null ? null : purchaseEvent.data, realtimeEvent.eventId);
+            return;
+        }
+
+        if (realtimeEvent.type == "DIAMOND_SHOP_PURCHASED")
+        {
+            if (realtimeEvent.playerId != 0 && realtimeEvent.playerId != GameSession.PlayerId)
+            {
+                return;
+            }
+
+            CoinShopPurchaseRealtimeEvent purchaseEvent = ParseJson<CoinShopPurchaseRealtimeEvent>(json);
+            HandleDiamondShopPurchaseRealtime(purchaseEvent == null ? null : purchaseEvent.data, realtimeEvent.eventId);
             return;
         }
 
@@ -253,6 +290,7 @@ public partial class HomePageUI
     {
         StopRealtimeConnection();
         WeChatPlatformBridge.DestroyFriendGiftPage();
+        DisposeAvatarCache();
     }
 
 #pragma warning disable 0649
@@ -278,6 +316,36 @@ public partial class HomePageUI
         public string payload;
         public bool readFlag;
         public string createTime;
+    }
+
+    [Serializable]
+    private class FriendPresenceRealtimeEvent
+    {
+        public string type;
+        public string eventId;
+        public int playerId;
+        public FriendPresenceChange data;
+        public string serverTime;
+    }
+
+    [Serializable]
+    private class FriendPresenceChange
+    {
+        public int playerId;
+        public string onlineStatus;
+        public long presenceVersion;
+        public string lastActiveTime;
+        public string lastOfflineTime;
+    }
+
+    [Serializable]
+    private class CoinShopPurchaseRealtimeEvent
+    {
+        public string type;
+        public string eventId;
+        public int playerId;
+        public CoinShopPurchaseResult data;
+        public string serverTime;
     }
 
     [Serializable]

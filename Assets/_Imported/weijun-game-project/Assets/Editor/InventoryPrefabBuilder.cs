@@ -11,6 +11,7 @@ public static class InventoryPrefabBuilder
     private const int PrefabSchemaVersion = 2;
     private const int InventoryCapacity = 40;
     private const int InventoryColumns = 8;
+    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy)_爱给网_aigei_com.ttf";
 
     private static Font defaultFont;
 
@@ -32,8 +33,8 @@ public static class InventoryPrefabBuilder
     public static void BuildPrefab()
     {
         Directory.CreateDirectory(PrefabDirectory);
-        defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-
+        defaultFont = AssetDatabase.LoadAssetAtPath<Font>(FontPath)
+            ?? Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         GameObject root = new GameObject("InventoryPanelView", typeof(RectTransform));
         try
         {
@@ -121,7 +122,7 @@ public static class InventoryPrefabBuilder
             Text sidebarHintText = CreateText(
                 "InventorySidebarHint",
                 sidebar.transform,
-                "本地库存\n可使用与出售",
+                "游客背包\n出售功能需登录",
                 16,
                 FontStyle.Bold,
                 new Color(1f, 0.87f, 0.60f, 0.94f),
@@ -658,7 +659,7 @@ public static class InventoryPrefabBuilder
         label.font = defaultFont;
         label.text = value;
         label.fontSize = fontSize;
-        label.fontStyle = style;
+        label.fontStyle = FontStyle.Normal;
         label.color = color;
         label.alignment = alignment;
         label.resizeTextForBestFit = true;

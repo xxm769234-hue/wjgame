@@ -16,6 +16,8 @@ public partial class HomePageUI
     private bool paymentRequestRunning;
     private bool paymentPolling;
     private string pendingPaymentOrderNo = string.Empty;
+    private string pendingPaymentClientOrderId = string.Empty;
+    private string pendingPaymentProductCode = string.Empty;
 
     private void BuildHomeMapSelector(Transform parent)
     {
@@ -223,6 +225,12 @@ public partial class HomePageUI
 
     private void BeginPaymentOrder(PaymentProductResponse product, string productName)
     {
+        if (!HasAuthSession() || GameSession.PlayerId <= 0)
+        {
+            SetStatus("请先登录账号或微信账号后再充值。");
+            return;
+        }
+
         if (paymentRequestRunning || product == null || string.IsNullOrWhiteSpace(product.productCode))
         {
             SetStatus("支付商品信息无效，请刷新商品列表后重试。");
@@ -235,7 +243,7 @@ public partial class HomePageUI
     private IEnumerator CreatePaymentOrder(PaymentProductResponse product, string productName)
     {
         paymentRequestRunning = true;
-        string clientOrderId = "unity-" + DateTime.UtcNow.ToString("yyyyMMddHHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8);
+        string clientOrderId = GetOrCreatePaymentClientOrderId(product.productCode);
         PaymentOrderCreateRequest payload = new PaymentOrderCreateRequest
         {
             playerId = GameSession.PlayerId,
@@ -266,25 +274,49 @@ public partial class HomePageUI
 
             if (request.result != UnityWebRequest.Result.Success)
             {
-                SetStatus("创建订单失败：" + ApiRequestUtility.GetErrorMessage(request, "请求失败"));
+                bool outcomeUncertain = request.result == UnityWebRequest.Result.ConnectionError
+                    || request.result == UnityWebRequest.Result.DataProcessingError
+                    || request.responseCode >= 500;
+                if (!outcomeUncertain)
+                {
+                    ClearPendingPaymentCreateAttempt();
+                }
+
+                SetStatus(outcomeUncertain
+                    ? "创建订单结果未知，重新点击同一商品会复用本次订单号：" + ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                    : "创建订单失败：" + ApiRequestUtility.GetErrorMessage(request, "请求失败"));
                 yield break;
             }
 
             PaymentOrderCreateApiResponse response = ParseJson<PaymentOrderCreateApiResponse>(request.downloadHandler.text);
-            if (response == null || response.code != 200 || response.data == null || response.data.order == null)
+            if (response == null)
             {
-                SetStatus("创建订单失败：" + (response == null ? "返回数据格式错误" : GetApiError(response)));
+                SetStatus("创建订单结果未知，重新点击同一商品会复用本次订单号：订单响应格式错误。");
+                yield break;
+            }
+
+            if (response.code != 200 || response.data == null || response.data.order == null)
+            {
+                ClearPendingPaymentCreateAttempt();
+                SetStatus("创建订单失败：" + GetApiError(response));
                 yield break;
             }
 
             pendingPaymentOrderNo = response.data.order.orderNo ?? string.Empty;
+            ClearPendingPaymentCreateAttempt();
+            if (string.IsNullOrEmpty(pendingPaymentOrderNo))
+            {
+                SetStatus("订单创建失败：后端未返回订单号。");
+                yield break;
+            }
+
             if (!response.data.payReady)
             {
                 SetStatus($"订单 {pendingPaymentOrderNo} 已创建；当前为后端本地订单测试模式，不会发放资源。");
                 yield break;
             }
 
-            if (response.data.payParams == null)
+            if (!HasCompletePaymentParameters(response.data.payParams))
             {
                 SetStatus("订单已创建，但后端未返回微信支付参数。");
                 yield break;
@@ -309,6 +341,7 @@ public partial class HomePageUI
     {
         paymentRequestRunning = false;
         paymentPolling = false;
+        ClearPendingPaymentCreateAttempt();
         SetStatus("微信支付未完成：" + (string.IsNullOrEmpty(message) ? "用户取消或支付失败" : message));
     }
 
@@ -340,7 +373,7 @@ public partial class HomePageUI
                     if (response != null && response.code == 200 && response.data != null)
                     {
                         string status = response.data.status ?? string.Empty;
-                        SetStatus($"订单 {orderNo}：{status}");
+                        SetStatus(BuildPaymentOrderStatusMessage(orderNo, status));
                         if (status == "DELIVERED")
                         {
                             paymentPolling = false;
@@ -348,7 +381,7 @@ public partial class HomePageUI
                             yield break;
                         }
 
-                        if (status == "CLOSED" || status == "FAILED" || status == "REFUNDED")
+                        if (IsPaymentOrderTerminalStatus(status))
                         {
                             paymentPolling = false;
                             yield break;
@@ -362,6 +395,75 @@ public partial class HomePageUI
 
         paymentPolling = false;
         SetStatus("支付结果仍在处理中，请稍后重新打开充值面板刷新状态。");
+    }
+
+    private string GetOrCreatePaymentClientOrderId(string productCode)
+    {
+        if (!string.IsNullOrEmpty(pendingPaymentClientOrderId)
+            && string.Equals(pendingPaymentProductCode, productCode, StringComparison.Ordinal))
+        {
+            return pendingPaymentClientOrderId;
+        }
+
+        pendingPaymentProductCode = productCode ?? string.Empty;
+        pendingPaymentClientOrderId = "unity-"
+            + GameSession.PlayerId
+            + "-"
+            + DateTime.UtcNow.ToString("yyyyMMddHHmmss")
+            + "-"
+            + Guid.NewGuid().ToString("N").Substring(0, 8);
+        return pendingPaymentClientOrderId;
+    }
+
+    private void ClearPendingPaymentCreateAttempt()
+    {
+        pendingPaymentClientOrderId = string.Empty;
+        pendingPaymentProductCode = string.Empty;
+    }
+
+    private static bool HasCompletePaymentParameters(PaymentParameters parameters)
+    {
+        return parameters != null
+            && !string.IsNullOrWhiteSpace(parameters.timeStamp)
+            && !string.IsNullOrWhiteSpace(parameters.nonceStr)
+            && !string.IsNullOrWhiteSpace(parameters.package)
+            && !string.IsNullOrWhiteSpace(parameters.signType)
+            && !string.IsNullOrWhiteSpace(parameters.paySign);
+    }
+
+    private static bool IsPaymentOrderTerminalStatus(string status)
+    {
+        return status == "CLOSED"
+            || status == "FAILED"
+            || status == "CANCELLED"
+            || status == "REFUNDED"
+            || status == "MANUAL_REVIEW";
+    }
+
+    private static string BuildPaymentOrderStatusMessage(string orderNo, string status)
+    {
+        switch (status)
+        {
+            case "DELIVERED":
+                return $"订单 {orderNo} 已到账，正在刷新钻石余额。";
+            case "PAID":
+                return $"订单 {orderNo} 已支付，等待服务器发放钻石。";
+            case "PAYING":
+            case "CREATED":
+                return $"订单 {orderNo} 正在等待支付结果。";
+            case "MANUAL_REVIEW":
+                return $"订单 {orderNo} 需要运营人工核对，暂不会自动到账。";
+            case "CLOSED":
+                return $"订单 {orderNo} 已关闭，请重新下单。";
+            case "REFUNDED":
+                return $"订单 {orderNo} 已完成退款。";
+            case "CANCELLED":
+                return $"订单 {orderNo} 已取消。";
+            case "FAILED":
+                return $"订单 {orderNo} 支付未完成。";
+            default:
+                return $"订单 {orderNo}：{status}";
+        }
     }
 
     private IEnumerator RefreshAccountSnapshot(string successMessage)

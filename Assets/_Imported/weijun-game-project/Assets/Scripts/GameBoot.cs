@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Globalization;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Networking;
@@ -41,13 +42,19 @@ public class GameBoot : MonoBehaviour
     private Button guestButton;
     private GameObject settingsPanel;
     private bool requestRunning;
+    private bool runtimePolicyBlocked;
+    private GameObject runtimePolicyOverlay;
 
+    [SerializeField] private LoginCanvasView loginCanvasView;
     private Font defaultFont;
+
+    private LoginCanvasStyle LoginStyle => loginCanvasView != null ? loginCanvasView.Style : null;
 
     private void Start()
     {
         defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         BuildLoginUI();
+        StartCoroutine(LoadClientRuntimePolicy());
     }
 
     private void Update()
@@ -62,20 +69,68 @@ public class GameBoot : MonoBehaviour
     {
         EnsureEventSystem();
 
-        GameObject canvasObj = new GameObject("LoginCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
-        canvasObj.transform.SetParent(transform, false);
+        if (loginCanvasView == null)
+        {
+            loginCanvasView = GetComponentInChildren<LoginCanvasView>(true);
+        }
 
-        Canvas canvas = canvasObj.GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 100;
+        if (loginCanvasView == null)
+        {
+            GameObject canvasObject = new GameObject("LoginCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster), typeof(LoginCanvasStyle), typeof(LoginCanvasView));
+            canvasObject.transform.SetParent(transform, false);
+            loginCanvasView = canvasObject.GetComponent<LoginCanvasView>();
+        }
 
-        CanvasScaler scaler = canvasObj.GetComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.matchWidthOrHeight = 0f;
+        RectTransform root = loginCanvasView.PrepareContentRoot();
+        if (TryBindSceneLoginLayout())
+        {
+            return;
+        }
 
-        RectTransform root = canvasObj.GetComponent<RectTransform>();
+        loginCanvasView.ClearContentForRuntimeFallback();
         BuildFixedLoginLayout(root);
+    }
+
+    private bool TryBindSceneLoginLayout()
+    {
+        LoginContentView contentView = loginCanvasView != null ? loginCanvasView.ContentView : null;
+        if (contentView == null || !contentView.HasCompleteLoginLayout)
+        {
+            return false;
+        }
+
+        accountInput = contentView.AccountInput;
+        nicknameInput = contentView.NicknameInput;
+        passwordInput = contentView.PasswordInput;
+        rememberToggle = contentView.RememberToggle;
+        statusText = contentView.StatusText;
+        loginButton = contentView.LoginButton;
+        registerButton = contentView.RegisterButton;
+        weChatButton = contentView.WeChatLoginButton;
+        guestButton = contentView.GuestButton;
+        settingsPanel = contentView.SettingsPanel;
+
+        loginButton.onClick.AddListener(TryLogin);
+        registerButton.onClick.AddListener(TryRegister);
+        weChatButton.onClick.AddListener(TryWeChatLogin);
+        guestButton.onClick.AddListener(LoginAsGuest);
+        contentView.SettingsButton.onClick.AddListener(ShowSettingsPanel);
+        contentView.MailButton.onClick.AddListener(() => ShowError("登录后可在首页查看系统邮件"));
+        contentView.SettingsCloseButton.onClick.AddListener(HideSettingsPanel);
+
+        settingsPanel.SetActive(false);
+        InitializeLoginFields();
+        SetStatus(string.Empty, ErrorColor);
+        return true;
+    }
+
+    private void InitializeLoginFields()
+    {
+        bool rememberAccount = PlayerPrefs.GetInt(RememberAccountKey, 1) == 1;
+        rememberToggle.isOn = rememberAccount;
+        accountInput.text = rememberAccount ? PlayerPrefs.GetString(AccountKey, string.Empty) : string.Empty;
+        nicknameInput.text = PlayerPrefs.GetString(PlayerNicknameKey, string.Empty);
+        passwordInput.text = string.Empty;
     }
 
     private void BuildModernLoginLayout(RectTransform root)
@@ -198,11 +253,16 @@ public class GameBoot : MonoBehaviour
 
     private void BuildFixedLoginLayout(RectTransform root)
     {
-        Color paperColor = new Color(0.98f, 0.95f, 0.86f, 1f);
-        Color inkColor = new Color(0.28f, 0.16f, 0.09f, 1f);
-        Color shadowColor = new Color(0.18f, 0.10f, 0.05f, 0.28f);
+        LoginCanvasStyle style = LoginStyle;
+        Color paperColor = style != null ? style.PaperColor : new Color(0.98f, 0.95f, 0.86f, 1f);
+        Color inkColor = style != null ? style.PaperTextColor : new Color(0.28f, 0.16f, 0.09f, 1f);
+        Color shadowColor = style != null ? style.ShadowColor : new Color(0.18f, 0.10f, 0.05f, 0.28f);
 
         Image background = CreateImage("FixedLoginBackground", root, new Color(0.48f, 0.30f, 0.16f, 1f));
+        if (style != null)
+        {
+            style.ApplyBackground(background);
+        }
         Stretch(background.rectTransform);
 
         Image centerShadow = CreateImage("CenterPanelShadow", root, shadowColor);
@@ -210,6 +270,10 @@ public class GameBoot : MonoBehaviour
         SetRect(centerShadow.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(10f, -10f), new Vector2(850f, 960f));
 
         Image centerPanel = CreateImage("CenterPanel", root, new Color(0.42f, 0.25f, 0.12f, 0.42f));
+        if (style != null)
+        {
+            style.ApplyPanel(centerPanel);
+        }
         centerPanel.raycastTarget = false;
         SetRect(centerPanel.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), Vector2.zero, new Vector2(850f, 960f));
 
@@ -223,9 +287,13 @@ public class GameBoot : MonoBehaviour
         SetRect(logoShadow.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(8f, 384f), new Vector2(650f, 126f));
 
         Image logoPanel = CreateImage("LogoPanel", root, paperColor);
+        if (style != null)
+        {
+            style.ApplyPaper(logoPanel);
+        }
         SetRect(logoPanel.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, 392f), new Vector2(650f, 126f));
 
-        Text logoText = CreateText("LogoText", logoPanel.transform, "微郡", 42, FontStyle.Bold, new Color(0.74f, 0.20f, 0.15f, 1f), TextAnchor.MiddleCenter);
+        Text logoText = CreateText("LogoText", logoPanel.transform, "维钧游戏", 42, FontStyle.Bold, new Color(0.74f, 0.20f, 0.15f, 1f), TextAnchor.MiddleCenter);
         SetRect(logoText.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(0f, 12f), new Vector2(-24f, -44f));
         Text logoSubtitle = CreateText("LogoSubtitle", logoPanel.transform, "登录领地手册，继续你的旅程", 16, FontStyle.Normal, new Color(0.48f, 0.39f, 0.31f, 1f), TextAnchor.MiddleCenter);
         SetRect(logoSubtitle.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 12f), new Vector2(-24f, 30f));
@@ -276,7 +344,8 @@ public class GameBoot : MonoBehaviour
 
     private InputField CreateBookInput(Transform root, string name, string placeholder, string label, float y, Color shadowColor)
     {
-        Text fieldLabel = CreateText(name + "Label", root, label + "：", 22, FontStyle.Bold, new Color(0.82f, 0.24f, 0.18f, 1f), TextAnchor.MiddleRight);
+        Color labelColor = LoginStyle != null ? LoginStyle.LabelTextColor : new Color(0.82f, 0.24f, 0.18f, 1f);
+        Text fieldLabel = CreateText(name + "Label", root, label + "：", 22, FontStyle.Bold, labelColor, TextAnchor.MiddleRight);
         SetRect(fieldLabel.rectTransform, CenterAnchor(), CenterAnchor(), new Vector2(1f, 0.5f), new Vector2(-310f, y), new Vector2(100f, 50f));
 
         Image shadow = CreateImage(name + "Shadow", root, shadowColor);
@@ -285,12 +354,15 @@ public class GameBoot : MonoBehaviour
 
         InputField input = CreateInputField(root, name, placeholder);
         SetRect(input.GetComponent<RectTransform>(), CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(50f, y), new Vector2(570f, 58f));
-        input.GetComponent<Image>().color = new Color(0.99f, 0.97f, 0.90f, 1f);
-        input.textComponent.fontSize = 18;
+        if (LoginStyle != null)
+        {
+            LoginStyle.ApplyInput(input.GetComponent<Image>());
+        }
+        input.textComponent.fontSize = ResolveFontSize(18);
         Text placeholderText = input.placeholder as Text;
         if (placeholderText != null)
         {
-            placeholderText.fontSize = 16;
+            placeholderText.fontSize = ResolveFontSize(16);
         }
 
         return input;
@@ -333,7 +405,8 @@ public class GameBoot : MonoBehaviour
 
     private Button CreateFixedButton(Transform parent, string name, string text, Vector2 position, Vector2 size, Color color, Color textColor, int fontSize)
     {
-        Image shadow = CreateImage(name + "Shadow", parent, new Color(0.18f, 0.10f, 0.05f, 0.24f));
+        Color shadowColor = LoginStyle != null ? LoginStyle.ButtonShadowColor : new Color(0.18f, 0.10f, 0.05f, 0.24f);
+        Image shadow = CreateImage(name + "Shadow", parent, shadowColor);
         shadow.raycastTarget = false;
         SetRect(shadow.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), position + new Vector2(6f, -6f), size);
 
@@ -342,9 +415,10 @@ public class GameBoot : MonoBehaviour
         Text label = button.GetComponentInChildren<Text>(true);
         if (label != null)
         {
-            label.fontSize = fontSize;
-            label.resizeTextMinSize = Mathf.Max(8, fontSize - 8);
-            label.resizeTextMaxSize = fontSize;
+            int resolvedFontSize = ResolveFontSize(fontSize);
+            label.fontSize = resolvedFontSize;
+            label.resizeTextMinSize = Mathf.Max(8, resolvedFontSize - 8);
+            label.resizeTextMaxSize = resolvedFontSize;
         }
 
         return button;
@@ -352,7 +426,8 @@ public class GameBoot : MonoBehaviour
 
     private void CreateDecorLine(Transform parent, Vector2 position, Vector2 size)
     {
-        Image line = CreateImage("DecorLine", parent, new Color(0.77f, 0.45f, 0.22f, 0.72f));
+        Color lineColor = LoginStyle != null ? LoginStyle.DecorLineColor : new Color(0.77f, 0.45f, 0.22f, 0.72f);
+        Image line = CreateImage("DecorLine", parent, lineColor);
         SetRect(line.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), position, size);
     }
 
@@ -363,7 +438,7 @@ public class GameBoot : MonoBehaviour
 
     private void TryLogin()
     {
-        if (requestRunning || !ValidateAccountAndPassword())
+        if (runtimePolicyBlocked || requestRunning || !ValidateAccountAndPassword())
         {
             return;
         }
@@ -379,7 +454,7 @@ public class GameBoot : MonoBehaviour
 
     private void TryRegister()
     {
-        if (requestRunning || !ValidateAccountAndPassword())
+        if (runtimePolicyBlocked || requestRunning || !ValidateAccountAndPassword())
         {
             return;
         }
@@ -404,7 +479,7 @@ public class GameBoot : MonoBehaviour
 
     private void TryWeChatLogin()
     {
-        if (requestRunning)
+        if (runtimePolicyBlocked || requestRunning)
         {
             return;
         }
@@ -439,7 +514,7 @@ public class GameBoot : MonoBehaviour
 
     private void LoginAsGuest()
     {
-        if (requestRunning)
+        if (runtimePolicyBlocked || requestRunning)
         {
             return;
         }
@@ -510,7 +585,12 @@ public class GameBoot : MonoBehaviour
 
             if (request.result != UnityWebRequest.Result.Success)
             {
-                SetBusyState(false, ApiRequestUtility.GetErrorMessage(request, "登录服务连接失败"));
+                string failure = ApiRequestUtility.GetErrorMessage(request, "登录服务连接失败");
+                SetBusyState(false, failure);
+                if (request.responseCode == 426 || request.responseCode == 503)
+                {
+                    yield return LoadClientRuntimePolicy();
+                }
                 yield break;
             }
 
@@ -534,6 +614,126 @@ public class GameBoot : MonoBehaviour
 
             SaveLoginState(response.data);
             SceneManager.LoadScene(HomeSceneName);
+        }
+    }
+
+    private IEnumerator LoadClientRuntimePolicy()
+    {
+        if (runtimePolicyBlocked)
+        {
+            yield break;
+        }
+
+        SetBusyState(true, "正在检查客户端版本和服务器状态...");
+        string path = string.Format(
+            CultureInfo.InvariantCulture,
+            "/client/runtime-policy?platform=UNITY&channel={0}&versionCode={1}",
+            UnityWebRequest.EscapeURL(ApiRuntimeConfig.GetClientChannel()),
+            ApiRuntimeConfig.GetClientVersionCode());
+        if (!ApiRequestUtility.TryCreateGet(path, false, out UnityWebRequest request, out string error))
+        {
+            SetBusyState(false, "启动策略读取失败，可继续登录：" + error);
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            ClientRuntimePolicyApiResponse response = null;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(request.downloadHandler.text))
+                {
+                    response = JsonUtility.FromJson<ClientRuntimePolicyApiResponse>(request.downloadHandler.text);
+                }
+            }
+            catch (Exception)
+            {
+                response = null;
+            }
+
+            if (request.result != UnityWebRequest.Result.Success
+                || response == null
+                || response.code != 200
+                || response.data == null)
+            {
+                SetBusyState(false, "启动策略读取失败，可继续登录：" + ApiRequestUtility.GetErrorMessage(request, "请求失败"));
+                yield break;
+            }
+
+            ClientRuntimePolicyData policy = response.data;
+            if (policy.forceUpdate)
+            {
+                runtimePolicyBlocked = true;
+                SetBusyState(false, string.Empty);
+                ShowRuntimePolicyOverlay(
+                    "需要更新客户端",
+                    string.IsNullOrWhiteSpace(policy.message)
+                        ? $"当前版本需要更新到 {policy.minimumVersionName ?? policy.latestVersionName} 后才能继续。"
+                        : policy.message,
+                    policy.updateUrl);
+                yield break;
+            }
+
+            if (policy.maintenanceActive && policy.loginBlocked)
+            {
+                runtimePolicyBlocked = true;
+                SetBusyState(false, string.Empty);
+                ShowRuntimePolicyOverlay(
+                    "服务器维护中",
+                    string.IsNullOrWhiteSpace(policy.message) ? "服务器正在维护，请稍后再试。" : policy.message,
+                    string.Empty);
+                yield break;
+            }
+
+            string status = policy.updateAvailable
+                ? $"发现新版本 {policy.latestVersionName}，当前版本仍可继续登录。"
+                : string.Empty;
+            SetBusyState(false, status);
+        }
+    }
+
+    private void ShowRuntimePolicyOverlay(string title, string message, string updateUrl)
+    {
+        if (runtimePolicyOverlay != null)
+        {
+            Destroy(runtimePolicyOverlay);
+        }
+
+        RectTransform root = loginCanvasView != null ? loginCanvasView.PrepareContentRoot() : null;
+        if (root == null)
+        {
+            ShowError(message);
+            return;
+        }
+
+        Image overlay = CreateImage("ClientRuntimePolicyOverlay", root, new Color(0.04f, 0.07f, 0.12f, 0.96f));
+        runtimePolicyOverlay = overlay.gameObject;
+        Stretch(overlay.rectTransform);
+
+        Image card = CreateImage("PolicyCard", overlay.transform, new Color(1f, 1f, 1f, 0.98f));
+        SetRect(card.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), Vector2.zero, new Vector2(720f, 360f));
+
+        Text titleText = CreateText("PolicyTitle", card.transform, title, 34, FontStyle.Bold, BrandColor, TextAnchor.MiddleCenter);
+        SetRect(titleText.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, 92f), new Vector2(620f, 64f));
+
+        Text messageText = CreateText("PolicyMessage", card.transform, message, 20, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleCenter);
+        messageText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        messageText.verticalOverflow = VerticalWrapMode.Overflow;
+        SetRect(messageText.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, 5f), new Vector2(620f, 120f));
+
+        if (!string.IsNullOrWhiteSpace(updateUrl))
+        {
+            Button updateButton = CreateFixedButton(
+                card.transform,
+                "PolicyUpdateButton",
+                "前往更新",
+                new Vector2(0f, -105f),
+                new Vector2(260f, 58f),
+                PrimaryColor,
+                Color.white,
+                22);
+            updateButton.onClick.AddListener(() => Application.OpenURL(updateUrl));
         }
     }
 
@@ -570,6 +770,11 @@ public class GameBoot : MonoBehaviour
             user.experienceProgressBps,
             user.maxLevel,
             user.economyFrozen);
+        PlayerPrefs.SetString("PlayerAvatarUrl", user.avatarUrl ?? string.Empty);
+        PlayerPrefs.SetString("PlayerAvatarSource", user.avatarSource ?? "DEFAULT");
+        PlayerPrefs.SetString("PlayerAvatarVersion", Math.Max(0L, user.avatarVersion).ToString(CultureInfo.InvariantCulture));
+        PlayerPrefs.SetString("PlayerAvatarUpdatedTime", user.avatarUpdatedTime ?? string.Empty);
+        PlayerPrefs.Save();
     }
 
     private void SaveGuestLoginState()
@@ -627,34 +832,38 @@ public class GameBoot : MonoBehaviour
         return image;
     }
 
-    private Text CreateText(string name, Transform parent, string text, int size, FontStyle style, Color color, TextAnchor alignment)
+    private Text CreateText(string name, Transform parent, string text, int size, FontStyle fontStyle, Color color, TextAnchor alignment)
     {
         GameObject obj = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
         obj.transform.SetParent(parent, false);
 
         Text label = obj.GetComponent<Text>();
-        label.font = defaultFont;
+        LoginCanvasStyle style = LoginStyle;
+        int resolvedFontSize = ResolveFontSize(size);
+        label.font = style != null ? style.ResolveFont(defaultFont) : defaultFont;
         label.text = text;
-        label.fontSize = size;
-        label.fontStyle = style;
-        label.color = color;
+        label.fontSize = resolvedFontSize;
+        label.fontStyle = style != null ? style.ResolveFontStyle(name, fontStyle) : fontStyle;
+        label.color = style != null ? style.ResolveTextColor(name, color) : color;
         label.alignment = alignment;
         label.resizeTextForBestFit = true;
-        label.resizeTextMinSize = Mathf.Clamp(size - 4, 8, size);
-        label.resizeTextMaxSize = size;
+        label.resizeTextMinSize = Mathf.Clamp(resolvedFontSize - 4, 8, resolvedFontSize);
+        label.resizeTextMaxSize = resolvedFontSize;
         label.raycastTarget = false;
         return label;
     }
 
     private InputField CreateInputField(Transform parent, string name, string placeholder)
     {
-        Image frame = CreateImage(name, parent, FieldColor);
+        Color inputColor = LoginStyle != null ? LoginStyle.InputColor : FieldColor;
+        Color inputHoverColor = LoginStyle != null ? LoginStyle.InputHoverColor : FieldHoverColor;
+        Image frame = CreateImage(name, parent, inputColor);
         frame.raycastTarget = true;
 
         InputField input = frame.gameObject.AddComponent<InputField>();
         input.targetGraphic = frame;
         input.transition = Selectable.Transition.ColorTint;
-        input.colors = CreateSelectableColors(FieldColor, FieldHoverColor, Color.white, new Color(0.82f, 0.86f, 0.92f, 1f));
+        input.colors = CreateSelectableColors(inputColor, inputHoverColor, Color.white, new Color(0.82f, 0.86f, 0.92f, 1f));
         input.lineType = InputField.LineType.SingleLine;
 
         Text text = CreateText("Text", frame.transform, string.Empty, 14, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleLeft);
@@ -714,13 +923,19 @@ public class GameBoot : MonoBehaviour
 
     private Button CreateButton(Transform parent, string name, string text, Color color, Color textColor)
     {
-        Image image = CreateImage(name, parent, color);
+        LoginCanvasStyle style = LoginStyle;
+        Color buttonColor = style != null ? style.ResolveButtonColor(name, color) : color;
+        Image image = CreateImage(name, parent, buttonColor);
+        if (style != null)
+        {
+            style.ApplyButton(image, name, buttonColor);
+        }
         image.raycastTarget = true;
 
         Button button = image.gameObject.AddComponent<Button>();
         button.targetGraphic = image;
         button.transition = Selectable.Transition.ColorTint;
-        button.colors = CreateSelectableColors(color, Color.Lerp(color, Color.white, 0.12f), Color.Lerp(color, Color.black, 0.18f), new Color(0.70f, 0.75f, 0.82f, 1f));
+        button.colors = CreateSelectableColors(buttonColor, Color.Lerp(buttonColor, Color.white, 0.12f), Color.Lerp(buttonColor, Color.black, 0.18f), new Color(0.70f, 0.75f, 0.82f, 1f));
 
         Text label = CreateText("Text", image.transform, text, 13, FontStyle.Bold, textColor, TextAnchor.MiddleCenter);
         Stretch(label.rectTransform);
@@ -739,6 +954,11 @@ public class GameBoot : MonoBehaviour
             colorMultiplier = 1f,
             fadeDuration = 0.08f
         };
+    }
+
+    private int ResolveFontSize(int defaultSize)
+    {
+        return LoginStyle != null ? LoginStyle.ResolveFontSize(defaultSize) : defaultSize;
     }
 
     private void CreateSpacer(Transform parent, float height)
@@ -830,7 +1050,41 @@ public class GameBoot : MonoBehaviour
         public int stone;
         public int iron;
         public int diamond;
+        public string avatarUrl;
+        public string avatarSource;
+        public long avatarVersion;
+        public string avatarUpdatedTime;
         public ItemData[] items;
+    }
+
+    [Serializable]
+    private class ClientRuntimePolicyApiResponse
+    {
+        public int code;
+        public string message;
+        public ClientRuntimePolicyData data;
+    }
+
+    [Serializable]
+    private class ClientRuntimePolicyData
+    {
+        public bool configured;
+        public string platform;
+        public string channelCode;
+        public long currentVersionCode;
+        public long minimumVersionCode;
+        public string minimumVersionName;
+        public long latestVersionCode;
+        public string latestVersionName;
+        public bool updateAvailable;
+        public bool forceUpdate;
+        public string updateUrl;
+        public bool maintenanceActive;
+        public bool loginBlocked;
+        public string maintenanceStartTime;
+        public string maintenanceEndTime;
+        public string message;
+        public string serverTime;
     }
 
     [Serializable]
