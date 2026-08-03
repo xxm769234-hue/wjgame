@@ -96,6 +96,11 @@ public sealed class LandInfoPanel : MonoBehaviour
         SetText(buildingText, message);
     }
 
+    public void SetProductionMessage(string message)
+    {
+        SetText(productionText, message);
+    }
+
     private void RefreshRemoteDetails(LandSlotController slot)
     {
         BackendGameService service = BackendGameService.Instance;
@@ -470,7 +475,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             return;
         }
 
-        SetText(productionText, FormatProductionStatus(productions));
+        SetText(productionText, FormatProductionStatus(current, productions));
     }
 
     private void HideBuildingList()
@@ -524,11 +529,12 @@ public sealed class LandInfoPanel : MonoBehaviour
         return text;
     }
 
-    private static string FormatProductionStatus(IReadOnlyList<ProductionResponse> productions)
+    private static string FormatProductionStatus(LandSlotController slot, IReadOnlyList<ProductionResponse> productions)
     {
         if (productions == null || productions.Count == 0) return "Production: None";
 
         List<string> lines = new List<string>();
+        string costText = FormatProductionCosts(slot != null ? slot.CurrentBuilding : null);
         for (int i = 0; i < productions.Count; i++)
         {
             ProductionResponse production = productions[i];
@@ -539,10 +545,28 @@ public sealed class LandInfoPanel : MonoBehaviour
 
             string collectState = production.canCollect ? "Ready" : FormatRemaining(production.remainingSeconds);
             string bonus = production.npcProduceBonusRate > 0f ? $"  Bonus +{Mathf.RoundToInt(production.npcProduceBonusRate * 100f)}%" : string.Empty;
-            lines.Add($"{itemName}: {production.storedAmount}/{production.storageCapacity}  +{production.produceAmount}/{production.produceIntervalSeconds}s  {collectState}{bonus}");
+            string cost = string.IsNullOrEmpty(costText) ? string.Empty : $"  Cost {costText}/cycle";
+            lines.Add($"{itemName}: {production.storedAmount}/{production.storageCapacity}  +{production.produceAmount}/{production.produceIntervalSeconds}s  {collectState}{bonus}{cost}");
         }
 
         return lines.Count == 0 ? "Production: None" : $"Production:\n{string.Join("\n", lines)}";
+    }
+
+    private static string FormatProductionCosts(BuildingConfig building)
+    {
+        if (building == null || building.productionCosts == null || building.productionCosts.Length == 0) return string.Empty;
+
+        List<string> parts = new List<string>();
+        for (int i = 0; i < building.productionCosts.Length; i++)
+        {
+            ProductionResourceCost cost = building.productionCosts[i];
+            if (cost == null || !cost.IsValid) continue;
+
+            string itemName = string.IsNullOrEmpty(cost.itemName) ? cost.itemKey : cost.itemName;
+            parts.Add($"{itemName}x{cost.amount}");
+        }
+
+        return string.Join(", ", parts);
     }
 
     private static string FormatRemaining(int remainingSeconds)

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public static class RuntimeConfigFactory
@@ -171,7 +172,11 @@ public static class RuntimeConfigFactory
     {
         if (config == null || string.IsNullOrEmpty(produce)) return;
 
-        string[] first = produce.Split(',')[0].Split(':');
+        string outputPart = produce;
+        string costPart = string.Empty;
+        SplitProduceDefinition(produce, out outputPart, out costPart);
+
+        string[] first = outputPart.Split(',')[0].Split(':');
         if (first.Length == 0) return;
 
         config.canProduceResource = true;
@@ -180,6 +185,50 @@ public static class RuntimeConfigFactory
         {
             config.resourceAmount = Mathf.Max(1, amount);
         }
+
+        config.productionCosts = ParseProductionCosts(costPart);
+    }
+
+    private static void SplitProduceDefinition(string produce, out string outputPart, out string costPart)
+    {
+        outputPart = produce;
+        costPart = string.Empty;
+
+        int index = produce.IndexOf('|');
+        if (index < 0) return;
+
+        outputPart = produce.Substring(0, index).Trim();
+        costPart = produce.Substring(index + 1).Trim();
+    }
+
+    private static ProductionResourceCost[] ParseProductionCosts(string costPart)
+    {
+        if (string.IsNullOrWhiteSpace(costPart)) return new ProductionResourceCost[0];
+
+        List<ProductionResourceCost> costs = new List<ProductionResourceCost>();
+        string[] tokens = costPart.Split(new[] { ',', ';', '+' }, StringSplitOptions.RemoveEmptyEntries);
+        for (int i = 0; i < tokens.Length; i++)
+        {
+            string token = tokens[i].Trim();
+            if (string.IsNullOrEmpty(token)) continue;
+
+            int separator = token.IndexOf(':');
+            if (separator < 0) separator = token.IndexOf('=');
+            if (separator <= 0 || separator >= token.Length - 1) continue;
+
+            string key = token.Substring(0, separator).Trim();
+            string rawAmount = token.Substring(separator + 1).Trim();
+            if (string.IsNullOrEmpty(key) || !int.TryParse(rawAmount, out int amount) || amount <= 0) continue;
+
+            costs.Add(new ProductionResourceCost
+            {
+                itemKey = key,
+                itemName = key,
+                amount = amount
+            });
+        }
+
+        return costs.ToArray();
     }
 
     private static string InferBuildType(BuildingResponse response)

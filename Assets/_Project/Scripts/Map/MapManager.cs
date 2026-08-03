@@ -19,11 +19,11 @@ public sealed class MapManager : MonoBehaviour
     [SerializeField] private bool buildEighteenUnitLayoutOnStart = true;
     [SerializeField] private string mapRootName = "MapRoot";
     [SerializeField] private string landslotTemplateName = "Landslot";
-    [SerializeField, Min(1)] private int sideRows = 3;
-    [SerializeField, Min(1)] private int sideColumns = 3;
+    [SerializeField, Min(1)] private int sideRows = 2;
+    [SerializeField, Min(1)] private int sideColumns = 2;
     [SerializeField, Min(0f)] private float unitHorizontalGap = 0.35f;
     [SerializeField, Min(0f)] private float unitVerticalGap = 0.25f;
-    [SerializeField, Min(0f)] private float sideGap = 0f;
+    [SerializeField, Min(0f)] private float sideGap = 1.5f;
     [SerializeField, Min(0f)] private float mapTopSpacing = 3.5f;
     [SerializeField] private string mapBackgroundName = "MapBackground";
     [SerializeField] private Vector2 mapBackgroundPadding = new Vector2(2f, 2f);
@@ -34,6 +34,9 @@ public sealed class MapManager : MonoBehaviour
     private Bounds runtimeMapBounds;
     private float runtimeUnitWidth = 7.4390066f;
     private float runtimeUnitHeight = 5.2010057f;
+    private int runtimePlayerLevel = 1;
+    private int runtimeUnlockedUnitCount;
+    private int runtimePlacedLandCount;
 
     public Vector2Int MapSize => mapSize;
     public float CellSize => cellSize;
@@ -42,6 +45,9 @@ public sealed class MapManager : MonoBehaviour
     public Bounds RuntimeMapBounds => runtimeMapBounds;
     public float RuntimeUnitWidth => runtimeUnitWidth;
     public float RuntimeUnitHeight => runtimeUnitHeight;
+    public int UnlockedUnitCount => runtimeUnlockedUnitCount;
+    public int UnlockedLandSlotCount => runtimeUnlockedUnitCount * LandUnlockRules.SlotsPerUnit;
+    public int PlacedLandCount => runtimePlacedLandCount;
 
     public static MapManager EnsureInstance()
     {
@@ -169,6 +175,31 @@ public sealed class MapManager : MonoBehaviour
             reason = "No land slot under pointer.";
             return false;
         }
+        if (!slot.IsUnlocked)
+        {
+            reason = $"This land unit unlocks at player level {slot.RequiredPlayerLevel}.";
+            return false;
+        }
+        if (slot.RequiresPurification && !slot.IsPurified)
+        {
+            reason = "Purify this land slot before unlocking it with gold or placing land.";
+            return false;
+        }
+        if (slot.RequiresGoldPurchase && !slot.IsPurchased)
+        {
+            reason = $"Purchase this land slot for {slot.PurchaseGoldCost:N0} gold before placing land.";
+            return false;
+        }
+        if (!slot.IsPlacementUnlocked)
+        {
+            reason = "Complete this land slot's unlock requirements before placing land.";
+            return false;
+        }
+        if (runtimePlacedLandCount >= UnlockedLandSlotCount)
+        {
+            reason = $"Player level {runtimePlayerLevel} allows {UnlockedLandSlotCount} placed lands.";
+            return false;
+        }
         if (config == null)
         {
             reason = "Land config is missing.";
@@ -200,7 +231,7 @@ public sealed class MapManager : MonoBehaviour
     {
         if (slot == null) return;
         EnsureRegistered(slot);
-        occupiedSlots.Add(slot.GridPosition);
+        if (occupiedSlots.Add(slot.GridPosition)) runtimePlacedLandCount++;
     }
 
     public void ApplyRemoteMapData(MapDataResponse mapData)
@@ -211,22 +242,93 @@ public sealed class MapManager : MonoBehaviour
         RebuildSlotCache();
         ClearRemoteSlotState();
 
-        if (mapData.lands != null)
-        {
-            for (int i = 0; i < mapData.lands.Length; i++)
-            {
-                LandTileResponse land = mapData.lands[i];
-                if (land == null) continue;
-
-                Vector2Int position = new Vector2Int(land.positionX, land.positionY);
-                if (!TryGetSlot(position, out LandSlotController slot)) continue;
-
-                slot.ApplyRemoteLand(RuntimeConfigFactory.ResolveLand(land), land);
-                occupiedSlots.Add(position);
-            }
-        }
+        ApplyRemoteLandSlotStates(mapData.landSlots);
+        ApplyRemoteLands(mapData.lands);
 
         ApplyRemoteBuildings(mapData.buildings);
+    }
+
+    private void ApplyRemoteLands(LandTileResponse[] lands)
+    {
+        if (lands == null || lands.Length == 0) return;
+
+        runtimePlacedLandCount = 0;
+        for (int i = 0; i < lands.Length; i++)
+        {
+            if (lands[i] != null) runtimePlacedLandCount++;
+        }
+
+        List<LandTileResponse> legacyCoordinateLands = new List<LandTileResponse>();
+        for (int i = 0; i < lands.Length; i++)
+        {
+            LandTileResponse land = lands[i];
+            if (land == null) continue;
+
+            Vector2Int position = new Vector2Int(land.positionX, land.positionY);
+            if (!TryGetSlot(position, out LandSlotController slot) || slot.IsBuilt)
+            {
+                legacyCoordinateLands.Add(land);
+                continue;
+            }
+
+            slot.ApplyRemoteLand(RuntimeConfigFactory.ResolveLand(land), land);
+            occupiedSlots.Add(slot.GridPosition);
+        }
+
+        if (legacyCoordinateLands.Count == 0) return;
+
+        LandSlotController[] fallbackSlots = FindObjectsByType<LandSlotController>(FindObjectsSortMode.None);
+        System.Array.Sort(fallbackSlots, CompareLegacyFallbackSlots);
+        int fallbackIndex = 0;
+        for (int i = 0; i < legacyCoordinateLands.Count; i++)
+        {
+            while (fallbackIndex < fallbackSlots.Length
+                && (fallbackSlots[fallbackIndex] == null || fallbackSlots[fallbackIndex].IsBuilt))
+            {
+                fallbackIndex++;
+            }
+
+            if (fallbackIndex >= fallbackSlots.Length)
+            {
+                Debug.LogWarning(
+                    $"Map snapshot contains {legacyCoordinateLands.Count - i} legacy lands that do not fit the current layout.",
+                    this);
+                break;
+            }
+
+            LandSlotController slot = fallbackSlots[fallbackIndex++];
+            LandTileResponse land = legacyCoordinateLands[i];
+            slot.ApplyRemoteLand(RuntimeConfigFactory.ResolveLand(land), land);
+            occupiedSlots.Add(slot.GridPosition);
+        }
+    }
+
+    private void ApplyRemoteLandSlotStates(LandSlotStateResponse[] landSlots)
+    {
+        if (landSlots == null) return;
+
+        for (int i = 0; i < landSlots.Length; i++)
+        {
+            LandSlotStateResponse state = landSlots[i];
+            if (state == null) continue;
+
+            Vector2Int position = new Vector2Int(state.positionX, state.positionY);
+            if (TryGetSlot(position, out LandSlotController slot)) slot.ApplyRemoteUnlockState(state);
+        }
+    }
+
+    private static int CompareLegacyFallbackSlots(LandSlotController left, LandSlotController right)
+    {
+        if (ReferenceEquals(left, right)) return 0;
+        if (left == null) return 1;
+        if (right == null) return -1;
+
+        // Fill later units first so legacy data never consumes a newly unlocked early slot.
+        int unitOrder = right.UnlockUnitIndex.CompareTo(left.UnlockUnitIndex);
+        if (unitOrder != 0) return unitOrder;
+
+        int verticalOrder = left.GridPosition.y.CompareTo(right.GridPosition.y);
+        return verticalOrder != 0 ? verticalOrder : left.GridPosition.x.CompareTo(right.GridPosition.x);
     }
 
     public void ApplyRemoteBuildings(BuildingResponse[] buildings)
@@ -286,7 +388,8 @@ public sealed class MapManager : MonoBehaviour
         runtimeUnitWidth = unitLocalBounds.size.x;
         runtimeUnitHeight = unitLocalBounds.size.y;
         int targetCount = sideRows * sideColumns * 2;
-        EnsureLocalMapCapacity(targetCount);
+        int activeSlotsPerUnit = template.GetComponentsInChildren<LandSlotController>(false).Length;
+        EnsureLocalMapCapacity(targetCount, activeSlotsPerUnit);
 
         while (units.Count < targetCount)
         {
@@ -346,7 +449,23 @@ public sealed class MapManager : MonoBehaviour
         {
             runtimeMapBounds = AddTopSpacing(combinedBounds, mapTopSpacing);
             ResizeMapBackground(runtimeMapBounds);
+            runtimeMapBounds.Expand(new Vector3(
+                Mathf.Max(0f, mapBackgroundPadding.x) * 2f,
+                Mathf.Max(0f, mapBackgroundPadding.y) * 2f,
+                0f));
         }
+
+        ApplyRuntimeLandUnlockLayout(units, ResolveCurrentPlayerLevel());
+    }
+
+    public void RefreshLandUnlockState(int playerLevel)
+    {
+        runtimePlayerLevel = Mathf.Max(1, playerLevel);
+        Transform mapRoot = ResolveMapRoot();
+        if (mapRoot == null) return;
+
+        List<GameObject> units = FindLandslotUnits(mapRoot);
+        if (units.Count > 0) ApplyRuntimeLandUnlockLayout(units, runtimePlayerLevel);
     }
 
     private void EnsureRegistered(LandSlotController slot)
@@ -361,9 +480,12 @@ public sealed class MapManager : MonoBehaviour
         LandSlotController[] slots = FindObjectsByType<LandSlotController>(FindObjectsSortMode.None);
         for (int i = 0; i < slots.Length; i++)
         {
-            if (slots[i] != null) slots[i].ClearLandStateFromBackend();
+            if (slots[i] == null) continue;
+            slots[i].ClearLandStateFromBackend();
+            slots[i].ResetRemotePurchaseState();
         }
         occupiedSlots.Clear();
+        runtimePlacedLandCount = 0;
     }
 
     private LandSlotController FindSlotForBuilding(BuildingResponse building)
@@ -397,8 +519,9 @@ public sealed class MapManager : MonoBehaviour
 
     private Vector2Int ResolveGridPosition(LandSlotController slot, IDictionary<Vector2Int, LandSlotController> assigned)
     {
-        Vector2Int requested = slot.UsesManualGridPosition ? slot.GridPosition : WorldToGrid(slot.CenterWorld);
-        if (slot.UsesManualGridPosition) return requested;
+        bool usesAssignedPosition = slot.UsesManualGridPosition || slot.UsesRuntimeLayoutGridPosition;
+        Vector2Int requested = usesAssignedPosition ? slot.GridPosition : WorldToGrid(slot.CenterWorld);
+        if (usesAssignedPosition) return requested;
 
         requested = ClampToBounds(requested);
         if (!assigned.TryGetValue(requested, out LandSlotController existing) || existing == slot) return requested;
@@ -486,7 +609,7 @@ public sealed class MapManager : MonoBehaviour
         for (int i = 0; i < mapRoot.childCount; i++)
         {
             Transform child = mapRoot.GetChild(i);
-            if (child.GetComponentsInChildren<LandSlotController>(true).Length == 0) continue;
+            if (child.GetComponentsInChildren<LandSlotController>(false).Length == 0) continue;
             units.Add(child.gameObject);
         }
         return units;
@@ -501,6 +624,83 @@ public sealed class MapManager : MonoBehaviour
         return units.Count > 0 ? units[0] : null;
     }
 
+    private void ApplyRuntimeLandUnlockLayout(List<GameObject> units, int playerLevel)
+    {
+        if (units == null || units.Count == 0) return;
+
+        runtimePlayerLevel = Mathf.Max(1, playerLevel);
+        units.Sort(CompareUnitsForUnlockOrder);
+        runtimeUnlockedUnitCount = LandUnlockRules.GetUnlockedUnitCount(runtimePlayerLevel, units.Count);
+        int unitsPerRow = Mathf.Max(1, sideColumns * 2);
+
+        for (int layoutUnitIndex = 0; layoutUnitIndex < units.Count; layoutUnitIndex++)
+        {
+            GameObject unit = units[layoutUnitIndex];
+            if (unit == null) continue;
+
+            LandSlotController[] unitSlots = unit.GetComponentsInChildren<LandSlotController>(false);
+            System.Array.Sort(unitSlots, CompareSlotsForLogicalPosition);
+            if (unitSlots.Length != LandUnlockRules.SlotsPerUnit)
+            {
+                Debug.LogWarning(
+                    $"Land unit {unit.name} contains {unitSlots.Length} active slots; expected {LandUnlockRules.SlotsPerUnit}.",
+                    unit);
+            }
+
+            int unitColumn = layoutUnitIndex % unitsPerRow;
+            int unitRow = layoutUnitIndex / unitsPerRow;
+            int unlockUnitIndex = LandUnlockRules.ResolveUnitIndex(unitColumn, unitRow);
+            int requiredPlayerLevel = LandUnlockRules.GetRequiredPlayerLevel(unlockUnitIndex);
+            bool unlocked = LandUnlockRules.IsLevelUnlocked(runtimePlayerLevel, unlockUnitIndex);
+            bool requiresGoldPurchase = LandUnlockRules.RequiresGoldPurchase(unlockUnitIndex);
+            int assignableSlotCount = Mathf.Min(unitSlots.Length, LandUnlockRules.SlotsPerUnit);
+            for (int slotIndex = 0; slotIndex < assignableSlotCount; slotIndex++)
+            {
+                LandSlotController slot = unitSlots[slotIndex];
+                if (slot == null) continue;
+
+                int localColumn = slotIndex % LandUnlockRules.UnitSideLength;
+                int localRow = slotIndex / LandUnlockRules.UnitSideLength;
+                slot.SetRuntimeLayoutGridPosition(new Vector2Int(
+                    unitColumn * LandUnlockRules.UnitSideLength + localColumn,
+                    unitRow * LandUnlockRules.UnitSideLength + localRow));
+                slot.SetRuntimeUnlockState(
+                    unlockUnitIndex,
+                    requiredPlayerLevel,
+                    unlocked,
+                    requiresGoldPurchase);
+            }
+        }
+    }
+
+    private int CompareUnitsForUnlockOrder(GameObject left, GameObject right)
+    {
+        if (ReferenceEquals(left, right)) return 0;
+        if (left == null) return 1;
+        if (right == null) return -1;
+
+        Vector3 leftCenter = CalculateWorldBounds(left).center;
+        Vector3 rightCenter = CalculateWorldBounds(right).center;
+        int verticalOrder = leftCenter.y.CompareTo(rightCenter.y);
+        return verticalOrder != 0 ? verticalOrder : leftCenter.x.CompareTo(rightCenter.x);
+    }
+
+    private static int CompareSlotsForLogicalPosition(LandSlotController left, LandSlotController right)
+    {
+        if (ReferenceEquals(left, right)) return 0;
+        if (left == null) return 1;
+        if (right == null) return -1;
+
+        int verticalOrder = left.CenterWorld.y.CompareTo(right.CenterWorld.y);
+        return verticalOrder != 0 ? verticalOrder : left.CenterWorld.x.CompareTo(right.CenterWorld.x);
+    }
+
+    private static int ResolveCurrentPlayerLevel()
+    {
+        BackendGameService service = BackendGameService.Instance;
+        return service != null && service.CurrentUser != null ? Mathf.Max(1, service.CurrentUser.level) : 1;
+    }
+
     private Bounds CalculateUnitLocalBounds(GameObject unit)
     {
         PolygonCollider2D[] colliders = unit.GetComponentsInChildren<PolygonCollider2D>(true);
@@ -510,7 +710,7 @@ public sealed class MapManager : MonoBehaviour
         for (int i = 0; i < colliders.Length; i++)
         {
             PolygonCollider2D polygon = colliders[i];
-            if (polygon == null) continue;
+            if (polygon == null || !polygon.gameObject.activeInHierarchy) continue;
 
             for (int pathIndex = 0; pathIndex < polygon.pathCount; pathIndex++)
             {
@@ -541,7 +741,7 @@ public sealed class MapManager : MonoBehaviour
         for (int i = 0; i < colliders.Length; i++)
         {
             PolygonCollider2D polygon = colliders[i];
-            if (polygon == null) continue;
+            if (polygon == null || !polygon.gameObject.activeInHierarchy) continue;
 
             for (int pathIndex = 0; pathIndex < polygon.pathCount; pathIndex++)
             {
@@ -618,9 +818,9 @@ public sealed class MapManager : MonoBehaviour
         return null;
     }
 
-    private void EnsureLocalMapCapacity(int unitCount)
+    private void EnsureLocalMapCapacity(int unitCount, int slotsPerUnit)
     {
-        int minimumSlots = unitCount * 5;
+        int minimumSlots = unitCount * Mathf.Max(1, slotsPerUnit);
         int side = Mathf.CeilToInt(Mathf.Sqrt(minimumSlots)) + 10;
         mapSize = new Vector2Int(Mathf.Max(mapSize.x, side), Mathf.Max(mapSize.y, side));
     }

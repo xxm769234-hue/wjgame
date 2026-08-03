@@ -54,7 +54,11 @@ public sealed class MapCameraController : MonoBehaviour
         float minimumSizeByWidth = safeUnitWidth * zoomedInUnitsAcross / (2f * aspect);
         float minimumSizeByArea = Mathf.Sqrt(safeUnitWidth * safeUnitHeight * zoomedInMinimumAreaRatio / (4f * aspect));
         minOrthographicSize = Mathf.Max(0.5f, Mathf.Max(minimumSizeByWidth, minimumSizeByArea));
-        maxOrthographicSize = Mathf.Max(minOrthographicSize, safeUnitWidth * zoomedOutUnitsAcross / (2f * aspect));
+        float fallbackZoomedOutSize = safeUnitWidth * zoomedOutUnitsAcross / (2f * aspect);
+        float fullMapSize = hasBounds
+            ? Mathf.Max(mapBounds.extents.y, mapBounds.extents.x / aspect)
+            : fallbackZoomedOutSize;
+        maxOrthographicSize = Mathf.Max(minOrthographicSize, fullMapSize);
 
         controlledCamera.orthographicSize = Mathf.Clamp(controlledCamera.orthographicSize, minOrthographicSize, maxOrthographicSize);
         controlledCamera.orthographicSize = maxOrthographicSize;

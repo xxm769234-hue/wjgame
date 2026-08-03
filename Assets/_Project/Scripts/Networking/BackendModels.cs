@@ -59,6 +59,14 @@ public sealed class PlaceLandRequest
 }
 
 [Serializable]
+public sealed class PurchaseLandSlotRequest
+{
+    public int playerId;
+    public int positionX;
+    public int positionY;
+}
+
+[Serializable]
 public sealed class BuildBuildingRequest
 {
     public int playerId;
@@ -136,8 +144,27 @@ public sealed class MapDataResponse
     public int playerId;
     public int width;
     public int height;
+    public LandSlotStateResponse[] landSlots;
     public LandTileResponse[] lands;
     public BuildingResponse[] buildings;
+}
+
+[Serializable]
+public sealed class LandSlotStateResponse
+{
+    public int positionX;
+    public int positionY;
+    public int unitIndex;
+    public int requiredLevel;
+    public bool levelUnlocked;
+    public bool requiresPurification;
+    public bool purified;
+    public bool purificationAvailable;
+    public bool requiresPurchase;
+    public bool purchased;
+    public bool purchaseAvailable;
+    public bool placementUnlocked;
+    public int goldCost;
 }
 
 [Serializable]

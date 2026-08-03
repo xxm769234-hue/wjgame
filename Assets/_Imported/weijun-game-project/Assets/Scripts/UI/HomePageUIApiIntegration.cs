@@ -44,7 +44,7 @@ public partial class HomePageUI
                 Color.Lerp(area.color, new Color(1f, 0.92f, 0.72f, 1f), 0.52f),
                 InkColor);
             SetRect(card.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(x, -62f), new Vector2(176f, 214f));
-            card.onClick.AddListener(() => SelectArea(area));
+            card.onClick.AddListener(() => SelectAreaAndEnter(area));
             mapSelectorButtons[area.landType] = card;
 
             Image accent = CreateImage("Accent", card.transform, area.color);
@@ -190,7 +190,7 @@ public partial class HomePageUI
         }
 
         PlayerPrefs.Save();
-        SceneManager.LoadScene(GetSelectedModeSceneName());
+        SceneManager.LoadScene(SimulationSceneName);
     }
 
     private IEnumerator LogoutAndReturnToLogin()

@@ -9,8 +9,10 @@ public partial class HomePageUI
 {
     private const int EquipmentRows = 6;
 
-    private static readonly string[] EquipmentSlotIds = { "weapon", "armor", "accessory", "pet" };
-    private static readonly string[] EquipmentSlotLabels = { "武器", "防具", "饰品", "灵宠" };
+    private static readonly string[] EquipmentSlotIds = { "weapon", "helmet", "armor", "boots", "gloves" };
+    private static readonly string[] EquipmentSlotLabels = { "武器", "头盔", "护甲", "靴子", "手套" };
+    private static readonly string[] EquipmentCategoryIds = { "all", "weapon", "helmet", "armor", "boots", "gloves" };
+    private static readonly string[] EquipmentCategoryLabels = { "全部", "武器", "头盔", "护甲", "靴子", "手套" };
 
     private GameObject equipmentPanelObject;
     private InventoryItemResponse[] currentEquipmentItems = new InventoryItemResponse[0];
@@ -25,6 +27,10 @@ public partial class HomePageUI
     private string activeEquipmentCategory = "all";
     private string selectedEquipmentItemKey = string.Empty;
     private string equipmentStatusMessage = string.Empty;
+    private EquipmentUpgradePreviewData equipmentUpgradePreview;
+    private long equipmentUpgradePreviewRequestId;
+    private bool equipmentUpgradePreviewRunning;
+    private string equipmentUpgradePreviewError = string.Empty;
 
     private void ShowEquipmentPanel()
     {
@@ -45,6 +51,7 @@ public partial class HomePageUI
         selectedEquipmentItemKey = string.Empty;
         equipmentPageIndex = 0;
         equipmentStatusMessage = string.Empty;
+        ResetEquipmentUpgradePreview();
 
         if (!HasAuthSession())
         {
@@ -85,6 +92,7 @@ public partial class HomePageUI
 
     private IEnumerator GetEquipmentInventoryList()
     {
+        ResetEquipmentUpgradePreview();
         long selectedNpcId = GetCurrentEquipmentNpc() != null ? GetCurrentEquipmentNpc().playerNpcId : 0;
         int playerId = GameSession.PlayerId;
         UnityWebRequest npcRequest = CreateAuthorizedGet($"/npc/list/{playerId}");
@@ -280,7 +288,8 @@ public partial class HomePageUI
                     locked = loadoutItem.locked,
                     healthBonus = loadoutItem.healthBonus,
                     attackBonus = loadoutItem.attackBonus,
-                    defenseBonus = loadoutItem.defenseBonus
+                    defenseBonus = loadoutItem.defenseBonus,
+                    speedBonus = loadoutItem.speedBonus
                 };
                 NormalizeServerEquipmentItem(item, "EQUIPPED");
                 items.Add(item);
@@ -312,12 +321,259 @@ public partial class HomePageUI
         return panel != null ? panel.PanelRoot : null;
     }
 
+    private void EnsureBackendEquipmentUi(Transform root)
+    {
+        RenameLegacyEquipmentNode(root, "EquipmentSlot", "Accessory", "Helmet");
+        RenameLegacyEquipmentNode(root, "EquipmentSlot", "Pet", "Boots");
+        CloneEquipmentNode(root, "EquipmentSlotBoots", "EquipmentSlotGloves", "Boots", "Gloves");
+
+        Vector2[] slotPositions =
+        {
+            new Vector2(62f, -222f),
+            new Vector2(207f, -222f),
+            new Vector2(352f, -222f),
+            new Vector2(134f, -372f),
+            new Vector2(279f, -372f)
+        };
+        for (int i = 0; i < EquipmentSlotIds.Length; i++)
+        {
+            Button slot = FindSceneComponent<Button>(root, "EquipmentSlot" + ToPascalCase(EquipmentSlotIds[i]));
+            if (slot == null)
+            {
+                continue;
+            }
+
+            RectTransform rect = slot.GetComponent<RectTransform>();
+            SetRect(rect, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), slotPositions[i], new Vector2(139f, 129f));
+            rect.localScale = Vector3.one;
+
+            string suffix = ToPascalCase(EquipmentSlotIds[i]);
+            RectTransform iconBackground = FindSceneTransform(root, "EquipmentSlotIconBackground" + suffix) as RectTransform;
+            if (iconBackground != null)
+            {
+                SetRect(iconBackground, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(42.5f, -8f), new Vector2(54f, 54f));
+            }
+
+            Text iconLabel = FindSceneComponent<Text>(root, "EquipmentSlotIcon" + suffix);
+            if (iconLabel != null)
+            {
+                Stretch(iconLabel.rectTransform);
+                iconLabel.fontSize = 24;
+                iconLabel.resizeTextForBestFit = true;
+                iconLabel.resizeTextMinSize = 16;
+                iconLabel.resizeTextMaxSize = 24;
+            }
+            ConfigureCompactEquipmentSlotText(root, "EquipmentSlotName" + suffix, new Vector2(8f, -66f), new Vector2(123f, 24f), 16, 12);
+            ConfigureCompactEquipmentSlotText(root, "EquipmentSlotState" + suffix, new Vector2(8f, -92f), new Vector2(123f, 20f), 13, 11);
+
+            RectTransform empty = FindSceneTransform(root, "EquipmentSlotEmpty" + suffix) as RectTransform;
+            if (empty != null)
+            {
+                SetRect(empty, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(8f, -113f), new Vector2(123f, 14f));
+                Text emptyLabel = empty.GetComponentInChildren<Text>(true);
+                if (emptyLabel != null)
+                {
+                    emptyLabel.fontSize = 11;
+                    emptyLabel.resizeTextForBestFit = true;
+                    emptyLabel.resizeTextMinSize = 9;
+                    emptyLabel.resizeTextMaxSize = 11;
+                }
+            }
+        }
+
+        RenameLegacyEquipmentNode(root, "EquipmentCategory", "Accessory", "Helmet");
+        RenameLegacyEquipmentNode(root, "EquipmentCategory", "Pet", "Boots");
+        CloneEquipmentNode(root, "EquipmentCategoryBoots", "EquipmentCategoryGloves", "Boots", "Gloves");
+
+        for (int i = 0; i < EquipmentCategoryIds.Length; i++)
+        {
+            Button category = FindSceneComponent<Button>(root, "EquipmentCategory" + ToPascalCase(EquipmentCategoryIds[i]));
+            if (category == null)
+            {
+                continue;
+            }
+
+            RectTransform rect = category.GetComponent<RectTransform>();
+            SetRect(
+                rect,
+                TopLeftAnchor(),
+                TopLeftAnchor(),
+                TopLeftAnchor(),
+                new Vector2(548f + i * 70f, -216f),
+                new Vector2(64f, 38f));
+            rect.localScale = Vector3.one;
+            SetSceneButtonText(category, EquipmentCategoryLabels[i]);
+            ConfigureClearButtonLabel(category, 15);
+        }
+
+        EnsureEquipmentSpeedUi(root);
+    }
+
+    private void ConfigureCompactEquipmentSlotText(
+        Transform root,
+        string objectName,
+        Vector2 position,
+        Vector2 size,
+        int fontSize,
+        int minimumFontSize)
+    {
+        Text label = FindSceneComponent<Text>(root, objectName);
+        if (label == null)
+        {
+            return;
+        }
+
+        SetRect(label.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
+        label.fontSize = fontSize;
+        label.resizeTextForBestFit = true;
+        label.resizeTextMinSize = minimumFontSize;
+        label.resizeTextMaxSize = fontSize;
+    }
+
+    private static void RenameLegacyEquipmentNode(
+        Transform root,
+        string prefix,
+        string legacySuffix,
+        string backendSuffix)
+    {
+        if (FindSceneTransform(root, prefix + backendSuffix) != null)
+        {
+            return;
+        }
+
+        Transform legacy = FindSceneTransform(root, prefix + legacySuffix);
+        if (legacy != null)
+        {
+            RenameEquipmentNodeTree(legacy, legacySuffix, backendSuffix);
+            legacy.name = prefix + backendSuffix;
+        }
+    }
+
+    private static void CloneEquipmentNode(
+        Transform root,
+        string sourceName,
+        string targetName,
+        string sourceSuffix,
+        string targetSuffix)
+    {
+        if (FindSceneTransform(root, targetName) != null)
+        {
+            return;
+        }
+
+        Transform source = FindSceneTransform(root, sourceName);
+        if (source == null)
+        {
+            return;
+        }
+
+        GameObject clone = UnityEngine.Object.Instantiate(source.gameObject, source.parent, false);
+        RenameEquipmentNodeTree(clone.transform, sourceSuffix, targetSuffix);
+        clone.name = targetName;
+    }
+
+    private static void RenameEquipmentNodeTree(Transform node, string sourceSuffix, string targetSuffix)
+    {
+        Transform[] descendants = node.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < descendants.Length; i++)
+        {
+            descendants[i].name = descendants[i].name.Replace(sourceSuffix, targetSuffix);
+        }
+    }
+
+    private void EnsureEquipmentSpeedUi(Transform root)
+    {
+        Text speedSummary = FindSceneComponent<Text>(root, "EquipmentSpeedText");
+        if (speedSummary == null)
+        {
+            Text healthSummary = FindSceneComponent<Text>(root, "EquipmentHealthText");
+            if (healthSummary != null)
+            {
+                speedSummary = UnityEngine.Object.Instantiate(healthSummary, healthSummary.transform.parent, false);
+                speedSummary.name = "EquipmentSpeedText";
+            }
+        }
+        if (speedSummary != null)
+        {
+            SetRect(
+                speedSummary.rectTransform,
+                TopLeftAnchor(),
+                TopLeftAnchor(),
+                TopLeftAnchor(),
+                new Vector2(1120f, -758f),
+                new Vector2(130f, 28f));
+        }
+
+        Transform speedChip = FindSceneTransform(root, "EquipmentDetailSpeedChip");
+        if (speedChip == null)
+        {
+            Transform healthChip = FindSceneTransform(root, "EquipmentDetailHealthChip");
+            if (healthChip != null)
+            {
+                GameObject clone = UnityEngine.Object.Instantiate(healthChip.gameObject, healthChip.parent, false);
+                RenameEquipmentNodeTree(clone.transform, "Health", "Speed");
+                clone.name = "EquipmentDetailSpeedChip";
+                speedChip = clone.transform;
+
+                Image speedMark = FindSceneComponent<Image>(speedChip, "EquipmentDetailSpeedMark");
+                if (speedMark != null)
+                {
+                    speedMark.color = new Color(0.32f, 0.62f, 0.75f, 1f);
+                }
+            }
+        }
+
+        string[] statIds = { "Attack", "Defense", "Health", "Speed", "Power" };
+        Vector2[] statPositions =
+        {
+            new Vector2(28f, -312f),
+            new Vector2(172f, -312f),
+            new Vector2(316f, -312f),
+            new Vector2(100f, -376f),
+            new Vector2(244f, -376f)
+        };
+        for (int i = 0; i < statIds.Length; i++)
+        {
+            string statId = statIds[i];
+            Transform chip = FindSceneTransform(root, "EquipmentDetail" + statId + "Chip");
+            if (chip == null)
+            {
+                continue;
+            }
+
+            SetRect(
+                chip.GetComponent<RectTransform>(),
+                TopLeftAnchor(),
+                TopLeftAnchor(),
+                TopLeftAnchor(),
+                statPositions[i],
+                new Vector2(130f, 52f));
+
+            RectTransform mark = FindSceneTransform(chip, "EquipmentDetail" + statId + "Mark") as RectTransform;
+            if (mark != null)
+            {
+                SetRect(mark, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(10f, -12f), new Vector2(24f, 28f));
+            }
+
+            Text value = FindSceneComponent<Text>(chip, "EquipmentDetail" + statId);
+            if (value != null)
+            {
+                SetRect(value.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(40f, -8f), new Vector2(82f, 32f));
+                value.resizeTextForBestFit = true;
+                value.resizeTextMinSize = 11;
+                value.resizeTextMaxSize = Mathf.Max(16, value.fontSize);
+            }
+        }
+    }
+
     private void RenderEquipmentScenePanel(Transform root)
     {
         if (root == null)
         {
             return;
         }
+
+        EnsureBackendEquipmentUi(root);
 
         List<InventoryItemResponse> allVisibleItems = GetFilteredEquipmentItems();
         int pageCount = Mathf.Max(1, Mathf.CeilToInt(allVisibleItems.Count / (float)EquipmentRows));
@@ -351,6 +607,7 @@ public partial class HomePageUI
         SetSceneText(root, "EquipmentAttackText", $"攻击  {totalStats.Attack}");
         SetSceneText(root, "EquipmentDefenseText", $"防御  {totalStats.Defense}");
         SetSceneText(root, "EquipmentHealthText", $"生命  {totalStats.Health}");
+        SetSceneText(root, "EquipmentSpeedText", $"速度  {totalStats.Speed}");
         SetSceneText(root, "EquipmentPowerDetailText", $"战力  {totalStats.Power}");
         ConfigureServerNpcControls(root);
         ConfigureEquipmentPaging(root, pageCount);
@@ -373,15 +630,14 @@ public partial class HomePageUI
             }
         });
 
-        string[] categoryIds = { "all", "weapon", "armor", "accessory", "pet" };
-        for (int i = 0; i < categoryIds.Length; i++)
+        for (int i = 0; i < EquipmentCategoryIds.Length; i++)
         {
-            string categoryId = categoryIds[i];
+            string categoryId = EquipmentCategoryIds[i];
             Button categoryButton = FindSceneComponent<Button>(root, "EquipmentCategory" + ToPascalCase(categoryId));
             ConfigureEquipmentCategoryButton(categoryButton, activeEquipmentCategory == categoryId);
             if (categoryButton != null)
             {
-                categoryButton.interactable = !equipmentServerBacked || categoryId != "pet";
+                categoryButton.interactable = !equipmentRefreshRunning && !equipmentMutationRunning;
             }
             BindSceneButton(categoryButton, () =>
             {
@@ -434,6 +690,13 @@ public partial class HomePageUI
                 slotBackground.color = item == null
                     ? new Color(0.86f, 0.72f, 0.48f, 1f)
                     : GetEquipmentColor(item);
+            }
+
+            Image slotIconBackground = FindSceneComponent<Image>(root, "EquipmentSlotIconBackground" + ToPascalCase(slotId));
+            if (slotIconBackground != null)
+            {
+                Color slotColor = GetEquipmentSlotColor(slotId);
+                slotIconBackground.color = item == null ? Color.Lerp(slotColor, Color.white, 0.12f) : GetEquipmentColor(item);
             }
 
             SetSceneText(root, "EquipmentSlotIcon" + ToPascalCase(slotId), item == null ? GetSlotIcon(slotId) : GetNicknameInitial(item.name));
@@ -511,6 +774,7 @@ public partial class HomePageUI
             return;
         }
 
+        EnsureEquipmentUpgradePreview(item);
         EquipmentStats stats = GetEquipmentStats(item);
         SetSceneText(root, "EquipmentDetailIcon", GetNicknameInitial(item.name));
         SetSceneText(root, "EquipmentDetailName", item.name);
@@ -520,10 +784,26 @@ public partial class HomePageUI
             equipmentServerBacked
                 ? $"{GetEquipmentTypeLabel(item)} · Lv.{item.level} · {GetEquipmentQualityLabel(item.quality)}"
                 : $"{GetEquipmentTypeLabel(item)}  ·  数量 x{item.quantity}");
-        SetSceneText(root, "EquipmentDetailDescription", GetEquipmentDescription(item));
+        Text descriptionText = FindSceneComponent<Text>(root, "EquipmentDetailDescription");
+        if (descriptionText != null)
+        {
+            descriptionText.resizeTextForBestFit = true;
+            descriptionText.resizeTextMinSize = 10;
+            descriptionText.resizeTextMaxSize = 16;
+            descriptionText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            descriptionText.verticalOverflow = VerticalWrapMode.Truncate;
+            descriptionText.lineSpacing = 0.9f;
+            RectTransform descriptionCard = descriptionText.transform.parent as RectTransform;
+            if (descriptionCard != null)
+            {
+                descriptionCard.sizeDelta = new Vector2(descriptionCard.sizeDelta.x, 72f);
+            }
+        }
+        SetSceneText(root, "EquipmentDetailDescription", GetEquipmentDescriptionWithUpgradePreview(item));
         SetSceneText(root, "EquipmentDetailAttack", $"攻击  +{stats.Attack}");
         SetSceneText(root, "EquipmentDetailDefense", $"防御  +{stats.Defense}");
         SetSceneText(root, "EquipmentDetailHealth", $"生命  +{stats.Health}");
+        SetSceneText(root, "EquipmentDetailSpeed", $"速度  +{stats.Speed}");
         SetSceneText(root, "EquipmentDetailPower", $"战力  +{stats.Power}");
 
         Image iconBackground = FindSceneComponent<Image>(root, "EquipmentDetailIconBackground");
@@ -664,6 +944,10 @@ public partial class HomePageUI
             }
 
             string slotId = GetEquipmentSlot(item);
+            if (string.IsNullOrEmpty(slotId))
+            {
+                continue;
+            }
             if (activeEquipmentCategory != "all" && slotId != activeEquipmentCategory)
             {
                 continue;
@@ -709,15 +993,18 @@ public partial class HomePageUI
             return string.Empty;
         }
 
-        string equipmentType = (item.equipmentType ?? item.itemType ?? string.Empty).ToUpperInvariant();
+        string equipmentType = (!string.IsNullOrEmpty(item.equipmentType) ? item.equipmentType : item.itemType ?? string.Empty)
+            .Trim()
+            .ToUpperInvariant();
         if (equipmentType == "WEAPON") return "weapon";
+        if (equipmentType == "HELMET") return "helmet";
         if (equipmentType == "ARMOR") return "armor";
-        if (equipmentType == "ACCESSORY" || equipmentType == "ORNAMENT") return "accessory";
-        if (equipmentType == "PET") return "pet";
+        if (equipmentType == "BOOTS") return "boots";
+        if (equipmentType == "GLOVES") return "gloves";
 
-        if (IsPetItem(item))
+        if (equipmentServerBacked)
         {
-            return "pet";
+            return string.Empty;
         }
 
         if (!IsEquipmentItem(item))
@@ -725,11 +1012,17 @@ public partial class HomePageUI
             return string.Empty;
         }
 
-        string key = NormalizeInventoryKey(GetInventoryItemKey(item));
+        string key = NormalizeInventoryKey(
+            string.IsNullOrEmpty(item.equipmentKey) ? GetInventoryItemKey(item) : item.equipmentKey);
         string name = item.name ?? string.Empty;
         if (IsWeaponEquipment(key, name))
         {
             return "weapon";
+        }
+
+        if (IsHelmetEquipment(key, name))
+        {
+            return "helmet";
         }
 
         if (IsArmorEquipment(key, name))
@@ -737,7 +1030,17 @@ public partial class HomePageUI
             return "armor";
         }
 
-        return "accessory";
+        if (IsBootsEquipment(key, name))
+        {
+            return "boots";
+        }
+
+        if (IsGlovesEquipment(key, name))
+        {
+            return "gloves";
+        }
+
+        return string.Empty;
     }
 
     private static bool IsWeaponEquipment(string key, string name)
@@ -749,9 +1052,26 @@ public partial class HomePageUI
 
     private static bool IsArmorEquipment(string key, string name)
     {
-        return key.Contains("armor") || key.Contains("helmet") || key.Contains("plate") || key.Contains("shield")
-            || key.Contains("clothes") || key.Contains("boots")
-            || name.Contains("甲") || name.Contains("盔") || name.Contains("盾") || name.Contains("鞋") || name.Contains("防具");
+        return key.Contains("armor") || key.Contains("plate") || key.Contains("shield") || key.Contains("clothes")
+            || name.Contains("甲") || name.Contains("铠") || name.Contains("盾") || name.Contains("护甲") || name.Contains("防具");
+    }
+
+    private static bool IsHelmetEquipment(string key, string name)
+    {
+        return key.Contains("helmet") || key.Contains("helm") || key.Contains("headgear")
+            || name.Contains("头盔") || name.Contains("盔") || name.Contains("帽");
+    }
+
+    private static bool IsBootsEquipment(string key, string name)
+    {
+        return key.Contains("boots") || key.Contains("boot") || key.Contains("shoes") || key.Contains("shoe")
+            || name.Contains("靴") || name.Contains("鞋");
+    }
+
+    private static bool IsGlovesEquipment(string key, string name)
+    {
+        return key.Contains("gloves") || key.Contains("glove") || key.Contains("gauntlet")
+            || name.Contains("手套") || name.Contains("护手") || name.Contains("拳套");
     }
 
     private string GetEquippedItemKey(string slotId)
@@ -839,20 +1159,23 @@ public partial class HomePageUI
     {
         if (equipmentServerBacked && serverEquipmentLoadout != null)
         {
-            return new EquipmentStats
+            EquipmentStats serverStats = new EquipmentStats
             {
                 Attack = serverEquipmentLoadout.totalAttack,
                 Defense = serverEquipmentLoadout.totalDefense,
                 Health = serverEquipmentLoadout.totalHealth,
-                Power = serverEquipmentLoadout.totalAttack + serverEquipmentLoadout.totalDefense + serverEquipmentLoadout.totalHealth / 10
+                Speed = serverEquipmentLoadout.totalSpeed
             };
+            serverStats.Power = CalculateEquipmentPower(serverStats);
+            return serverStats;
         }
 
         EquipmentStats result = new EquipmentStats
         {
             Attack = 10,
             Defense = 8,
-            Health = 100
+            Health = 100,
+            Speed = 10
         };
 
         for (int i = 0; i < EquipmentSlotIds.Length; i++)
@@ -867,9 +1190,10 @@ public partial class HomePageUI
             result.Attack += itemStats.Attack;
             result.Defense += itemStats.Defense;
             result.Health += itemStats.Health;
+            result.Speed += itemStats.Speed;
         }
 
-        result.Power = result.Attack + result.Defense + result.Health / 10;
+        result.Power = CalculateEquipmentPower(result);
         return result;
     }
 
@@ -877,13 +1201,15 @@ public partial class HomePageUI
     {
         if (equipmentServerBacked && item != null)
         {
-            return new EquipmentStats
+            EquipmentStats serverStats = new EquipmentStats
             {
                 Attack = item.attackBonus,
                 Defense = item.defenseBonus,
                 Health = item.healthBonus,
-                Power = item.attackBonus + item.defenseBonus + item.healthBonus / 10
+                Speed = item.speedBonus
             };
+            serverStats.Power = CalculateEquipmentPower(serverStats);
+            return serverStats;
         }
 
         string slotId = GetEquipmentSlot(item);
@@ -894,25 +1220,36 @@ public partial class HomePageUI
         {
             result.Attack = 12 + variant;
         }
+        else if (slotId == "helmet")
+        {
+            result.Defense = 7 + variant;
+            result.Health = 20 + variant * 2;
+        }
         else if (slotId == "armor")
         {
             result.Defense = 12 + variant;
             result.Health = 35 + variant * 3;
         }
-        else if (slotId == "pet")
+        else if (slotId == "boots")
         {
-            result.Attack = 4 + variant;
-            result.Health = 18 + variant * 2;
-        }
-        else
-        {
-            result.Attack = 3 + variant / 2;
             result.Defense = 3 + variant / 2;
-            result.Health = 8 + variant * 2;
+            result.Health = 8 + variant;
+            result.Speed = 3 + variant / 2;
+        }
+        else if (slotId == "gloves")
+        {
+            result.Attack = 5 + variant;
+            result.Defense = 2 + variant / 2;
+            result.Speed = 1 + variant / 3;
         }
 
-        result.Power = result.Attack + result.Defense + result.Health / 10;
+        result.Power = CalculateEquipmentPower(result);
         return result;
+    }
+
+    private static int CalculateEquipmentPower(EquipmentStats stats)
+    {
+        return stats.Attack + stats.Defense + stats.Health / 10 + stats.Speed;
     }
 
     private string GetEquipmentDescription(InventoryItemResponse item)
@@ -924,9 +1261,146 @@ public partial class HomePageUI
 
         string slot = GetEquipmentSlot(item);
         if (slot == "weapon") return "适合领主出征的攻击装备，提升基础攻击。";
-        if (slot == "armor") return "守护领地的防御装备，提升防御与生命。";
-        if (slot == "pet") return "陪伴领主作战的灵宠，提供额外属性。";
-        return "拥有特殊加成的饰品，可补足战斗属性。";
+        if (slot == "helmet") return "保护头部的防御装备，提升生命与防御。";
+        if (slot == "armor") return "守护领地的护甲装备，提升防御与生命。";
+        if (slot == "boots") return "兼顾防护与行动的靴子，可提升速度。";
+        if (slot == "gloves") return "强化攻击动作的手套，补充战斗属性。";
+        return "装备属性与穿戴部位由服务器配置决定。";
+    }
+
+    private string GetEquipmentDescriptionWithUpgradePreview(InventoryItemResponse item)
+    {
+        string description = GetEquipmentDescription(item);
+        if (!equipmentServerBacked || item == null)
+        {
+            return description;
+        }
+        if (equipmentUpgradePreviewRequestId != item.playerEquipmentId
+            || equipmentUpgradePreviewRunning)
+        {
+            return description + "\n升级消耗：正在读取...";
+        }
+        if (!string.IsNullOrEmpty(equipmentUpgradePreviewError))
+        {
+            return description + "\n升级消耗读取失败：" + equipmentUpgradePreviewError;
+        }
+        if (equipmentUpgradePreview == null)
+        {
+            return description;
+        }
+        if (equipmentUpgradePreview.maxLevelReached)
+        {
+            return description + $"\n已达到最高等级 Lv.{equipmentUpgradePreview.maxLevel}";
+        }
+
+        List<string> costs = new List<string>
+        {
+            $"金币 x{equipmentUpgradePreview.goldCost}（持有 {equipmentUpgradePreview.availableGold}）"
+        };
+        EquipmentUpgradeResourceCostPreviewData[] resourceCosts = equipmentUpgradePreview.resourceCosts
+            ?? new EquipmentUpgradeResourceCostPreviewData[0];
+        for (int i = 0; i < resourceCosts.Length; i++)
+        {
+            EquipmentUpgradeResourceCostPreviewData resourceCost = resourceCosts[i];
+            if (resourceCost == null || resourceCost.amount <= 0L)
+            {
+                continue;
+            }
+            string displayName = string.IsNullOrWhiteSpace(resourceCost.itemName)
+                ? resourceCost.itemKey
+                : resourceCost.itemName;
+            costs.Add($"{displayName} x{resourceCost.amount}（持有 {resourceCost.availableAmount}）");
+        }
+        if (equipmentUpgradePreview.sameEquipmentCount > 0)
+        {
+            costs.Add($"同款1级装备 x{equipmentUpgradePreview.sameEquipmentCount}");
+        }
+        return description
+            + $"\n升至 Lv.{equipmentUpgradePreview.targetLevel}：{string.Join("，", costs)}";
+    }
+
+    private void ResetEquipmentUpgradePreview()
+    {
+        equipmentUpgradePreview = null;
+        equipmentUpgradePreviewRequestId = 0L;
+        equipmentUpgradePreviewRunning = false;
+        equipmentUpgradePreviewError = string.Empty;
+    }
+
+    private void EnsureEquipmentUpgradePreview(InventoryItemResponse item)
+    {
+        if (!equipmentServerBacked
+            || item == null
+            || item.playerEquipmentId <= 0L
+            || equipmentRefreshRunning
+            || equipmentMutationRunning)
+        {
+            return;
+        }
+        if (equipmentUpgradePreviewRequestId == item.playerEquipmentId
+            && (equipmentUpgradePreviewRunning
+                || equipmentUpgradePreview != null
+                || !string.IsNullOrEmpty(equipmentUpgradePreviewError)))
+        {
+            return;
+        }
+
+        equipmentUpgradePreview = null;
+        equipmentUpgradePreviewRequestId = item.playerEquipmentId;
+        equipmentUpgradePreviewRunning = true;
+        equipmentUpgradePreviewError = string.Empty;
+        StartCoroutine(RefreshEquipmentUpgradePreview(item.playerEquipmentId));
+    }
+
+    private IEnumerator RefreshEquipmentUpgradePreview(long playerEquipmentId)
+    {
+        UnityWebRequest request = CreateAuthorizedGet($"/equipment/{playerEquipmentId}/upgrade-preview");
+        if (request == null)
+        {
+            if (equipmentUpgradePreviewRequestId == playerEquipmentId)
+            {
+                equipmentUpgradePreviewRunning = false;
+                equipmentUpgradePreviewError = requestCreationError;
+                RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+            }
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (equipmentUpgradePreviewRequestId != playerEquipmentId
+                || equipmentPanelObject == null)
+            {
+                yield break;
+            }
+            if (HandleUnauthorizedResponse(request))
+            {
+                equipmentUpgradePreviewRunning = false;
+                yield break;
+            }
+
+            EquipmentUpgradePreviewApiResponse response = ParseJson<EquipmentUpgradePreviewApiResponse>(
+                request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success
+                || response == null
+                || response.code != 200
+                || response.data == null
+                || response.data.playerEquipmentId != playerEquipmentId)
+            {
+                equipmentUpgradePreviewError = response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                    : GetApiError(response);
+            }
+            else
+            {
+                equipmentUpgradePreview = response.data;
+                equipmentUpgradePreviewError = string.Empty;
+            }
+        }
+
+        equipmentUpgradePreviewRunning = false;
+        RenderEquipmentScenePanel(GetEquipmentPanelRoot());
     }
 
     private string GetEquipmentTypeLabel(InventoryItemResponse item)
@@ -947,28 +1421,36 @@ public partial class HomePageUI
     private static string GetEquipmentSlotLabel(string slotId)
     {
         if (slotId == "weapon") return "武器";
-        if (slotId == "armor") return "防具";
-        if (slotId == "pet") return "灵宠";
-        if (slotId == "accessory") return "饰品";
+        if (slotId == "helmet") return "头盔";
+        if (slotId == "armor") return "护甲";
+        if (slotId == "boots") return "靴子";
+        if (slotId == "gloves") return "手套";
         return "装备";
     }
 
     private static string GetSlotIcon(string slotId)
     {
         if (slotId == "weapon") return "剑";
+        if (slotId == "helmet") return "盔";
         if (slotId == "armor") return "甲";
-        if (slotId == "pet") return "宠";
-        return "饰";
+        if (slotId == "boots") return "靴";
+        if (slotId == "gloves") return "套";
+        return "装";
     }
 
     private Color GetEquipmentColor(InventoryItemResponse item)
     {
-        string slot = GetEquipmentSlot(item);
+        return GetEquipmentSlotColor(GetEquipmentSlot(item));
+    }
 
+    private static Color GetEquipmentSlotColor(string slot)
+    {
         if (slot == "weapon") return new Color(0.83f, 0.38f, 0.24f, 1f);
+        if (slot == "helmet") return new Color(0.76f, 0.57f, 0.22f, 1f);
         if (slot == "armor") return new Color(0.28f, 0.55f, 0.76f, 1f);
-        if (slot == "pet") return new Color(0.68f, 0.38f, 0.72f, 1f);
-        return new Color(0.38f, 0.65f, 0.40f, 1f);
+        if (slot == "boots") return new Color(0.32f, 0.62f, 0.43f, 1f);
+        if (slot == "gloves") return new Color(0.63f, 0.42f, 0.68f, 1f);
+        return new Color(0.55f, 0.55f, 0.55f, 1f);
     }
 
     private static string ToPascalCase(string value)
@@ -1145,8 +1627,19 @@ public partial class HomePageUI
 
         upgrade.gameObject.SetActive(true);
         lockButton.gameObject.SetActive(true);
-        upgrade.interactable = item != null && !equipmentMutationRunning && !equipmentRefreshRunning;
+        bool previewMatches = item != null
+            && equipmentUpgradePreviewRequestId == item.playerEquipmentId;
+        bool previewLoading = previewMatches && equipmentUpgradePreviewRunning;
+        bool maxLevelReached = previewMatches
+            && equipmentUpgradePreview != null
+            && equipmentUpgradePreview.maxLevelReached;
+        upgrade.interactable = item != null
+            && !equipmentMutationRunning
+            && !equipmentRefreshRunning
+            && !previewLoading
+            && !maxLevelReached;
         lockButton.interactable = item != null && !equipmentMutationRunning && !equipmentRefreshRunning;
+        SetSceneButtonText(upgrade, maxLevelReached ? "已满级" : (previewLoading ? "读取中..." : "升级"));
         SetSceneButtonText(lockButton, item != null && item.locked ? "解锁" : "锁定");
         BindSceneButton(upgrade, () => UpgradeServerEquipment(item));
         BindSceneButton(lockButton, () => ToggleServerEquipmentLock(item));
@@ -1291,14 +1784,72 @@ public partial class HomePageUI
             result = response.data;
         }
 
-        PlayerPrefs.SetInt("Gold", Mathf.Max(0, result.remainingGold));
-        PlayerPrefs.Save();
-        RefreshHomeResourceMetrics();
+        SyncEquipmentUpgradeResourceBalances(result);
         equipmentMutationRunning = false;
         equipmentRefreshRunning = true;
         yield return GetEquipmentInventoryList();
-        equipmentStatusMessage = $"{result.name} 已升级到 Lv.{result.level}，消耗金币 {result.goldCost}";
+        string resourceCost = FormatEquipmentUpgradeResourceCosts(result.resourceCosts);
+        string materialCost = result.sameEquipmentCount > 0
+            ? $"，消耗同款装备 {result.sameEquipmentCount} 件"
+            : string.Empty;
+        equipmentStatusMessage = $"{result.name} 已升级到 Lv.{result.level}，消耗金币 {result.goldCost}{resourceCost}{materialCost}";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+    }
+
+    private void SyncEquipmentUpgradeResourceBalances(EquipmentUpgradeData result)
+    {
+        EquipmentUpgradeResourceCostData[] resourceCosts = result.resourceCosts
+            ?? new EquipmentUpgradeResourceCostData[0];
+        InventoryItemResponse[] balances = new InventoryItemResponse[resourceCosts.Length + 1];
+        balances[0] = new InventoryItemResponse
+        {
+            itemKey = "gold",
+            quantity = Mathf.Max(0, result.remainingGold)
+        };
+        for (int i = 0; i < resourceCosts.Length; i++)
+        {
+            EquipmentUpgradeResourceCostData resourceCost = resourceCosts[i];
+            balances[i + 1] = new InventoryItemResponse
+            {
+                itemKey = resourceCost != null ? resourceCost.itemKey : string.Empty,
+                quantity = resourceCost == null
+                    ? 0
+                    : ClampEquipmentInventoryQuantity(resourceCost.remainingAmount)
+            };
+        }
+        SyncInventoryResourceValues(balances);
+    }
+
+    private static int ClampEquipmentInventoryQuantity(long quantity)
+    {
+        if (quantity <= 0L) return 0;
+        return quantity >= int.MaxValue ? int.MaxValue : (int)quantity;
+    }
+
+    private static string FormatEquipmentUpgradeResourceCosts(
+        EquipmentUpgradeResourceCostData[] resourceCosts)
+    {
+        if (resourceCosts == null || resourceCosts.Length == 0)
+        {
+            return string.Empty;
+        }
+
+        List<string> descriptions = new List<string>();
+        for (int i = 0; i < resourceCosts.Length; i++)
+        {
+            EquipmentUpgradeResourceCostData resourceCost = resourceCosts[i];
+            if (resourceCost == null || resourceCost.amount <= 0L)
+            {
+                continue;
+            }
+            string displayName = string.IsNullOrWhiteSpace(resourceCost.itemName)
+                ? resourceCost.itemKey
+                : resourceCost.itemName;
+            descriptions.Add($"{displayName} x{resourceCost.amount}");
+        }
+        return descriptions.Count == 0
+            ? string.Empty
+            : $"，消耗仓库资源 {string.Join("、", descriptions)}";
     }
 
     private IEnumerator SetServerEquipmentLock(long playerEquipmentId, bool locked)
@@ -1476,12 +2027,15 @@ public partial class HomePageUI
         public int baseHealth;
         public int baseAttack;
         public int baseDefense;
+        public int baseSpeed;
         public int equipmentHealthBonus;
         public int equipmentAttackBonus;
         public int equipmentDefenseBonus;
+        public int equipmentSpeedBonus;
         public int totalHealth;
         public int totalAttack;
         public int totalDefense;
+        public int totalSpeed;
         public EquipmentLoadoutItem[] equipment;
     }
 
@@ -1502,6 +2056,7 @@ public partial class HomePageUI
         public int healthBonus;
         public int attackBonus;
         public int defenseBonus;
+        public int speedBonus;
     }
 
     [Serializable]
@@ -1537,6 +2092,38 @@ public partial class HomePageUI
     }
 
     [Serializable]
+    private class EquipmentUpgradePreviewApiResponse : BasicApiResponse
+    {
+        public EquipmentUpgradePreviewData data;
+    }
+
+    [Serializable]
+    private class EquipmentUpgradePreviewData
+    {
+        public long playerEquipmentId;
+        public int equipmentId;
+        public string equipmentKey;
+        public string name;
+        public int currentLevel;
+        public int targetLevel;
+        public int maxLevel;
+        public bool maxLevelReached;
+        public long goldCost;
+        public long availableGold;
+        public int sameEquipmentCount;
+        public EquipmentUpgradeResourceCostPreviewData[] resourceCosts;
+    }
+
+    [Serializable]
+    private class EquipmentUpgradeResourceCostPreviewData
+    {
+        public string itemKey;
+        public string itemName;
+        public long amount;
+        public long availableAmount;
+    }
+
+    [Serializable]
     private class EquipmentUpgradeData
     {
         public long upgradeRecordId;
@@ -1551,9 +2138,20 @@ public partial class HomePageUI
         public int sameEquipmentCount;
         public long[] consumedPlayerEquipmentIds;
         public int remainingGold;
+        public EquipmentUpgradeResourceCostData[] resourceCosts;
         public int healthBonus;
         public int attackBonus;
         public int defenseBonus;
+        public int speedBonus;
+    }
+
+    [Serializable]
+    private class EquipmentUpgradeResourceCostData
+    {
+        public string itemKey;
+        public string itemName;
+        public long amount;
+        public long remainingAmount;
     }
 
     [Serializable]
@@ -1589,6 +2187,7 @@ public partial class HomePageUI
         public int Attack;
         public int Defense;
         public int Health;
+        public int Speed;
         public int Power;
     }
 }

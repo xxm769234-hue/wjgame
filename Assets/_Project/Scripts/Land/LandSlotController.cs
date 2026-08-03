@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Rendering;
@@ -25,10 +26,16 @@ public sealed class LandSlotController : MonoBehaviour
     [SerializeField, Min(3)] private int sortingOrderStep = 10;
     [SerializeField, Min(0.001f)] private float outlineWidth = 0.06f;
     [SerializeField] private Color outlineColor = Color.black;
+    [SerializeField] private Color purificationOutlineColor = new Color(0.2f, 0.76f, 0.67f, 0.95f);
+    [SerializeField] private Color unpurchasedOutlineColor = new Color(0.76f, 0.79f, 0.8f, 0.9f);
     [SerializeField] private int outlineSortingOrderOffset = 2;
     [SerializeField] private string buildingSortingLayer = "Building";
     [SerializeField] private int buildingSortingOrderOffset = 5;
     [SerializeField] private int npcSortingOrderOffset = 8;
+
+    [Header("Purification Overlay")]
+    [SerializeField] private Sprite purificationOverlaySprite;
+    [SerializeField] private Color purificationOverlayTint = Color.white;
 
     [Header("Resource Bubble")]
     [SerializeField] private Vector2 resourceBubbleOffset = new Vector2(0f, 2.1f);
@@ -41,6 +48,7 @@ public sealed class LandSlotController : MonoBehaviour
     private NpcConfig currentNpc;
     private SpriteRenderer buildingRenderer;
     private SpriteRenderer npcRenderer;
+    private SpriteRenderer purificationOverlayRenderer;
     private ResourceBubbleController resourceBubble;
     private LineRenderer outlineRenderer;
     private bool hasGridPosition;
@@ -55,8 +63,24 @@ public sealed class LandSlotController : MonoBehaviour
     private bool resourceReady;
     private string remoteResourceName;
     private int remoteResourceAmount;
+    private bool runtimeUnlocked = true;
+    private int runtimeUnlockUnitIndex = -1;
+    private int runtimeRequiredPlayerLevel = 1;
+    private bool runtimeRequiresPurification;
+    private bool runtimePurified = true;
+    private bool runtimePurificationAvailable;
+    private bool runtimeRequiresGoldPurchase;
+    private bool runtimePurchased = true;
+    private bool runtimePurchaseAvailable;
+    private bool runtimePlacementUnlocked = true;
+    private int runtimePurchaseGoldCost;
+    private bool hasRemoteUnlockState;
+    private bool hasRuntimeLayoutGridPosition;
+    private TextMeshPro purchaseIndicator;
+    private int purificationPanelOpenedFrame = -1;
     private readonly List<ProductionResponse> latestProductions = new List<ProductionResponse>();
     private static Material outlineMaterial;
+    private static Sprite fallbackPurificationOverlaySprite;
 
     public int SlotId => slotId;
     public bool HasRemotePlayerLandId => runtimePlayerLandId > 0;
@@ -73,8 +97,8 @@ public sealed class LandSlotController : MonoBehaviour
     public BuildingRuntimeStatus BuildingStatus => buildingStatus;
     public bool IsBuildingCompleted => HasBuilding && buildingStatus == BuildingRuntimeStatus.COMPLETED;
     public bool IsBuildingInProgress => HasBuilding && (buildingStatus == BuildingRuntimeStatus.BUILDING || buildingStatus == BuildingRuntimeStatus.UPGRADING);
-    public float BuildingRemainingSeconds => IsBuildingInProgress ? Mathf.Max(0f, buildingEndsAt - Time.time) : 0f;
-    public float BuildingProgress => IsBuildingInProgress && buildingDuration > 0f ? Mathf.Clamp01((Time.time - buildingStartedAt) / buildingDuration) : IsBuildingCompleted ? 1f : 0f;
+    public float BuildingRemainingSeconds => IsBuildingInProgress ? Mathf.Max(0f, buildingEndsAt - Time.realtimeSinceStartup) : 0f;
+    public float BuildingProgress => IsBuildingInProgress && buildingDuration > 0f ? Mathf.Clamp01((Time.realtimeSinceStartup - buildingStartedAt) / buildingDuration) : IsBuildingCompleted ? 1f : 0f;
     public bool HasResourceReady => resourceReady;
     public IReadOnlyList<ProductionResponse> LatestProductions => latestProductions;
     public PolygonCollider2D Collider => polygonCollider;
@@ -82,6 +106,19 @@ public sealed class LandSlotController : MonoBehaviour
     public Vector2Int GridPosition => gridPosition;
     public bool HasGridPosition => hasGridPosition || useManualGridPosition;
     public bool UsesManualGridPosition => useManualGridPosition;
+    public bool UsesRuntimeLayoutGridPosition => hasRuntimeLayoutGridPosition;
+    public bool IsUnlocked => runtimeUnlocked;
+    public int UnlockUnitIndex => runtimeUnlockUnitIndex;
+    public int RequiredPlayerLevel => runtimeRequiredPlayerLevel;
+    public bool RequiresPurification => runtimeRequiresPurification;
+    public bool IsPurified => !runtimeRequiresPurification || runtimePurified;
+    public bool IsPurificationAvailable => runtimePurificationAvailable
+        || runtimeUnlocked && runtimeRequiresPurification && !runtimePurified;
+    public bool RequiresGoldPurchase => runtimeRequiresGoldPurchase;
+    public bool IsPurchased => !runtimeRequiresGoldPurchase || runtimePurchased;
+    public bool IsPurchaseAvailable => runtimePurchaseAvailable;
+    public bool IsPlacementUnlocked => runtimePlacementUnlocked;
+    public int PurchaseGoldCost => runtimePurchaseGoldCost;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetSortingOrderAllocator()
@@ -103,7 +140,11 @@ public sealed class LandSlotController : MonoBehaviour
         {
             // Preserve preconfigured land when loading a saved or authored scene.
             if (landRenderer.sprite == null) landRenderer.enabled = false;
-            else currentLand = null;
+            else
+            {
+                currentLand = null;
+                FitLandRendererToCollider();
+            }
         }
         if (Application.isPlaying && MapManager.Instance != null) MapManager.Instance.RegisterSlot(this);
     }
@@ -129,6 +170,7 @@ public sealed class LandSlotController : MonoBehaviour
 
     private void Update()
     {
+        HandlePurificationPointerDown();
         UpdateBuildingLifecycle();
         UpdateResourceProduction();
     }
@@ -144,12 +186,17 @@ public sealed class LandSlotController : MonoBehaviour
         {
             service.CollectProduction(this, (success, message) =>
             {
-                if (!success) Debug.LogWarning($"Backend production collect failed: {message}", this);
+                if (!success)
+                {
+                    Debug.LogWarning($"Backend production collect failed: {message}", this);
+                    if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetProductionMessage($"Production failed: {message}");
+                }
             });
             return;
         }
 
         Debug.LogWarning("Backend production collect failed: Backend session is not authenticated.", this);
+        if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetProductionMessage("Production failed: Backend session is not authenticated.");
     }
 
     public bool CanReceiveMovedBuilding(BuildingConfig config, out string reason)
@@ -180,12 +227,106 @@ public sealed class LandSlotController : MonoBehaviour
         hasGridPosition = true;
     }
 
+    public void SetRuntimeLayoutGridPosition(Vector2Int value)
+    {
+        if (useManualGridPosition) return;
+        gridPosition = value;
+        hasGridPosition = true;
+        hasRuntimeLayoutGridPosition = true;
+    }
+
+    public void SetRuntimeUnlockState(int unitIndex, int requiredPlayerLevel, bool unlocked, bool requiresGoldPurchase)
+    {
+        int normalizedUnitIndex = Mathf.Max(0, unitIndex);
+        bool unitChanged = runtimeUnlockUnitIndex != normalizedUnitIndex;
+        if (unitChanged) hasRemoteUnlockState = false;
+
+        runtimeUnlockUnitIndex = normalizedUnitIndex;
+        runtimeRequiredPlayerLevel = Mathf.Max(1, requiredPlayerLevel);
+        runtimeUnlocked = unlocked;
+        runtimeRequiresGoldPurchase = requiresGoldPurchase;
+
+        // User data refresh runs after map sync, so keep server-owned state for the same unit.
+        if (hasRemoteUnlockState)
+        {
+            runtimePurificationAvailable = runtimeUnlocked
+                && runtimeRequiresPurification
+                && !runtimePurified;
+            if (!runtimeUnlocked || !IsPurified || IsPurchased)
+            {
+                runtimePurchaseAvailable = false;
+            }
+
+            runtimePlacementUnlocked = runtimeUnlocked && IsPurified && IsPurchased;
+            RefreshPurchaseIndicator();
+            return;
+        }
+
+        runtimeRequiresPurification = false;
+        runtimePurified = true;
+        runtimePurificationAvailable = false;
+        runtimePurchaseGoldCost = requiresGoldPurchase ? LandUnlockRules.DefaultPaidSlotGoldCost : 0;
+        if (!requiresGoldPurchase)
+        {
+            runtimePurchased = true;
+            runtimePurchaseAvailable = false;
+        }
+        else if (unitChanged)
+        {
+            runtimePurchased = false;
+            runtimePurchaseAvailable = false;
+        }
+        if (!unlocked) runtimePurchaseAvailable = false;
+        runtimePlacementUnlocked = runtimeUnlocked && IsPurified && IsPurchased;
+        RefreshPurchaseIndicator();
+    }
+
+    public void ApplyRemoteUnlockState(LandSlotStateResponse response)
+    {
+        if (response == null) return;
+
+        runtimeUnlockUnitIndex = Mathf.Max(0, response.unitIndex);
+        runtimeRequiredPlayerLevel = Mathf.Max(1, response.requiredLevel);
+        runtimeUnlocked = response.levelUnlocked;
+        runtimeRequiresPurification = response.requiresPurification;
+        runtimePurified = !response.requiresPurification || response.purified;
+        runtimePurificationAvailable = response.purificationAvailable;
+        runtimeRequiresGoldPurchase = response.requiresPurchase;
+        runtimePurchased = !response.requiresPurchase || response.purchased;
+        runtimePurchaseAvailable = response.purchaseAvailable;
+        runtimePlacementUnlocked = response.placementUnlocked;
+        runtimePurchaseGoldCost = Mathf.Max(0, response.goldCost);
+        hasRemoteUnlockState = true;
+        RefreshPurchaseIndicator();
+    }
+
+    public void ApplyPurchasedState(bool purchased)
+    {
+        runtimePurchased = !runtimeRequiresGoldPurchase || purchased;
+        if (runtimePurchased) runtimePurchaseAvailable = false;
+        runtimePlacementUnlocked = runtimeUnlocked && IsPurified && IsPurchased;
+        RefreshPurchaseIndicator();
+    }
+
+    public void ResetRemotePurchaseState()
+    {
+        hasRemoteUnlockState = false;
+        runtimeRequiresPurification = false;
+        runtimePurified = true;
+        runtimePurificationAvailable = false;
+        runtimePurchased = !runtimeRequiresGoldPurchase;
+        runtimePurchaseAvailable = false;
+        runtimePlacementUnlocked = runtimeUnlocked && IsPurchased;
+        runtimePurchaseGoldCost = runtimeRequiresGoldPurchase ? LandUnlockRules.DefaultPaidSlotGoldCost : 0;
+        RefreshPurchaseIndicator();
+    }
+
     public void ApplyRemoteLand(LandConfig config, LandTileResponse response)
     {
         if (response != null)
         {
             runtimePlayerLandId = response.playerLandId;
-            if (!useManualGridPosition)
+            if (!useManualGridPosition && !hasRuntimeLayoutGridPosition)
             {
                 gridPosition = new Vector2Int(response.positionX, response.positionY);
                 hasGridPosition = true;
@@ -193,6 +334,7 @@ public sealed class LandSlotController : MonoBehaviour
         }
 
         ForceBuildLand(config);
+        RefreshPurchaseIndicator();
     }
 
     public void ApplyRemoteBuilding(BuildingConfig config, BuildingResponse response)
@@ -204,7 +346,7 @@ public sealed class LandSlotController : MonoBehaviour
         playerBuildingId = response.playerBuildingId;
         buildingLevel = Mathf.Max(1, response.level);
         buildingStatus = RuntimeConfigFactory.ParseBuildingStatus(response.status);
-        ApplyRemoteBuildingTimer(response.remainingTime, response.progress);
+        ApplyRemoteBuildingTimer(response);
         ConfigureBuildingRenderer(true);
 
         HideResourceBubble();
@@ -275,6 +417,7 @@ public sealed class LandSlotController : MonoBehaviour
         currentLand = null;
         if (landRenderer != null) landRenderer.enabled = false;
         SetOutlineVisible(false);
+        RefreshPurchaseIndicator();
     }
 
     public void ClearBuildingStateFromBackend()
@@ -284,9 +427,109 @@ public sealed class LandSlotController : MonoBehaviour
 
     private void OnMouseDown()
     {
-        if (currentLand == null || EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
+        if (TryOpenPurificationPanel()) return;
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
+        if (currentLand == null)
+        {
+            if (runtimePurchaseAvailable)
+            {
+                LandSlotPurchasePanel.EnsureInstance().Show(this);
+            }
+            return;
+        }
         if (BuildingManager.Instance != null && BuildingManager.Instance.HandleLandSlotClicked(this)) return;
         if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.Show(this);
+    }
+
+    private void HandlePurificationPointerDown()
+    {
+        if (!Input.GetMouseButtonDown(0) || !IsPurificationAvailable || IsBuilt) return;
+        if (LandSlotPurchasePanel.Instance != null
+            && LandSlotPurchasePanel.Instance.gameObject.activeInHierarchy)
+        {
+            return;
+        }
+
+        ResolveReferences(false);
+        Camera worldCamera = Camera.main;
+        if (worldCamera == null || polygonCollider == null) return;
+
+        Vector3 screenPosition = Input.mousePosition;
+        screenPosition.z = Mathf.Abs(worldCamera.transform.position.z - transform.position.z);
+        Vector3 worldPosition = worldCamera.ScreenToWorldPoint(screenPosition);
+        if (!polygonCollider.OverlapPoint(worldPosition)) return;
+
+        TryOpenPurificationPanel();
+    }
+
+    private bool TryOpenPurificationPanel()
+    {
+        if (IsBuilt || !IsPurificationAvailable) return false;
+        if (purificationPanelOpenedFrame == Time.frameCount) return true;
+
+        purificationPanelOpenedFrame = Time.frameCount;
+        LandSlotPurchasePanel.EnsureInstance().Show(this);
+        return true;
+    }
+
+    private void RefreshPurchaseIndicator()
+    {
+        bool showPurificationOutline = Application.isPlaying
+            && !IsBuilt
+            && runtimeUnlocked
+            && runtimeRequiresPurification
+            && !runtimePurified;
+        RefreshPurificationOverlay(showPurificationOutline);
+        bool showUnpurchasedOutline = Application.isPlaying
+            && !IsBuilt
+            && runtimeUnlocked
+            && IsPurified
+            && runtimeRequiresGoldPurchase
+            && !runtimePurchased;
+        if (IsBuilt) SetOutlineVisible(true, outlineColor);
+        else if (showPurificationOutline) SetOutlineVisible(true, purificationOutlineColor);
+        else if (showUnpurchasedOutline) SetOutlineVisible(true, unpurchasedOutlineColor);
+        else SetOutlineVisible(false);
+
+        bool showPurificationAction = showPurificationOutline && runtimePurificationAvailable;
+        bool showPurchaseAction = showUnpurchasedOutline && runtimePurchaseAvailable;
+        bool visible = showPurificationAction || showPurchaseAction;
+        if (!visible)
+        {
+            if (purchaseIndicator != null) purchaseIndicator.gameObject.SetActive(false);
+            return;
+        }
+
+        if (purchaseIndicator == null)
+        {
+            Transform existing = transform.Find("Land Purchase Indicator");
+            if (existing != null) purchaseIndicator = existing.GetComponent<TextMeshPro>();
+        }
+        if (purchaseIndicator == null)
+        {
+            GameObject indicatorObject = new GameObject("Land Purchase Indicator");
+            indicatorObject.transform.SetParent(transform, false);
+            purchaseIndicator = indicatorObject.AddComponent<TextMeshPro>();
+            purchaseIndicator.alignment = TextAlignmentOptions.Center;
+            purchaseIndicator.enableWordWrapping = false;
+            purchaseIndicator.fontSize = 1.25f;
+            purchaseIndicator.fontStyle = FontStyles.Bold;
+            purchaseIndicator.color = new Color(1f, 0.78f, 0.2f, 1f);
+            purchaseIndicator.rectTransform.sizeDelta = new Vector2(3.2f, 1f);
+        }
+
+        Vector3 localCenter = polygonCollider != null
+            ? transform.InverseTransformPoint(CenterWorld)
+            : Vector3.zero;
+        purchaseIndicator.transform.localPosition = new Vector3(localCenter.x, localCenter.y, -0.15f);
+        purchaseIndicator.sortingLayerID = SortingLayer.NameToID(buildingSortingLayer);
+        purchaseIndicator.sortingOrder = GetRuntimeSortingOrder() + npcSortingOrderOffset + 1;
+        purchaseIndicator.fontSize = showPurificationAction ? 1f : 1.25f;
+        purchaseIndicator.color = showPurificationAction
+            ? new Color(0.42f, 1f, 0.86f, 1f)
+            : new Color(1f, 0.78f, 0.2f, 1f);
+        purchaseIndicator.text = showPurificationAction ? "PURIFY" : $"{runtimePurchaseGoldCost:N0} G";
+        purchaseIndicator.gameObject.SetActive(true);
     }
 
     private void ResolveReferences(bool forceRefresh = false)
@@ -302,9 +545,40 @@ public sealed class LandSlotController : MonoBehaviour
         foreach (SpriteRenderer candidate in renderers)
         {
             if (candidate == null || candidate.GetComponent<SpriteMask>() != null) continue;
+            if (candidate == purificationOverlayRenderer || candidate.name == "Unpurified Overlay") continue;
             return candidate;
         }
         return null;
+    }
+
+    private void FitLandRendererToCollider()
+    {
+        FitSpriteRendererToCollider(landRenderer);
+    }
+
+    private void FitSpriteRendererToCollider(SpriteRenderer renderer)
+    {
+        if (renderer == null || renderer.sprite == null || polygonCollider == null) return;
+
+        Vector2[] path = ShapeHelper.GetLargestPath(polygonCollider);
+        if (path.Length == 0) return;
+
+        Vector2 min = path[0];
+        Vector2 max = path[0];
+        for (int i = 1; i < path.Length; i++)
+        {
+            min = Vector2.Min(min, path[i]);
+            max = Vector2.Max(max, path[i]);
+        }
+
+        Vector2 spriteSize = renderer.sprite.bounds.size;
+        if (spriteSize.x <= 0.0001f || spriteSize.y <= 0.0001f) return;
+
+        Vector2 targetSize = max - min;
+        float scale = Mathf.Max(targetSize.x / spriteSize.x, targetSize.y / spriteSize.y);
+        Vector2 center = (min + max) * 0.5f;
+        renderer.transform.localPosition = new Vector3(center.x, center.y, renderer.transform.localPosition.z);
+        renderer.transform.localScale = new Vector3(scale, scale, 1f);
     }
 
     private void ConfigureRenderingLayers()
@@ -321,12 +595,52 @@ public sealed class LandSlotController : MonoBehaviour
         spriteMask.isCustomRangeActive = true;
         spriteMask.frontSortingLayerID = layerId;
         spriteMask.backSortingLayerID = layerId;
-        spriteMask.frontSortingOrder = order + 1;
+        spriteMask.frontSortingOrder = order + 2;
         spriteMask.backSortingOrder = order - 1;
+        ConfigurePurificationOverlayRenderer(false);
         ConfigureOutlineRenderer(false);
         ConfigureBuildingRenderer(false);
         ConfigureNpcRenderer(false);
         RefreshResourceBubble();
+    }
+
+    private void RefreshPurificationOverlay(bool visible)
+    {
+        if (!visible)
+        {
+            if (purificationOverlayRenderer != null) purificationOverlayRenderer.enabled = false;
+            return;
+        }
+
+        if (spriteMask != null) spriteMask.enabled = true;
+        ConfigurePurificationOverlayRenderer(true);
+        if (purificationOverlayRenderer != null) purificationOverlayRenderer.enabled = true;
+    }
+
+    private void ConfigurePurificationOverlayRenderer(bool createIfMissing)
+    {
+        if (purificationOverlayRenderer == null)
+        {
+            Transform existing = transform.Find("Unpurified Overlay");
+            if (existing != null) purificationOverlayRenderer = existing.GetComponent<SpriteRenderer>();
+        }
+        if (purificationOverlayRenderer == null && createIfMissing)
+        {
+            GameObject overlayObject = new GameObject("Unpurified Overlay");
+            overlayObject.transform.SetParent(transform, false);
+            overlayObject.transform.localPosition = new Vector3(0f, 0f, -0.02f);
+            purificationOverlayRenderer = overlayObject.AddComponent<SpriteRenderer>();
+        }
+        if (purificationOverlayRenderer == null) return;
+
+        purificationOverlayRenderer.sprite = purificationOverlaySprite != null
+            ? purificationOverlaySprite
+            : GetFallbackPurificationOverlaySprite();
+        purificationOverlayRenderer.color = purificationOverlayTint;
+        purificationOverlayRenderer.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
+        purificationOverlayRenderer.sortingLayerName = landSortingLayer;
+        purificationOverlayRenderer.sortingOrder = GetRuntimeSortingOrder() + 1;
+        FitSpriteRendererToCollider(purificationOverlayRenderer);
     }
 
     private int GetRuntimeSortingOrder()
@@ -344,8 +658,18 @@ public sealed class LandSlotController : MonoBehaviour
 
     private void SetOutlineVisible(bool visible)
     {
+        SetOutlineVisible(visible, outlineColor);
+    }
+
+    private void SetOutlineVisible(bool visible, Color color)
+    {
         ConfigureOutlineRenderer(visible);
-        if (outlineRenderer != null) outlineRenderer.enabled = visible;
+        if (outlineRenderer != null)
+        {
+            outlineRenderer.startColor = color;
+            outlineRenderer.endColor = color;
+            outlineRenderer.enabled = visible;
+        }
     }
 
     private void ConfigureOutlineRenderer(bool createIfMissing)
@@ -613,12 +937,13 @@ public sealed class LandSlotController : MonoBehaviour
         if (landRenderer != null)
         {
             if (config.landSprite != null) landRenderer.sprite = config.landSprite;
+            FitLandRendererToCollider();
             landRenderer.enabled = landRenderer.sprite != null;
         }
         SetOutlineVisible(true);
     }
 
-    private void ApplyRemoteBuildingTimer(int remainingSeconds, float progress)
+    private void ApplyRemoteBuildingTimer(BuildingResponse response)
     {
         if (buildingStatus == BuildingRuntimeStatus.COMPLETED)
         {
@@ -626,13 +951,57 @@ public sealed class LandSlotController : MonoBehaviour
             return;
         }
 
-        float normalizedProgress = Mathf.Clamp01(progress);
-        int safeRemainingSeconds = Mathf.Max(0, remainingSeconds);
-        buildingEndsAt = Time.time + safeRemainingSeconds;
-        buildingDuration = normalizedProgress > 0f && normalizedProgress < 1f
-            ? safeRemainingSeconds / Mathf.Max(0.001f, 1f - normalizedProgress)
-            : Mathf.Max(1f, safeRemainingSeconds);
-        buildingStartedAt = buildingEndsAt - buildingDuration;
+        float safeRemainingSeconds = Mathf.Max(0, response.remainingTime);
+        buildingDuration = ResolveRemoteBuildingDuration(response, safeRemainingSeconds);
+        safeRemainingSeconds = Mathf.Min(safeRemainingSeconds, buildingDuration);
+
+        float elapsedSeconds = Mathf.Max(0f, buildingDuration - safeRemainingSeconds);
+        float realtimeNow = Time.realtimeSinceStartup;
+        buildingStartedAt = realtimeNow - elapsedSeconds;
+        buildingEndsAt = realtimeNow + safeRemainingSeconds;
+    }
+
+    private float ResolveRemoteBuildingDuration(BuildingResponse response, float remainingSeconds)
+    {
+        if (TryGetRemoteBuildingDuration(response, out float timestampDuration))
+        {
+            return timestampDuration;
+        }
+
+        float normalizedProgress = Mathf.Clamp01(response.progress / 100f);
+        if (normalizedProgress > 0f && normalizedProgress < 1f && remainingSeconds > 0f)
+        {
+            return remainingSeconds / Mathf.Max(0.001f, 1f - normalizedProgress);
+        }
+
+        float configuredDuration = currentBuilding != null ? currentBuilding.buildSeconds : 0f;
+        return Mathf.Max(1f, configuredDuration, remainingSeconds);
+    }
+
+    private static bool TryGetRemoteBuildingDuration(BuildingResponse response, out float durationSeconds)
+    {
+        durationSeconds = 0f;
+        if (response == null
+            || string.IsNullOrWhiteSpace(response.buildStartTime)
+            || string.IsNullOrWhiteSpace(response.buildEndTime))
+        {
+            return false;
+        }
+
+        bool hasStartTime = System.DateTime.TryParse(
+            response.buildStartTime,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.RoundtripKind,
+            out System.DateTime startTime);
+        bool hasEndTime = System.DateTime.TryParse(
+            response.buildEndTime,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.RoundtripKind,
+            out System.DateTime endTime);
+        if (!hasStartTime || !hasEndTime) return false;
+
+        durationSeconds = (float)(endTime - startTime).TotalSeconds;
+        return durationSeconds > 0f;
     }
 
     private static Sprite CreateFallbackBuildingSprite(Color color)
@@ -657,6 +1026,51 @@ public sealed class LandSlotController : MonoBehaviour
         Sprite sprite = Sprite.Create(texture, new Rect(0f, 0f, size, size), new Vector2(0.5f, 0.25f), size);
         sprite.name = "RuntimeFallbackBuilding";
         return sprite;
+    }
+
+    private static Sprite GetFallbackPurificationOverlaySprite()
+    {
+        if (fallbackPurificationOverlaySprite != null) return fallbackPurificationOverlaySprite;
+
+        const int size = 128;
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        texture.name = "RuntimeUnpurifiedOverlayTexture";
+        texture.filterMode = FilterMode.Bilinear;
+        texture.wrapMode = TextureWrapMode.Clamp;
+        Color32[] pixels = new Color32[size * size];
+        Color darkPollution = new Color(0.055f, 0.075f, 0.07f, 0.88f);
+        Color mineralHaze = new Color(0.22f, 0.34f, 0.28f, 0.82f);
+        Color toxicVein = new Color(0.25f, 0.62f, 0.48f, 0.92f);
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float broadNoise = Mathf.PerlinNoise((x + 17f) * 0.042f, (y + 41f) * 0.042f);
+                float detailNoise = Mathf.PerlinNoise((x + 73f) * 0.115f, (y + 11f) * 0.115f);
+                float veinNoise = 1f - Mathf.Abs(
+                    Mathf.PerlinNoise((x + 29f) * 0.068f, (y + 97f) * 0.068f) * 2f - 1f);
+                float pollution = Mathf.Clamp01(broadNoise * 0.7f + detailNoise * 0.3f);
+                Color pixel = Color.Lerp(darkPollution, mineralHaze, pollution);
+                if (veinNoise > 0.86f)
+                {
+                    float veinStrength = Mathf.InverseLerp(0.86f, 1f, veinNoise);
+                    pixel = Color.Lerp(pixel, toxicVein, veinStrength * 0.72f);
+                }
+                pixel.a = Mathf.Lerp(0.78f, 0.94f, pollution);
+                pixels[y * size + x] = pixel;
+            }
+        }
+
+        texture.SetPixels32(pixels);
+        texture.Apply(false, true);
+        fallbackPurificationOverlaySprite = Sprite.Create(
+            texture,
+            new Rect(0f, 0f, size, size),
+            new Vector2(0.5f, 0.5f),
+            size);
+        fallbackPurificationOverlaySprite.name = "RuntimeUnpurifiedOverlay";
+        return fallbackPurificationOverlaySprite;
     }
 
     private static Sprite CreateFallbackNpcSprite(Color color)

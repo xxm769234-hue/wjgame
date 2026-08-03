@@ -36,4 +36,20 @@ public sealed class BuildingConfig : ScriptableObject
     public Color resourceColor = new Color(1f, 0.78f, 0.2f, 1f);
     [Min(1)] public int resourceAmount = 10;
     [Min(0f)] public float productionSeconds = 10f;
+
+    [Header("Resource Input")]
+    public ProductionResourceCost[] productionCosts = new ProductionResourceCost[0];
+
+    public bool HasProductionCosts
+    {
+        get
+        {
+            if (productionCosts == null) return false;
+            for (int i = 0; i < productionCosts.Length; i++)
+            {
+                if (productionCosts[i] != null && productionCosts[i].IsValid) return true;
+            }
+            return false;
+        }
+    }
 }

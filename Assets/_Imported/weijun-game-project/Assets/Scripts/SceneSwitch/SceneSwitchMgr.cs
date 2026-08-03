@@ -18,7 +18,6 @@ public class SceneSwitchMgr : MonoBehaviour
     public MapAreaConfig forestArea;
     public MapAreaConfig seaArea;
     public MapAreaConfig volcanoArea;
-    public MapAreaConfig snowArea;
 
     public void Awake()
     {
@@ -26,7 +25,7 @@ public class SceneSwitchMgr : MonoBehaviour
         BindButton(ForestBtn, forestArea);
         BindButton(SeaBtn, seaArea);
         BindButton(VolcanoBtn, volcanoArea);
-        BindButton(SnowBtn, snowArea);
+        BindButton(SnowBtn, "snow");
     }
 
     // 点击首页草原按钮
@@ -49,7 +48,7 @@ public class SceneSwitchMgr : MonoBehaviour
     }
     public void ClickSnowMap()
     {
-        EnterMapScene(snowArea);
+        EnterMapScene("snow");
     }
 
     /// <summary>
@@ -63,8 +62,19 @@ public class SceneSwitchMgr : MonoBehaviour
             return;
         }
 
-        PlayerPrefs.SetString("OpenAreaLandType", targetArea.landType);
-        PlayerPrefs.SetString("CurrentAreaLandType", targetArea.landType);
+        EnterMapScene(targetArea.landType);
+    }
+
+    private void EnterMapScene(string landType)
+    {
+        if (string.IsNullOrWhiteSpace(landType))
+        {
+            Debug.LogWarning("地图按钮缺少地块类型，已取消场景跳转。", this);
+            return;
+        }
+
+        PlayerPrefs.SetString("OpenAreaLandType", landType);
+        PlayerPrefs.SetString("CurrentAreaLandType", landType);
         PlayerPrefs.Save();
         SceneManager.LoadScene(SimulationSceneName);
     }
@@ -74,6 +84,14 @@ public class SceneSwitchMgr : MonoBehaviour
         if (button != null)
         {
             button.onClick.AddListener(() => EnterMapScene(area));
+        }
+    }
+
+    private void BindButton(Button button, string landType)
+    {
+        if (button != null)
+        {
+            button.onClick.AddListener(() => EnterMapScene(landType));
         }
     }
 

@@ -230,6 +230,30 @@ public sealed class BackendGameService : MonoBehaviour
         return StartCoroutine(PlaceLandRoutine(slot, config, onComplete));
     }
 
+    public Coroutine PurchaseLandSlot(
+        LandSlotController slot,
+        Action<bool, string, LandSlotStateResponse> onComplete)
+    {
+        if (!IsAuthenticated || slot == null)
+        {
+            onComplete?.Invoke(false, "Backend session or slot is missing.", null);
+            return null;
+        }
+        return StartCoroutine(PurchaseLandSlotRoutine(slot, onComplete));
+    }
+
+    public Coroutine PurifyLandSlot(
+        LandSlotController slot,
+        Action<bool, string, LandSlotStateResponse> onComplete)
+    {
+        if (!IsAuthenticated || slot == null)
+        {
+            onComplete?.Invoke(false, "Backend session or slot is missing.", null);
+            return null;
+        }
+        return StartCoroutine(PurifyLandSlotRoutine(slot, onComplete));
+    }
+
     public Coroutine BuildBuilding(LandSlotController slot, BuildingConfig config, Action<bool, string> onComplete)
     {
         if (!IsAuthenticated || slot == null || config == null)
@@ -684,6 +708,7 @@ public sealed class BackendGameService : MonoBehaviour
             PlayerPrefs.SetInt(PlayerIdKey, PlayerId);
             PlayerPrefs.Save();
             SyncWeChatFriendLevel(CurrentUser.level);
+            RefreshLandUnlockState();
             Debug.Log($"Backend user loaded: {CurrentUser.nickname} gold={CurrentUser.gold} wood={CurrentUser.wood} stone={CurrentUser.stone} iron={CurrentUser.iron}", this);
         }
         else if (result != null && result.HttpStatus == 401)
@@ -1049,6 +1074,65 @@ public sealed class BackendGameService : MonoBehaviour
         onComplete?.Invoke(success, ResultMessage(result));
     }
 
+    private IEnumerator PurchaseLandSlotRoutine(
+        LandSlotController slot,
+        Action<bool, string, LandSlotStateResponse> onComplete)
+    {
+        PurchaseLandSlotRequest request = new PurchaseLandSlotRequest
+        {
+            playerId = PlayerId,
+            positionX = slot.GridPosition.x,
+            positionY = slot.GridPosition.y
+        };
+
+        BackendResult<LandSlotStateResponse> result = null;
+        yield return BackendApiClient.Post<LandSlotStateResponse>(
+            baseUrl,
+            Token,
+            "land/slot/purchase",
+            request,
+            value => result = value);
+
+        bool success = result != null && result.Success && result.Data != null;
+        if (success)
+        {
+            slot.ApplyRemoteUnlockState(result.Data);
+            yield return RequestUserRoutine(null);
+            yield return SyncMapRoutine(null);
+        }
+
+        onComplete?.Invoke(success, ResultMessage(result), result != null ? result.Data : null);
+    }
+
+    private IEnumerator PurifyLandSlotRoutine(
+        LandSlotController slot,
+        Action<bool, string, LandSlotStateResponse> onComplete)
+    {
+        PurchaseLandSlotRequest request = new PurchaseLandSlotRequest
+        {
+            playerId = PlayerId,
+            positionX = slot.GridPosition.x,
+            positionY = slot.GridPosition.y
+        };
+
+        BackendResult<LandSlotStateResponse> result = null;
+        yield return BackendApiClient.Post<LandSlotStateResponse>(
+            baseUrl,
+            Token,
+            "land/slot/purify",
+            request,
+            value => result = value);
+
+        bool success = result != null && result.Success && result.Data != null;
+        if (success)
+        {
+            slot.ApplyRemoteUnlockState(result.Data);
+            yield return SyncMapRoutine(null);
+        }
+
+        onComplete?.Invoke(success, ResultMessage(result), result != null ? result.Data : null);
+    }
+
     private IEnumerator CollectAllProductionsRoutine(Action<bool, string, int> onComplete)
     {
         PlayerIdRequest request = new PlayerIdRequest { playerId = PlayerId };
@@ -1335,6 +1419,7 @@ public sealed class BackendGameService : MonoBehaviour
         if (CurrentUser != null)
         {
             SyncWeChatFriendLevel(CurrentUser.level);
+            RefreshLandUnlockState();
         }
         Debug.Log($"Backend login succeeded: playerId={PlayerId}", this);
     }
@@ -1344,6 +1429,7 @@ public sealed class BackendGameService : MonoBehaviour
         Token = string.Empty;
         PlayerId = 0;
         CurrentUser = null;
+        RefreshLandUnlockState();
         CurrentInventory = null;
         NpcCatalog = null;
         PlayerNpcs = null;
@@ -1357,6 +1443,12 @@ public sealed class BackendGameService : MonoBehaviour
         PlayerPrefs.SetInt(SessionManagedKey, 0);
         observedSessionRevision = IncrementSessionRevision();
         PlayerPrefs.Save();
+    }
+
+    private void RefreshLandUnlockState()
+    {
+        if (MapManager.Instance == null) return;
+        MapManager.Instance.RefreshLandUnlockState(CurrentUser != null ? CurrentUser.level : 1);
     }
 
     private void RefreshSharedSessionIfNeeded()

@@ -205,7 +205,7 @@ public partial class HomePageUI : MonoBehaviour
         for (int i = 0; i < view.AreaButtons.Length && i < areas.Length; i++)
         {
             AreaInfo area = areas[i];
-            BindButton(view.AreaButtons[i], () => SelectArea(area));
+            BindButton(view.AreaButtons[i], () => SelectAreaAndEnter(area));
         }
 
         BindButton(view.BottomMailTab, ShowMailContent);
@@ -673,7 +673,7 @@ public partial class HomePageUI : MonoBehaviour
     private void CreateAreaThumb(Transform parent, AreaInfo area, string spritePath, Vector2 position)
     {
         Button thumb = CreateButton(parent, area.landType + "Thumb", string.Empty, area.color, InkColor);
-        thumb.onClick.AddListener(() => SelectArea(area));
+        thumb.onClick.AddListener(() => SelectAreaAndEnter(area));
         SetRect(thumb.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, new Vector2(124f, 86f));
 
         Image image = thumb.GetComponent<Image>();
@@ -4755,13 +4755,19 @@ public partial class HomePageUI : MonoBehaviour
         string name = item.name ?? string.Empty;
         return type.IndexOf("EQUIP", StringComparison.OrdinalIgnoreCase) >= 0
             || type.IndexOf("WEAPON", StringComparison.OrdinalIgnoreCase) >= 0
+            || type.IndexOf("HELMET", StringComparison.OrdinalIgnoreCase) >= 0
             || type.IndexOf("ARMOR", StringComparison.OrdinalIgnoreCase) >= 0
+            || type.IndexOf("BOOTS", StringComparison.OrdinalIgnoreCase) >= 0
+            || type.IndexOf("GLOVES", StringComparison.OrdinalIgnoreCase) >= 0
             || type.IndexOf("ACCESSORY", StringComparison.OrdinalIgnoreCase) >= 0
             || type.IndexOf("ORNAMENT", StringComparison.OrdinalIgnoreCase) >= 0
             || key.Contains("equip")
             || key.Contains("weapon")
             || key.Contains("armor")
             || key.Contains("helmet")
+            || key.Contains("boots")
+            || key.Contains("gloves")
+            || key.Contains("gauntlet")
             || key.Contains("shield")
             || key.Contains("accessory")
             || key.Contains("ornament")
@@ -4771,6 +4777,9 @@ public partial class HomePageUI : MonoBehaviour
             || name.Contains("装备")
             || name.Contains("武器")
             || name.Contains("防具")
+            || name.Contains("头盔")
+            || name.Contains("靴")
+            || name.Contains("手套")
             || name.Contains("饰品")
             || name.Contains("戒")
             || name.Contains("项链")
@@ -5169,7 +5178,7 @@ public partial class HomePageUI : MonoBehaviour
         frame.rectTransform.localEulerAngles = new Vector3(0f, 0f, rotation);
 
         Button button = CreateButton(parent, area.name + "MapImage", string.Empty, area.color, InkColor);
-        button.onClick.AddListener(() => SelectArea(area));
+        button.onClick.AddListener(() => SelectAreaAndEnter(area));
 
         RectTransform rect = button.GetComponent<RectTransform>();
         SetRect(rect, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
@@ -5238,7 +5247,7 @@ public partial class HomePageUI : MonoBehaviour
     private void AddAreaCard(Transform parent, AreaInfo area)
     {
         Button card = CreateButton(parent, area.name + "Card", string.Empty, new Color(0.94f, 0.91f, 0.84f, 1f), InkColor);
-        card.onClick.AddListener(() => SelectArea(area));
+        card.onClick.AddListener(() => SelectAreaAndEnter(area));
 
         VerticalLayoutGroup layout = card.gameObject.AddComponent<VerticalLayoutGroup>();
         layout.padding = new RectOffset(18, 18, 14, 12);
@@ -5275,6 +5284,12 @@ public partial class HomePageUI : MonoBehaviour
         selectedAreaHint.color = area.color;
         RefreshMapSelectorState();
         SetStatus($"已选择：{area.name}");
+    }
+
+    private void SelectAreaAndEnter(AreaInfo area)
+    {
+        SelectArea(area);
+        EnterSelectedArea();
     }
 
     private AreaInfo GetLastArea()
@@ -5628,6 +5643,7 @@ public partial class HomePageUI : MonoBehaviour
         public int healthBonus;
         public int attackBonus;
         public int defenseBonus;
+        public int speedBonus;
         public string acquireTime;
     }
 
