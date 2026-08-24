@@ -14,7 +14,6 @@ public sealed class LoginContentView : MonoBehaviour
     [SerializeField] private Button loginButton;
     [SerializeField] private Button registerButton;
     [SerializeField] private Button weChatLoginButton;
-    [SerializeField] private Button guestButton;
     [SerializeField] private Text statusText;
 
     [Header("Secondary Controls")]
@@ -31,7 +30,6 @@ public sealed class LoginContentView : MonoBehaviour
     public Button LoginButton => loginButton;
     public Button RegisterButton => registerButton;
     public Button WeChatLoginButton => weChatLoginButton;
-    public Button GuestButton => guestButton;
     public Text StatusText => statusText;
     public Button SettingsButton => settingsButton;
     public Button MailButton => mailButton;
@@ -46,7 +44,6 @@ public sealed class LoginContentView : MonoBehaviour
         loginButton != null &&
         registerButton != null &&
         weChatLoginButton != null &&
-        guestButton != null &&
         statusText != null &&
         settingsButton != null &&
         mailButton != null &&
@@ -81,7 +78,6 @@ public sealed class LoginContentView : MonoBehaviour
         Button newLoginButton,
         Button newRegisterButton,
         Button newWeChatLoginButton,
-        Button newGuestButton,
         Text newStatusText,
         Button newSettingsButton,
         Button newMailButton,
@@ -96,7 +92,6 @@ public sealed class LoginContentView : MonoBehaviour
         loginButton = newLoginButton;
         registerButton = newRegisterButton;
         weChatLoginButton = newWeChatLoginButton;
-        guestButton = newGuestButton;
         statusText = newStatusText;
         settingsButton = newSettingsButton;
         mailButton = newMailButton;

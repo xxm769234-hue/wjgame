@@ -52,6 +52,60 @@ mergeInto(LibraryManager.library, {
     });
   },
 
+  WJ_WeChatRequestPrivacyAuthorization: function (receiverNamePtr) {
+    var receiverName = UTF8ToString(receiverNamePtr);
+    var send = function (method, value) {
+      if (typeof SendMessage === 'function') {
+        SendMessage(receiverName, method, value || '');
+      } else if (typeof GameGlobal !== 'undefined' && GameGlobal.Module && GameGlobal.Module.SendMessage) {
+        GameGlobal.Module.SendMessage(receiverName, method, value || '');
+      }
+    };
+
+    if (typeof wx === 'undefined' || typeof wx.requirePrivacyAuthorize !== 'function') {
+      send('OnWeChatPrivacyAuthorizationFailed', '当前微信基础库不支持隐私授权接口');
+      return;
+    }
+
+    wx.requirePrivacyAuthorize({
+      success: function () {
+        send('OnWeChatPrivacyAuthorized', '');
+      },
+      fail: function (error) {
+        send(
+          'OnWeChatPrivacyAuthorizationFailed',
+          error && error.errMsg ? error.errMsg : '微信隐私授权未完成');
+      }
+    });
+  },
+
+  WJ_WeChatOpenPrivacyContract: function (receiverNamePtr) {
+    var receiverName = UTF8ToString(receiverNamePtr);
+    var send = function (method, value) {
+      if (typeof SendMessage === 'function') {
+        SendMessage(receiverName, method, value || '');
+      } else if (typeof GameGlobal !== 'undefined' && GameGlobal.Module && GameGlobal.Module.SendMessage) {
+        GameGlobal.Module.SendMessage(receiverName, method, value || '');
+      }
+    };
+
+    if (typeof wx === 'undefined' || typeof wx.openPrivacyContract !== 'function') {
+      send('OnWeChatPrivacyContractFailed', '当前微信基础库不支持打开隐私协议');
+      return;
+    }
+
+    wx.openPrivacyContract({
+      success: function () {
+        send('OnWeChatPrivacyContractOpened', '');
+      },
+      fail: function (error) {
+        send(
+          'OnWeChatPrivacyContractFailed',
+          error && error.errMsg ? error.errMsg : '打开微信隐私协议失败');
+      }
+    });
+  },
+
   WJ_WeChatRequestPayment: function (receiverNamePtr, paymentParametersPtr) {
     var receiverName = UTF8ToString(receiverNamePtr);
     var send = function (method, value) {

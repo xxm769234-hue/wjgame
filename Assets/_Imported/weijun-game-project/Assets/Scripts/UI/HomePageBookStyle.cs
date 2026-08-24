@@ -124,6 +124,8 @@ public sealed class HomePageBookStyle : MonoBehaviour
         {
             case "RightBattleButton":
             case "ActivityButton":
+            case "RoleButton":
+            case "LotteryButton":
             case "BottomMailButton":
             case "SideBagButton":
             case "SideEquipmentButton":

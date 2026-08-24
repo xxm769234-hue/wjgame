@@ -7,7 +7,7 @@ using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-public class GameBoot : MonoBehaviour
+public partial class GameBoot : MonoBehaviour
 {
     private const string HomeSceneName = "HomeScene";
     private const string RememberAccountKey = "LoginRememberAccount";
@@ -22,7 +22,6 @@ public class GameBoot : MonoBehaviour
     private static readonly Color PrimaryColor = new Color(0.09f, 0.28f, 0.58f, 1f);
     private static readonly Color PrimaryPressedColor = new Color(0.06f, 0.20f, 0.42f, 1f);
     private static readonly Color SecondaryButtonColor = new Color(0.87f, 0.90f, 0.95f, 1f);
-    private static readonly Color GuestButtonColor = new Color(0.94f, 0.95f, 0.97f, 1f);
     private static readonly Color WeChatButtonColor = new Color(0.16f, 0.70f, 0.32f, 1f);
     private static readonly Color FieldColor = new Color(0.96f, 0.98f, 1f, 1f);
     private static readonly Color FieldHoverColor = new Color(0.92f, 0.95f, 1f, 1f);
@@ -39,7 +38,6 @@ public class GameBoot : MonoBehaviour
     private Button loginButton;
     private Button registerButton;
     private Button weChatButton;
-    private Button guestButton;
     private GameObject settingsPanel;
     private bool requestRunning;
     private bool runtimePolicyBlocked;
@@ -59,6 +57,13 @@ public class GameBoot : MonoBehaviour
 
     private void Update()
     {
+        if ((privacyPolicyOverlay != null && privacyPolicyOverlay.activeSelf)
+            || (accountManagementPanel != null && accountManagementPanel.activeSelf)
+            || (realNamePanel != null && realNamePanel.activeSelf))
+        {
+            return;
+        }
+
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
         {
             TryLogin();
@@ -84,11 +89,13 @@ public class GameBoot : MonoBehaviour
         RectTransform root = loginCanvasView.PrepareContentRoot();
         if (TryBindSceneLoginLayout())
         {
+            EnsurePrivacyControls(root);
             return;
         }
 
         loginCanvasView.ClearContentForRuntimeFallback();
         BuildFixedLoginLayout(root);
+        EnsurePrivacyControls(root);
     }
 
     private bool TryBindSceneLoginLayout()
@@ -107,13 +114,11 @@ public class GameBoot : MonoBehaviour
         loginButton = contentView.LoginButton;
         registerButton = contentView.RegisterButton;
         weChatButton = contentView.WeChatLoginButton;
-        guestButton = contentView.GuestButton;
         settingsPanel = contentView.SettingsPanel;
 
         loginButton.onClick.AddListener(TryLogin);
         registerButton.onClick.AddListener(TryRegister);
         weChatButton.onClick.AddListener(TryWeChatLogin);
-        guestButton.onClick.AddListener(LoginAsGuest);
         contentView.SettingsButton.onClick.AddListener(ShowSettingsPanel);
         contentView.MailButton.onClick.AddListener(() => ShowError("登录后可在首页查看系统邮件"));
         contentView.SettingsCloseButton.onClick.AddListener(HideSettingsPanel);
@@ -179,7 +184,7 @@ public class GameBoot : MonoBehaviour
 
         CreateSpacer(brandPanel.transform, 16f);
 
-        Text brandHint = CreateText("BrandHint", brandPanel.transform, "账号同步 · 微信登录 · 游客进入", 15, FontStyle.Normal, LightTextColor, TextAnchor.MiddleLeft);
+        Text brandHint = CreateText("BrandHint", brandPanel.transform, "账号同步 · 微信登录", 15, FontStyle.Normal, LightTextColor, TextAnchor.MiddleLeft);
         SetLayout(brandHint.gameObject, 0f, 24f);
 
         CreateSpacer(brandPanel.transform, 14f);
@@ -234,10 +239,6 @@ public class GameBoot : MonoBehaviour
         weChatButton = CreateButton(formPanel.transform, "WeChatButton", "微信登录", WeChatButtonColor, Color.white);
         weChatButton.onClick.AddListener(TryWeChatLogin);
         SetLayout(weChatButton.gameObject, 0f, 20f);
-
-        guestButton = CreateButton(formPanel.transform, "GuestButton", "游客进入", GuestButtonColor, new Color(0.12f, 0.17f, 0.24f, 1f));
-        guestButton.onClick.AddListener(LoginAsGuest);
-        SetLayout(guestButton.gameObject, 0f, 20f);
 
         statusText = CreateText("StatusText", formPanel.transform, string.Empty, 14, FontStyle.Normal, ErrorColor, TextAnchor.MiddleLeft);
         SetLayout(statusText.gameObject, 0f, 18f);
@@ -319,9 +320,6 @@ public class GameBoot : MonoBehaviour
 
         weChatButton = CreateFixedButton(root, "WeChatLoginButton", "微信登录", new Vector2(-158f, -204f), new Vector2(290f, 54f), WeChatButtonColor, Color.white, 21);
         weChatButton.onClick.AddListener(TryWeChatLogin);
-
-        guestButton = CreateFixedButton(root, "GuestButton", "游客进入", new Vector2(158f, -204f), new Vector2(290f, 54f), GuestButtonColor, inkColor, 21);
-        guestButton.onClick.AddListener(LoginAsGuest);
 
         Button settingsButton = CreateFixedButton(root, "SettingsButton", "设置", new Vector2(852f, 390f), new Vector2(104f, 72f), paperColor, inkColor, 18);
         settingsButton.onClick.AddListener(ShowSettingsPanel);
@@ -438,6 +436,7 @@ public class GameBoot : MonoBehaviour
 
     private void TryLogin()
     {
+        lastLoginWasWeChat = false;
         if (runtimePolicyBlocked || requestRunning || !ValidateAccountAndPassword())
         {
             return;
@@ -454,6 +453,7 @@ public class GameBoot : MonoBehaviour
 
     private void TryRegister()
     {
+        lastLoginWasWeChat = false;
         if (runtimePolicyBlocked || requestRunning || !ValidateAccountAndPassword())
         {
             return;
@@ -484,16 +484,61 @@ public class GameBoot : MonoBehaviour
             return;
         }
 
+        lastLoginWasWeChat = true;
+        if (privacyConsentToggle != null && privacyConsentToggle.isOn)
+        {
+            privacyConsentRequestId = NewRequestId();
+            waitingForManagementConsent = false;
+            SetBusyState(true, "正在调用微信隐私授权...");
+            if (WeChatPlatformBridge.IsAvailable)
+            {
+                WeChatPlatformBridge.RequestPrivacyAuthorization(this);
+            }
+            else
+            {
+                BeginWeChatLogin();
+            }
+            return;
+        }
+
+        privacyConsentRequestId = string.Empty;
+        if (runtimePolicyBlocked || requestRunning)
+        {
+            return;
+        }
+
+        SetBusyState(true, "正在调用微信登录...");
+        BeginWeChatLogin();
+    }
+
+    private void BeginWeChatLogin()
+    {
         SetBusyState(true, "正在调用微信登录...");
         WeChatPlatformBridge.RequestLogin(this);
     }
 
+    public void OnWeChatPrivacyAuthorized()
+    {
+        if (waitingForManagementConsent)
+        {
+            StartCoroutine(SendPrivacyConsent());
+            return;
+        }
+
+        BeginWeChatLogin();
+    }
+
+    public void OnWeChatPrivacyAuthorizationFailed(string message)
+    {
+        waitingForManagementConsent = false;
+        SetBusyState(false, string.IsNullOrEmpty(message) ? "隐私授权未完成，请重试" : message);
+    }
+
     public void OnWeChatLoginCodeReceived(string code)
     {
-        SetBusyState(false, string.Empty);
-
         if (string.IsNullOrEmpty(code))
         {
+            SetBusyState(false, string.Empty);
             ShowError("微信登录 code 为空");
             return;
         }
@@ -501,7 +546,19 @@ public class GameBoot : MonoBehaviour
         WeChatLoginRequest request = new WeChatLoginRequest
         {
             code = code,
-            nickname = nicknameInput.text.Trim()
+            nickname = nicknameInput.text.Trim(),
+            privacyAuthorized = privacyConsentToggle != null && privacyConsentToggle.isOn,
+            privacyPolicyVersion = privacyConsentToggle != null && privacyConsentToggle.isOn
+                ? currentPolicyVersion
+                : null,
+            privacyConsentRequestId = privacyConsentToggle != null && privacyConsentToggle.isOn
+                ? privacyConsentRequestId
+                : null,
+            clientVersion = Application.version,
+            recoverCancellation = pendingCancellationRecovery,
+            cancellationRecoveryRequestId = pendingCancellationRecovery
+                ? cancellationRecoveryRequestId
+                : null
         };
 
         StartCoroutine(SendAuthRequest("/user/wx-login", JsonUtility.ToJson(request)));
@@ -510,17 +567,6 @@ public class GameBoot : MonoBehaviour
     public void OnWeChatLoginFailed(string message)
     {
         SetBusyState(false, string.IsNullOrEmpty(message) ? "微信登录失败" : message);
-    }
-
-    private void LoginAsGuest()
-    {
-        if (runtimePolicyBlocked || requestRunning)
-        {
-            return;
-        }
-
-        SaveGuestLoginState();
-        SceneManager.LoadScene(HomeSceneName);
     }
 
     private bool ValidateAccountAndPassword()
@@ -585,6 +631,32 @@ public class GameBoot : MonoBehaviour
 
             if (request.result != UnityWebRequest.Result.Success)
             {
+                if (response != null && response.code == 7708)
+                {
+                    ClearClosedAccountLocalState();
+                    SetBusyState(false, "账号已注销，请重新注册或登录其他账号。");
+                    yield break;
+                }
+
+                if (response != null && response.code == 7703)
+                {
+                    privacyConsentRequestId = NewRequestId();
+                    SetBusyState(false, "隐私政策已更新，请重新阅读并确认。");
+                    yield return LoadPrivacyPolicies();
+                    if (!runtimePolicyBlocked)
+                    {
+                        ShowPrivacyPolicyOverlay();
+                    }
+                    yield break;
+                }
+
+                if (response != null && response.code == 7702)
+                {
+                    SetBusyState(false, "请先阅读并同意当前隐私政策");
+                    ShowPrivacyPolicyOverlay();
+                    yield break;
+                }
+
                 string failure = ApiRequestUtility.GetErrorMessage(request, "登录服务连接失败");
                 SetBusyState(false, failure);
                 if (request.responseCode == 426 || request.responseCode == 503)
@@ -600,9 +672,57 @@ public class GameBoot : MonoBehaviour
                 yield break;
             }
 
+            if (response.code == 7702)
+            {
+                SetBusyState(false, "请先阅读并同意当前隐私政策");
+                ShowPrivacyPolicyOverlay();
+                yield break;
+            }
+
+            if (response.code == 7708)
+            {
+                ClearClosedAccountLocalState();
+                SetBusyState(false, "账号已注销，请重新注册或登录其他账号。");
+                yield break;
+            }
+
+            if (response.code == 7703)
+            {
+                privacyConsentRequestId = NewRequestId();
+                SetBusyState(false, "隐私政策已更新，请重新阅读并确认。");
+                yield return LoadPrivacyPolicies();
+                if (!runtimePolicyBlocked)
+                {
+                    ShowPrivacyPolicyOverlay();
+                }
+                yield break;
+            }
+
             if (response.code != 200)
             {
                 SetBusyState(false, string.IsNullOrEmpty(response.message) ? "登录失败" : response.message);
+                yield break;
+            }
+
+            if (response.data != null
+                && !string.IsNullOrEmpty(response.data.token)
+                && (response.data.accountManagementOnly
+                    || response.data.privacyConsentRequired
+                    || response.data.user == null
+                    || (response.data.compliance != null
+                        && (response.data.compliance.restrictedToken
+                            || !response.data.compliance.gameAccessAllowed))))
+            {
+                OpenAccountManagementScreen(response.data, path == "/user/wx-login");
+                yield break;
+            }
+
+            if (response.data != null
+                && !response.data.accountManagementOnly
+                && !response.data.privacyConsentRequired
+                && response.data.compliance == null)
+            {
+                SetBusyState(false, "服务器未返回实名和防沉迷准入状态，暂不能进入游戏。");
                 yield break;
             }
 
@@ -657,7 +777,9 @@ public class GameBoot : MonoBehaviour
                 || response.code != 200
                 || response.data == null)
             {
-                SetBusyState(false, "启动策略读取失败，可继续登录：" + ApiRequestUtility.GetErrorMessage(request, "请求失败"));
+                runtimePolicyBlocked = true;
+                SetBusyState(false, "启动策略读取失败，暂时无法登录：" + ApiRequestUtility.GetErrorMessage(request, "请求失败"));
+                ShowRuntimePolicyOverlay("启动策略不可用", "客户端启动策略或隐私政策暂时不可用，请稍后重试。", string.Empty);
                 yield break;
             }
 
@@ -683,6 +805,12 @@ public class GameBoot : MonoBehaviour
                     "服务器维护中",
                     string.IsNullOrWhiteSpace(policy.message) ? "服务器正在维护，请稍后再试。" : policy.message,
                     string.Empty);
+                yield break;
+            }
+
+            yield return LoadPrivacyPolicies();
+            if (runtimePolicyBlocked)
+            {
                 yield break;
             }
 
@@ -777,12 +905,6 @@ public class GameBoot : MonoBehaviour
         PlayerPrefs.Save();
     }
 
-    private void SaveGuestLoginState()
-    {
-        PlayerPrefs.SetInt(RememberAccountKey, rememberToggle.isOn ? 1 : 0);
-        GameSession.SaveGuest(PlayerPrefs.GetString("GuestNickname", "游客"));
-    }
-
     private void SetBusyState(bool busy, string message)
     {
         requestRunning = busy;
@@ -794,7 +916,8 @@ public class GameBoot : MonoBehaviour
         if (loginButton != null) loginButton.interactable = !busy;
         if (registerButton != null) registerButton.interactable = !busy;
         if (weChatButton != null) weChatButton.interactable = !busy;
-        if (guestButton != null) guestButton.interactable = !busy;
+        if (privacyConsentToggle != null) privacyConsentToggle.interactable = !busy && !runtimePolicyBlocked;
+        if (privacyPolicyButton != null) privacyPolicyButton.interactable = !busy;
 
         SetStatus(message, busy ? MutedTextColor : ErrorColor);
     }
@@ -1013,6 +1136,12 @@ public class GameBoot : MonoBehaviour
     {
         public string code;
         public string nickname;
+        public bool privacyAuthorized;
+        public string privacyPolicyVersion;
+        public string privacyConsentRequestId;
+        public string clientVersion;
+        public bool recoverCancellation;
+        public string cancellationRecoveryRequestId;
     }
 
     [Serializable]
@@ -1029,6 +1158,11 @@ public class GameBoot : MonoBehaviour
         public string token;
         public int expiresIn;
         public UserData user;
+        public string accountStatus;
+        public bool accountManagementOnly;
+        public bool privacyConsentRequired;
+        public string privacyPolicyVersion;
+        public ComplianceData compliance;
     }
 
     [Serializable]
@@ -1096,6 +1230,23 @@ public class GameBoot : MonoBehaviour
         public string itemType;
         public string icon;
         public int quantity;
+    }
+
+    [Serializable]
+    private class ComplianceData
+    {
+        public bool enforcementEnabled;
+        public string verificationStatus;
+        public string ageGroup;
+        public bool gameAccessAllowed;
+        public bool restrictedToken;
+        public string blockReason;
+        public string message;
+        public int usedSeconds;
+        public int remainingSeconds;
+        public string nextAllowedTime;
+        public string profileValidUntil;
+        public string serverTime;
     }
 #pragma warning restore 0649
 }

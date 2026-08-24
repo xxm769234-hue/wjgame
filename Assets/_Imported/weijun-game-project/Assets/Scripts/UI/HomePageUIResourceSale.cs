@@ -59,7 +59,7 @@ public partial class HomePageUI
     {
         return inventoryServerBacked
             ? "服务器库存\n按正式报价出售"
-            : "游客背包\n出售功能需登录";
+            : "本地奖励库存\n出售功能需账号数据";
     }
 
     private string GetInventorySaleContextHint(InventoryItemResponse item)

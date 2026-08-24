@@ -13,7 +13,7 @@ public enum HomePageScenePanelType
     Inventory,
     Announcement,
     Settings,
-    GuestProfile,
+    AccountProfile,
     Friends,
     Equipment,
     Shop

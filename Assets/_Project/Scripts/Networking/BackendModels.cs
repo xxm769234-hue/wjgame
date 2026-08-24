@@ -317,9 +317,27 @@ public sealed class NpcConfigResponse
     public int npcId;
     public string npcCode;
     public string name;
+    public string quality;
     public string icon;
     public string modelKey;
+    public string description;
+    public string combatAttribute;
+    public int maxLevel;
     public float produceBonusRate;
+    public bool owned;
+    public NpcAcquisitionResponse acquisition;
+    public int configVersion;
+    public int contractVersion;
+}
+
+[Serializable]
+public sealed class NpcAcquisitionResponse
+{
+    public string status;
+    public string channelType;
+    public string displayName;
+    public string buttonText;
+    public string message;
 }
 
 [Serializable]

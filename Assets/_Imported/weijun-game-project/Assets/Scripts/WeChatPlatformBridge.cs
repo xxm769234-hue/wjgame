@@ -32,6 +32,39 @@ public static class WeChatPlatformBridge
 #endif
     }
 
+    public static void RequestPrivacyAuthorization(MonoBehaviour receiver)
+    {
+        if (receiver == null)
+        {
+            return;
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        WJ_WeChatRequestPrivacyAuthorization(receiver.gameObject.name);
+#else
+        receiver.SendMessage(
+            "OnWeChatPrivacyAuthorized",
+            SendMessageOptions.DontRequireReceiver);
+#endif
+    }
+
+    public static void OpenPrivacyContract(MonoBehaviour receiver)
+    {
+        if (receiver == null)
+        {
+            return;
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        WJ_WeChatOpenPrivacyContract(receiver.gameObject.name);
+#else
+        receiver.SendMessage(
+            "OnWeChatPrivacyContractOpened",
+            string.Empty,
+            SendMessageOptions.DontRequireReceiver);
+#endif
+    }
+
     public static void RequestPayment(MonoBehaviour receiver, string paymentParametersJson)
     {
         if (receiver == null)
@@ -125,6 +158,12 @@ public static class WeChatPlatformBridge
 #if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")]
     private static extern void WJ_WeChatLogin(string receiverName);
+
+    [DllImport("__Internal")]
+    private static extern void WJ_WeChatRequestPrivacyAuthorization(string receiverName);
+
+    [DllImport("__Internal")]
+    private static extern void WJ_WeChatOpenPrivacyContract(string receiverName);
 
     [DllImport("__Internal")]
     private static extern void WJ_WeChatRequestPayment(string receiverName, string paymentParametersJson);

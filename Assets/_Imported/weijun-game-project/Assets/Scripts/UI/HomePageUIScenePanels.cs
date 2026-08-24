@@ -785,7 +785,7 @@ public partial class HomePageUI
         SetSceneButtonText(
             FindSceneComponent<Button>(root, "SettingsLogoutButton"),
             settingsLogoutConfirmation ? "确认返回登录" : "返回登录");
-        SetSceneText(root, "SettingsAccount", $"当前账号：{PlayerPrefs.GetString("LoginUsername", "Guest")}");
+        SetSceneText(root, "SettingsAccount", $"当前账号：{PlayerPrefs.GetString("LoginUsername", string.Empty)}");
         SetSceneText(root, "SettingsStatus", status);
     }
 

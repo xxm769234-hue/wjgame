@@ -38,6 +38,9 @@ public partial class HomePageUI : MonoBehaviour
     private HomePageBookView boundBookView;
     private HomePageBookStyle bookStyle;
     private Button avatarButton;
+    private Text bookAvatarLevelText;
+    private Image bookAvatarExperienceBackground;
+    private Image bookAvatarExperienceFill;
     private GameObject personalInfoPopup;
     private GameObject mailPanelObject;
     private GameObject signPanelObject;
@@ -155,6 +158,8 @@ public partial class HomePageUI : MonoBehaviour
         {
             ClearGeneratedBookChildren(root);
             BuildOpenBookMainPage(root);
+            view.CaptureReferences();
+            AttachGeneratedBookView(view);
         }
 
         SelectArea(GetLastArea());
@@ -176,16 +181,20 @@ public partial class HomePageUI : MonoBehaviour
             view.AvatarNameText.text = PlayerPrefs.GetString("PlayerNickname", fallbackName);
         }
 
-        SetBookMetricValue(view.MetricTexts, 0, $"Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}");
-        SetBookMetricValue(view.MetricTexts, 1, PlayerPrefs.GetInt("Gold", 1000).ToString());
-        SetBookMetricValue(view.MetricTexts, 2, PlayerPrefs.GetInt("Crystal", 427).ToString());
-        SetBookMetricValue(view.MetricTexts, 3, PlayerPrefs.GetInt("Wood", 500).ToString());
-        SetBookMetricValue(view.MetricTexts, 4, PlayerPrefs.GetInt("Stone", 500).ToString());
-        SetBookMetricValue(view.MetricTexts, 5, PlayerPrefs.GetInt("Iron", 300).ToString());
+        bookAvatarLevelText = view.AvatarLevelText;
+        bookAvatarExperienceBackground = view.AvatarExperienceBackground;
+        bookAvatarExperienceFill = view.AvatarExperienceFill;
+        EnsureBookAvatarSummaryControls();
+        RefreshBookAvatarSummary();
+
+        SetBookMetricValue(view.MetricTexts, 0, GetHomePurificationAgent().ToString());
+        SetBookMetricValue(view.MetricTexts, 1, GetHomeStamina().ToString());
+        SetBookMetricValue(view.MetricTexts, 2, PlayerPrefs.GetInt("Gold", 1000).ToString());
+        SetBookMetricValue(view.MetricTexts, 3, PlayerPrefs.GetInt("Crystal", 427).ToString());
 
         BindButton(view.AvatarButton, ShowPersonalInfo);
-        BindButton(view.MetricPlusButtons[0], ShowGoldRewardAd);
-        BindButton(view.MetricPlusButtons[1], ShowRechargeContent);
+        BindButton(view.ActivityButton, ShowNewbieSignContent);
+        BindButton(view.RoleButton, ShowCharacterContent);
         BindButton(view.BattleButton, ShowBattleContent);
         BindButton(view.LotteryButton, ShowLotteryContent);
         BindButton(view.MailButton, ShowMailContent);
@@ -197,8 +206,6 @@ public partial class HomePageUI : MonoBehaviour
         BindButton(view.SettingsButton, ShowSettingsContent);
         BindButton(view.TaskButton, ShowTaskContent);
         BindButton(view.DailySignButton, ShowDailySignContent);
-        BindButton(view.NewbieSignButton, ShowNewbieSignContent);
-        BindButton(view.RechargeButton, ShowRechargeContent);
         BindButton(view.EnterMapButton, EnterSelectedArea);
         BindButton(view.MapEnterStampButton, EnterSelectedArea);
 
@@ -208,13 +215,21 @@ public partial class HomePageUI : MonoBehaviour
             BindButton(view.AreaButtons[i], () => SelectAreaAndEnter(area));
         }
 
-        BindButton(view.BottomMailTab, ShowMailContent);
-        BindButton(view.BottomSignTab, ShowDailySignContent);
-        BindButton(view.BottomLotteryTab, ShowLotteryContent);
-        BindButton(view.BottomRechargeTab, ShowRechargeContent);
-        BindButton(view.BottomTaskTab, ShowTaskContent);
-        BindButton(view.BottomFriendTab, ShowFriendsContent);
-        BindButton(view.BottomNoticeTab, ShowAnnouncement);
+    }
+
+    private void AttachGeneratedBookView(HomePageBookView view)
+    {
+        boundBookView = view;
+        mainPageTransform = view.MainPage;
+        avatarButton = view.AvatarButton;
+        statusText = view.StatusText;
+        selectedAreaTitle = view.SelectedAreaTitle;
+        selectedAreaDescription = view.SelectedAreaDescription;
+        selectedAreaHint = view.SelectedAreaHint;
+        bookAvatarLevelText = view.AvatarLevelText;
+        bookAvatarExperienceBackground = view.AvatarExperienceBackground;
+        bookAvatarExperienceFill = view.AvatarExperienceFill;
+        RefreshBookAvatarSummary();
     }
 
     private static void BindButton(Button button, UnityAction action)
@@ -237,6 +252,141 @@ public partial class HomePageUI : MonoBehaviour
         metricText.text = separatorIndex >= 0
             ? metricText.text.Substring(0, separatorIndex + 1) + value
             : value;
+    }
+
+    private static int GetHomePurificationAgent()
+    {
+        return PlayerPrefs.GetInt("PurificationAgent", 0);
+    }
+
+    private static int GetHomeStamina()
+    {
+        if (PlayerPrefs.HasKey("PlayerStamina"))
+        {
+            return PlayerPrefs.GetInt("PlayerStamina", 0);
+        }
+
+        return PlayerPrefs.GetInt("PlayerEnergy", 100);
+    }
+
+    private void EnsureBookAvatarSummaryControls()
+    {
+        if (mainPageTransform == null)
+        {
+            return;
+        }
+
+        Transform frame = mainPageTransform.Find("BookAvatarFrame");
+        if (frame == null)
+        {
+            Debug.LogWarning("BookAvatarFrame was not found; avatar summary controls cannot be created.", this);
+            return;
+        }
+
+        if (bookAvatarLevelText == null)
+        {
+            bookAvatarLevelText = FindSceneComponent<Text>(frame, "BookAvatarLevel");
+        }
+
+        if (bookAvatarLevelText == null)
+        {
+            bookAvatarLevelText = CreateText(
+                "BookAvatarLevel",
+                frame,
+                string.Empty,
+                11,
+                FontStyle.Normal,
+                InkColor,
+                TextAnchor.MiddleCenter);
+            SetRect(
+                bookAvatarLevelText.rectTransform,
+                TopLeftAnchor(),
+                TopLeftAnchor(),
+                TopLeftAnchor(),
+                new Vector2(56f, -8f),
+                new Vector2(30f, 16f));
+        }
+
+        if (bookAvatarExperienceBackground == null)
+        {
+            bookAvatarExperienceBackground = FindSceneComponent<Image>(frame, "BookAvatarExperienceBackground");
+        }
+
+        if (bookAvatarExperienceBackground == null)
+        {
+            bookAvatarExperienceBackground = CreateImage(
+                "BookAvatarExperienceBackground",
+                frame,
+                new Color(0.22f, 0.16f, 0.10f, 0.55f));
+            bookAvatarExperienceBackground.raycastTarget = false;
+            SetRect(
+                bookAvatarExperienceBackground.rectTransform,
+                TopLeftAnchor(),
+                TopLeftAnchor(),
+                TopLeftAnchor(),
+                new Vector2(8f, -69f),
+                new Vector2(80f, 5f));
+        }
+
+        if (bookAvatarExperienceFill == null)
+        {
+            bookAvatarExperienceFill = FindSceneComponent<Image>(
+                bookAvatarExperienceBackground.transform,
+                "BookAvatarExperienceFill");
+        }
+
+        if (bookAvatarExperienceFill == null)
+        {
+            bookAvatarExperienceFill = CreateImage(
+                "BookAvatarExperienceFill",
+                bookAvatarExperienceBackground.transform,
+                new Color(0.95f, 0.79f, 0.38f, 1f));
+            bookAvatarExperienceFill.raycastTarget = false;
+            bookAvatarExperienceFill.type = Image.Type.Filled;
+            bookAvatarExperienceFill.fillMethod = Image.FillMethod.Horizontal;
+            bookAvatarExperienceFill.fillOrigin = 0;
+            SetRect(
+                bookAvatarExperienceFill.rectTransform,
+                Vector2.zero,
+                Vector2.one,
+                new Vector2(0f, 0.5f),
+                Vector2.zero,
+                Vector2.zero);
+        }
+    }
+
+    private void RefreshBookAvatarSummary()
+    {
+        EnsureBookAvatarSummaryControls();
+
+        int level = Mathf.Max(1, PlayerPrefs.GetInt("PlayerLv", 1));
+        if (bookAvatarLevelText != null)
+        {
+            bookAvatarLevelText.text = $"Lv.{level}";
+        }
+
+        if (bookAvatarExperienceFill == null)
+        {
+            return;
+        }
+
+        float progress = Mathf.Clamp01(PlayerPrefs.GetInt("PlayerExperienceProgressBps", 0) / 10000f);
+        if (progress <= 0f && PlayerPrefs.GetInt("PlayerMaxLevel", 0) == 0)
+        {
+            int currentExperience = Mathf.Max(0, PlayerPrefs.GetInt("PlayerCurrentLevelExperience", 0));
+            int requiredExperience = Mathf.Max(0, PlayerPrefs.GetInt("PlayerRequiredExperience", 0));
+            if (requiredExperience > 0)
+            {
+                progress = Mathf.Clamp01(currentExperience / (float)requiredExperience);
+            }
+        }
+
+        if (PlayerPrefs.GetInt("PlayerMaxLevel", 0) == 1)
+        {
+            progress = 1f;
+        }
+
+        bookAvatarExperienceFill.fillAmount = progress;
     }
 
 #if UNITY_EDITOR
@@ -384,40 +534,46 @@ public partial class HomePageUI : MonoBehaviour
 
     private void BuildOpenBookMainPage(Transform root)
     {
+        BuildRequestedBookMainPage(root);
+    }
+
+    private void BuildRequestedBookMainPage(Transform root)
+    {
         Image page = CreateImage("MainBookPage", root, bookStyle != null ? bookStyle.DeskColor : new Color(0.54f, 0.61f, 0.60f, 1f));
         if (bookStyle != null)
         {
             bookStyle.ApplyBackground(page);
         }
+
         mainPageTransform = page.transform;
         Stretch(page.rectTransform);
-
         AddDeskPattern(page.transform);
-        AddOpenBookSpread(page.transform);
-
         AddBookAvatarDisplay(page.transform);
-        AddBookMetric(page.transform, "等级", $"Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}", new Vector2(174f, -24f), new Vector2(166f, 48f), new Color(0.62f, 0.39f, 0.20f, 1f), false, null);
-        AddBookMetric(page.transform, "金币", PlayerPrefs.GetInt("Gold", 1000).ToString(), new Vector2(360f, -24f), new Vector2(188f, 48f), new Color(0.88f, 0.61f, 0.18f, 1f), true, ShowGoldRewardAd);
-        AddBookMetric(page.transform, "钻石", PlayerPrefs.GetInt("Crystal", 427).ToString(), new Vector2(568f, -24f), new Vector2(188f, 48f), new Color(0.28f, 0.64f, 0.86f, 1f), true, ShowRechargeContent);
-        AddBookMetric(page.transform, "木材", PlayerPrefs.GetInt("Wood", 500).ToString(), new Vector2(776f, -24f), new Vector2(170f, 48f), new Color(0.32f, 0.55f, 0.31f, 1f), false, null);
-        AddBookMetric(page.transform, "石材", PlayerPrefs.GetInt("Stone", 500).ToString(), new Vector2(966f, -24f), new Vector2(170f, 48f), new Color(0.48f, 0.50f, 0.52f, 1f), false, null);
-        AddBookMetric(page.transform, "铁矿", PlayerPrefs.GetInt("Iron", 300).ToString(), new Vector2(1156f, -24f), new Vector2(170f, 48f), new Color(0.43f, 0.40f, 0.56f, 1f), false, null);
+
+        AddBookMetric(page.transform, "\u51c0\u5316\u5242", GetHomePurificationAgent().ToString(), new Vector2(174f, -24f), new Vector2(166f, 48f), new Color(0.62f, 0.39f, 0.20f, 1f), false, null);
+        AddBookMetric(page.transform, "\u4f53\u529b", GetHomeStamina().ToString(), new Vector2(360f, -24f), new Vector2(188f, 48f), new Color(0.88f, 0.61f, 0.18f, 1f), false, null);
+        AddBookMetric(page.transform, "\u91d1\u5e01", PlayerPrefs.GetInt("Gold", 1000).ToString(), new Vector2(568f, -24f), new Vector2(188f, 48f), new Color(0.28f, 0.64f, 0.86f, 1f), false, null);
+        AddBookMetric(page.transform, "\u94bb\u77f3", PlayerPrefs.GetInt("Crystal", 427).ToString(), new Vector2(776f, -24f), new Vector2(188f, 48f), new Color(0.32f, 0.55f, 0.31f, 1f), false, null);
 
         Transform leftPage = CreateBookSheet(page.transform, "LeftStoryPage", new Vector2(96f, -128f), new Vector2(846f, 814f), false).transform;
         Transform rightPage = CreateBookSheet(page.transform, "RightTownPage", new Vector2(978f, -128f), new Vector2(846f, 814f), true).transform;
 
-        AddBookPageTitle(leftPage, "城镇手记", "冒险 / 背包 / 商店", new Vector2(56f, -30f));
-        AddBookPageTitle(rightPage, "领地地图", "探索 / 任务 / 补给", new Vector2(56f, -30f));
+        AddBookPageTitle(leftPage, "\u57ce\u9547\u624b\u8bb0", "\u89d2\u8272 / \u88c5\u5907 / \u529f\u80fd", new Vector2(56f, -30f));
+        AddBookPageTitle(rightPage, "\u9886\u5730\u5730\u56fe", "\u63a2\u7d22 / \u6a21\u62df\u7ecf\u8425 / \u5bf9\u6218", new Vector2(56f, -30f));
 
-        CreateBookFeatureButton(leftPage, "RightBattleButton", "对战", "进入挑战与战斗内容", new Vector2(56f, -104f), new Vector2(340f, 198f), new Color(0.72f, 0.26f, 0.22f, 1f), ShowBattleContent);
-        CreateBookFeatureButton(leftPage, "ActivityButton", "抽奖", "活动奖励与幸运抽取", new Vector2(434f, -104f), new Vector2(340f, 198f), new Color(0.78f, 0.52f, 0.18f, 1f), ShowLotteryContent);
-        CreateBookFeatureButton(leftPage, "BottomMailButton", "邮件", "系统消息与奖励领取", new Vector2(56f, -326f), new Vector2(718f, 128f), new Color(0.22f, 0.55f, 0.58f, 1f), ShowMailContent);
-        CreateBookFeatureButton(leftPage, "SideBagButton", "背包", "物品与资源", new Vector2(56f, -488f), new Vector2(218f, 124f), new Color(0.50f, 0.34f, 0.20f, 1f), ShowBagContent);
-        CreateBookFeatureButton(leftPage, "SideEquipmentButton", "装备", "角色装备", new Vector2(306f, -488f), new Vector2(218f, 124f), new Color(0.36f, 0.46f, 0.70f, 1f), ShowEquipmentContent);
-        CreateBookFeatureButton(leftPage, "SideShopButton", "商城", "道具与礼包", new Vector2(556f, -488f), new Vector2(218f, 124f), new Color(0.37f, 0.58f, 0.38f, 1f), ShowShopContent);
-        CreateBookFeatureButton(leftPage, "FriendsButton", "好友", "好友列表", new Vector2(56f, -642f), new Vector2(218f, 98f), new Color(0.46f, 0.38f, 0.70f, 1f), ShowFriendsContent);
-        CreateBookFeatureButton(leftPage, "BottomNoticeButton", "公告", "最新公告", new Vector2(306f, -642f), new Vector2(218f, 98f), new Color(0.70f, 0.45f, 0.20f, 1f), ShowAnnouncement);
-        CreateBookFeatureButton(leftPage, "SideSettingsButton", "设置", "声音与画质", new Vector2(556f, -642f), new Vector2(218f, 98f), new Color(0.36f, 0.43f, 0.48f, 1f), ShowSettingsContent);
+        CreateBookFeatureButton(leftPage, "BottomDailySignButton", "\u6bcf\u65e5\u7b7e\u5230", "\u6bcf\u65e5\u5956\u52b1", new Vector2(56f, -104f), new Vector2(340f, 100f), new Color(0.78f, 0.46f, 0.22f, 1f), ShowDailySignContent);
+        CreateBookFeatureButton(leftPage, "ActivityButton", "\u6d3b\u52a8", "\u65b0\u624b\u7b7e\u5230", new Vector2(434f, -104f), new Vector2(340f, 100f), new Color(0.57f, 0.48f, 0.76f, 1f), ShowNewbieSignContent);
+        CreateBookFeatureButton(leftPage, "RoleButton", "\u89d2\u8272", "\u89d2\u8272\u4e0e\u6210\u957f", new Vector2(56f, -244f), new Vector2(218f, 124f), new Color(0.72f, 0.38f, 0.22f, 1f), ShowCharacterContent);
+        CreateBookFeatureButton(leftPage, "SideEquipmentButton", "\u88c5\u5907", "\u89d2\u8272\u88c5\u5907", new Vector2(306f, -244f), new Vector2(218f, 124f), new Color(0.36f, 0.46f, 0.70f, 1f), ShowEquipmentContent);
+        CreateBookFeatureButton(leftPage, "LotteryButton", "\u62bd\u5956", "\u5956\u6c60\u4e0e\u62bd\u53d6", new Vector2(556f, -244f), new Vector2(218f, 124f), new Color(0.78f, 0.52f, 0.18f, 1f), ShowLotteryContent);
+        CreateBookFeatureButton(leftPage, "BottomTaskButton", "\u4efb\u52a1", "\u4e3b\u7ebf\u4e0e\u65e5\u5e38", new Vector2(56f, -402f), new Vector2(166f, 112f), new Color(0.32f, 0.58f, 0.64f, 1f), ShowTaskContent);
+        CreateBookFeatureButton(leftPage, "FriendsButton", "\u597d\u53cb", "\u597d\u53cb\u5217\u8868", new Vector2(240f, -402f), new Vector2(166f, 112f), new Color(0.46f, 0.38f, 0.70f, 1f), ShowFriendsContent);
+        CreateBookFeatureButton(leftPage, "SideBagButton", "\u4ed3\u5e93", "\u7269\u54c1\u4e0e\u8d44\u6e90", new Vector2(424f, -402f), new Vector2(166f, 112f), new Color(0.50f, 0.34f, 0.20f, 1f), ShowBagContent);
+        CreateBookFeatureButton(leftPage, "SideShopButton", "\u5546\u57ce", "\u9053\u5177\u4e0e\u793c\u5305", new Vector2(608f, -402f), new Vector2(166f, 112f), new Color(0.37f, 0.58f, 0.38f, 1f), ShowShopContent);
+
+        CreateBookTopActionButton(page.transform, "BottomMailButton", "\u90ae\u4ef6", new Vector2(1450f, -24f), ShowMailContent);
+        CreateBookTopActionButton(page.transform, "BottomNoticeButton", "\u516c\u544a", new Vector2(1590f, -24f), ShowAnnouncement);
+        CreateBookTopActionButton(page.transform, "SideSettingsButton", "\u8bbe\u7f6e", new Vector2(1730f, -24f), ShowSettingsContent);
 
         CreateMapShowcase(rightPage, new Vector2(56f, -104f), new Vector2(718f, 340f));
         CreateAreaThumb(rightPage, GetArea("grass"), "Sprites/Arts/png/grass.jpeg", new Vector2(56f, -470f));
@@ -425,21 +581,25 @@ public partial class HomePageUI : MonoBehaviour
         CreateAreaThumb(rightPage, GetArea("sea"), "Sprites/Arts/png/sea.png", new Vector2(340f, -470f));
         CreateAreaThumb(rightPage, GetArea("volcano"), "Sprites/Arts/png/volcano.png", new Vector2(482f, -470f));
         CreateAreaThumb(rightPage, GetArea("snow"), "Sprites/Arts/png/snow.png", new Vector2(624f, -470f));
-        CreateBookFeatureButton(rightPage, "BottomTaskButton", "任务", "每日目标", new Vector2(56f, -600f), new Vector2(166f, 112f), new Color(0.32f, 0.58f, 0.64f, 1f), ShowTaskContent);
-        CreateBookFeatureButton(rightPage, "BottomDailySignButton", "每日签到", "每日奖励", new Vector2(240f, -600f), new Vector2(166f, 112f), new Color(0.78f, 0.46f, 0.22f, 1f), ShowDailySignContent);
-        CreateBookFeatureButton(rightPage, "BottomNewbieSignButton", "新手签到", "成长奖励", new Vector2(424f, -600f), new Vector2(166f, 112f), new Color(0.57f, 0.48f, 0.76f, 1f), ShowNewbieSignContent);
-        CreateBookFeatureButton(rightPage, "BottomRechargeButton", "充值", "钻石补给", new Vector2(608f, -600f), new Vector2(166f, 112f), new Color(0.26f, 0.61f, 0.76f, 1f), ShowRechargeContent);
-
-        CreateBookBottomTab(page.transform, "BottomMailTab", "邮件", new Vector2(446f, -990f), ShowMailContent);
-        CreateBookBottomTab(page.transform, "BottomSignTab", "签到", new Vector2(580f, -990f), ShowDailySignContent);
-        CreateBookBottomTab(page.transform, "BottomLotteryTab", "抽奖", new Vector2(714f, -990f), ShowLotteryContent);
-        CreateBookBottomTab(page.transform, "BottomRechargeTab", "充值", new Vector2(848f, -990f), ShowRechargeContent);
-        CreateBookBottomTab(page.transform, "BottomTaskTab", "任务", new Vector2(982f, -990f), ShowTaskContent);
-        CreateBookBottomTab(page.transform, "BottomFriendTab", "好友", new Vector2(1116f, -990f), ShowFriendsContent);
-        CreateBookBottomTab(page.transform, "BottomNoticeTab", "公告", new Vector2(1250f, -990f), ShowAnnouncement);
+        CreateBookFeatureButton(rightPage, "RightBattleButton", "\u5bf9\u6218", "\u8fdb\u5165\u5bf9\u6218\u6a21\u5f0f", new Vector2(56f, -600f), new Vector2(718f, 112f), new Color(0.72f, 0.26f, 0.22f, 1f), ShowBattleContent);
 
         statusText = CreateText("Status", page.transform, string.Empty, 18, FontStyle.Bold, new Color(0.98f, 0.89f, 0.66f, 1f), TextAnchor.MiddleRight);
         SetRect(statusText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1348f, -28f), new Vector2(480f, 36f));
+    }
+
+    private Button CreateBookTopActionButton(Transform parent, string name, string title, Vector2 position, Action onClick)
+    {
+        Button button = CreateButton(parent, name, string.Empty, bookStyle != null ? bookStyle.FeatureButtonColor : new Color(0.99f, 0.94f, 0.81f, 1f), InkColor);
+        button.onClick.AddListener(() => onClick());
+        SetRect(button.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, new Vector2(124f, 52f));
+        if (bookStyle != null)
+        {
+            bookStyle.ApplyFeatureButton(button.GetComponent<Image>());
+        }
+
+        Text titleText = CreateText("Title", button.transform, title, 18, FontStyle.Bold, InkColor, TextAnchor.MiddleCenter);
+        SetRect(titleText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), Vector2.zero, new Vector2(124f, 52f));
+        return button;
     }
 
     private void AddDeskPattern(Transform parent)
@@ -482,9 +642,12 @@ public partial class HomePageUI : MonoBehaviour
 
     private Image CreateBookSheet(Transform parent, string name, Vector2 position, Vector2 size, bool rightPage)
     {
-        Image shadow = CreateImage(name + "SoftShadow", parent, new Color(0.16f, 0.10f, 0.05f, 0.20f));
-        shadow.raycastTarget = false;
-        SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(rightPage ? 10f : 5f, -10f), size);
+        if (name != "LeftStoryPage")
+        {
+            Image shadow = CreateImage(name + "SoftShadow", parent, new Color(0.16f, 0.10f, 0.05f, 0.20f));
+            shadow.raycastTarget = false;
+            SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(rightPage ? 10f : 5f, -10f), size);
+        }
 
         Image sheet = CreateImage(name, parent, bookStyle != null ? bookStyle.PageColor : new Color(0.97f, 0.93f, 0.82f, 1f));
         if (bookStyle != null)
@@ -500,9 +663,12 @@ public partial class HomePageUI : MonoBehaviour
         }
         SetRect(sheet.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
 
-        Image edge = CreateImage(name + "InnerEdge", sheet.transform, rightPage ? new Color(0.76f, 0.62f, 0.42f, 0.20f) : new Color(1f, 0.98f, 0.90f, 0.28f));
-        edge.raycastTarget = false;
-        SetRect(edge.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), rightPage ? Vector2.zero : new Vector2(size.x - 42f, 0f), new Vector2(42f, size.y));
+        if (name != "RightTownPage")
+        {
+            Image edge = CreateImage(name + "InnerEdge", sheet.transform, rightPage ? new Color(0.76f, 0.62f, 0.42f, 0.20f) : new Color(1f, 0.98f, 0.90f, 0.28f));
+            edge.raycastTarget = false;
+            SetRect(edge.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), rightPage ? Vector2.zero : new Vector2(size.x - 42f, 0f), new Vector2(42f, size.y));
+        }
 
         for (int i = 0; i < 18; i++)
         {
@@ -553,6 +719,20 @@ public partial class HomePageUI : MonoBehaviour
 
         Text name = CreateText("BookAvatarName", frame.transform, PlayerPrefs.GetString("PlayerNickname", "玩家"), 15, FontStyle.Bold, InkColor, TextAnchor.MiddleCenter);
         SetRect(name.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(8f, -54f), new Vector2(80f, 18f));
+
+        Text level = CreateText("BookAvatarLevel", frame.transform, $"Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}", 11, FontStyle.Normal, InkColor, TextAnchor.MiddleCenter);
+        SetRect(level.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(56f, -8f), new Vector2(30f, 16f));
+
+        Image experienceBackground = CreateImage("BookAvatarExperienceBackground", frame.transform, new Color(0.22f, 0.16f, 0.10f, 0.55f));
+        experienceBackground.raycastTarget = false;
+        SetRect(experienceBackground.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(8f, -69f), new Vector2(80f, 5f));
+
+        Image experienceFill = CreateImage("BookAvatarExperienceFill", experienceBackground.transform, new Color(0.95f, 0.79f, 0.38f, 1f));
+        experienceFill.raycastTarget = false;
+        experienceFill.type = Image.Type.Filled;
+        experienceFill.fillMethod = Image.FillMethod.Horizontal;
+        experienceFill.fillOrigin = 0;
+        SetRect(experienceFill.rectTransform, Vector2.zero, Vector2.one, new Vector2(0f, 0.5f), Vector2.zero, Vector2.zero);
 
         Button button = CreateButton(frame.transform, "AvatarButton", string.Empty, new Color(1f, 1f, 1f, 0f), Color.white);
         button.onClick.AddListener(ShowPersonalInfo);
@@ -664,7 +844,7 @@ public partial class HomePageUI : MonoBehaviour
         selectedAreaHint = CreateText("SelectedHint", info.transform, string.Empty, 16, FontStyle.Bold, PrimaryColor, TextAnchor.MiddleRight);
         SetRect(selectedAreaHint.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(270f, -12f), new Vector2(150f, 30f));
 
-        Button enter = CreateButton(map.transform, "MapEnterStamp", "进入地图", new Color(0.72f, 0.28f, 0.18f, 0.96f), Color.white);
+        Button enter = CreateButton(map.transform, "MapEnterStamp", "\u6a21\u62df\u7ecf\u8425", new Color(0.72f, 0.28f, 0.18f, 0.96f), Color.white);
         enter.onClick.AddListener(EnterSelectedArea);
         SetRect(enter.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(size.x - 170f, -244f), new Vector2(136f, 66f));
         ConfigureClearButtonLabel(enter, 22);
@@ -691,67 +871,6 @@ public partial class HomePageUI : MonoBehaviour
 
         Text label = CreateText("ThumbLabel", thumb.transform, area.name, 15, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
         SetRect(label.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(4f, -60f), new Vector2(116f, 24f));
-    }
-
-    private Button CreateBookBottomTab(Transform parent, string name, string text, Vector2 position, Action onClick)
-    {
-        Button button = CreateButton(parent, name, text, bookStyle != null ? bookStyle.BottomTabColor : new Color(0.98f, 0.88f, 0.62f, 1f), InkColor);
-        button.onClick.AddListener(() => onClick());
-        SetRect(button.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, new Vector2(112f, 52f));
-        if (bookStyle != null)
-        {
-            bookStyle.ApplyBottomTab(button.GetComponent<Image>());
-        }
-        ConfigureClearButtonLabel(button, 18);
-        return button;
-    }
-
-    private void BuildReferenceMainPage(Transform root)
-    {
-        Image page = CreateImage("MainBookPage", root, new Color(0.63f, 0.40f, 0.22f, 1f));
-        mainPageTransform = page.transform;
-        Stretch(page.rectTransform);
-
-        AddBackgroundGrid(page.transform);
-        AddParchmentSpeckles(page.transform);
-        AddPageEdgeShading(page.transform);
-        AddBookCorners(page.transform);
-        AddWoodLine(page.transform, new Vector2(170f, -52f), new Vector2(1730f, 5f));
-        AddWoodLine(page.transform, new Vector2(0f, -228f), new Vector2(1900f, 5f));
-        AddWoodLine(page.transform, new Vector2(0f, -775f), new Vector2(1900f, 5f));
-        AddWoodLine(page.transform, new Vector2(0f, -956f), new Vector2(1900f, 5f));
-
-        AddAvatarDisplay(page.transform);
-        AddTopMetric(page.transform, $"等级 Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}", new Vector2(174f, -20f), new Vector2(190f, 48f));
-        AddTopMetric(page.transform, $"金币 {PlayerPrefs.GetInt("Gold", 1000)}", new Vector2(386f, -20f), new Vector2(220f, 48f));
-        AddSmallPlusButton(page.transform, new Vector2(610f, -24f), ShowRechargeContent);
-        AddTopMetric(page.transform, $"钻石 {PlayerPrefs.GetInt("Crystal", 427)}", new Vector2(660f, -20f), new Vector2(220f, 48f));
-        AddSmallPlusButton(page.transform, new Vector2(884f, -24f), ShowRechargeContent);
-        AddTopMetric(page.transform, $"木材 {PlayerPrefs.GetInt("Wood", 500)}", new Vector2(934f, -20f), new Vector2(190f, 48f));
-        AddTopMetric(page.transform, $"石材 {PlayerPrefs.GetInt("Stone", 500)}", new Vector2(1144f, -20f), new Vector2(190f, 48f));
-        AddTopMetric(page.transform, $"铁矿 {PlayerPrefs.GetInt("Iron", 300)}", new Vector2(1354f, -20f), new Vector2(190f, 48f));
-
-        CreateMainSideButton(page.transform, "SideBagButton", "背包", new Vector2(6f, -148f), ShowBagContent);
-        CreateMainSideButton(page.transform, "SideEquipmentButton", "装备", new Vector2(6f, -214f), ShowEquipmentContent);
-        CreateMainSideButton(page.transform, "SideSettingsButton", "设置", new Vector2(6f, -280f), ShowSettingsContent);
-        CreateMainSideButton(page.transform, "SideShopButton", "商城", new Vector2(6f, -346f), ShowShopContent);
-
-        Button enterButton = CreateButton(page.transform, "EnterMapButton", "进入地图", new Color(0.91f, 0.62f, 0.36f, 1f), Color.white);
-        enterButton.onClick.AddListener(EnterSelectedArea);
-        SetRect(enterButton.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1774f, -332f), new Vector2(126f, 415f));
-        ShrinkButtonLabel(enterButton, 22);
-        CreateMainSideButton(page.transform, "RightBattleButton", "对战", new Vector2(1668f, -405f), ShowBattleContent);
-
-        CreateBottomNavButton(page.transform, "FriendsButton", "好友列表", new Vector2(390f, 0f), ShowFriendsContent);
-        CreateBottomNavButton(page.transform, "BottomMailButton", "邮件", new Vector2(518f, 0f), ShowMailContent);
-        CreateBottomNavButton(page.transform, "BottomNoticeButton", "公告", new Vector2(646f, 0f), ShowAnnouncement);
-        CreateBottomNavButton(page.transform, "BottomDailySignButton", "每日签到", new Vector2(774f, 0f), ShowDailySignContent);
-        CreateBottomNavButton(page.transform, "BottomNewbieSignButton", "新手签到", new Vector2(902f, 0f), ShowNewbieSignContent);
-        CreateBottomNavButton(page.transform, "BottomLotteryButton", "抽奖", new Vector2(1030f, 0f), ShowLotteryContent);
-        CreateBottomNavButton(page.transform, "BottomRechargeButton", "充值", new Vector2(1158f, 0f), ShowRechargeContent);
-        CreateBottomNavButton(page.transform, "BottomTaskButton", "任务", new Vector2(1286f, 0f), ShowTaskContent);
-        statusText = CreateText("Status", page.transform, string.Empty, 18, FontStyle.Normal, new Color(1f, 0.86f, 0.58f, 1f), TextAnchor.MiddleLeft);
-        SetRect(statusText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1430f, -1008f), new Vector2(460f, 32f));
     }
 
     private Image CreatePage(string name, Transform parent)
@@ -897,40 +1016,6 @@ public partial class HomePageUI : MonoBehaviour
         button.onClick.AddListener(ShowPersonalInfo);
         Stretch(button.GetComponent<RectTransform>());
         avatarButton = button;
-    }
-
-    private Button CreateMainSideButton(Transform parent, string name, string text, Vector2 position, Action onClick)
-    {
-        Image shadow = CreateImage(name + "Shadow", parent, new Color(0.16f, 0.08f, 0.04f, 0.26f));
-        shadow.raycastTarget = false;
-        SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(6f, -6f), new Vector2(116f, 62f));
-
-        Image border = CreateImage(name + "Border", parent, new Color(0.48f, 0.24f, 0.10f, 1f));
-        border.raycastTarget = false;
-        SetRect(border.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(-4f, 4f), new Vector2(124f, 70f));
-
-        Button button = CreateButton(parent, name, text, new Color(0.96f, 0.67f, 0.38f, 1f), Color.white);
-        button.onClick.AddListener(() => onClick());
-        SetRect(button.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, new Vector2(116f, 62f));
-        ShrinkButtonLabel(button, 22);
-        return button;
-    }
-
-    private Button CreateBottomNavButton(Transform parent, string name, string text, Vector2 position, Action onClick)
-    {
-        Image shadow = CreateImage(name + "Shadow", parent, new Color(0.14f, 0.07f, 0.03f, 0.24f));
-        shadow.raycastTarget = false;
-        SetRect(shadow.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f), position + new Vector2(5f, -4f), new Vector2(118f, 62f));
-
-        Image border = CreateImage(name + "Border", parent, new Color(0.44f, 0.22f, 0.10f, 1f));
-        border.raycastTarget = false;
-        SetRect(border.rectTransform, new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f), position + new Vector2(-3f, 3f), new Vector2(124f, 68f));
-
-        Button button = CreateButton(parent, name, text, new Color(0.96f, 0.67f, 0.38f, 1f), Color.white);
-        button.onClick.AddListener(() => onClick());
-        SetRect(button.GetComponent<RectTransform>(), new Vector2(0f, 0f), new Vector2(0f, 0f), new Vector2(0f, 0f), position, new Vector2(118f, 62f));
-        ShrinkButtonLabel(button, 20);
-        return button;
     }
 
     private void BuildLeftPage(Transform page)
@@ -1281,7 +1366,7 @@ public partial class HomePageUI : MonoBehaviour
 
     private void ShowPersonalInfo()
     {
-        ShowGuestProfilePanel();
+        ShowAccountProfilePanel();
     }
 
     private void ShowFriendsContent()
@@ -1294,12 +1379,6 @@ public partial class HomePageUI : MonoBehaviour
         MarkTaskProgress("TaskMailOpened", "TaskMailDate");
         mailShowingNotifications = false;
 
-        if (!HasAuthSession())
-        {
-            ShowSystemMailPanel(null, "游客模式无法读取服务器邮件。\n\n请使用账号登录后查看系统邮件、活动奖励和补偿奖励。");
-            return;
-        }
-
         SetLeftContent("邮件", "正在读取服务器邮件...", "正在请求邮件接口");
         StartCoroutine(GetMailList());
     }
@@ -1310,12 +1389,6 @@ public partial class HomePageUI : MonoBehaviour
         activeInventoryCategory = "all";
         selectedInventoryItemKey = string.Empty;
         ResetResourceSaleForInventory();
-
-        if (!HasAuthSession())
-        {
-            ShowInventoryPanel(BuildLocalInventoryItems(), false, "游客背包：可使用和整理物品；玩家资源出售需要登录账号");
-            return;
-        }
 
         ShowInventoryPanel(new InventoryItemResponse[0], true, "正在读取服务器背包...");
         StartCoroutine(GetInventoryList(false));
@@ -1347,15 +1420,14 @@ public partial class HomePageUI : MonoBehaviour
         ShowEquipmentPanel();
     }
 
+    private void ShowCharacterContent()
+    {
+        ShowEquipmentContent();
+    }
+
     private void ShowRechargeContent()
     {
         MarkTaskProgress("TaskRechargeOpened");
-
-        if (!HasAuthSession())
-        {
-            ShowRechargePanel(Array.Empty<PaymentProductResponse>(), "游客模式不能充值，请使用账号或微信登录后购买。", true);
-            return;
-        }
 
         SetLeftContent("充值", "正在读取充值商品...", "正在请求充值商品接口");
         StartCoroutine(GetPaymentProducts());
@@ -1448,67 +1520,24 @@ public partial class HomePageUI : MonoBehaviour
 
     private void ShowDailySignContent()
     {
-        string today = DateTime.Now.ToString("yyyy-MM-dd");
-        string signedDate = PlayerPrefs.GetString("DailySignDate", string.Empty);
-        int signedDays = PlayerPrefs.GetInt("DailySignDays", 0);
-        if (HasAuthSession())
+        if (!HasAuthSession())
         {
-            OpenServerSignIn("MONTHLY");
+            SetStatus("请先登录账号");
             return;
         }
 
-        if (signedDate == today)
-        {
-            ShowDailySignPanel(signedDays, true, $"今日日期：{today}  今日已签到");
-            return;
-        }
-
-        signedDays = signedDays >= 14 ? 1 : signedDays + 1;
-        ApplyDailySignReward(signedDays);
-        PlayerPrefs.SetString("DailySignDate", today);
-        PlayerPrefs.SetInt("DailySignDays", signedDays);
-        PlayerPrefs.Save();
-        ShowDailySignPanel(signedDays, true, $"签到成功：第{signedDays}天奖励已领取");
+        OpenServerSignIn("MONTHLY");
     }
 
     private void ShowNewbieSignContent()
     {
-        int signedDays = PlayerPrefs.GetInt("NewbieSignDays", 0);
-        if (HasAuthSession())
+        if (!HasAuthSession())
         {
-            OpenServerSignIn("NEWBIE");
+            SetStatus("请先登录账号");
             return;
         }
 
-        if (signedDays >= 3)
-        {
-            ShowNewbieSignPanel(signedDays, "新手三日签到已全部领取");
-            return;
-        }
-
-        signedDays++;
-        PlayerPrefs.SetInt("NewbieSignDays", signedDays);
-        string reward;
-        if (signedDays == 1)
-        {
-            AddLocalResource("Gold", 300);
-            reward = "金币 x300";
-        }
-        else if (signedDays == 2)
-        {
-            AddLocalResource("Wood", 300);
-            AddLocalResource("Stone", 300);
-            reward = "木材 x300、石材 x300";
-        }
-        else
-        {
-            AddLocalResource("EquipmentChest", 1);
-            AddLocalResource("LotteryTicket", 1);
-            reward = "装备宝箱 x1、高级抽奖券 x1";
-        }
-
-        PlayerPrefs.Save();
-        ShowNewbieSignPanel(signedDays, $"第{signedDays}天领取成功：{reward}");
+        OpenServerSignIn("NEWBIE");
     }
 
     private void ShowTaskContent()
@@ -1540,7 +1569,7 @@ public partial class HomePageUI : MonoBehaviour
         HideEquipmentPanel();
         HideShopPanel();
         HideAnnouncementPanel();
-        HideGuestProfilePanel();
+        HideAccountProfilePanel();
         HideFriendsPanel();
 
         TaskDisplayItem[] tasks = BuildTaskItems(category);
@@ -1901,7 +1930,7 @@ public partial class HomePageUI : MonoBehaviour
         {
             InventoryItemResponse item = items[i];
             string key = NormalizeInventoryKey(GetInventoryItemKey(item));
-            if (key == "gold" || key == "wood" || key == "stone" || key == "iron" || key == "diamond" || key == "crystal" || key == "soulcrystal" || key == "soul_crystal")
+            if (key == "gold" || key == "wood" || key == "stone" || key == "iron" || key == "diamond" || key == "crystal" || key == "soulcrystal" || key == "soul_crystal" || key == "purification_agent" || key == "purificationagent")
             {
                 string localKey = key.Replace("_", string.Empty);
                 if (localKey == "diamond" || localKey == "crystal")
@@ -1911,6 +1940,10 @@ public partial class HomePageUI : MonoBehaviour
                 else if (localKey == "soulcrystal")
                 {
                     localKey = "SoulCrystal";
+                }
+                else if (localKey == "purificationagent")
+                {
+                    localKey = "PurificationAgent";
                 }
                 else
                 {
@@ -3143,7 +3176,7 @@ public partial class HomePageUI : MonoBehaviour
             string.Empty,
             "活动三：幸运抽奖",
             "活动时间：长期开放",
-            "活动说明：消耗抽奖机会参与翻牌，奖励会直接加入本地资源或背包。",
+            "活动说明：消耗抽奖机会参与翻牌，奖励以当前抽奖结算结果为准。",
             string.Empty,
             "---------- 优化与修复 ----------",
             "1. 优化书页背景、按钮尺寸和文字清晰度。",
@@ -3151,7 +3184,7 @@ public partial class HomePageUI : MonoBehaviour
             "3. 背包界面已改为 Unity Prefab 组件，后续可直接替换图片和样式。",
             string.Empty,
             "温馨提示：",
-            "账号模式会读取服务器数据；游客模式使用本地存档。部分服务端操作接口尚未开放时，界面会保留查看功能并给出提示。",
+            "账号模式会读取服务器数据；本地任务、活动任务和抽奖记录仅用于对应功能的本地流程。",
             string.Empty,
             "感谢各位领主的支持，祝您游戏愉快！",
             string.Empty,
@@ -4510,7 +4543,7 @@ public partial class HomePageUI : MonoBehaviour
         HideEquipmentPanel();
         HideShopPanel();
         HideAnnouncementPanel();
-        HideGuestProfilePanel();
+        HideAccountProfilePanel();
         HideFriendsPanel();
 
         if (contentPanelObject != null && !contentPanelObject.activeSelf)
@@ -5021,8 +5054,7 @@ public partial class HomePageUI : MonoBehaviour
         SetLayout(popupTitle.gameObject, 0f, 20f);
 
         string nickname = PlayerPrefs.GetString("PlayerNickname", "玩家");
-        string username = PlayerPrefs.GetString("LoginUsername", "Guest");
-        bool isGuest = string.IsNullOrEmpty(PlayerPrefs.GetString("AuthToken", string.Empty));
+        string username = PlayerPrefs.GetString("LoginUsername", string.Empty);
 
         popupNameText = CreateText("Name", personalInfoPopup.transform, $"昵称：{nickname}", 14, FontStyle.Normal, InkColor, TextAnchor.MiddleLeft);
         SetLayout(popupNameText.gameObject, 0f, 16f);
@@ -5030,7 +5062,7 @@ public partial class HomePageUI : MonoBehaviour
         popupAccountText = CreateText("Account", personalInfoPopup.transform, $"账号：{username}", 14, FontStyle.Normal, InkColor, TextAnchor.MiddleLeft);
         SetLayout(popupAccountText.gameObject, 0f, 16f);
 
-        popupModeText = CreateText("Mode", personalInfoPopup.transform, isGuest ? "状态：游客模式" : "状态：账号登录", 14, FontStyle.Bold, PrimaryColor, TextAnchor.MiddleLeft);
+        popupModeText = CreateText("Mode", personalInfoPopup.transform, "状态：账号登录", 14, FontStyle.Bold, PrimaryColor, TextAnchor.MiddleLeft);
         SetLayout(popupModeText.gameObject, 0f, 16f);
 
         popupLevelText = CreateText("Level", personalInfoPopup.transform, $"等级：Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}", 14, FontStyle.Normal, InkColor, TextAnchor.MiddleLeft);
@@ -5078,12 +5110,11 @@ public partial class HomePageUI : MonoBehaviour
         }
 
         string nickname = PlayerPrefs.GetString("PlayerNickname", "玩家");
-        string username = PlayerPrefs.GetString("LoginUsername", "Guest");
-        bool isGuest = string.IsNullOrEmpty(PlayerPrefs.GetString("AuthToken", string.Empty));
+        string username = PlayerPrefs.GetString("LoginUsername", string.Empty);
 
         popupNameText.text = $"昵称：{nickname}";
         popupAccountText.text = $"账号：{username}";
-        popupModeText.text = isGuest ? "状态：游客模式" : "状态：账号登录";
+        popupModeText.text = "状态：账号登录";
         popupLevelText.text = $"等级：Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}";
         popupResourceText.text = $"金币 {PlayerPrefs.GetInt("Gold", 1000)}\n木材 {PlayerPrefs.GetInt("Wood", 500)}\n石材 {PlayerPrefs.GetInt("Stone", 500)}\n铁矿 {PlayerPrefs.GetInt("Iron", 300)}";
     }

@@ -17,7 +17,6 @@ public static class LaunchLoginContentBuilder
     private static readonly Color DecorLineColor = new Color(0.77f, 0.45f, 0.22f, 0.72f);
     private static readonly Color PrimaryColor = new Color(0.09f, 0.28f, 0.58f, 1f);
     private static readonly Color WeChatButtonColor = new Color(0.16f, 0.70f, 0.32f, 1f);
-    private static readonly Color GuestButtonColor = new Color(0.94f, 0.95f, 0.97f, 1f);
     private static readonly Color InputColor = new Color(0.99f, 0.97f, 0.90f, 1f);
     private static readonly Color InputHoverColor = new Color(0.92f, 0.95f, 1f, 1f);
     private static readonly Color FieldTextColor = new Color(0.10f, 0.13f, 0.18f, 1f);
@@ -132,8 +131,6 @@ public static class LaunchLoginContentBuilder
         Button loginButton = CreateFixedButton(actions, "LoginButton", "登录", new Vector2(-158f, -132f), new Vector2(290f, 54f), PrimaryColor, Color.white, 22, style);
         Button registerButton = CreateFixedButton(actions, "RegisterButton", "注册并登录", new Vector2(158f, -132f), new Vector2(290f, 54f), new Color(0.76f, 0.83f, 0.92f, 1f), new Color(0.12f, 0.22f, 0.34f, 1f), 21, style);
         Button weChatButton = CreateFixedButton(actions, "WeChatLoginButton", "微信登录", new Vector2(-158f, -204f), new Vector2(290f, 54f), WeChatButtonColor, Color.white, 21, style);
-        Button guestButton = CreateFixedButton(actions, "GuestButton", "游客进入", new Vector2(158f, -204f), new Vector2(290f, 54f), GuestButtonColor, style.PaperTextColor, 21, style);
-
         Text statusText = CreateText("StatusText", card.transform, string.Empty, 18, FontStyle.Normal, ErrorColor, TextAnchor.MiddleCenter, style);
         SetCentered(statusText.rectTransform, new Vector2(0f, -276f), new Vector2(650f, 48f));
 
@@ -152,7 +149,6 @@ public static class LaunchLoginContentBuilder
             loginButton,
             registerButton,
             weChatButton,
-            guestButton,
             statusText,
             settingsButton,
             mailButton,

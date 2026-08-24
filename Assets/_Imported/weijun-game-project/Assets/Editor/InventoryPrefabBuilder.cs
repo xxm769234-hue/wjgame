@@ -122,7 +122,7 @@ public static class InventoryPrefabBuilder
             Text sidebarHintText = CreateText(
                 "InventorySidebarHint",
                 sidebar.transform,
-                "游客背包\n出售功能需登录",
+                "账号仓库\n资源由服务器同步",
                 16,
                 FontStyle.Bold,
                 new Color(1f, 0.87f, 0.60f, 0.94f),

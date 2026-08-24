@@ -24,7 +24,6 @@ public sealed class LoginCanvasStyle : MonoBehaviour
     [SerializeField] private Sprite primaryButtonSprite;
     [SerializeField] private Sprite secondaryButtonSprite;
     [SerializeField] private Sprite weChatButtonSprite;
-    [SerializeField] private Sprite guestButtonSprite;
 
     [Header("Surface Colors")]
     [SerializeField] private Color backgroundColor = new Color(0.48f, 0.30f, 0.16f, 1f);
@@ -40,7 +39,6 @@ public sealed class LoginCanvasStyle : MonoBehaviour
     [SerializeField] private Color primaryButtonColor = new Color(0.09f, 0.28f, 0.58f, 1f);
     [SerializeField] private Color secondaryButtonColor = new Color(0.76f, 0.83f, 0.92f, 1f);
     [SerializeField] private Color weChatButtonColor = new Color(0.16f, 0.70f, 0.32f, 1f);
-    [SerializeField] private Color guestButtonColor = new Color(0.94f, 0.95f, 0.97f, 1f);
 
     [Header("Text Colors")]
     [SerializeField] private Color titleTextColor = new Color(0.74f, 0.20f, 0.15f, 1f);
@@ -149,8 +147,6 @@ public sealed class LoginCanvasStyle : MonoBehaviour
             case "WeChatLoginButton":
             case "WeChatButton":
                 return weChatButtonColor;
-            case "GuestButton":
-                return guestButtonColor;
             default:
                 return fallbackColor;
         }
@@ -167,8 +163,6 @@ public sealed class LoginCanvasStyle : MonoBehaviour
             case "WeChatLoginButton":
             case "WeChatButton":
                 return weChatButtonSprite;
-            case "GuestButton":
-                return guestButtonSprite;
             default:
                 return secondaryButtonSprite;
         }

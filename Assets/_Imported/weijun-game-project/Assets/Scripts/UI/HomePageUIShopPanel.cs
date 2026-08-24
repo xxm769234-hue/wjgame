@@ -45,7 +45,7 @@ public partial class HomePageUI
         HideInventoryPanel();
         HideEquipmentPanel();
         HideAnnouncementPanel();
-        HideGuestProfilePanel();
+        HideAccountProfilePanel();
         HideFriendsPanel();
         HideSettingsPanel();
         HideShopPanel();

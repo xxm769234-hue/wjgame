@@ -43,7 +43,7 @@ public partial class HomePageUI
         HideInventoryPanel();
         HideShopPanel();
         HideAnnouncementPanel();
-        HideGuestProfilePanel();
+        HideAccountProfilePanel();
         HideFriendsPanel();
         HideSettingsPanel();
 
@@ -52,15 +52,6 @@ public partial class HomePageUI
         equipmentPageIndex = 0;
         equipmentStatusMessage = string.Empty;
         ResetEquipmentUpgradePreview();
-
-        if (!HasAuthSession())
-        {
-            ShowEquipmentScenePanel(
-                BuildLocalInventoryItems(),
-                false,
-                "游客装备已从本地存档读取");
-            return;
-        }
 
         equipmentRefreshRunning = true;
         ShowEquipmentScenePanel(
@@ -597,7 +588,7 @@ public partial class HomePageUI
             "EquipmentModeText",
             equipmentServerBacked
                 ? (selectedNpc == null ? "服务器装备 · 暂无 NPC" : $"{selectedNpc.name}  Lv.{selectedNpc.level}  {selectedEquipmentNpcIndex + 1}/{serverPlayerNpcs.Length}")
-                : "游客存档 · 可穿戴");
+                : "本地奖励库存 · 可穿戴");
         SetSceneText(root, "EquipmentPowerText", $"总战力  {totalStats.Power}");
         SetSceneText(root, "EquipmentCount", $"装备 {allVisibleItems.Count} 件");
         SetSceneText(root, "EquipmentStatus", equipmentStatusMessage);

@@ -469,10 +469,10 @@ public partial class HomePageUI
 
     private void RefreshProfileAvatarPanel(string status)
     {
-        HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.GuestProfile);
+        HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.AccountProfile);
         if (panel != null && panel.PanelRoot != null && panel.gameObject.activeInHierarchy)
         {
-            RefreshGuestProfileScenePanel(panel.PanelRoot, status);
+            RefreshAccountProfileScenePanel(panel.PanelRoot, status);
         }
         SetStatus(status);
     }
@@ -529,7 +529,7 @@ public partial class HomePageUI
             }
         }
 
-        HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.GuestProfile);
+        HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.AccountProfile);
         if (panel != null && panel.PanelRoot != null && panel.gameObject.activeInHierarchy)
         {
             ConfigureProfileAvatarControls(

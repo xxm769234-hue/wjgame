@@ -152,7 +152,7 @@ public static class HomePageScenePanelsBuilder
             BuildNewbieSignPanel(canvasRect),
             BuildMailPanel(canvasRect),
             BuildSettingsPanel(canvasRect),
-            BuildGuestProfilePanel(canvasRect),
+            BuildAccountProfilePanel(canvasRect),
             BuildFriendsPanel(canvasRect),
             BuildEquipmentPanel(canvasRect),
             BuildShopPanel(canvasRect)
@@ -881,7 +881,7 @@ public static class HomePageScenePanelsBuilder
 
         Text status = CreateText("SettingsStatus", panel.transform, "设置修改后会即时生效", 18, FontStyle.Bold, new Color(0.32f, 0.42f, 0.28f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(status.rectTransform, new Vector2(58f, -642f), new Vector2(650f, 34f));
-        Text account = CreateText("SettingsAccount", panel.transform, "当前账号：Guest", 17, FontStyle.Normal, new Color(0.42f, 0.36f, 0.29f, 1f), TextAnchor.MiddleLeft);
+        Text account = CreateText("SettingsAccount", panel.transform, "当前账号：", 17, FontStyle.Normal, new Color(0.42f, 0.36f, 0.29f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(account.rectTransform, new Vector2(58f, -682f), new Vector2(480f, 32f));
 
         Button reset = CreateButton("SettingsResetButton", panel.transform, "恢复默认", new Color(0.88f, 0.75f, 0.50f, 1f), new Color(0.34f, 0.20f, 0.10f, 1f), 20);
@@ -960,9 +960,9 @@ public static class HomePageScenePanelsBuilder
         return slider;
     }
 
-    private static HomePageScenePanel BuildGuestProfilePanel(Transform parent)
+    private static HomePageScenePanel BuildAccountProfilePanel(Transform parent)
     {
-        HomePageScenePanel scenePanel = CreateScenePanel(parent, "GuestProfileScenePanel", HomePageScenePanelType.GuestProfile);
+        HomePageScenePanel scenePanel = CreateScenePanel(parent, "AccountProfileScenePanel", HomePageScenePanelType.AccountProfile);
         Transform root = scenePanel.transform;
         CreateDimmer(root);
 
@@ -978,11 +978,11 @@ public static class HomePageScenePanelsBuilder
 
         Image header = CreateImage("ProfileHeader", panel.transform, new Color(0.52f, 0.22f, 0.16f, 1f));
         SetTopLeft(header.rectTransform, new Vector2(24f, -24f), new Vector2(1232f, 76f));
-        Text title = CreateText("ProfileTitle", panel.transform, "游客信息", 38, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
+        Text title = CreateText("ProfileTitle", panel.transform, "个人信息", 38, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
         SetTopLeft(title.rectTransform, new Vector2(58f, -34f), new Vector2(240f, 54f));
         Image modeBadge = CreateImage("ProfileModeBadgeBackground", panel.transform, new Color(0.28f, 0.67f, 0.40f, 1f));
         SetTopLeft(modeBadge.rectTransform, new Vector2(302f, -41f), new Vector2(156f, 42f));
-        Text modeText = CreateText("ProfileModeBadge", modeBadge.transform, "游客模式", 19, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+        Text modeText = CreateText("ProfileModeBadge", modeBadge.transform, "账号登录", 19, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
         Stretch(modeText.rectTransform);
         Button close = CreateButton("ProfileCloseButton", panel.transform, "X", new Color(0.90f, 0.30f, 0.25f, 1f), Color.white, 24);
         SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(1188f, -36f), new Vector2(50f, 50f));
@@ -993,12 +993,12 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(avatar.rectTransform, new Vector2(132f, -24f), new Vector2(120f, 120f));
         Text avatarInitial = CreateText("ProfileAvatarInitial", avatar.transform, "游", 58, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
         Stretch(avatarInitial.rectTransform);
-        Text displayName = CreateText("ProfileDisplayName", identityCard.transform, "游客", 29, FontStyle.Bold, new Color(0.34f, 0.16f, 0.08f, 1f), TextAnchor.MiddleCenter);
+        Text displayName = CreateText("ProfileDisplayName", identityCard.transform, "玩家", 29, FontStyle.Bold, new Color(0.34f, 0.16f, 0.08f, 1f), TextAnchor.MiddleCenter);
         SetTopLeft(displayName.rectTransform, new Vector2(28f, -152f), new Vector2(328f, 38f));
 
-        Text nicknameLabel = CreateText("ProfileNicknameLabel", identityCard.transform, "游客昵称", 20, FontStyle.Bold, new Color(0.40f, 0.23f, 0.11f, 1f), TextAnchor.MiddleLeft);
+        Text nicknameLabel = CreateText("ProfileNicknameLabel", identityCard.transform, "账号昵称", 20, FontStyle.Bold, new Color(0.40f, 0.23f, 0.11f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(nicknameLabel.rectTransform, new Vector2(24f, -202f), new Vector2(180f, 30f));
-        InputField nicknameInput = CreateSceneInputField("ProfileNicknameInput", identityCard.transform, "请输入游客昵称", 18);
+        InputField nicknameInput = CreateSceneInputField("ProfileNicknameInput", identityCard.transform, "账号昵称由服务器管理", 18);
         SetTopLeft(nicknameInput.GetComponent<RectTransform>(), new Vector2(24f, -236f), new Vector2(336f, 48f));
         Text nicknameHint = CreateText("ProfileNicknameHint", identityCard.transform, "昵称长度为 2-12 个字符", 15, FontStyle.Normal, new Color(0.46f, 0.39f, 0.30f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(nicknameHint.rectTransform, new Vector2(28f, -287f), new Vector2(328f, 26f));
@@ -1010,7 +1010,7 @@ public static class HomePageScenePanelsBuilder
 
         Text identifier = CreateText("ProfileIdentifier", identityCard.transform, "玩家编号  WJ-00000000", 17, FontStyle.Bold, new Color(0.32f, 0.20f, 0.11f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(identifier.rectTransform, new Vector2(28f, -392f), new Vector2(328f, 30f));
-        Text account = CreateText("ProfileAccount", identityCard.transform, "登录账号  Guest", 17, FontStyle.Normal, new Color(0.42f, 0.32f, 0.22f, 1f), TextAnchor.MiddleLeft);
+        Text account = CreateText("ProfileAccount", identityCard.transform, "登录账号", 17, FontStyle.Normal, new Color(0.42f, 0.32f, 0.22f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(account.rectTransform, new Vector2(28f, -430f), new Vector2(328f, 30f));
         Text level = CreateText("ProfileLevel", identityCard.transform, "领主等级  Lv.1", 18, FontStyle.Bold, new Color(0.50f, 0.20f, 0.12f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(level.rectTransform, new Vector2(28f, -468f), new Vector2(328f, 32f));
@@ -1037,13 +1037,13 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(syncCard.rectTransform, new Vector2(454f, -560f), new Vector2(746f, 92f));
         Text syncTitle = CreateText("ProfileSyncTitle", syncCard.transform, "档案状态", 19, FontStyle.Bold, new Color(0.42f, 0.20f, 0.10f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(syncTitle.rectTransform, new Vector2(22f, -12f), new Vector2(150f, 30f));
-        Text syncText = CreateText("ProfileSyncText", syncCard.transform, "资料来源  本地游客存档", 17, FontStyle.Normal, new Color(0.44f, 0.36f, 0.27f, 1f), TextAnchor.MiddleLeft);
+        Text syncText = CreateText("ProfileSyncText", syncCard.transform, "资料来源  当前登录账号", 17, FontStyle.Normal, new Color(0.44f, 0.36f, 0.27f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(syncText.rectTransform, new Vector2(22f, -46f), new Vector2(690f, 28f));
 
         Image footerDivider = CreateImage("ProfileFooterDivider", panel.transform, new Color(0.48f, 0.27f, 0.13f, 0.48f));
         SetTopLeft(footerDivider.rectTransform, new Vector2(42f, -694f), new Vector2(1196f, 4f));
         footerDivider.raycastTarget = false;
-        Text profileStatus = CreateText("ProfileStatus", panel.transform, "游客资料已从本地存档读取", 17, FontStyle.Bold, new Color(0.36f, 0.42f, 0.24f, 1f), TextAnchor.MiddleLeft);
+        Text profileStatus = CreateText("ProfileStatus", panel.transform, "账号资料等待同步", 17, FontStyle.Bold, new Color(0.36f, 0.42f, 0.24f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(profileStatus.rectTransform, new Vector2(50f, -716f), new Vector2(800f, 48f));
         Button refresh = CreateButton("ProfileRefreshButton", panel.transform, "本地存档", new Color(0.28f, 0.57f, 0.73f, 1f), Color.white, 19);
         SetTopLeft(refresh.GetComponent<RectTransform>(), new Vector2(900f, -724f), new Vector2(150f, 52f));
@@ -1112,9 +1112,6 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(filterOnline.GetComponent<RectTransform>(), new Vector2(482f, -122f), new Vector2(100f, 50f));
         Button filterOutgoing = CreateButton("FriendsFilterOutgoing", panel.transform, "发出", new Color(0.90f, 0.79f, 0.59f, 1f), new Color(0.36f, 0.20f, 0.10f, 1f), 18);
         SetTopLeft(filterOutgoing.GetComponent<RectTransform>(), new Vector2(592f, -122f), new Vector2(90f, 50f));
-        Button weChatGift = CreateButton("FriendsWeChatGiftButton", panel.transform, "微信好友赠礼", new Color(0.16f, 0.61f, 0.35f, 1f), Color.white, 18);
-        SetTopLeft(weChatGift.GetComponent<RectTransform>(), new Vector2(692f, -122f), new Vector2(176f, 50f));
-
         InputField addInput = CreateSceneInputField("FriendsAddInput", panel.transform, "输入玩家 ID", 18);
         SetTopLeft(addInput.GetComponent<RectTransform>(), new Vector2(880f, -122f), new Vector2(246f, 50f));
         Button addButton = CreateButton("FriendsAddButton", panel.transform, "搜索玩家", new Color(0.33f, 0.66f, 0.36f, 1f), Color.white, 19);
@@ -1182,7 +1179,7 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(header.rectTransform, new Vector2(24f, -24f), new Vector2(1452f, 78f));
         Text title = CreateText("EquipmentTitle", panel.transform, "装备大厅", 38, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
         SetTopLeft(title.rectTransform, new Vector2(58f, -34f), new Vector2(250f, 54f));
-        Text mode = CreateText("EquipmentModeText", panel.transform, "游客存档 · 可穿戴", 18, FontStyle.Bold, new Color(0.94f, 0.90f, 1f, 0.90f), TextAnchor.MiddleLeft);
+        Text mode = CreateText("EquipmentModeText", panel.transform, "账号库存 · 可穿戴", 18, FontStyle.Bold, new Color(0.94f, 0.90f, 1f, 0.90f), TextAnchor.MiddleLeft);
         SetTopLeft(mode.rectTransform, new Vector2(330f, -45f), new Vector2(280f, 32f));
         Text power = CreateText("EquipmentPowerText", panel.transform, "总战力  10", 22, FontStyle.Bold, new Color(1f, 0.87f, 0.45f, 1f), TextAnchor.MiddleRight);
         SetTopLeft(power.rectTransform, new Vector2(970f, -39f), new Vector2(240f, 40f));
@@ -1258,7 +1255,7 @@ public static class HomePageScenePanelsBuilder
         Image footerDivider = CreateImage("EquipmentFooterDivider", panel.transform, new Color(0.47f, 0.27f, 0.13f, 0.48f));
         SetTopLeft(footerDivider.rectTransform, new Vector2(42f, -714f), new Vector2(1416f, 4f));
         footerDivider.raycastTarget = false;
-        Text status = CreateText("EquipmentStatus", panel.transform, "游客装备已从本地存档读取", 17, FontStyle.Bold, new Color(0.36f, 0.42f, 0.24f, 1f), TextAnchor.MiddleLeft);
+        Text status = CreateText("EquipmentStatus", panel.transform, "账号装备等待同步", 17, FontStyle.Bold, new Color(0.36f, 0.42f, 0.24f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(status.rectTransform, new Vector2(50f, -728f), new Vector2(850f, 30f));
         Text hint = CreateText("EquipmentHint", panel.transform, "点击装备栏可卸下，选择物品后可穿戴", 15, FontStyle.Normal, new Color(0.48f, 0.39f, 0.29f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(hint.rectTransform, new Vector2(50f, -758f), new Vector2(1060f, 28f));

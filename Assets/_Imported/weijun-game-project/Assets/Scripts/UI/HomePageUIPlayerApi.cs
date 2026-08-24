@@ -36,13 +36,13 @@ public partial class HomePageUI
     {
         if (boundBookView != null)
         {
-            SetBookMetricValue(boundBookView.MetricTexts, 0, $"Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}");
-            SetBookMetricValue(boundBookView.MetricTexts, 1, PlayerPrefs.GetInt("Gold", 1000).ToString());
-            SetBookMetricValue(boundBookView.MetricTexts, 2, PlayerPrefs.GetInt("Crystal", 0).ToString());
-            SetBookMetricValue(boundBookView.MetricTexts, 3, PlayerPrefs.GetInt("Wood", 500).ToString());
-            SetBookMetricValue(boundBookView.MetricTexts, 4, PlayerPrefs.GetInt("Stone", 500).ToString());
-            SetBookMetricValue(boundBookView.MetricTexts, 5, PlayerPrefs.GetInt("Iron", 300).ToString());
+            SetBookMetricValue(boundBookView.MetricTexts, 0, GetHomePurificationAgent().ToString());
+            SetBookMetricValue(boundBookView.MetricTexts, 1, GetHomeStamina().ToString());
+            SetBookMetricValue(boundBookView.MetricTexts, 2, PlayerPrefs.GetInt("Gold", 1000).ToString());
+            SetBookMetricValue(boundBookView.MetricTexts, 3, PlayerPrefs.GetInt("Crystal", 0).ToString());
         }
+
+        RefreshBookAvatarSummary();
 
         RefreshOpenProfileResourceCards();
 
@@ -64,7 +64,7 @@ public partial class HomePageUI
 
     private void RefreshOpenProfileResourceCards()
     {
-        HomePageScenePanel profilePanel = GetRegisteredScenePanel(HomePageScenePanelType.GuestProfile);
+        HomePageScenePanel profilePanel = GetRegisteredScenePanel(HomePageScenePanelType.AccountProfile);
         if (profilePanel == null || !profilePanel.gameObject.activeInHierarchy || profilePanel.PanelRoot == null)
         {
             return;
@@ -1368,7 +1368,7 @@ public partial class HomePageUI
     {
         if (!HasAuthSession())
         {
-            SetStatus("游客模式不能领取服务器广告奖励，请先登录账号。 ");
+            SetStatus("请先登录账号后领取服务器广告奖励。 ");
             return;
         }
 

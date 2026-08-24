@@ -15,19 +15,6 @@ public static class GameSession
     private const string BackendSessionRevisionKey = "weijun.backend.sessionRevision";
 
     private const string AccountMode = "account";
-    private const string GuestMode = "guest";
-    private const string LastSessionModeKey = "LastSessionMode";
-    private const string GuestProgressPrefix = "GuestProgress.";
-
-    private static readonly string[] GuestProgressKeys =
-    {
-        "PlayerLv", "Gold", "Wood", "Stone", "Iron", "Crystal", "SoulCrystal"
-    };
-
-    private static readonly int[] GuestProgressDefaults =
-    {
-        1, 1000, 500, 500, 300, 427, 1200
-    };
 
     public static string Token => PlayerPrefs.GetString(AuthTokenKey, string.Empty);
     public static int PlayerId => PlayerPrefs.GetInt(PlayerIdKey, 0);
@@ -55,26 +42,7 @@ public static class GameSession
         }
     }
 
-    public static bool IsGuest
-    {
-        get
-        {
-            if (PlayerPrefs.GetInt(LoginStateKey, 0) != 1)
-            {
-                return false;
-            }
-
-            string mode = PlayerPrefs.GetString(SessionModeKey, string.Empty);
-            if (mode == GuestMode)
-            {
-                return true;
-            }
-
-            return string.IsNullOrEmpty(mode) && PlayerId == 0 && string.IsNullOrEmpty(Token);
-        }
-    }
-
-    public static bool HasValidSession => IsAuthenticated || IsGuest;
+    public static bool HasValidSession => IsAuthenticated;
 
     public static void SaveAuthenticated(
         string token,
@@ -96,15 +64,9 @@ public static class GameSession
         bool maxLevel = false,
         bool economyFrozen = false)
     {
-        if (IsGuest)
-        {
-            CaptureGuestProgress();
-        }
-
         long expiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + Math.Max(1, expiresInSeconds);
         PlayerPrefs.SetInt(LoginStateKey, 1);
         PlayerPrefs.SetString(SessionModeKey, AccountMode);
-        PlayerPrefs.SetString(LastSessionModeKey, AccountMode);
         PlayerPrefs.SetString(AuthTokenKey, token ?? string.Empty);
         PlayerPrefs.SetString(TokenExpiresAtKey, expiresAt.ToString());
         PlayerPrefs.SetInt("TokenExpiresIn", Math.Max(0, expiresInSeconds));
@@ -129,48 +91,8 @@ public static class GameSession
         WeChatPlatformBridge.SyncFriendLevel(level);
     }
 
-    public static void SaveGuest(string nickname)
-    {
-        bool continuingGuestSession = IsGuest;
-        if (continuingGuestSession)
-        {
-            CaptureGuestProgress();
-        }
-        else if (!HasGuestProgress()
-            && PlayerPrefs.GetString(LastSessionModeKey, string.Empty) != AccountMode
-            && PlayerId <= 0
-            && string.IsNullOrEmpty(Token))
-        {
-            CaptureGuestProgress();
-        }
-
-        PlayerPrefs.SetInt(LoginStateKey, 1);
-        PlayerPrefs.SetString(SessionModeKey, GuestMode);
-        PlayerPrefs.SetString(LastSessionModeKey, GuestMode);
-        PlayerPrefs.DeleteKey(AuthTokenKey);
-        PlayerPrefs.DeleteKey(TokenExpiresAtKey);
-        PlayerPrefs.SetInt("TokenExpiresIn", 0);
-        PlayerPrefs.SetInt(PlayerIdKey, 0);
-        SaveBackendSession(string.Empty, 0, true);
-        PlayerPrefs.SetString("PlayerNickname", string.IsNullOrWhiteSpace(nickname) ? "游客" : nickname.Trim());
-        PlayerPrefs.SetString("LoginUsername", "Guest");
-        RestoreGuestProgress();
-        PlayerPrefs.Save();
-    }
-
     public static void Clear()
     {
-        string mode = PlayerPrefs.GetString(SessionModeKey, string.Empty);
-        if (mode == GuestMode || IsGuest)
-        {
-            CaptureGuestProgress();
-            PlayerPrefs.SetString(LastSessionModeKey, GuestMode);
-        }
-        else if (mode == AccountMode || !string.IsNullOrEmpty(Token) || PlayerId > 0)
-        {
-            PlayerPrefs.SetString(LastSessionModeKey, AccountMode);
-        }
-
         PlayerPrefs.SetInt(LoginStateKey, 0);
         PlayerPrefs.DeleteKey(SessionModeKey);
         PlayerPrefs.DeleteKey(AuthTokenKey);
@@ -205,30 +127,4 @@ public static class GameSession
         return long.TryParse(PlayerPrefs.GetString(TokenExpiresAtKey, string.Empty), out expiresAt);
     }
 
-    private static bool HasGuestProgress()
-    {
-        return PlayerPrefs.HasKey(GuestProgressPrefix + "Gold");
-    }
-
-    private static void CaptureGuestProgress()
-    {
-        for (int i = 0; i < GuestProgressKeys.Length; i++)
-        {
-            string key = GuestProgressKeys[i];
-            PlayerPrefs.SetInt(
-                GuestProgressPrefix + key,
-                PlayerPrefs.GetInt(key, GuestProgressDefaults[i]));
-        }
-    }
-
-    private static void RestoreGuestProgress()
-    {
-        for (int i = 0; i < GuestProgressKeys.Length; i++)
-        {
-            string key = GuestProgressKeys[i];
-            PlayerPrefs.SetInt(
-                key,
-                PlayerPrefs.GetInt(GuestProgressPrefix + key, GuestProgressDefaults[i]));
-        }
-    }
 }

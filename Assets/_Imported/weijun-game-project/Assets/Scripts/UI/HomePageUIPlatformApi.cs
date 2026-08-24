@@ -33,7 +33,7 @@ public partial class HomePageUI
     {
         if (!HasAuthSession())
         {
-            SetStatus("游客模式不能读取服务器站内提醒。 ");
+            SetStatus("请先登录账号后读取服务器站内提醒。 ");
             return;
         }
 
@@ -631,7 +631,7 @@ public partial class HomePageUI
     {
         if (!HasAuthSession())
         {
-            SetStatus("游客模式不能申请或查询支付退款。 ");
+            SetStatus("请先登录账号后申请或查询支付退款。 ");
             return;
         }
 

@@ -21,6 +21,15 @@ public partial class HomePageUI
 
     private void ConfigureWeChatFriendGiftButton(Transform root)
     {
+        Button hiddenButton = FindSceneComponent<Button>(root, "FriendsWeChatGiftButton");
+        if (hiddenButton != null)
+        {
+            hiddenButton.gameObject.SetActive(false);
+        }
+
+        return;
+
+#pragma warning disable 0162
         Transform panel = FindSceneTransform(root, "FriendsPanel");
         if (panel == null)
         {
@@ -63,6 +72,7 @@ public partial class HomePageUI
                     ? currentWeChatFriendGiftPackage.giftName
                     : "微信好友赠礼");
         BindSceneButton(button, BeginWeChatFriendGift);
+#pragma warning restore 0162
     }
 
     private void BeginWeChatFriendGift()

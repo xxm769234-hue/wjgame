@@ -1271,7 +1271,7 @@ public sealed class BackendGameService : MonoBehaviour
     private IEnumerator LoadNpcCatalogRoutine(Action<BackendResult<NpcConfigResponse[]>> onComplete)
     {
         BackendResult<NpcConfigResponse[]> result = null;
-        yield return BackendApiClient.Get<NpcConfigResponse[]>(baseUrl, Token, "npc/config/list", value => result = value);
+        yield return BackendApiClient.Get<NpcConfigResponse[]>(baseUrl, Token, "npc/catalog", value => result = value);
 
         if (result != null && result.Success && result.Data != null)
         {

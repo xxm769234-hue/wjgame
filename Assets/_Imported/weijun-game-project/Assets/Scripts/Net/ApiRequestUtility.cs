@@ -20,6 +20,23 @@ public static class ApiRequestUtility
         return true;
     }
 
+    public static bool TryCreateGetWithToken(
+        string path,
+        string token,
+        out UnityWebRequest request,
+        out string error)
+    {
+        request = null;
+        if (!ApiRuntimeConfig.TryBuildUrl(path, out string url, out error))
+        {
+            return false;
+        }
+
+        request = UnityWebRequest.Get(url);
+        Configure(request, true, token);
+        return true;
+    }
+
     public static bool TryCreateJsonRequest(
         string path,
         string method,
@@ -40,6 +57,29 @@ public static class ApiRequestUtility
             downloadHandler = new DownloadHandlerBuffer()
         };
         Configure(request, authorized);
+        return true;
+    }
+
+    public static bool TryCreateJsonRequestWithToken(
+        string path,
+        string method,
+        string json,
+        string token,
+        out UnityWebRequest request,
+        out string error)
+    {
+        request = null;
+        if (!ApiRuntimeConfig.TryBuildUrl(path, out string url, out error))
+        {
+            return false;
+        }
+
+        request = new UnityWebRequest(url, method)
+        {
+            uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json ?? string.Empty)),
+            downloadHandler = new DownloadHandlerBuffer()
+        };
+        Configure(request, true, token);
         return true;
     }
 
@@ -88,6 +128,11 @@ public static class ApiRequestUtility
 
     private static void Configure(UnityWebRequest request, bool authorized)
     {
+        Configure(request, authorized, authorized ? GameSession.Token : string.Empty);
+    }
+
+    private static void Configure(UnityWebRequest request, bool authorized, string token)
+    {
         request.downloadHandler = request.downloadHandler ?? new DownloadHandlerBuffer();
         request.SetRequestHeader("Content-Type", "application/json; charset=UTF-8");
         request.SetRequestHeader("X-Client-Channel", ApiRuntimeConfig.GetClientChannel());
@@ -95,9 +140,9 @@ public static class ApiRequestUtility
             "X-Client-Version-Code",
             ApiRuntimeConfig.GetClientVersionCode().ToString(System.Globalization.CultureInfo.InvariantCulture));
         request.timeout = DefaultTimeoutSeconds;
-        if (authorized)
+        if (authorized && !string.IsNullOrEmpty(token))
         {
-            request.SetRequestHeader("Authorization", "Bearer " + GameSession.Token);
+            request.SetRequestHeader("Authorization", "Bearer " + token);
         }
     }
 

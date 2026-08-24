@@ -12,11 +12,15 @@ public sealed class HomePageBookView : MonoBehaviour
     [Header("Player Summary")]
     [SerializeField] private Button avatarButton;
     [SerializeField] private Text avatarNameText;
+    [SerializeField] private Text avatarLevelText;
+    [SerializeField] private Image avatarExperienceBackground;
+    [SerializeField] private Image avatarExperienceFill;
     [SerializeField] private Text[] metricTexts = new Text[0];
     [SerializeField] private Button[] metricPlusButtons = new Button[0];
 
     [Header("Left Page Actions")]
-    [SerializeField] private Button battleButton;
+    [SerializeField] private Button activityButton;
+    [SerializeField] private Button roleButton;
     [SerializeField] private Button lotteryButton;
     [SerializeField] private Button mailButton;
     [SerializeField] private Button bagButton;
@@ -25,6 +29,7 @@ public sealed class HomePageBookView : MonoBehaviour
     [SerializeField] private Button friendsButton;
     [SerializeField] private Button noticeButton;
     [SerializeField] private Button settingsButton;
+    [SerializeField] private Button battleButton;
 
     [Header("Right Page Actions")]
     [SerializeField] private Button taskButton;
@@ -53,8 +58,13 @@ public sealed class HomePageBookView : MonoBehaviour
     public Text StatusText => statusText;
     public Button AvatarButton => avatarButton;
     public Text AvatarNameText => avatarNameText;
+    public Text AvatarLevelText => avatarLevelText;
+    public Image AvatarExperienceBackground => avatarExperienceBackground;
+    public Image AvatarExperienceFill => avatarExperienceFill;
     public Text[] MetricTexts => metricTexts;
     public Button[] MetricPlusButtons => metricPlusButtons;
+    public Button ActivityButton => activityButton;
+    public Button RoleButton => roleButton;
     public Button BattleButton => battleButton;
     public Button LotteryButton => lotteryButton;
     public Button MailButton => mailButton;
@@ -87,8 +97,13 @@ public sealed class HomePageBookView : MonoBehaviour
         statusText != null &&
         avatarButton != null &&
         avatarNameText != null &&
-        HasAll(metricTexts, 6) &&
-        HasAll(metricPlusButtons, 2) &&
+        avatarLevelText != null &&
+        avatarExperienceBackground != null &&
+        avatarExperienceFill != null &&
+        HasAll(metricTexts, 4) &&
+        (metricPlusButtons == null || metricPlusButtons.Length == 0) &&
+        activityButton != null &&
+        roleButton != null &&
         battleButton != null &&
         lotteryButton != null &&
         mailButton != null &&
@@ -100,21 +115,12 @@ public sealed class HomePageBookView : MonoBehaviour
         settingsButton != null &&
         taskButton != null &&
         dailySignButton != null &&
-        newbieSignButton != null &&
-        rechargeButton != null &&
         enterMapButton != null &&
         mapEnterStampButton != null &&
         HasAll(areaButtons, 5) &&
         selectedAreaTitle != null &&
         selectedAreaDescription != null &&
-        selectedAreaHint != null &&
-        bottomMailTab != null &&
-        bottomSignTab != null &&
-        bottomLotteryTab != null &&
-        bottomRechargeTab != null &&
-        bottomTaskTab != null &&
-        bottomFriendTab != null &&
-        bottomNoticeTab != null;
+        selectedAreaHint != null;
 
     private static bool HasAll<T>(T[] values, int expectedCount) where T : Object
     {
@@ -138,29 +144,39 @@ public sealed class HomePageBookView : MonoBehaviour
     [ContextMenu("Capture Book View References")]
     public void EditorCaptureReferences()
     {
+        CaptureReferences();
+        UnityEditor.EditorUtility.SetDirty(this);
+    }
+#endif
+
+    public void CaptureReferences()
+    {
         mainPage = FindComponent<RectTransform>("MainBookPage");
         statusText = FindComponent<Text>("MainBookPage/Status");
         avatarButton = FindComponent<Button>("MainBookPage/BookAvatarFrame/AvatarButton");
         avatarNameText = FindComponent<Text>("MainBookPage/BookAvatarFrame/BookAvatarName");
+        avatarLevelText = FindComponent<Text>("MainBookPage/BookAvatarFrame/BookAvatarLevel");
+        avatarExperienceBackground = FindComponent<Image>("MainBookPage/BookAvatarFrame/BookAvatarExperienceBackground");
+        avatarExperienceFill = FindComponent<Image>("MainBookPage/BookAvatarFrame/BookAvatarExperienceBackground/BookAvatarExperienceFill");
 
         CaptureMetrics();
 
         const string leftPage = "MainBookPage/LeftStoryPage/";
-        battleButton = FindComponent<Button>(leftPage + "RightBattleButton");
-        lotteryButton = FindComponent<Button>(leftPage + "ActivityButton");
-        mailButton = FindComponent<Button>(leftPage + "BottomMailButton");
+        activityButton = FindComponent<Button>(leftPage + "ActivityButton");
+        roleButton = FindComponent<Button>(leftPage + "RoleButton");
+        lotteryButton = FindComponent<Button>(leftPage + "LotteryButton");
+        mailButton = FindComponent<Button>("MainBookPage/BottomMailButton");
         bagButton = FindComponent<Button>(leftPage + "SideBagButton");
         equipmentButton = FindComponent<Button>(leftPage + "SideEquipmentButton");
         shopButton = FindComponent<Button>(leftPage + "SideShopButton");
         friendsButton = FindComponent<Button>(leftPage + "FriendsButton");
-        noticeButton = FindComponent<Button>(leftPage + "BottomNoticeButton");
-        settingsButton = FindComponent<Button>(leftPage + "SideSettingsButton");
+        noticeButton = FindComponent<Button>("MainBookPage/BottomNoticeButton");
+        settingsButton = FindComponent<Button>("MainBookPage/SideSettingsButton");
 
         const string rightPage = "MainBookPage/RightTownPage/";
-        taskButton = FindComponent<Button>(rightPage + "BottomTaskButton");
-        dailySignButton = FindComponent<Button>(rightPage + "BottomDailySignButton");
-        newbieSignButton = FindComponent<Button>(rightPage + "BottomNewbieSignButton");
-        rechargeButton = FindComponent<Button>(rightPage + "BottomRechargeButton");
+        taskButton = FindComponent<Button>(leftPage + "BottomTaskButton");
+        dailySignButton = FindComponent<Button>(leftPage + "BottomDailySignButton");
+        battleButton = FindComponent<Button>(rightPage + "RightBattleButton");
         enterMapButton = FindComponent<Button>(rightPage + "EnterMapButton");
         mapEnterStampButton = FindComponent<Button>(rightPage + "EnterMapButton/MapEnterStamp");
         areaButtons = new[]
@@ -174,16 +190,6 @@ public sealed class HomePageBookView : MonoBehaviour
         selectedAreaTitle = FindComponent<Text>(rightPage + "EnterMapButton/MapInfoPaper/SelectedTitle");
         selectedAreaDescription = FindComponent<Text>(rightPage + "EnterMapButton/MapInfoPaper/SelectedDescription");
         selectedAreaHint = FindComponent<Text>(rightPage + "EnterMapButton/MapInfoPaper/SelectedHint");
-
-        bottomMailTab = FindComponent<Button>("MainBookPage/BottomMailTab");
-        bottomSignTab = FindComponent<Button>("MainBookPage/BottomSignTab");
-        bottomLotteryTab = FindComponent<Button>("MainBookPage/BottomLotteryTab");
-        bottomRechargeTab = FindComponent<Button>("MainBookPage/BottomRechargeTab");
-        bottomTaskTab = FindComponent<Button>("MainBookPage/BottomTaskTab");
-        bottomFriendTab = FindComponent<Button>("MainBookPage/BottomFriendTab");
-        bottomNoticeTab = FindComponent<Button>("MainBookPage/BottomNoticeTab");
-
-        UnityEditor.EditorUtility.SetDirty(this);
     }
 
     private void CaptureMetrics()
@@ -200,7 +206,7 @@ public sealed class HomePageBookView : MonoBehaviour
         for (int i = 0; i < mainPage.childCount; i++)
         {
             Transform child = mainPage.GetChild(i);
-            if (child.name != "BookMetric")
+            if (child.name != "BookMetric" || !child.gameObject.activeSelf)
             {
                 continue;
             }
@@ -212,7 +218,7 @@ public sealed class HomePageBookView : MonoBehaviour
             }
 
             Transform plusTransform = child.Find("MetricPlusButton");
-            if (plusTransform != null)
+            if (plusTransform != null && plusTransform.gameObject.activeSelf)
             {
                 plusButtons.Add(plusTransform.GetComponent<Button>());
             }
@@ -227,5 +233,4 @@ public sealed class HomePageBookView : MonoBehaviour
         Transform target = transform.Find(path);
         return target != null ? target.GetComponent<T>() : null;
     }
-#endif
 }

@@ -201,12 +201,6 @@ public partial class HomePageUI
         v37Friends.Clear();
         v37Friends.AddRange(loaded);
         yield return RefreshV39FriendAvatarSnapshots(revision);
-        List<LocalFriendData> legacyStore = new List<LocalFriendData>();
-        for (int i = 0; i < loaded.Count; i++)
-        {
-            legacyStore.Add(ConvertServerFriend(loaded[i]));
-        }
-        serverFriendStore = new LocalFriendStore { friends = legacyStore };
     }
 
     private IEnumerator LoadV37FriendRequests(Transform root, ServerFriendPanelMode mode, int revision)
@@ -381,7 +375,7 @@ public partial class HomePageUI
         });
         BindSceneButton(FindSceneComponent<Button>(root, "FriendsAddButton"), () => HandleV37SearchOrRequest(root));
         BindSceneButton(FindSceneComponent<Button>(root, "FriendsCloseButton"), HideFriendsPanel);
-        ConfigureWeChatFriendGiftButton(root);
+        SetSceneObjectActive(root, "FriendsWeChatGiftButton", false);
 
         Button addButton = FindSceneComponent<Button>(root, "FriendsAddButton");
         ConfigureV37SearchButton(addButton, interactionLocked);
@@ -617,12 +611,12 @@ public partial class HomePageUI
             friend.avatarVersion,
             GetV38FriendPresenceLabel(friend),
             BuildV38FriendPresenceDetail(friend),
-            friend.dailyGiftReceived ? "今日已收到该好友赠礼" : "今日尚未收到该好友赠礼");
+            friend.dailyStaminaGiftReceived ? "今日已收到该好友体力" : "今日尚未收到该好友体力");
         SetV38FriendPresenceDetailColor(root, friend);
 
-        bool giftedToday = friend.dailyGiftSent;
+        bool giftedToday = friend.dailyStaminaGiftSent;
         bool giftEnabled = serverDailyGiftStatus != null && serverDailyGiftStatus.enabled && !giftedToday && !interactionLocked;
-        string giftHint = BuildServerFriendGiftHint(ConvertServerFriend(friend));
+        string giftHint = BuildServerStaminaGiftHint(friend);
         SetSceneText(root, "FriendGiftHint", giftHint);
         SetSceneObjectActive(root, "FriendsGiftButton", true);
         SetSceneObjectActive(root, "FriendsDeleteButton", true);
@@ -632,10 +626,25 @@ public partial class HomePageUI
         Button deleteButton = FindSceneComponent<Button>(root, "FriendsDeleteButton");
         if (giftButton != null) giftButton.interactable = giftEnabled;
         if (deleteButton != null) deleteButton.interactable = !interactionLocked;
-        SetSceneButtonText(giftButton, giftedToday ? "今日已赠" : "发送赠礼");
+        SetSceneButtonText(giftButton, giftedToday ? "今日已赠体力" : "赠送体力");
         SetSceneButtonText(deleteButton, friendDeleteConfirmation ? "确认删除" : "删除好友");
-        BindSceneButton(giftButton, () => StartCoroutine(SendV37DailyFriendGift(root, friend.playerId)));
+        BindSceneButton(giftButton, () => StartCoroutine(SendV37StaminaGift(root, friend.playerId)));
         BindSceneButton(deleteButton, () => RequestV37FriendDeletion(root, friend));
+    }
+
+    private string BuildServerStaminaGiftHint(ServerFriendResponse friend)
+    {
+        if (serverDailyGiftStatus == null || !serverDailyGiftStatus.enabled)
+        {
+            return "好友体力赠送当前未开启";
+        }
+
+        if (friend != null && friend.dailyStaminaGiftSent)
+        {
+            return "今天已经向该好友赠送过体力";
+        }
+
+        return "今日可赠送 " + Mathf.Max(0, serverDailyGiftStatus.quantity) + " 点体力";
     }
 
     private void RefreshV37SearchDetail(Transform root, bool interactionLocked)
@@ -1089,7 +1098,7 @@ public partial class HomePageUI
         yield return RefreshServerFriendRequestState(root, true, "已删除好友：" + friend.nickname);
     }
 
-    private IEnumerator SendV37DailyFriendGift(Transform root, int friendPlayerId)
+    private IEnumerator SendV37StaminaGift(Transform root, int friendPlayerId)
     {
         if (v37MutationRunning || friendPlayerId <= 0)
         {
@@ -1097,8 +1106,8 @@ public partial class HomePageUI
         }
 
         v37MutationRunning = true;
-        RefreshServerFriendRequestPanel(root, "正在发送每日好友赠礼...");
-        if (!TryCreateAuthorizedPost("/friends/" + friendPlayerId + "/gifts/daily", "{}", out UnityWebRequest request, out string error))
+        RefreshServerFriendRequestPanel(root, "正在赠送好友体力...");
+        if (!TryCreateAuthorizedPost("/friends/" + friendPlayerId + "/gifts/stamina", string.Empty, out UnityWebRequest request, out string error))
         {
             v37MutationRunning = false;
             RefreshServerFriendRequestPanel(root, error);
@@ -1126,8 +1135,8 @@ public partial class HomePageUI
         }
 
         v37MutationRunning = false;
-        string replay = gift.replayed ? "（重复请求，未再次发放）" : string.Empty;
-        yield return RefreshServerFriendRequestState(root, true, "赠礼已发送：" + gift.itemKey + " x" + gift.quantity + replay);
+        string replay = gift.replayed ? "（今日已赠送，返回原结果）" : string.Empty;
+        yield return RefreshServerFriendRequestState(root, true, "已为好友赠送 " + gift.quantity + " 点体力" + replay);
     }
 
     private List<ServerFriendResponse> GetFilteredV37Friends()
@@ -1225,17 +1234,6 @@ public partial class HomePageUI
         friend.presenceVersion = presence.presenceVersion;
         friend.lastActiveTime = presence.lastActiveTime;
         friend.lastOfflineTime = presence.lastOfflineTime;
-
-        LocalFriendData cachedFriend = FindFriendById(presence.playerId.ToString());
-        if (cachedFriend != null)
-        {
-            cachedFriend.online = friend.onlineStatus == "ONLINE";
-            cachedFriend.lastSeen = GetV38FriendPresenceLabel(friend);
-            cachedFriend.onlineStatus = friend.onlineStatus;
-            cachedFriend.presenceVersion = friend.presenceVersion;
-            cachedFriend.lastActiveTime = friend.lastActiveTime;
-            cachedFriend.lastOfflineTime = friend.lastOfflineTime;
-        }
 
         HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.Friends);
         if (panel != null && panel.gameObject.activeInHierarchy && serverFriendPanelMode == ServerFriendPanelMode.Friends)

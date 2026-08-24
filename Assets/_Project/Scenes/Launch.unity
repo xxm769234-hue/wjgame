@@ -4653,7 +4653,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1839978761
 RectTransform:
   m_ObjectHideFlags: 0
@@ -5490,7 +5490,6 @@ MonoBehaviour:
   primaryButtonSprite: {fileID: 0}
   secondaryButtonSprite: {fileID: 0}
   weChatButtonSprite: {fileID: 0}
-  guestButtonSprite: {fileID: 0}
   backgroundColor: {r: 0.48, g: 0.3, b: 0.16, a: 1}
   paperColor: {r: 0.98, g: 0.95, b: 0.86, a: 1}
   panelColor: {r: 0.42, g: 0.25, b: 0.12, a: 0.42}
@@ -5502,7 +5501,6 @@ MonoBehaviour:
   primaryButtonColor: {r: 0.09, g: 0.28, b: 0.58, a: 1}
   secondaryButtonColor: {r: 0.76, g: 0.83, b: 0.92, a: 1}
   weChatButtonColor: {r: 0.16, g: 0.7, b: 0.32, a: 1}
-  guestButtonColor: {r: 0.94, g: 0.95, b: 0.97, a: 1}
   titleTextColor: {r: 0.74, g: 0.2, b: 0.15, a: 1}
   labelTextColor: {r: 0.82, g: 0.24, b: 0.18, a: 1}
   paperTextColor: {r: 0.28, g: 0.16, b: 0.09, a: 1}
@@ -5526,7 +5524,6 @@ MonoBehaviour:
   loginButton: {fileID: 1297840987}
   registerButton: {fileID: 1841501851}
   weChatLoginButton: {fileID: 950376852}
-  guestButton: {fileID: 2118280251}
   statusText: {fileID: 496748783}
   settingsButton: {fileID: 1445209852}
   mailButton: {fileID: 1065205953}
@@ -5814,7 +5811,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &2118280248
 RectTransform:
   m_ObjectHideFlags: 0
