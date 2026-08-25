@@ -540,13 +540,26 @@ public partial class HomePageUI : MonoBehaviour
         CreateBookTopActionButton(page.transform, "BottomNoticeButton", "\u516c\u544a", new Vector2(1590f, -24f), ShowAnnouncement);
         CreateBookTopActionButton(page.transform, "SideSettingsButton", "\u8bbe\u7f6e", new Vector2(1730f, -24f), ShowSettingsContent);
 
-        CreateMapShowcase(rightPage, new Vector2(56f, -104f), new Vector2(718f, 340f));
-        CreateAreaThumb(rightPage, GetArea("grass"), "Sprites/Arts/png/grass.jpeg", new Vector2(56f, -470f));
-        CreateAreaThumb(rightPage, GetArea("forest"), "Sprites/Arts/png/forest.png", new Vector2(198f, -470f));
-        CreateAreaThumb(rightPage, GetArea("sea"), "Sprites/Arts/png/sea.png", new Vector2(340f, -470f));
-        CreateAreaThumb(rightPage, GetArea("volcano"), "Sprites/Arts/png/volcano.png", new Vector2(482f, -470f));
-        CreateAreaThumb(rightPage, GetArea("snow"), "Sprites/Arts/png/snow.png", new Vector2(624f, -470f));
-        CreateBookFeatureButton(rightPage, "RightBattleButton", "\u5bf9\u6218", "\u8fdb\u5165\u5bf9\u6218\u6a21\u5f0f", new Vector2(56f, -600f), new Vector2(718f, 112f), new Color(0.72f, 0.26f, 0.22f, 1f), ShowBattleContent);
+        CreateModeEntry(
+            rightPage,
+            "BattleModeEntry",
+            "BattleEnterButton",
+            "\u5bf9\u6218",
+            "Sprites/Arts/png/volcano.png",
+            new Vector2(56f, -104f),
+            new Vector2(344f, 610f),
+            new Color(0.48f, 0.18f, 0.13f, 1f),
+            ShowBattleContent);
+        CreateModeEntry(
+            rightPage,
+            "ManagementModeEntry",
+            "ManagementEnterButton",
+            "\u6a21\u62df\u7ecf\u8425",
+            "Sprites/Arts/png/grass.jpeg",
+            new Vector2(418f, -104f),
+            new Vector2(344f, 610f),
+            new Color(0.30f, 0.48f, 0.28f, 1f),
+            EnterSelectedArea);
 
         statusText = CreateText("Status", page.transform, string.Empty, 18, FontStyle.Bold, new Color(0.98f, 0.89f, 0.66f, 1f), TextAnchor.MiddleRight);
         SetRect(statusText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1348f, -28f), new Vector2(480f, 36f));
@@ -573,13 +586,6 @@ public partial class HomePageUI : MonoBehaviour
         topWash.raycastTarget = false;
         SetRect(topWash.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), Vector2.zero, new Vector2(1920f, 120f));
 
-        for (int i = 0; i < 9; i++)
-        {
-            Image stripe = CreateImage("DeskStripe", parent, i % 2 == 0 ? new Color(0.40f, 0.48f, 0.47f, 0.10f) : new Color(0.97f, 0.94f, 0.84f, 0.10f));
-            stripe.raycastTarget = false;
-            SetRect(stripe.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(i * 236f, -96f), new Vector2(70f, 984f));
-            stripe.rectTransform.localEulerAngles = new Vector3(0f, 0f, -4f);
-        }
     }
 
     private void AddOpenBookSpread(Transform parent)
@@ -607,7 +613,7 @@ public partial class HomePageUI : MonoBehaviour
 
     private Image CreateBookSheet(Transform parent, string name, Vector2 position, Vector2 size, bool rightPage)
     {
-        if (name != "LeftStoryPage")
+        if (name != "LeftStoryPage" && name != "RightTownPage")
         {
             Image shadow = CreateImage(name + "SoftShadow", parent, new Color(0.16f, 0.10f, 0.05f, 0.20f));
             shadow.raycastTarget = false;
@@ -628,20 +634,23 @@ public partial class HomePageUI : MonoBehaviour
         }
         SetRect(sheet.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
 
-        if (name != "RightTownPage")
+        if (name != "RightTownPage" && name != "LeftStoryPage")
         {
             Image edge = CreateImage(name + "InnerEdge", sheet.transform, rightPage ? new Color(0.76f, 0.62f, 0.42f, 0.20f) : new Color(1f, 0.98f, 0.90f, 0.28f));
             edge.raycastTarget = false;
             SetRect(edge.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), rightPage ? Vector2.zero : new Vector2(size.x - 42f, 0f), new Vector2(42f, size.y));
         }
 
-        for (int i = 0; i < 18; i++)
+        if (name != "LeftStoryPage" && name != "RightTownPage")
         {
-            float x = 34f + ((i * 107) % Mathf.RoundToInt(size.x - 72f));
-            float y = 68f + ((i * 83) % Mathf.RoundToInt(size.y - 118f));
-            Image dot = CreateImage(name + "PaperDot", sheet.transform, new Color(0.44f, 0.30f, 0.16f, 0.08f));
-            dot.raycastTarget = false;
-            SetRect(dot.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(x, -y), new Vector2(5f + i % 3, 5f + i % 3));
+            for (int i = 0; i < 18; i++)
+            {
+                float x = 34f + ((i * 107) % Mathf.RoundToInt(size.x - 72f));
+                float y = 68f + ((i * 83) % Mathf.RoundToInt(size.y - 118f));
+                Image dot = CreateImage(name + "PaperDot", sheet.transform, new Color(0.44f, 0.30f, 0.16f, 0.08f));
+                dot.raycastTarget = false;
+                SetRect(dot.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(x, -y), new Vector2(5f + i % 3, 5f + i % 3));
+            }
         }
 
         return sheet;
@@ -649,6 +658,11 @@ public partial class HomePageUI : MonoBehaviour
 
     private void AddBookPageTitle(Transform parent, string title, string subtitle, Vector2 position)
     {
+        if (parent != null && (parent.name == "LeftStoryPage" || parent.name == "RightTownPage"))
+        {
+            return;
+        }
+
         Image mark = CreateImage("PageTitleMark", parent, new Color(0.33f, 0.49f, 0.53f, 1f));
         mark.raycastTarget = false;
         SetRect(mark.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(0f, -10f), new Vector2(12f, 52f));
@@ -727,9 +741,33 @@ public partial class HomePageUI : MonoBehaviour
 
     private Button CreateBookFeatureButton(Transform parent, string name, string title, string caption, Vector2 position, Vector2 size, Color accent, Action onClick)
     {
-        Image shadow = CreateImage(name + "Shadow", parent, new Color(0.17f, 0.10f, 0.05f, 0.18f));
-        shadow.raycastTarget = false;
-        SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(6f, -7f), size);
+        if (name == "BottomDailySignButton" || name == "ActivityButton")
+        {
+            Button editableButton = CreateButton(parent, name, string.Empty, bookStyle != null ? bookStyle.FeatureButtonColor : new Color(0.99f, 0.94f, 0.81f, 1f), InkColor);
+            editableButton.onClick.AddListener(() => onClick());
+            if (bookStyle != null)
+            {
+                bookStyle.ApplyFeatureButton(editableButton.GetComponent<Image>());
+            }
+
+            GameObject iconObject = new GameObject("IconPatch", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            iconObject.transform.SetParent(editableButton.transform, false);
+            iconObject.GetComponent<Image>().raycastTarget = false;
+
+            GameObject titleObject = new GameObject("Title", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+            titleObject.transform.SetParent(editableButton.transform, false);
+            TextMeshProUGUI editableTitle = titleObject.GetComponent<TextMeshProUGUI>();
+            editableTitle.text = title;
+            editableTitle.raycastTarget = false;
+            return editableButton;
+        }
+
+        if (ShouldCreateBookFeatureShadow(name))
+        {
+            Image shadow = CreateImage(name + "Shadow", parent, new Color(0.17f, 0.10f, 0.05f, 0.18f));
+            shadow.raycastTarget = false;
+            SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(6f, -7f), size);
+        }
 
         Button button = CreateButton(parent, name, string.Empty, bookStyle != null ? bookStyle.FeatureButtonColor : new Color(0.99f, 0.94f, 0.81f, 1f), InkColor);
         button.onClick.AddListener(() => onClick());
@@ -757,6 +795,23 @@ public partial class HomePageUI : MonoBehaviour
         bottomLine.raycastTarget = false;
         SetRect(bottomLine.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(28f, -size.y + 18f), new Vector2(size.x - 56f, 3f));
         return button;
+    }
+
+    private static bool ShouldCreateBookFeatureShadow(string name)
+    {
+        switch (name)
+        {
+            case "SideBagButton":
+            case "SideEquipmentButton":
+            case "SideShopButton":
+            case "FriendsButton":
+            case "BottomTaskButton":
+            case "RoleButton":
+            case "LotteryButton":
+                return false;
+            default:
+                return true;
+        }
     }
 
     private void CreateMapShowcase(Transform parent, Vector2 position, Vector2 size)
@@ -802,6 +857,41 @@ public partial class HomePageUI : MonoBehaviour
         enter.onClick.AddListener(EnterSelectedArea);
         SetRect(enter.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(size.x - 170f, -244f), new Vector2(136f, 66f));
         ConfigureClearButtonLabel(enter, 22);
+    }
+
+    private void CreateModeEntry(
+        Transform parent,
+        string entryName,
+        string buttonName,
+        string buttonTitle,
+        string spritePath,
+        Vector2 position,
+        Vector2 size,
+        Color buttonColor,
+        Action onClick)
+    {
+        Image entry = CreateImage(entryName, parent, new Color(0.82f, 0.78f, 0.66f, 1f));
+        entry.raycastTarget = false;
+        SetRect(entry.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
+
+        Sprite sprite = LoadSpriteFromAsset(spritePath);
+        if (sprite != null)
+        {
+            entry.sprite = sprite;
+            entry.color = Color.white;
+            entry.preserveAspect = false;
+        }
+
+        Button button = CreateButton(entry.transform, buttonName, buttonTitle, buttonColor, Color.white);
+        button.onClick.AddListener(() => onClick());
+        SetRect(
+            button.GetComponent<RectTransform>(),
+            TopLeftAnchor(),
+            TopLeftAnchor(),
+            TopLeftAnchor(),
+            new Vector2((size.x - 178f) * 0.5f, -size.y + 30f),
+            new Vector2(178f, 62f));
+        ConfigureClearButtonLabel(button, 22);
     }
 
     private void CreateAreaThumb(Transform parent, AreaInfo area, string spritePath, Vector2 position)

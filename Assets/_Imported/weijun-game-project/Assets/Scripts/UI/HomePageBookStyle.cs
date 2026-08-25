@@ -119,6 +119,8 @@ public sealed class HomePageBookStyle : MonoBehaviour
         switch (objectName)
         {
             case "RightBattleButton":
+            case "BattleEnterButton":
+            case "ManagementEnterButton":
             case "ActivityButton":
             case "RoleButton":
             case "LotteryButton":

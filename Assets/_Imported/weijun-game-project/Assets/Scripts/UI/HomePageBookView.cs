@@ -118,12 +118,7 @@ public sealed class HomePageBookView : MonoBehaviour
         settingsButton != null &&
         taskButton != null &&
         dailySignButton != null &&
-        enterMapButton != null &&
-        mapEnterStampButton != null &&
-        HasAll(areaButtons, 5) &&
-        selectedAreaTitle != null &&
-        selectedAreaDescription != null &&
-        selectedAreaHint != null;
+        enterMapButton != null;
 
     private static bool HasAll<T>(T[] values, int expectedCount) where T : Object
     {
@@ -180,20 +175,13 @@ public sealed class HomePageBookView : MonoBehaviour
         const string rightPage = "MainBookPage/RightTownPage/";
         taskButton = FindComponent<Button>(leftPage + "BottomTaskButton");
         dailySignButton = FindComponent<Button>(leftPage + "BottomDailySignButton");
-        battleButton = FindComponent<Button>(rightPage + "RightBattleButton");
-        enterMapButton = FindComponent<Button>(rightPage + "EnterMapButton");
-        mapEnterStampButton = FindComponent<Button>(rightPage + "EnterMapButton/MapEnterStamp");
-        areaButtons = new[]
-        {
-            FindComponent<Button>(rightPage + "grassThumb"),
-            FindComponent<Button>(rightPage + "forestThumb"),
-            FindComponent<Button>(rightPage + "seaThumb"),
-            FindComponent<Button>(rightPage + "volcanoThumb"),
-            FindComponent<Button>(rightPage + "snowThumb")
-        };
-        selectedAreaTitle = FindComponent<Text>(rightPage + "EnterMapButton/MapInfoPaper/SelectedTitle");
-        selectedAreaDescription = FindComponent<Text>(rightPage + "EnterMapButton/MapInfoPaper/SelectedDescription");
-        selectedAreaHint = FindComponent<Text>(rightPage + "EnterMapButton/MapInfoPaper/SelectedHint");
+        battleButton = FindComponent<Button>(rightPage + "BattleModeEntry/BattleEnterButton");
+        enterMapButton = FindComponent<Button>(rightPage + "ManagementModeEntry/ManagementEnterButton");
+        mapEnterStampButton = null;
+        areaButtons = new Button[0];
+        selectedAreaTitle = null;
+        selectedAreaDescription = null;
+        selectedAreaHint = null;
     }
 
     private void CaptureMetrics()
