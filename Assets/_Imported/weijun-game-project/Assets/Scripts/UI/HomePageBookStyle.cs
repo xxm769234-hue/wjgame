@@ -90,11 +90,7 @@ public sealed class HomePageBookStyle : MonoBehaviour
         for (int i = 0; i < images.Length; i++)
         {
             Image image = images[i];
-            if (image.name == "BookMetric")
-            {
-                ApplyMetric(image);
-            }
-            else if (IsFeatureButton(image.name))
+            if (IsFeatureButton(image.name))
             {
                 ApplyFeatureButton(image);
             }

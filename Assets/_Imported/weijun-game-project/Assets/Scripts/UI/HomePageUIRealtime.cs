@@ -5,12 +5,17 @@ using UnityEngine.Networking;
 
 public partial class HomePageUI
 {
+    private const float RealtimeHandshakeTimeoutSeconds = 10f;
+
     private Coroutine realtimeHeartbeatCoroutine;
     private Coroutine realtimeReconnectCoroutine;
+    private Coroutine realtimeHandshakeTimeoutCoroutine;
     private bool realtimeConnected;
+    private bool realtimeTransportOpen;
     private bool realtimeClosing;
     private bool realtimeBackfillRunning;
     private bool resumeRealtimeAfterPause;
+    private int realtimeHeartbeatSequence;
 
     private void BeginRealtimeConnection()
     {
@@ -19,53 +24,86 @@ public partial class HomePageUI
             return;
         }
 
-        if (!ApiRuntimeConfig.TryBuildRealtimeUrl(GameSession.Token, out string url, out string error))
+        if (realtimeTransportOpen || realtimeConnected)
+        {
+            return;
+        }
+
+        if (!ApiRuntimeConfig.TryBuildRealtimeUrl(out string url, out string error))
         {
             SetStatus(error);
             return;
         }
 
         realtimeClosing = false;
-        RealtimePlatformBridge.Connect(this, url);
+        realtimeTransportOpen = true;
+        RealtimePlatformBridge.Connect(this, url, "Bearer " + GameSession.Token);
     }
 
     public void OnRealtimeOpened(string message)
     {
-        realtimeConnected = true;
-        if (realtimeReconnectCoroutine != null)
+        realtimeTransportOpen = true;
+        if (!realtimeConnected && realtimeHandshakeTimeoutCoroutine == null)
         {
-            StopCoroutine(realtimeReconnectCoroutine);
-            realtimeReconnectCoroutine = null;
-        }
-
-        if (realtimeHeartbeatCoroutine != null)
-        {
-            StopCoroutine(realtimeHeartbeatCoroutine);
-        }
-        realtimeHeartbeatCoroutine = StartCoroutine(SendRealtimeHeartbeats());
-        RefreshV38FriendPresenceAfterRealtimeConnected();
-
-        if (!realtimeBackfillRunning)
-        {
-            StartCoroutine(RefreshRealtimeBacklog());
+            realtimeHandshakeTimeoutCoroutine = StartCoroutine(WaitForRealtimeHandshake());
         }
     }
 
     public void OnRealtimeMessage(string json)
     {
+        if (!HasAuthSession())
+        {
+            StopRealtimeConnection();
+            return;
+        }
+
         RealtimeEvent realtimeEvent = ParseJson<RealtimeEvent>(json);
         if (realtimeEvent == null || string.IsNullOrEmpty(realtimeEvent.type))
         {
             return;
         }
 
+        if (realtimeEvent.type == "CONNECTED")
+        {
+            ConfirmRealtimeHandshake(realtimeEvent);
+            return;
+        }
+
+        if (!realtimeConnected || !IsCurrentPlayerRealtimeEvent(realtimeEvent))
+        {
+            return;
+        }
+
+        if (realtimeEvent.type == "PONG")
+        {
+            return;
+        }
+
+        if (realtimeEvent.type == "ANTI_ADDICTION_WARNING")
+        {
+            AntiAddictionWarningRealtimeEvent warningEvent = ParseJson<AntiAddictionWarningRealtimeEvent>(json);
+            if (warningEvent != null && warningEvent.data != null)
+            {
+                PlayerComplianceGuard.ShowRealtimeWarning(
+                    warningEvent.data.warningMinutes,
+                    warningEvent.data.remainingSeconds,
+                    warningEvent.data.message);
+            }
+            return;
+        }
+
+        if (realtimeEvent.type == "ANTI_ADDICTION_FORCED_OFFLINE")
+        {
+            AntiAddictionForcedOfflineRealtimeEvent forcedOfflineEvent = ParseJson<AntiAddictionForcedOfflineRealtimeEvent>(json);
+            StopRealtimeConnection();
+            PlayerComplianceGuard.ForceOffline(forcedOfflineEvent == null || forcedOfflineEvent.data == null
+                ? "当前防沉迷规则不允许继续游戏。"
+                : forcedOfflineEvent.data.message);
+            return;
+        }
+
         if (realtimeEvent.type == "FRIEND_PRESENCE_CHANGED")
         {
-            if (realtimeEvent.playerId != 0 && realtimeEvent.playerId != GameSession.PlayerId)
-            {
-                return;
-            }
-
             FriendPresenceRealtimeEvent presenceEvent = ParseJson<FriendPresenceRealtimeEvent>(json);
             ApplyV38FriendPresence(presenceEvent == null ? null : presenceEvent.data);
             return;
@@ -73,11 +111,6 @@ public partial class HomePageUI
 
         if (realtimeEvent.type == "COIN_SHOP_PURCHASED")
         {
-            if (realtimeEvent.playerId != 0 && realtimeEvent.playerId != GameSession.PlayerId)
-            {
-                return;
-            }
-
             CoinShopPurchaseRealtimeEvent purchaseEvent = ParseJson<CoinShopPurchaseRealtimeEvent>(json);
             HandleCoinShopPurchaseRealtime(purchaseEvent == null ? null : purchaseEvent.data, realtimeEvent.eventId);
             return;
@@ -85,13 +118,17 @@ public partial class HomePageUI
 
         if (realtimeEvent.type == "DIAMOND_SHOP_PURCHASED")
         {
-            if (realtimeEvent.playerId != 0 && realtimeEvent.playerId != GameSession.PlayerId)
-            {
-                return;
-            }
-
             CoinShopPurchaseRealtimeEvent purchaseEvent = ParseJson<CoinShopPurchaseRealtimeEvent>(json);
             HandleDiamondShopPurchaseRealtime(purchaseEvent == null ? null : purchaseEvent.data, realtimeEvent.eventId);
+            return;
+        }
+
+        if (realtimeEvent.type == "PLAYER_NPC_ACQUISITION_RESOLVED")
+        {
+            PlayerNpcAcquisitionResolvedRealtimeEvent npcEvent = ParseJson<PlayerNpcAcquisitionResolvedRealtimeEvent>(json);
+            RefreshRolePanelFromRealtime(npcEvent == null || npcEvent.data == null
+                ? string.Empty
+                : npcEvent.data.acquisitionId);
             return;
         }
 
@@ -116,9 +153,53 @@ public partial class HomePageUI
         }
     }
 
+    private void ConfirmRealtimeHandshake(RealtimeEvent realtimeEvent)
+    {
+        if (!IsCurrentPlayerRealtimeEvent(realtimeEvent))
+        {
+            Debug.LogWarning("Realtime WebSocket CONNECTED event belongs to a different player.");
+            StopRealtimeConnection();
+            return;
+        }
+
+        if (realtimeConnected)
+        {
+            return;
+        }
+
+        realtimeConnected = true;
+        realtimeTransportOpen = true;
+        realtimeHeartbeatSequence = 0;
+        StopRealtimeHandshakeTimeout();
+        if (realtimeReconnectCoroutine != null)
+        {
+            StopCoroutine(realtimeReconnectCoroutine);
+            realtimeReconnectCoroutine = null;
+        }
+
+        if (realtimeHeartbeatCoroutine != null)
+        {
+            StopCoroutine(realtimeHeartbeatCoroutine);
+        }
+        realtimeHeartbeatCoroutine = StartCoroutine(SendRealtimeHeartbeats());
+        RefreshV38FriendPresenceAfterRealtimeConnected();
+
+        if (!realtimeBackfillRunning)
+        {
+            StartCoroutine(RefreshRealtimeBacklog());
+        }
+    }
+
+    private static bool IsCurrentPlayerRealtimeEvent(RealtimeEvent realtimeEvent)
+    {
+        return realtimeEvent != null && realtimeEvent.playerId == GameSession.PlayerId;
+    }
+
     public void OnRealtimeClosed(string message)
     {
         realtimeConnected = false;
+        realtimeTransportOpen = false;
+        StopRealtimeHandshakeTimeout();
         StopRealtimeHeartbeat();
         ScheduleRealtimeReconnect();
     }
@@ -126,6 +207,16 @@ public partial class HomePageUI
     public void OnRealtimeError(string message)
     {
         realtimeConnected = false;
+        realtimeTransportOpen = false;
+        StopRealtimeHandshakeTimeout();
+        if (!string.IsNullOrEmpty(message)
+            && message.IndexOf("cannot send the required Authorization", System.StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            realtimeClosing = true;
+            SetStatus(message);
+            return;
+        }
+
         if (!realtimeClosing && !string.IsNullOrEmpty(message))
         {
             Debug.LogWarning("实时连接异常：" + message);
@@ -135,6 +226,11 @@ public partial class HomePageUI
 
     private IEnumerator RefreshRealtimeBacklog()
     {
+        if (!realtimeConnected || !HasAuthSession())
+        {
+            yield break;
+        }
+
         realtimeBackfillRunning = true;
         int playerId = GameSession.PlayerId;
 
@@ -181,7 +277,7 @@ public partial class HomePageUI
             }
         }
 
-        if (!HasAuthSession())
+        if (!realtimeConnected || !HasAuthSession())
         {
             realtimeBackfillRunning = false;
             yield break;
@@ -227,14 +323,13 @@ public partial class HomePageUI
 
     private IEnumerator SendRealtimeHeartbeats()
     {
-        int sequence = 0;
-        while (realtimeConnected && HasAuthSession())
+        while (realtimeConnected && !realtimeClosing && HasAuthSession())
         {
             yield return new WaitForSecondsRealtime(25f);
-            if (realtimeConnected)
+            if (realtimeConnected && !realtimeClosing)
             {
-                sequence++;
-                RealtimePlatformBridge.Send($"{{\"type\":\"PING\",\"requestId\":\"unity-{sequence}\"}}");
+                realtimeHeartbeatSequence++;
+                RealtimePlatformBridge.Send($"{{\"type\":\"PING\",\"requestId\":\"unity-{realtimeHeartbeatSequence}\"}}");
             }
         }
         realtimeHeartbeatCoroutine = null;
@@ -250,10 +345,25 @@ public partial class HomePageUI
         }
     }
 
+    private IEnumerator WaitForRealtimeHandshake()
+    {
+        yield return new WaitForSecondsRealtime(RealtimeHandshakeTimeoutSeconds);
+        realtimeHandshakeTimeoutCoroutine = null;
+        if (!realtimeClosing && realtimeTransportOpen && !realtimeConnected)
+        {
+            Debug.LogWarning("Realtime WebSocket did not receive CONNECTED before the handshake timeout.");
+            realtimeTransportOpen = false;
+            RealtimePlatformBridge.Close();
+            ScheduleRealtimeReconnect();
+        }
+    }
+
     private void StopRealtimeConnection()
     {
         realtimeClosing = true;
         realtimeConnected = false;
+        realtimeTransportOpen = false;
+        StopRealtimeHandshakeTimeout();
         StopRealtimeHeartbeat();
         if (realtimeReconnectCoroutine != null)
         {
@@ -269,6 +379,15 @@ public partial class HomePageUI
         {
             StopCoroutine(realtimeHeartbeatCoroutine);
             realtimeHeartbeatCoroutine = null;
+        }
+    }
+
+    private void StopRealtimeHandshakeTimeout()
+    {
+        if (realtimeHandshakeTimeoutCoroutine != null)
+        {
+            StopCoroutine(realtimeHandshakeTimeoutCoroutine);
+            realtimeHandshakeTimeoutCoroutine = null;
         }
     }
 
@@ -339,6 +458,43 @@ public partial class HomePageUI
     }
 
     [Serializable]
+    private class AntiAddictionWarningRealtimeEvent
+    {
+        public string type;
+        public string eventId;
+        public int playerId;
+        public AntiAddictionWarningData data;
+        public string serverTime;
+    }
+
+    [Serializable]
+    private class AntiAddictionWarningData
+    {
+        public int warningMinutes;
+        public int remainingSeconds;
+        public string message;
+        public string serverTime;
+    }
+
+    [Serializable]
+    private class AntiAddictionForcedOfflineRealtimeEvent
+    {
+        public string type;
+        public string eventId;
+        public int playerId;
+        public AntiAddictionForcedOfflineData data;
+        public string serverTime;
+    }
+
+    [Serializable]
+    private class AntiAddictionForcedOfflineData
+    {
+        public string reason;
+        public string message;
+        public string serverTime;
+    }
+
+    [Serializable]
     private class CoinShopPurchaseRealtimeEvent
     {
         public string type;
@@ -346,6 +502,29 @@ public partial class HomePageUI
         public int playerId;
         public CoinShopPurchaseResult data;
         public string serverTime;
+    }
+
+    [Serializable]
+    private class PlayerNpcAcquisitionResolvedRealtimeEvent
+    {
+        public string type;
+        public string eventId;
+        public int playerId;
+        public PlayerNpcAcquisitionResolvedData data;
+        public string serverTime;
+    }
+
+    [Serializable]
+    private class PlayerNpcAcquisitionResolvedData
+    {
+        public string acquisitionId;
+        public int playerId;
+        public int npcId;
+        public long playerNpcId;
+        public string changeType;
+        public string sourceType;
+        public string sourceRefKey;
+        public string occurredTime;
     }
 
     [Serializable]

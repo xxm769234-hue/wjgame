@@ -3,17 +3,21 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
 
 public static class InventoryPrefabBuilder
 {
     private const string PrefabDirectory = "Assets/Resources/UI";
     private const string PrefabPath = PrefabDirectory + "/InventoryPanel.prefab";
-    private const int PrefabSchemaVersion = 2;
+    private const string ImportedPrefabPath = "Assets/_Imported/weijun-game-project/Assets/Resources/UI/InventoryPanel.prefab";
+    private const int PrefabSchemaVersion = 3;
     private const int InventoryCapacity = 40;
     private const int InventoryColumns = 8;
-    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy)_爱给网_aigei_com.ttf";
+    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy) SDF.asset";
+    private const string ResourceIconDirectory = "Assets/_Imported/weijun-game-project/Assets/UI/资源图标/";
 
     private static Font defaultFont;
+    private static TMP_FontAsset fontAsset;
 
     [InitializeOnLoadMethod]
     private static void BuildMissingPrefabAfterReload()
@@ -33,7 +37,8 @@ public static class InventoryPrefabBuilder
     public static void BuildPrefab()
     {
         Directory.CreateDirectory(PrefabDirectory);
-        defaultFont = AssetDatabase.LoadAssetAtPath<Font>(FontPath)
+        fontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
+        defaultFont = AssetDatabase.LoadAssetAtPath<Font>("Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy).ttf")
             ?? Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         GameObject root = new GameObject("InventoryPanelView", typeof(RectTransform));
         try
@@ -62,7 +67,7 @@ public static class InventoryPrefabBuilder
                 out _);
             SetTopLeft(backButton.GetComponent<RectTransform>(), new Vector2(32f, -27f), new Vector2(72f, 48f));
 
-            Text titleText = CreateText(
+            TMP_Text titleText = CreateText(
                 "InventoryTitle",
                 panel.transform,
                 "背包",
@@ -72,7 +77,7 @@ public static class InventoryPrefabBuilder
                 TextAnchor.MiddleLeft);
             SetTopLeft(titleText.rectTransform, new Vector2(120f, -28f), new Vector2(170f, 52f));
 
-            Text subtitleText = CreateText(
+            TMP_Text subtitleText = CreateText(
                 "InventorySubtitle",
                 panel.transform,
                 "领地物资与道具管理",
@@ -85,7 +90,7 @@ public static class InventoryPrefabBuilder
             InventoryPanelView.ResourceControl[] resources =
             {
                 BuildResourceBadge(panel.transform, new Vector2(620f, -24f), "金币", "Gold", new Color(1f, 0.74f, 0.14f, 1f)),
-                BuildResourceBadge(panel.transform, new Vector2(900f, -24f), "钻石", "Crystal", new Color(0.26f, 0.70f, 1f, 1f))
+                BuildResourceBadge(panel.transform, new Vector2(900f, -24f), "钻石", "Diamond", new Color(0.26f, 0.70f, 1f, 1f))
             };
 
             Button closeButton = CreateButton(
@@ -119,7 +124,7 @@ public static class InventoryPrefabBuilder
                 out _);
             SetTopLeft(expandButton.GetComponent<RectTransform>(), new Vector2(16f, -458f), new Vector2(178f, 54f));
 
-            Text sidebarHintText = CreateText(
+            TMP_Text sidebarHintText = CreateText(
                 "InventorySidebarHint",
                 sidebar.transform,
                 "账号仓库\n资源由服务器同步",
@@ -131,7 +136,7 @@ public static class InventoryPrefabBuilder
 
             BuildGridFrame(panel.transform);
 
-            Text gridTitleText = CreateText(
+            TMP_Text gridTitleText = CreateText(
                 "InventoryGridTitle",
                 panel.transform,
                 "物品栏",
@@ -143,10 +148,10 @@ public static class InventoryPrefabBuilder
 
             InventorySlotView[] slots = BuildSlots(panel.transform);
 
-            Text emptyText = CreateText(
+            TMP_Text emptyText = CreateText(
                 "InventoryEmptyText",
                 panel.transform,
-                "当前分类暂无物品",
+                "当前物品暂无物品",
                 22,
                 FontStyle.Bold,
                 new Color(0.48f, 0.27f, 0.12f, 0.72f),
@@ -163,6 +168,9 @@ public static class InventoryPrefabBuilder
             };
 
             ContextMenuReferences context = BuildContextMenu(panel.transform);
+            DetailReferences detail = BuildDetailPanel(panel.transform);
+            InventoryPanelView.IconControl[] icons = BuildIconControls();
+            sidebar.gameObject.SetActive(false);
 
             view.EditorSetReferences(
                 panel.rectTransform,
@@ -189,7 +197,16 @@ public static class InventoryPrefabBuilder
                 context.PrimaryLabel,
                 context.PrimaryButton,
                 context.SellButton,
-                context.DismissButton);
+                context.DismissButton,
+                sidebar.gameObject,
+                icons,
+                detail.Root,
+                detail.Icon,
+                detail.NameText,
+                detail.TypeText,
+                detail.QuantityText,
+                detail.DescriptionText,
+                fontAsset);
             view.EditorSetSchemaVersion(PrefabSchemaVersion);
 
             context.Root.gameObject.SetActive(false);
@@ -197,6 +214,12 @@ public static class InventoryPrefabBuilder
             if (!saved)
             {
                 throw new IOException("Failed to save inventory prefab at " + PrefabPath);
+            }
+
+            PrefabUtility.SaveAsPrefabAsset(root, ImportedPrefabPath, out bool importedSaved);
+            if (!importedSaved)
+            {
+                throw new IOException("Failed to save inventory prefab at " + ImportedPrefabPath);
             }
 
             AssetDatabase.SaveAssets();
@@ -238,12 +261,18 @@ public static class InventoryPrefabBuilder
         Image badge = CreateImage("InventoryResourceBadge_" + key, parent, new Color(0.28f, 0.13f, 0.05f, 0.94f));
         SetTopLeft(badge.rectTransform, position, new Vector2(244f, 50f));
 
-        Image gem = CreateImage("Icon", badge.transform, iconColor);
+        Image gem = CreateImage("Icon", badge.transform, Color.white);
         SetTopLeft(gem.rectTransform, new Vector2(14f, -13f), new Vector2(24f, 24f));
-        gem.rectTransform.localEulerAngles = new Vector3(0f, 0f, 45f);
+        gem.sprite = LoadResourceIcon(key == "Gold" ? "金币" : "万能彩墨");
+        if (gem.sprite == null)
+        {
+            gem.color = iconColor;
+            gem.rectTransform.localEulerAngles = new Vector3(0f, 0f, 45f);
+        }
+        gem.preserveAspect = true;
         gem.raycastTarget = false;
 
-        Text valueText = CreateText(
+        TMP_Text valueText = CreateText(
             "InventoryResourceText_" + key,
             badge.transform,
             label + "  0",
@@ -253,20 +282,25 @@ public static class InventoryPrefabBuilder
             TextAnchor.MiddleLeft);
         SetTopLeft(valueText.rectTransform, new Vector2(50f, -8f), new Vector2(144f, 34f));
 
-        Button addButton = CreateButton(
-            badge.transform,
-            "InventoryResourcePlus_" + key,
-            "+",
-            new Color(0.78f, 0.52f, 0.16f, 1f),
-            Color.white,
-            22,
-            out _);
-        SetTopLeft(addButton.GetComponent<RectTransform>(), new Vector2(207f, -8f), new Vector2(34f, 34f));
+        Button addButton = null;
+        if (key != "Gold")
+        {
+            addButton = CreateButton(
+                badge.transform,
+                "InventoryResourcePlus_" + key,
+                "+",
+                new Color(0.78f, 0.52f, 0.16f, 1f),
+                Color.white,
+                22,
+                out _);
+            SetTopLeft(addButton.GetComponent<RectTransform>(), new Vector2(207f, -8f), new Vector2(34f, 34f));
+        }
 
         return new InventoryPanelView.ResourceControl
         {
             Key = key,
             Label = label,
+            Icon = gem,
             ValueText = valueText,
             AddButton = addButton
         };
@@ -285,7 +319,7 @@ public static class InventoryPrefabBuilder
             new Color(0.91f, 0.67f, 0.29f, 1f),
             new Color(0.44f, 0.21f, 0.07f, 1f),
             22,
-            out Text labelText);
+            out TMP_Text labelText);
         SetTopLeft(button.GetComponent<RectTransform>(), position, new Vector2(178f, 72f));
 
         Image marker = CreateImage("InventoryCategoryMarker", button.transform, new Color(1f, 0.88f, 0.42f, 1f));
@@ -367,10 +401,10 @@ public static class InventoryPrefabBuilder
         fallbackBackground.rectTransform.localEulerAngles = new Vector3(0f, 0f, 45f);
         fallbackBackground.raycastTarget = false;
 
-        Text fallbackText = CreateText("FallbackText", button.transform, "物", 22, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+        TMP_Text fallbackText = CreateText("FallbackText", button.transform, "物", 22, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
         SetTopLeft(fallbackText.rectTransform, new Vector2(19f, -12f), new Vector2(68f, 68f));
 
-        Text quantityText = CreateText(
+        TMP_Text quantityText = CreateText(
             "Quantity",
             button.transform,
             "0",
@@ -413,7 +447,7 @@ public static class InventoryPrefabBuilder
         SetTopLeft(shackle.rectTransform, new Vector2(43f, -28f), new Vector2(20f, 21f));
         shackle.raycastTarget = false;
 
-        Text label = CreateText("Label", parent, "锁", 15, FontStyle.Bold, new Color(0.86f, 0.87f, 0.84f, 1f), TextAnchor.MiddleCenter);
+        TMP_Text label = CreateText("Label", parent, "锁", 15, FontStyle.Bold, new Color(0.86f, 0.87f, 0.84f, 1f), TextAnchor.MiddleCenter);
         SetTopLeft(label.rectTransform, new Vector2(36f, -48f), new Vector2(34f, 28f));
     }
 
@@ -422,7 +456,7 @@ public static class InventoryPrefabBuilder
         Image footer = CreateImage("InventoryFooter", panel, new Color(0.50f, 0.24f, 0.08f, 1f));
         SetTopLeft(footer.rectTransform, new Vector2(258f, -800f), new Vector2(1060f, 64f));
 
-        Text capacityText = CreateText(
+        TMP_Text capacityText = CreateText(
             "InventoryCapacity",
             footer.transform,
             "背包空间：00/40",
@@ -432,7 +466,7 @@ public static class InventoryPrefabBuilder
             TextAnchor.MiddleLeft);
         SetTopLeft(capacityText.rectTransform, new Vector2(20f, -8f), new Vector2(290f, 30f));
 
-        Text visibleCountText = CreateText(
+        TMP_Text visibleCountText = CreateText(
             "InventoryVisibleCount",
             footer.transform,
             "当前分类 0 件  已开放 32 格",
@@ -442,7 +476,7 @@ public static class InventoryPrefabBuilder
             TextAnchor.MiddleLeft);
         SetTopLeft(visibleCountText.rectTransform, new Vector2(20f, -36f), new Vector2(320f, 22f));
 
-        Text statusText = CreateText(
+        TMP_Text statusText = CreateText(
             "InventoryStatus",
             footer.transform,
             string.Empty,
@@ -492,7 +526,7 @@ public static class InventoryPrefabBuilder
             out _);
         SetTopLeft(button.GetComponent<RectTransform>(), position, new Vector2(154f, 126f));
 
-        Text icon = CreateText(
+        TMP_Text icon = CreateText(
             "Icon",
             button.transform,
             iconText,
@@ -502,7 +536,7 @@ public static class InventoryPrefabBuilder
             TextAnchor.MiddleCenter);
         SetTopLeft(icon.rectTransform, new Vector2(40f, -12f), new Vector2(74f, 54f));
 
-        Text labelText = CreateText("Label", button.transform, label, 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+        TMP_Text labelText = CreateText("Label", button.transform, label, 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
         SetTopLeft(labelText.rectTransform, new Vector2(12f, -82f), new Vector2(130f, 30f));
 
         return new InventoryPanelView.SideActionControl
@@ -527,7 +561,7 @@ public static class InventoryPrefabBuilder
         Image menu = CreateImage("Panel", root.transform, new Color(0.30f, 0.15f, 0.05f, 0.98f));
         SetTopLeft(menu.rectTransform, Vector2.zero, new Vector2(184f, 150f));
 
-        Text nameText = CreateText(
+        TMP_Text nameText = CreateText(
             "Name",
             menu.transform,
             "物品",
@@ -537,7 +571,7 @@ public static class InventoryPrefabBuilder
             TextAnchor.MiddleLeft);
         SetTopLeft(nameText.rectTransform, new Vector2(12f, -8f), new Vector2(136f, 28f));
 
-        Text typeText = CreateText(
+        TMP_Text typeText = CreateText(
             "Type",
             menu.transform,
             "道具  x1",
@@ -554,7 +588,7 @@ public static class InventoryPrefabBuilder
             new Color(0.30f, 0.68f, 0.14f, 1f),
             Color.white,
             16,
-            out Text primaryLabel);
+            out TMP_Text primaryLabel);
         SetTopLeft(primaryButton.GetComponent<RectTransform>(), new Vector2(10f, -64f), new Vector2(78f, 40f));
 
         Button sellButton = CreateButton(
@@ -567,7 +601,7 @@ public static class InventoryPrefabBuilder
             out _);
         SetTopLeft(sellButton.GetComponent<RectTransform>(), new Vector2(96f, -64f), new Vector2(78f, 40f));
 
-        Text hintText = CreateText(
+        TMP_Text hintText = CreateText(
             "Hint",
             menu.transform,
             "操作 1 件物品",
@@ -616,7 +650,7 @@ public static class InventoryPrefabBuilder
         Color backgroundColor,
         Color textColor,
         int fontSize,
-        out Text label)
+        out TMP_Text label)
     {
         Image background = CreateImage(name, parent, backgroundColor);
         background.raycastTarget = true;
@@ -643,7 +677,7 @@ public static class InventoryPrefabBuilder
         return button;
     }
 
-    private static Text CreateText(
+    private static TMP_Text CreateText(
         string name,
         Transform parent,
         string value,
@@ -652,23 +686,107 @@ public static class InventoryPrefabBuilder
         Color color,
         TextAnchor alignment)
     {
-        GameObject target = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+        GameObject target = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
         target.transform.SetParent(parent, false);
 
-        Text label = target.GetComponent<Text>();
-        label.font = defaultFont;
+        TextMeshProUGUI label = target.GetComponent<TextMeshProUGUI>();
+        label.font = fontAsset;
         label.text = value;
         label.fontSize = fontSize;
-        label.fontStyle = FontStyle.Normal;
+        label.fontStyle = style == FontStyle.Bold ? FontStyles.Bold : FontStyles.Normal;
         label.color = color;
-        label.alignment = alignment;
-        label.resizeTextForBestFit = true;
-        label.resizeTextMinSize = Mathf.Min(12, fontSize);
-        label.resizeTextMaxSize = fontSize;
-        label.horizontalOverflow = HorizontalWrapMode.Wrap;
-        label.verticalOverflow = VerticalWrapMode.Truncate;
+        label.alignment = ConvertAlignment(alignment);
+        label.enableAutoSizing = true;
+        label.fontSizeMin = Mathf.Min(12, fontSize);
+        label.fontSizeMax = fontSize;
+        label.enableWordWrapping = true;
+        label.overflowMode = TextOverflowModes.Truncate;
         label.raycastTarget = false;
         return label;
+    }
+
+    private static DetailReferences BuildDetailPanel(Transform parent)
+    {
+        Image background = CreateImage("InventoryResourceDetail", parent, new Color(0.30f, 0.15f, 0.05f, 0.96f));
+        SetTopLeft(background.rectTransform, new Vector2(1225f, -108f), new Vector2(300f, 672f));
+
+        Image icon = CreateImage("InventoryDetailIcon", background.transform, Color.white);
+        SetTopLeft(icon.rectTransform, new Vector2(32f, -32f), new Vector2(136f, 136f));
+        icon.raycastTarget = false;
+        icon.preserveAspect = true;
+
+        TMP_Text name = CreateText("InventoryDetailName", background.transform, "资源详情", 25, FontStyle.Bold, new Color(1f, 0.90f, 0.66f, 1f), TextAnchor.MiddleLeft);
+        SetTopLeft(name.rectTransform, new Vector2(28f, -190f), new Vector2(244f, 40f));
+        TMP_Text type = CreateText("InventoryDetailType", background.transform, "物品", 16, FontStyle.Normal, new Color(1f, 0.78f, 0.45f, 1f), TextAnchor.MiddleLeft);
+        SetTopLeft(type.rectTransform, new Vector2(28f, -238f), new Vector2(244f, 28f));
+        TMP_Text quantity = CreateText("InventoryDetailQuantity", background.transform, "数量  0", 19, FontStyle.Bold, new Color(1f, 0.90f, 0.66f, 1f), TextAnchor.MiddleLeft);
+        SetTopLeft(quantity.rectTransform, new Vector2(28f, -280f), new Vector2(244f, 32f));
+        TMP_Text description = CreateText("InventoryDetailDescription", background.transform, "点击物品查看详情", 15, FontStyle.Normal, new Color(1f, 0.84f, 0.60f, 0.94f), TextAnchor.UpperLeft);
+        SetTopLeft(description.rectTransform, new Vector2(28f, -332f), new Vector2(244f, 210f));
+        description.enableWordWrapping = true;
+
+        return new DetailReferences
+        {
+            Root = background.rectTransform,
+            Icon = icon,
+            NameText = name,
+            TypeText = type,
+            QuantityText = quantity,
+            DescriptionText = description
+        };
+    }
+
+    private static InventoryPanelView.IconControl[] BuildIconControls()
+    {
+        return new[]
+        {
+            BuildIconControl("gold", "金币"),
+            BuildIconControl("diamond", "万能彩墨"),
+            BuildIconControl("wood", "木材"),
+            BuildIconControl("stone", "石材"),
+            BuildIconControl("iron", "矿石"),
+            BuildIconControl("ore", "矿石"),
+            BuildIconControl("wheat", "小麦"),
+            BuildIconControl("fish", "鱼"),
+            BuildIconControl("meat", "肉"),
+            BuildIconControl("bread", "面包"),
+            BuildIconControl("food", "面包"),
+            BuildIconControl("metal", "金属"),
+            BuildIconControl("stamina", "体力"),
+            BuildIconControl("purificationagent", "净化剂"),
+            BuildIconControl("chest", "宝箱（未打开）")
+        };
+    }
+
+    private static InventoryPanelView.IconControl BuildIconControl(string key, string assetName)
+    {
+        return new InventoryPanelView.IconControl
+        {
+            Key = key,
+            Icon = LoadResourceIcon(assetName)
+        };
+    }
+
+    private static Sprite LoadResourceIcon(string assetName)
+    {
+        return AssetDatabase.LoadAssetAtPath<Sprite>(ResourceIconDirectory + assetName + ".png");
+    }
+
+    private static TextAlignmentOptions ConvertAlignment(TextAnchor alignment)
+    {
+        switch (alignment)
+        {
+            case TextAnchor.UpperLeft: return TextAlignmentOptions.TopLeft;
+            case TextAnchor.UpperCenter: return TextAlignmentOptions.Top;
+            case TextAnchor.UpperRight: return TextAlignmentOptions.TopRight;
+            case TextAnchor.MiddleLeft: return TextAlignmentOptions.MidlineLeft;
+            case TextAnchor.MiddleCenter: return TextAlignmentOptions.Center;
+            case TextAnchor.MiddleRight: return TextAlignmentOptions.MidlineRight;
+            case TextAnchor.LowerLeft: return TextAlignmentOptions.BottomLeft;
+            case TextAnchor.LowerCenter: return TextAlignmentOptions.Bottom;
+            case TextAnchor.LowerRight: return TextAlignmentOptions.BottomRight;
+            default: return TextAlignmentOptions.Center;
+        }
     }
 
     private static GameObject CreateRectObject(string name, Transform parent)
@@ -698,21 +816,31 @@ public static class InventoryPrefabBuilder
 
     private sealed class FooterReferences
     {
-        public Text CapacityText;
-        public Text VisibleCountText;
-        public Text StatusText;
+        public TMP_Text CapacityText;
+        public TMP_Text VisibleCountText;
+        public TMP_Text StatusText;
         public Button OrganizeButton;
     }
 
     private sealed class ContextMenuReferences
     {
         public RectTransform Root;
-        public Text NameText;
-        public Text TypeText;
-        public Text HintText;
-        public Text PrimaryLabel;
+        public TMP_Text NameText;
+        public TMP_Text TypeText;
+        public TMP_Text HintText;
+        public TMP_Text PrimaryLabel;
         public Button PrimaryButton;
         public Button SellButton;
         public Button DismissButton;
+    }
+
+    private sealed class DetailReferences
+    {
+        public RectTransform Root;
+        public Image Icon;
+        public TMP_Text NameText;
+        public TMP_Text TypeText;
+        public TMP_Text QuantityText;
+        public TMP_Text DescriptionText;
     }
 }

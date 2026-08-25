@@ -469,9 +469,10 @@ mergeInto(LibraryManager.library, {
   },
 
   WJ_RealtimeConnect__deps: ['$WJRealtimeState', '$WJRealtimeNotify'],
-  WJ_RealtimeConnect: function (receiverNamePtr, urlPtr) {
+  WJ_RealtimeConnect: function (receiverNamePtr, urlPtr, authorizationPtr) {
     var receiverName = UTF8ToString(receiverNamePtr);
     var url = UTF8ToString(urlPtr);
+    var authorization = UTF8ToString(authorizationPtr);
     WJRealtimeState.receiverName = receiverName;
     var generation = ++WJRealtimeState.generation;
     var notifyCurrent = function (method, value) {
@@ -488,7 +489,10 @@ mergeInto(LibraryManager.library, {
     }
 
     if (typeof wx !== 'undefined' && typeof wx.connectSocket === 'function') {
-      var task = wx.connectSocket({ url: url });
+      var task = wx.connectSocket({
+        url: url,
+        header: { Authorization: authorization }
+      });
       WJRealtimeState.socket = task;
       task.onOpen(function () { notifyCurrent('OnRealtimeOpened', 'connected'); });
       task.onMessage(function (event) { notifyCurrent('OnRealtimeMessage', event && event.data ? event.data : ''); });
@@ -497,17 +501,10 @@ mergeInto(LibraryManager.library, {
       return;
     }
 
-    if (typeof WebSocket === 'undefined') {
-      notifyCurrent('OnRealtimeError', '当前环境不支持 WebSocket');
-      return;
-    }
-
-    var socket = new WebSocket(url);
-    WJRealtimeState.socket = socket;
-    socket.onopen = function () { notifyCurrent('OnRealtimeOpened', 'connected'); };
-    socket.onmessage = function (event) { notifyCurrent('OnRealtimeMessage', event && event.data ? event.data : ''); };
-    socket.onclose = function (event) { notifyCurrent('OnRealtimeClosed', event && event.reason ? event.reason : 'closed'); };
-    socket.onerror = function () { notifyCurrent('OnRealtimeError', 'WebSocket error'); };
+    notifyCurrent(
+      'OnRealtimeError',
+      'Browser WebSocket cannot send the required Authorization handshake header.'
+    );
   },
 
   WJ_RealtimeSend__deps: ['$WJRealtimeState'],

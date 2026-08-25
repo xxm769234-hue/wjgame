@@ -16,7 +16,8 @@ public enum HomePageScenePanelType
     AccountProfile,
     Friends,
     Equipment,
-    Shop
+    Shop,
+    Role
 }
 
 [DisallowMultipleComponent]

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -23,6 +24,17 @@ public partial class HomePageUI
         if (panel == null)
         {
             return null;
+        }
+
+        if (type != HomePageScenePanelType.Role)
+        {
+            HomePageScenePanel rolePanel = GetRegisteredScenePanel(HomePageScenePanelType.Role);
+            if (rolePanel != null)
+            {
+                rolePanel.SetVisible(false);
+            }
+
+            rolePanelObject = null;
         }
 
         panel.SetVisible(true);
@@ -911,6 +923,13 @@ public partial class HomePageUI
         if (label != null)
         {
             label.text = value ?? string.Empty;
+            return;
+        }
+
+        TMP_Text tmpLabel = FindSceneComponent<TMP_Text>(root, objectName);
+        if (tmpLabel != null)
+        {
+            tmpLabel.text = value ?? string.Empty;
         }
     }
 
@@ -925,6 +944,13 @@ public partial class HomePageUI
         if (label != null)
         {
             label.text = value ?? string.Empty;
+            return;
+        }
+
+        TMP_Text tmpLabel = button.GetComponentInChildren<TMP_Text>(true);
+        if (tmpLabel != null)
+        {
+            tmpLabel.text = value ?? string.Empty;
         }
     }
 

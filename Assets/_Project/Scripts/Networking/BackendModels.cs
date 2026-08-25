@@ -136,6 +136,7 @@ public sealed class InventoryItemResponse
     public string itemType;
     public string icon;
     public int quantity;
+    public string description;
 }
 
 [Serializable]

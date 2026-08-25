@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
+using TMPro;
 
 [DisallowMultipleComponent]
 public sealed class InventorySlotView : MonoBehaviour
@@ -11,8 +12,8 @@ public sealed class InventorySlotView : MonoBehaviour
     [SerializeField] private Image innerImage;
     [SerializeField] private Image itemIconImage;
     [SerializeField] private Image fallbackBackgroundImage;
-    [SerializeField] private Text fallbackText;
-    [SerializeField] private Text quantityText;
+    [SerializeField] private TMP_Text fallbackText;
+    [SerializeField] private TMP_Text quantityText;
     [SerializeField] private GameObject selectedFrame;
     [SerializeField] private GameObject lockRoot;
 
@@ -27,6 +28,8 @@ public sealed class InventorySlotView : MonoBehaviour
 
     private void Awake()
     {
+        UpgradeLegacyTextComponents();
+        ResolveTextReferences();
         if (itemIconImage != null)
         {
             prefabItemIcon = itemIconImage.sprite;
@@ -120,6 +123,81 @@ public sealed class InventorySlotView : MonoBehaviour
         }
     }
 
+    private void UpgradeLegacyTextComponents()
+    {
+        Text[] legacyTexts = GetComponentsInChildren<Text>(true);
+        for (int i = 0; i < legacyTexts.Length; i++)
+        {
+            Text legacy = legacyTexts[i];
+            if (legacy == null || legacy.GetComponent<TMP_Text>() != null)
+            {
+                continue;
+            }
+
+            TextMeshProUGUI replacement = legacy.gameObject.AddComponent<TextMeshProUGUI>();
+            replacement.text = legacy.text;
+            replacement.fontSize = legacy.fontSize;
+            replacement.color = legacy.color;
+            replacement.raycastTarget = legacy.raycastTarget;
+            replacement.alignment = ConvertAlignment(legacy.alignment);
+            legacy.enabled = false;
+        }
+    }
+
+    private void ResolveTextReferences()
+    {
+        if (fallbackText == null)
+        {
+            fallbackText = FindText("FallbackText");
+        }
+
+        if (quantityText == null)
+        {
+            quantityText = FindText("QuantityText");
+            if (quantityText == null)
+            {
+                quantityText = FindText("Quantity");
+            }
+        }
+    }
+
+    private TMP_Text FindText(string objectName)
+    {
+        Transform[] children = GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < children.Length; i++)
+        {
+            if (children[i].name != objectName)
+            {
+                continue;
+            }
+
+            TMP_Text text = children[i].GetComponent<TMP_Text>();
+            if (text != null)
+            {
+                return text;
+            }
+        }
+
+        return null;
+    }
+
+    private static TextAlignmentOptions ConvertAlignment(TextAnchor alignment)
+    {
+        switch (alignment)
+        {
+            case TextAnchor.UpperLeft: return TextAlignmentOptions.TopLeft;
+            case TextAnchor.UpperCenter: return TextAlignmentOptions.Top;
+            case TextAnchor.UpperRight: return TextAlignmentOptions.TopRight;
+            case TextAnchor.MiddleLeft: return TextAlignmentOptions.MidlineLeft;
+            case TextAnchor.MiddleCenter: return TextAlignmentOptions.Center;
+            case TextAnchor.MiddleRight: return TextAlignmentOptions.MidlineRight;
+            case TextAnchor.LowerLeft: return TextAlignmentOptions.BottomLeft;
+            case TextAnchor.LowerCenter: return TextAlignmentOptions.Bottom;
+            case TextAnchor.LowerRight: return TextAlignmentOptions.BottomRight;
+            default: return TextAlignmentOptions.Center;
+        }
+    }
+
     private static void SetColor(Graphic graphic, Color color)
     {
         if (graphic != null)
@@ -151,8 +229,8 @@ public sealed class InventorySlotView : MonoBehaviour
         Image inner,
         Image itemIcon,
         Image fallbackBackground,
-        Text itemFallbackText,
-        Text itemQuantityText,
+        TMP_Text itemFallbackText,
+        TMP_Text itemQuantityText,
         GameObject selection,
         GameObject lockedRoot)
     {

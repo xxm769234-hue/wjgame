@@ -3,6 +3,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using TMPro;
 using UnityEngine.UI;
 
 public static class HomePageScenePanelsBuilder
@@ -13,12 +14,15 @@ public static class HomePageScenePanelsBuilder
     private const string HomeBackgroundPath = "Assets/_Imported/weijun-game-project/Assets/UI/背景.png";
     private const string TestNodeName = "测试节点";
     private const int MinimumComponentizedBookSchemaVersion = 8;
-    private const int ScenePanelsSchemaVersion = 10;
+    private const int ScenePanelsSchemaVersion = 11;
     private const int EquipmentRows = 6;
+    private const string RoleFontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy) SDF.asset";
+    private const int RoleListRows = 20;
     private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy)_爱给网_aigei_com.ttf";
 
     private static Font defaultFont;
     private static Font fallbackFont;
+    private static TMP_FontAsset roleFontAsset;
 
     [InitializeOnLoadMethod]
     private static void BuildMissingPanelsAfterReload()
@@ -59,8 +63,17 @@ public static class HomePageScenePanelsBuilder
                     registry.SchemaVersion >= MinimumComponentizedBookSchemaVersion &&
                     registry.SchemaVersion < ScenePanelsSchemaVersion)
                 {
-                    BuildBookHomeCanvas(canvasObject.transform);
-                    registry.EditorSetSchemaVersion(ScenePanelsSchemaVersion);
+                    if (registry.Get(HomePageScenePanelType.Role) == null)
+                    {
+                        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+                        HomePageScenePanel rolePanel = BuildRolePanel(canvasObject.transform);
+                        rolePanel.SetVisible(false);
+                        registry.EditorAppendPanel(rolePanel, ScenePanelsSchemaVersion);
+                    }
+                    else
+                    {
+                        registry.EditorSetSchemaVersion(ScenePanelsSchemaVersion);
+                    }
                     EditorUtility.SetDirty(registry);
                     EditorSceneManager.MarkSceneDirty(scene);
                     EditorSceneManager.SaveScene(scene);
@@ -97,6 +110,44 @@ public static class HomePageScenePanelsBuilder
         }
 
         BuildScenePanels(scene, true);
+    }
+
+    [MenuItem("Tools/WeiJun UI/Add Role Panel")]
+    public static void AddRolePanelToHomeScene()
+    {
+        Scene scene = EditorSceneManager.OpenScene(HomeScenePath, OpenSceneMode.Single);
+        GameObject canvasObject = FindRoot(scene, CanvasName);
+        if (canvasObject == null)
+        {
+            BuildScenePanels(scene, true);
+            return;
+        }
+
+        HomePageScenePanels registry = canvasObject.GetComponent<HomePageScenePanels>();
+        if (registry == null)
+        {
+            Debug.LogError("HomePanelsCanvas is missing HomePageScenePanels.");
+            return;
+        }
+
+        if (registry.Get(HomePageScenePanelType.Role) == null)
+        {
+            roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+            HomePageScenePanel rolePanel = BuildRolePanel(canvasObject.transform);
+            rolePanel.SetVisible(false);
+            registry.EditorAppendPanel(rolePanel, ScenePanelsSchemaVersion);
+            EditorUtility.SetDirty(rolePanel);
+        }
+        else
+        {
+            registry.EditorSetSchemaVersion(ScenePanelsSchemaVersion);
+        }
+
+        EditorUtility.SetDirty(registry);
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        Selection.activeGameObject = canvasObject;
+        Debug.Log("Added editable RoleScenePanel to HomeScene.");
     }
 
     public static void BuildHomeScene()
@@ -155,7 +206,8 @@ public static class HomePageScenePanelsBuilder
             BuildAccountProfilePanel(canvasRect),
             BuildFriendsPanel(canvasRect),
             BuildEquipmentPanel(canvasRect),
-            BuildShopPanel(canvasRect)
+            BuildShopPanel(canvasRect),
+            BuildRolePanel(canvasRect)
         };
 
         HomePageScenePanels registry = canvasObject.GetComponent<HomePageScenePanels>();
@@ -1158,6 +1210,189 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(meta.rectTransform, new Vector2(94f, -44f), new Vector2(360f, 26f));
         Text state = CreateText("FriendRowState" + index, row.transform, "在线", 17, FontStyle.Bold, new Color(0.25f, 0.52f, 0.30f, 1f), TextAnchor.MiddleRight);
         SetTopLeft(state.rectTransform, new Vector2(618f, -24f), new Vector2(190f, 34f));
+    }
+
+    private static HomePageScenePanel BuildRolePanel(Transform parent)
+    {
+        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+        HomePageScenePanel scenePanel = CreateScenePanel(parent, "RoleScenePanel", HomePageScenePanelType.Role);
+        Transform root = scenePanel.transform;
+        CreateDimmer(root);
+
+        Image shadow = CreateImage("RolePanelShadow", root, new Color(0.08f, 0.04f, 0.02f, 0.50f));
+        SetTopLeft(shadow.rectTransform, new Vector2(224f, -134f), new Vector2(1500f, 830f));
+        shadow.raycastTarget = false;
+        Image panel = CreateImage("RolePanel", root, new Color(0.43f, 0.23f, 0.11f, 1f));
+        SetTopLeft(panel.rectTransform, new Vector2(210f, -120f), new Vector2(1500f, 830f));
+        Image paper = CreateImage("RolePaper", panel.transform, new Color(1f, 0.94f, 0.76f, 1f));
+        SetTopLeft(paper.rectTransform, new Vector2(14f, -14f), new Vector2(1472f, 802f));
+        paper.raycastTarget = false;
+
+        Image header = CreateImage("RoleHeader", panel.transform, new Color(0.22f, 0.48f, 0.55f, 1f));
+        SetTopLeft(header.rectTransform, new Vector2(24f, -24f), new Vector2(1452f, 78f));
+        TMP_Text title = CreateTMPText("RoleTitle", panel.transform, "\u89d2\u8272\u4e2d\u5fc3", 38, Color.white, TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(title.rectTransform, new Vector2(58f, -34f), new Vector2(260f, 54f));
+        TMP_Text subtitle = CreateTMPText("RoleSubtitle", panel.transform, "\u670d\u52a1\u5668\u89d2\u8272\u6570\u636e", 18, new Color(0.90f, 1f, 0.94f, 0.90f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(subtitle.rectTransform, new Vector2(330f, -45f), new Vector2(250f, 32f));
+        Button close = CreateTMPButton("RoleCloseButton", panel.transform, "X", new Color(0.90f, 0.30f, 0.25f, 1f), Color.white, 24);
+        SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(1408f, -36f), new Vector2(50f, 50f));
+
+        Button ownedTab = CreateTMPButton("RoleOwnedTab", panel.transform, "\u6211\u7684\u89d2\u8272", new Color(0.20f, 0.56f, 0.66f, 1f), Color.white, 20);
+        SetTopLeft(ownedTab.GetComponent<RectTransform>(), new Vector2(42f, -122f), new Vector2(190f, 52f));
+        Button catalogTab = CreateTMPButton("RoleCatalogTab", panel.transform, "\u89d2\u8272\u56fe\u9274", new Color(0.90f, 0.79f, 0.59f, 1f), new Color(0.36f, 0.20f, 0.10f, 1f), 20);
+        SetTopLeft(catalogTab.GetComponent<RectTransform>(), new Vector2(244f, -122f), new Vector2(190f, 52f));
+
+        Image listCard = CreateImage("RoleListCard", panel.transform, new Color(1f, 0.84f, 0.58f, 1f));
+        SetTopLeft(listCard.rectTransform, new Vector2(42f, -188f), new Vector2(470f, 570f));
+        TMP_Text listTitle = CreateTMPText("RoleListTitle", panel.transform, "\u89d2\u8272\u5217\u8868", 26, new Color(0.38f, 0.18f, 0.08f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(listTitle.rectTransform, new Vector2(64f, -202f), new Vector2(180f, 36f));
+
+        GameObject viewportObject = CreateRectObject("RoleListViewport", panel.transform);
+        SetTopLeft(viewportObject.GetComponent<RectTransform>(), new Vector2(56f, -244f), new Vector2(424f, 490f));
+        Image viewportImage = viewportObject.AddComponent<Image>();
+        viewportImage.color = new Color(1f, 0.91f, 0.70f, 0.72f);
+        viewportImage.raycastTarget = true;
+        Mask viewportMask = viewportObject.AddComponent<Mask>();
+        viewportMask.showMaskGraphic = false;
+
+        GameObject contentObject = CreateRectObject("RoleListContent", viewportObject.transform);
+        RectTransform contentRect = contentObject.GetComponent<RectTransform>();
+        contentRect.anchorMin = new Vector2(0f, 1f);
+        contentRect.anchorMax = new Vector2(1f, 1f);
+        contentRect.pivot = new Vector2(0.5f, 1f);
+        contentRect.anchoredPosition = Vector2.zero;
+        contentRect.sizeDelta = new Vector2(0f, RoleListRows * 108f);
+
+        ScrollRect scrollRect = viewportObject.AddComponent<ScrollRect>();
+        scrollRect.viewport = viewportObject.GetComponent<RectTransform>();
+        scrollRect.content = contentRect;
+        scrollRect.horizontal = false;
+        scrollRect.vertical = true;
+        scrollRect.movementType = ScrollRect.MovementType.Elastic;
+        scrollRect.scrollSensitivity = 30f;
+
+        Image scrollbarBackground = CreateImage("RoleListScrollbarBackground", panel.transform, new Color(0.45f, 0.27f, 0.13f, 0.62f));
+        SetTopLeft(scrollbarBackground.rectTransform, new Vector2(486f, -244f), new Vector2(16f, 490f));
+        Image scrollbarHandle = CreateImage("RoleListScrollbarHandle", scrollbarBackground.transform, new Color(0.22f, 0.48f, 0.55f, 1f));
+        SetTopLeft(scrollbarHandle.rectTransform, new Vector2(2f, -2f), new Vector2(12f, 120f));
+        Scrollbar scrollbar = scrollbarBackground.gameObject.AddComponent<Scrollbar>();
+        scrollbar.direction = Scrollbar.Direction.BottomToTop;
+        scrollbar.handleRect = scrollbarHandle.rectTransform;
+        scrollbar.targetGraphic = scrollbarHandle;
+        scrollRect.verticalScrollbar = scrollbar;
+        scrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+        scrollRect.verticalScrollbarSpacing = 4f;
+
+        for (int i = 0; i < RoleListRows; i++)
+        {
+            BuildRoleListRow(contentObject.transform, i);
+        }
+
+        Image detailCard = CreateImage("RoleDetailCard", panel.transform, new Color(1f, 0.84f, 0.58f, 1f));
+        SetTopLeft(detailCard.rectTransform, new Vector2(532f, -188f), new Vector2(924f, 570f));
+        TMP_Text detailTitle = CreateTMPText("RoleDetailTitle", detailCard.transform, "\u89d2\u8272\u8be6\u60c5", 28, new Color(0.38f, 0.18f, 0.08f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(detailTitle.rectTransform, new Vector2(28f, -18f), new Vector2(180f, 38f));
+
+        Image detailIcon = CreateImage("RoleDetailIcon", detailCard.transform, new Color(0.28f, 0.62f, 0.76f, 1f));
+        SetTopLeft(detailIcon.rectTransform, new Vector2(34f, -76f), new Vector2(156f, 156f));
+        TMP_Text detailIconLabel = CreateTMPText("RoleDetailIconText", detailIcon.transform, "NPC", 24, Color.white, TextAlignmentOptions.Center);
+        Stretch(detailIconLabel.rectTransform);
+        TMP_Text detailName = CreateTMPText("RoleDetailName", detailCard.transform, "\u89d2\u8272\u540d\u79f0", 30, new Color(0.34f, 0.16f, 0.08f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(detailName.rectTransform, new Vector2(222f, -78f), new Vector2(360f, 42f));
+        TMP_Text detailQuality = CreateTMPText("RoleDetailQuality", detailCard.transform, "\u54c1\u8d28  -", 19, new Color(0.72f, 0.31f, 0.18f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(detailQuality.rectTransform, new Vector2(222f, -126f), new Vector2(240f, 30f));
+        TMP_Text detailStatus = CreateTMPText("RoleDetailStatus", detailCard.transform, "\u72b6\u6001  \u5f85\u83b7\u5f97", 19, new Color(0.28f, 0.52f, 0.30f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(detailStatus.rectTransform, new Vector2(222f, -162f), new Vector2(360f, 30f));
+        TMP_Text detailLevel = CreateTMPText("RoleDetailLevel", detailCard.transform, "\u7b49\u7ea7  Lv.1", 20, new Color(0.46f, 0.23f, 0.10f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(detailLevel.rectTransform, new Vector2(222f, -198f), new Vector2(240f, 32f));
+
+        Image divider = CreateImage("RoleDetailDivider", detailCard.transform, new Color(0.55f, 0.34f, 0.17f, 0.42f));
+        SetTopLeft(divider.rectTransform, new Vector2(28f, -246f), new Vector2(868f, 3f));
+        divider.raycastTarget = false;
+        TMP_Text attribute = CreateTMPText("RoleDetailAttribute", detailCard.transform, "\u6218\u6597\u5c5e\u6027  -", 18, new Color(0.42f, 0.33f, 0.24f, 1f), TextAlignmentOptions.TopLeft);
+        SetTopLeft(attribute.rectTransform, new Vector2(34f, -270f), new Vector2(420f, 44f));
+        TMP_Text production = CreateTMPText("RoleDetailProduction", detailCard.transform, "\u4ea7\u51fa\u52a0\u6210  0%", 18, new Color(0.42f, 0.33f, 0.24f, 1f), TextAlignmentOptions.TopLeft);
+        SetTopLeft(production.rectTransform, new Vector2(470f, -270f), new Vector2(410f, 44f));
+        TMP_Text description = CreateTMPText("RoleDetailDescription", detailCard.transform, "\u89d2\u8272\u63cf\u8ff0", 17, new Color(0.42f, 0.33f, 0.24f, 1f), TextAlignmentOptions.TopLeft);
+        SetTopLeft(description.rectTransform, new Vector2(34f, -330f), new Vector2(846f, 76f));
+        TMP_Text acquisition = CreateTMPText("RoleDetailAcquisition", detailCard.transform, "\u83b7\u53d6\u65b9\u5f0f  -", 17, new Color(0.48f, 0.39f, 0.29f, 1f), TextAlignmentOptions.TopLeft);
+        SetTopLeft(acquisition.rectTransform, new Vector2(34f, -418f), new Vector2(846f, 50f));
+
+        Button upgrade = CreateTMPButton("RoleDetailUpgradeButton", detailCard.transform, "\u5347\u7ea7", new Color(0.28f, 0.64f, 0.38f, 1f), Color.white, 20);
+        SetTopLeft(upgrade.GetComponent<RectTransform>(), new Vector2(34f, -492f), new Vector2(230f, 52f));
+        Button acquire = CreateTMPButton("RoleDetailAcquireButton", detailCard.transform, "\u524d\u5f80\u83b7\u53d6", new Color(0.32f, 0.56f, 0.72f, 1f), Color.white, 20);
+        SetTopLeft(acquire.GetComponent<RectTransform>(), new Vector2(282f, -492f), new Vector2(230f, 52f));
+
+        TMP_Text empty = CreateTMPText("RoleEmptyText", detailCard.transform, "\u8bf7\u5148\u9009\u62e9\u4e00\u540d\u89d2\u8272", 24, new Color(0.46f, 0.36f, 0.25f, 1f), TextAlignmentOptions.Center);
+        SetTopLeft(empty.rectTransform, new Vector2(240f, -220f), new Vector2(420f, 48f));
+        empty.gameObject.SetActive(false);
+
+        Image footerDivider = CreateImage("RoleFooterDivider", panel.transform, new Color(0.47f, 0.27f, 0.13f, 0.48f));
+        SetTopLeft(footerDivider.rectTransform, new Vector2(42f, -776f), new Vector2(1416f, 4f));
+        footerDivider.raycastTarget = false;
+        TMP_Text status = CreateTMPText("RoleStatus", panel.transform, "\u6b63\u5728\u7b49\u5f85\u89d2\u8272\u6570\u636e", 17, new Color(0.36f, 0.42f, 0.24f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(status.rectTransform, new Vector2(50f, -792f), new Vector2(1300f, 30f));
+        return scenePanel;
+    }
+
+    private static void BuildRoleListRow(Transform parent, int index)
+    {
+        Button row = CreateTMPButton("RoleListRow" + index, parent, string.Empty, new Color(1f, 0.95f, 0.78f, 1f), Color.white, 16);
+        SetTopLeft(row.GetComponent<RectTransform>(), new Vector2(6f, -6f - index * 108f), new Vector2(412f, 98f));
+        Image icon = CreateImage("RoleListRowIcon" + index, row.transform, new Color(0.28f, 0.62f, 0.76f, 1f));
+        SetTopLeft(icon.rectTransform, new Vector2(12f, -10f), new Vector2(78f, 78f));
+        TMP_Text iconLabel = CreateTMPText("RoleListRowIconText" + index, icon.transform, "NPC", 14, Color.white, TextAlignmentOptions.Center);
+        Stretch(iconLabel.rectTransform);
+        TMP_Text name = CreateTMPText("RoleListRowName" + index, row.transform, "\u89d2\u8272\u540d\u79f0", 18, new Color(0.34f, 0.17f, 0.08f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(name.rectTransform, new Vector2(104f, -12f), new Vector2(180f, 28f));
+        TMP_Text quality = CreateTMPText("RoleListRowQuality" + index, row.transform, "\u54c1\u8d28  -", 14, new Color(0.72f, 0.31f, 0.18f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(quality.rectTransform, new Vector2(104f, -43f), new Vector2(180f, 24f));
+        TMP_Text level = CreateTMPText("RoleListRowLevel" + index, row.transform, "Lv.1", 15, new Color(0.46f, 0.23f, 0.10f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(level.rectTransform, new Vector2(104f, -70f), new Vector2(100f, 22f));
+        TMP_Text state = CreateTMPText("RoleListRowStatus" + index, row.transform, "\u5f85\u83b7\u5f97", 14, new Color(0.28f, 0.52f, 0.30f, 1f), TextAlignmentOptions.MidlineRight);
+        SetTopLeft(state.rectTransform, new Vector2(286f, -36f), new Vector2(112f, 28f));
+    }
+
+    private static Button CreateTMPButton(string name, Transform parent, string value, Color backgroundColor, Color textColor, int fontSize)
+    {
+        Image background = CreateImage(name, parent, backgroundColor);
+        background.raycastTarget = true;
+        Button button = background.gameObject.AddComponent<Button>();
+        button.targetGraphic = background;
+        ColorBlock colors = button.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1f, 0.94f, 0.82f, 1f);
+        colors.pressedColor = new Color(0.82f, 0.74f, 0.62f, 1f);
+        colors.selectedColor = colors.highlightedColor;
+        colors.disabledColor = new Color(0.68f, 0.68f, 0.68f, 0.62f);
+        colors.colorMultiplier = 1f;
+        button.colors = colors;
+        if (!string.IsNullOrEmpty(value))
+        {
+            TMP_Text label = CreateTMPText("Text", background.transform, value, fontSize, textColor, TextAlignmentOptions.Center);
+            Stretch(label.rectTransform);
+        }
+
+        return button;
+    }
+
+    private static TMP_Text CreateTMPText(string name, Transform parent, string value, int fontSize, Color color, TextAlignmentOptions alignment)
+    {
+        GameObject target = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+        target.layer = LayerMask.NameToLayer("UI");
+        target.transform.SetParent(parent, false);
+        TextMeshProUGUI label = target.GetComponent<TextMeshProUGUI>();
+        label.font = roleFontAsset;
+        label.text = value;
+        label.fontSize = fontSize;
+        label.fontStyle = FontStyles.Normal;
+        label.color = color;
+        label.alignment = alignment;
+        label.enableAutoSizing = false;
+        label.enableWordWrapping = true;
+        label.overflowMode = TextOverflowModes.Ellipsis;
+        label.raycastTarget = false;
+        return label;
     }
 
     private static HomePageScenePanel BuildEquipmentPanel(Transform parent)

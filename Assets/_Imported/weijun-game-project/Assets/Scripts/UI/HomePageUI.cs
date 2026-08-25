@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
+using TMPro;
 using UnityEngine.EventSystems;
 using UnityEngine.Events;
 using UnityEngine.Networking;
@@ -38,9 +39,10 @@ public partial class HomePageUI : MonoBehaviour
     private HomePageBookView boundBookView;
     private HomePageBookStyle bookStyle;
     private Button avatarButton;
-    private Text bookAvatarLevelText;
+    private TMP_Text bookAvatarLevelText;
     private Image bookAvatarExperienceBackground;
     private Image bookAvatarExperienceFill;
+    private TMP_Text bookAvatarExperienceText;
     private GameObject personalInfoPopup;
     private GameObject mailPanelObject;
     private GameObject signPanelObject;
@@ -145,13 +147,9 @@ public partial class HomePageUI : MonoBehaviour
     {
         RectTransform root = GetOrCreateBookHomeRoot();
         HomePageBookView view = root.GetComponent<HomePageBookView>();
-        if (view != null && view.IsReady)
+        if (view != null && view.MainPage != null)
         {
-            if (bookStyle != null)
-            {
-                bookStyle.ApplyToHierarchy();
-            }
-
+            view.CaptureReferences();
             BindBookView(view);
         }
         else
@@ -184,6 +182,7 @@ public partial class HomePageUI : MonoBehaviour
         bookAvatarLevelText = view.AvatarLevelText;
         bookAvatarExperienceBackground = view.AvatarExperienceBackground;
         bookAvatarExperienceFill = view.AvatarExperienceFill;
+        bookAvatarExperienceText = view.AvatarExperienceText;
         EnsureBookAvatarSummaryControls();
         RefreshBookAvatarSummary();
 
@@ -229,6 +228,7 @@ public partial class HomePageUI : MonoBehaviour
         bookAvatarLevelText = view.AvatarLevelText;
         bookAvatarExperienceBackground = view.AvatarExperienceBackground;
         bookAvatarExperienceFill = view.AvatarExperienceFill;
+        bookAvatarExperienceText = view.AvatarExperienceText;
         RefreshBookAvatarSummary();
     }
 
@@ -240,14 +240,14 @@ public partial class HomePageUI : MonoBehaviour
         }
     }
 
-    private static void SetBookMetricValue(Text[] metricTexts, int index, string value)
+    private static void SetBookMetricValue(TMP_Text[] metricTexts, int index, string value)
     {
         if (metricTexts == null || index < 0 || index >= metricTexts.Length || metricTexts[index] == null)
         {
             return;
         }
 
-        Text metricText = metricTexts[index];
+        TMP_Text metricText = metricTexts[index];
         int separatorIndex = metricText.text.IndexOf(' ');
         metricText.text = separatorIndex >= 0
             ? metricText.text.Substring(0, separatorIndex + 1) + value
@@ -279,32 +279,13 @@ public partial class HomePageUI : MonoBehaviour
         Transform frame = mainPageTransform.Find("BookAvatarFrame");
         if (frame == null)
         {
-            Debug.LogWarning("BookAvatarFrame was not found; avatar summary controls cannot be created.", this);
+            Debug.LogWarning("BookAvatarFrame was not found; avatar summary controls cannot be refreshed.", this);
             return;
         }
 
         if (bookAvatarLevelText == null)
         {
-            bookAvatarLevelText = FindSceneComponent<Text>(frame, "BookAvatarLevel");
-        }
-
-        if (bookAvatarLevelText == null)
-        {
-            bookAvatarLevelText = CreateText(
-                "BookAvatarLevel",
-                frame,
-                string.Empty,
-                11,
-                FontStyle.Normal,
-                InkColor,
-                TextAnchor.MiddleCenter);
-            SetRect(
-                bookAvatarLevelText.rectTransform,
-                TopLeftAnchor(),
-                TopLeftAnchor(),
-                TopLeftAnchor(),
-                new Vector2(56f, -8f),
-                new Vector2(30f, 16f));
+            bookAvatarLevelText = FindSceneComponent<TMP_Text>(frame, "BookAvatarLevel");
         }
 
         if (bookAvatarExperienceBackground == null)
@@ -312,46 +293,23 @@ public partial class HomePageUI : MonoBehaviour
             bookAvatarExperienceBackground = FindSceneComponent<Image>(frame, "BookAvatarExperienceBackground");
         }
 
-        if (bookAvatarExperienceBackground == null)
-        {
-            bookAvatarExperienceBackground = CreateImage(
-                "BookAvatarExperienceBackground",
-                frame,
-                new Color(0.22f, 0.16f, 0.10f, 0.55f));
-            bookAvatarExperienceBackground.raycastTarget = false;
-            SetRect(
-                bookAvatarExperienceBackground.rectTransform,
-                TopLeftAnchor(),
-                TopLeftAnchor(),
-                TopLeftAnchor(),
-                new Vector2(8f, -69f),
-                new Vector2(80f, 5f));
-        }
-
-        if (bookAvatarExperienceFill == null)
+        if (bookAvatarExperienceFill == null && bookAvatarExperienceBackground != null)
         {
             bookAvatarExperienceFill = FindSceneComponent<Image>(
                 bookAvatarExperienceBackground.transform,
                 "BookAvatarExperienceFill");
         }
 
-        if (bookAvatarExperienceFill == null)
+        if (bookAvatarExperienceText == null)
         {
-            bookAvatarExperienceFill = CreateImage(
-                "BookAvatarExperienceFill",
-                bookAvatarExperienceBackground.transform,
-                new Color(0.95f, 0.79f, 0.38f, 1f));
-            bookAvatarExperienceFill.raycastTarget = false;
-            bookAvatarExperienceFill.type = Image.Type.Filled;
-            bookAvatarExperienceFill.fillMethod = Image.FillMethod.Horizontal;
-            bookAvatarExperienceFill.fillOrigin = 0;
-            SetRect(
-                bookAvatarExperienceFill.rectTransform,
-                Vector2.zero,
-                Vector2.one,
-                new Vector2(0f, 0.5f),
-                Vector2.zero,
-                Vector2.zero);
+            bookAvatarExperienceText = FindSceneComponent<TMP_Text>(frame, "BookAvatarExperienceText");
+        }
+
+        if (bookAvatarLevelText == null
+            || bookAvatarExperienceBackground == null
+            || bookAvatarExperienceFill == null)
+        {
+            Debug.LogWarning("BookAvatarFrame is missing one or more scene-bound avatar summary components.", this);
         }
     }
 
@@ -365,16 +323,11 @@ public partial class HomePageUI : MonoBehaviour
             bookAvatarLevelText.text = $"Lv.{level}";
         }
 
-        if (bookAvatarExperienceFill == null)
-        {
-            return;
-        }
-
+        int currentExperience = Mathf.Max(0, PlayerPrefs.GetInt("PlayerCurrentLevelExperience", 0));
+        int requiredExperience = Mathf.Max(0, PlayerPrefs.GetInt("PlayerRequiredExperience", 0));
         float progress = Mathf.Clamp01(PlayerPrefs.GetInt("PlayerExperienceProgressBps", 0) / 10000f);
         if (progress <= 0f && PlayerPrefs.GetInt("PlayerMaxLevel", 0) == 0)
         {
-            int currentExperience = Mathf.Max(0, PlayerPrefs.GetInt("PlayerCurrentLevelExperience", 0));
-            int requiredExperience = Mathf.Max(0, PlayerPrefs.GetInt("PlayerRequiredExperience", 0));
             if (requiredExperience > 0)
             {
                 progress = Mathf.Clamp01(currentExperience / (float)requiredExperience);
@@ -386,7 +339,19 @@ public partial class HomePageUI : MonoBehaviour
             progress = 1f;
         }
 
-        bookAvatarExperienceFill.fillAmount = progress;
+        if (bookAvatarExperienceFill != null)
+        {
+            bookAvatarExperienceFill.fillAmount = progress;
+        }
+
+        if (bookAvatarExperienceText != null)
+        {
+            bookAvatarExperienceText.text = PlayerPrefs.GetInt("PlayerMaxLevel", 0) == 1
+                ? "MAX"
+                : requiredExperience > 0
+                    ? $"{currentExperience}/{requiredExperience}"
+                    : currentExperience.ToString();
+        }
     }
 
 #if UNITY_EDITOR
@@ -714,9 +679,6 @@ public partial class HomePageUI : MonoBehaviour
         Image head = CreateImage("BookAvatarHead", portrait.transform, new Color(0.95f, 0.72f, 0.52f, 1f));
         SetRect(head.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(27f, -6f), new Vector2(22f, 22f));
 
-        Image body = CreateImage("BookAvatarBody", portrait.transform, new Color(0.34f, 0.54f, 0.74f, 1f));
-        SetRect(body.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(18f, -28f), new Vector2(40f, 16f));
-
         Text name = CreateText("BookAvatarName", frame.transform, PlayerPrefs.GetString("PlayerNickname", "玩家"), 15, FontStyle.Bold, InkColor, TextAnchor.MiddleCenter);
         SetRect(name.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(8f, -54f), new Vector2(80f, 18f));
 
@@ -742,15 +704,7 @@ public partial class HomePageUI : MonoBehaviour
 
     private void AddBookMetric(Transform parent, string label, string value, Vector2 position, Vector2 size, Color accent, bool hasPlus, Action onPlus)
     {
-        Image shadow = CreateImage("BookMetricShadow", parent, new Color(0.12f, 0.07f, 0.04f, 0.20f));
-        shadow.raycastTarget = false;
-        SetRect(shadow.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(4f, -5f), size);
-
         Image box = CreateImage("BookMetric", parent, bookStyle != null ? bookStyle.MetricColor : new Color(0.98f, 0.91f, 0.74f, 0.98f));
-        if (bookStyle != null)
-        {
-            bookStyle.ApplyMetric(box);
-        }
         SetRect(box.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
 
         Image icon = CreateImage("BookMetricIcon", box.transform, accent);
@@ -1422,7 +1376,7 @@ public partial class HomePageUI : MonoBehaviour
 
     private void ShowCharacterContent()
     {
-        ShowEquipmentContent();
+        ShowRolePanel();
     }
 
     private void ShowRechargeContent()
@@ -2111,12 +2065,14 @@ public partial class HomePageUI : MonoBehaviour
         view.SetMode(inventoryServerBacked);
         view.SetSidebarHint(GetInventorySidebarHint());
         view.SetResourceValue("Gold", GetInventoryResourceValue("Gold"));
-        view.SetResourceValue("Crystal", GetInventoryResourceValue("Crystal"));
+        view.SetResourceValue("Diamond", GetInventoryResourceValue("Crystal"));
+        view.SetResourceIcon("Gold", view.ResolveIcon("gold", "金币", "gold"));
+        view.SetResourceIcon("Diamond", view.ResolveIcon("diamond", "钻石", "diamond"));
         view.SetCounts(ownedCount, visibleItems.Count, InventoryCapacity, unlockedSlots);
         view.SetStatus(inventoryStatusMessage);
         view.SetEmptyVisible(visibleItems.Count == 0);
         view.BindChromeActions(HideInventoryPanel, ExpandInventorySlots, SortInventoryItems, ShowRechargeContent);
-        view.BindCategoryActions(activeInventoryCategory, SetInventoryCategory);
+        view.SetCategoriesVisible(false);
         view.BindSideActions(null, ShowShopContent);
 
         int slotCount = Mathf.Min(InventoryCapacity, view.SlotCount);
@@ -2142,7 +2098,7 @@ public partial class HomePageUI : MonoBehaviour
             }
 
             string itemKey = GetInventoryItemKey(item);
-            Sprite sprite = LoadInventorySprite(GetInventoryIconAssetPath(item, slotIndex));
+            Sprite sprite = view.ResolveIcon(item.itemKey, item.name, item.icon);
             if (sprite != null && sprite.texture != null)
             {
                 sprite.texture.filterMode = FilterMode.Point;
@@ -2170,6 +2126,7 @@ public partial class HomePageUI : MonoBehaviour
         if (selectedIndex < 0 || selectedIndex >= slotCount)
         {
             view.HideContextMenu();
+            view.ShowResourceDetail(null, "资源详情", "请选择物品", 0, "点击物品后，在这里查看名称、类型、数量和说明");
             return;
         }
 
@@ -2180,6 +2137,12 @@ public partial class HomePageUI : MonoBehaviour
             ? slotPosition + new Vector2(-190f, -4f)
             : slotPosition + new Vector2(112f, -4f);
         InventoryItemResponse selectedItem = visibleItems[selectedIndex];
+        view.ShowResourceDetail(
+            view.ResolveIcon(selectedItem.itemKey, selectedItem.name, selectedItem.icon),
+            selectedItem.name,
+            GetInventoryTypeLabel(selectedItem),
+            selectedItem.quantity,
+            selectedItem.description);
         string contextHint = GetInventorySaleContextHint(selectedItem);
         string primaryLabel = GetInventoryActionLabel(selectedItem);
 
@@ -2249,15 +2212,12 @@ public partial class HomePageUI : MonoBehaviour
         for (int i = 0; i < currentInventoryItems.Length; i++)
         {
             InventoryItemResponse item = currentInventoryItems[i];
-            if (item == null || item.quantity <= 0 || IsTopCurrencyItem(item))
+            if (item == null || IsTopCurrencyItem(item))
             {
                 continue;
             }
 
-            if (activeInventoryCategory == "all" || GetInventoryCategory(item) == activeInventoryCategory)
-            {
-                result.Add(item);
-            }
+            result.Add(item);
         }
 
         return result;
@@ -2435,9 +2395,9 @@ public partial class HomePageUI : MonoBehaviour
 
     private void SetInventoryCategory(string category)
     {
-        activeInventoryCategory = category;
+        activeInventoryCategory = "all";
         selectedInventoryItemKey = string.Empty;
-        inventoryStatusMessage = "已切换到" + GetInventoryCategoryLabel(category);
+        inventoryStatusMessage = "仓库不区分物品分类";
         RenderInventoryPanel();
     }
 
@@ -2573,6 +2533,7 @@ public partial class HomePageUI : MonoBehaviour
             name = sourceItem.name,
             itemType = sourceItem.itemType,
             icon = sourceItem.icon,
+            description = sourceItem.description,
             quantity = sourceItem.quantity
         };
     }
@@ -2584,6 +2545,7 @@ public partial class HomePageUI : MonoBehaviour
         if (string.IsNullOrWhiteSpace(targetItem.name)) targetItem.name = sourceItem.name;
         if (string.IsNullOrWhiteSpace(targetItem.itemType)) targetItem.itemType = sourceItem.itemType;
         if (string.IsNullOrWhiteSpace(targetItem.icon)) targetItem.icon = sourceItem.icon;
+        if (string.IsNullOrWhiteSpace(targetItem.description)) targetItem.description = sourceItem.description;
     }
 
     private int CompareMergedInventoryStacks(InventoryMergeStack left, InventoryMergeStack right)
@@ -2614,15 +2576,30 @@ public partial class HomePageUI : MonoBehaviour
 
         Image badge = CreateImage("InventoryResourceBadge_" + key, parent, new Color(0.28f, 0.13f, 0.05f, 0.94f));
         SetRect(badge.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, new Vector2(244f, 50f));
-        AddMiniGem(badge.transform, new Vector2(12f, -11f), new Vector2(28f, 28f), iconColor);
+        Sprite resourceSprite = LoadInventorySprite(GetResourceIconAssetPath(key));
+        if (resourceSprite != null)
+        {
+            Image resourceIcon = CreateImage("InventoryResourceIcon_" + key, badge.transform, Color.white);
+            SetRect(resourceIcon.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(12f, -11f), new Vector2(28f, 28f));
+            resourceIcon.sprite = resourceSprite;
+            resourceIcon.preserveAspect = true;
+            resourceIcon.raycastTarget = false;
+        }
+        else
+        {
+            AddMiniGem(badge.transform, new Vector2(12f, -11f), new Vector2(28f, 28f), iconColor);
+        }
 
         Text resourceText = CreateMailText("InventoryResourceText_" + key, badge.transform, $"{label}  {GetInventoryResourceValue(key)}", 18, FontStyle.Bold, new Color(1f, 0.89f, 0.64f, 1f), TextAnchor.MiddleLeft);
         SetRect(resourceText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(50f, -8f), new Vector2(144f, 34f));
 
-        Button plus = CreateButton(parent, "InventoryResourcePlus_" + key, "+", new Color(0.78f, 0.52f, 0.16f, 1f), Color.white);
-        plus.onClick.AddListener(ShowRechargeContent);
-        SetRect(plus.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(207f, -8f), new Vector2(34f, 34f));
-        ConfigureClearButtonLabel(plus, 22);
+        if (!string.Equals(key, "Gold", StringComparison.OrdinalIgnoreCase))
+        {
+            Button plus = CreateButton(parent, "InventoryResourcePlus_" + key, "+", new Color(0.78f, 0.52f, 0.16f, 1f), Color.white);
+            plus.onClick.AddListener(ShowRechargeContent);
+            SetRect(plus.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position + new Vector2(207f, -8f), new Vector2(34f, 34f));
+            ConfigureClearButtonLabel(plus, 22);
+        }
     }
 
     private int GetInventoryResourceValue(string key)
@@ -2631,6 +2608,13 @@ public partial class HomePageUI : MonoBehaviour
         if (key == "Crystal") return PlayerPrefs.GetInt("Crystal", 427);
         if (key == "SoulCrystal") return PlayerPrefs.GetInt("SoulCrystal", 1200);
         return PlayerPrefs.GetInt(key, 0);
+    }
+
+    private string GetResourceIconAssetPath(string key)
+    {
+        if (string.Equals(key, "Gold", StringComparison.OrdinalIgnoreCase)) return "UI/资源图标/金币.png";
+        if (string.Equals(key, "Crystal", StringComparison.OrdinalIgnoreCase) || string.Equals(key, "Diamond", StringComparison.OrdinalIgnoreCase)) return "UI/资源图标/万能彩墨.png";
+        return "UI/资源图标/" + key + ".png";
     }
 
     private void AddInventoryCategoryButton(Transform parent, string category, string label, Vector2 position, bool selected)
@@ -2741,12 +2725,23 @@ public partial class HomePageUI : MonoBehaviour
 
     private string GetInventoryIconAssetPath(InventoryItemResponse item, int slotIndex)
     {
-        string basePath = "Sprites/Humble Gift - Paper UI System/Humble Gift - Paper UI System v1.1/Sprites/Content/";
-        bool equipment = IsEquipmentItem(item);
-        int count = equipment ? 18 : 27;
-        int hash = StableInventoryHash(GetInventoryItemKey(item) + (item == null ? string.Empty : item.icon));
-        int iconIndex = hash % count + 1;
-        return basePath + (equipment ? "8 Equipment/" : "1 Items/") + iconIndex + ".png";
+        string key = NormalizeInventoryKey(GetInventoryItemKey(item));
+        string name = item == null ? string.Empty : item.name;
+        string icon = item == null ? string.Empty : NormalizeInventoryKey(item.icon);
+        if (key == "gold" || icon == "gold" || name == "金币") return "UI/资源图标/金币.png";
+        if (key == "diamond" || key == "crystal" || icon == "diamond" || icon == "crystal" || name == "钻石") return "UI/资源图标/万能彩墨.png";
+        if (key.Contains("wood") || icon.Contains("wood") || name.Contains("木材")) return "UI/资源图标/木材.png";
+        if (key.Contains("stone") || icon.Contains("stone") || name.Contains("石材")) return "UI/资源图标/石材.png";
+        if (key.Contains("iron") || key.Contains("ore") || icon.Contains("iron") || icon.Contains("ore") || name.Contains("矿")) return "UI/资源图标/矿石.png";
+        if (key.Contains("wheat") || icon.Contains("wheat") || name.Contains("小麦")) return "UI/资源图标/小麦.png";
+        if (key.Contains("fish") || icon.Contains("fish") || name.Contains("鱼")) return "UI/资源图标/鱼.png";
+        if (key.Contains("meat") || icon.Contains("meat") || name.Contains("肉")) return "UI/资源图标/肉.png";
+        if (key.Contains("bread") || key.Contains("food") || icon.Contains("bread") || icon.Contains("food") || name.Contains("面包") || name.Contains("食物")) return "UI/资源图标/面包.png";
+        if (key.Contains("metal") || icon.Contains("metal") || name.Contains("金属")) return "UI/资源图标/金属.png";
+        if (key.Contains("purification") || icon.Contains("purification") || name.Contains("净化剂")) return "UI/资源图标/净化剂.png";
+        if (key.Contains("stamina") || icon.Contains("stamina") || name.Contains("体力")) return "UI/资源图标/体力.png";
+        if (key.Contains("chest") || icon.Contains("chest") || name.Contains("宝箱")) return "UI/资源图标/宝箱（未打开）.png";
+        return string.Empty;
     }
 
     private int StableInventoryHash(string value)
@@ -2881,7 +2876,7 @@ public partial class HomePageUI : MonoBehaviour
     private void SelectInventoryItem(string itemKey)
     {
         InventoryItemResponse item = FindCurrentInventoryItem(itemKey);
-        if (item == null || item.quantity <= 0)
+        if (item == null)
         {
             return;
         }

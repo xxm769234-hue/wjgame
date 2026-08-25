@@ -522,10 +522,10 @@ public partial class HomePageUI
     {
         if (mainPageTransform != null)
         {
-            Image portrait = FindSceneComponent<Image>(mainPageTransform, "BookAvatarPortrait");
-            if (portrait != null)
+            Image head = FindSceneComponent<Image>(mainPageTransform, "BookAvatarPortrait/BookAvatarHead");
+            if (head != null)
             {
-                ApplyAvatarImage(portrait, null, GameSession.PlayerId, GetCurrentAvatarUrl(), GetCurrentAvatarVersion());
+                ApplyAvatarImage(head, null, GameSession.PlayerId, GetCurrentAvatarUrl(), GetCurrentAvatarVersion());
             }
         }
 

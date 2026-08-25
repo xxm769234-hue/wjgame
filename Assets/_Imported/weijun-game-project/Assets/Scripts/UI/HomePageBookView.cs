@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -11,11 +12,12 @@ public sealed class HomePageBookView : MonoBehaviour
 
     [Header("Player Summary")]
     [SerializeField] private Button avatarButton;
-    [SerializeField] private Text avatarNameText;
-    [SerializeField] private Text avatarLevelText;
+    [SerializeField] private TMP_Text avatarNameText;
+    [SerializeField] private TMP_Text avatarLevelText;
     [SerializeField] private Image avatarExperienceBackground;
     [SerializeField] private Image avatarExperienceFill;
-    [SerializeField] private Text[] metricTexts = new Text[0];
+    [SerializeField] private TMP_Text avatarExperienceText;
+    [SerializeField] private TMP_Text[] metricTexts = new TMP_Text[0];
     [SerializeField] private Button[] metricPlusButtons = new Button[0];
 
     [Header("Left Page Actions")]
@@ -57,11 +59,12 @@ public sealed class HomePageBookView : MonoBehaviour
     public RectTransform MainPage => mainPage;
     public Text StatusText => statusText;
     public Button AvatarButton => avatarButton;
-    public Text AvatarNameText => avatarNameText;
-    public Text AvatarLevelText => avatarLevelText;
+    public TMP_Text AvatarNameText => avatarNameText;
+    public TMP_Text AvatarLevelText => avatarLevelText;
     public Image AvatarExperienceBackground => avatarExperienceBackground;
     public Image AvatarExperienceFill => avatarExperienceFill;
-    public Text[] MetricTexts => metricTexts;
+    public TMP_Text AvatarExperienceText => avatarExperienceText;
+    public TMP_Text[] MetricTexts => metricTexts;
     public Button[] MetricPlusButtons => metricPlusButtons;
     public Button ActivityButton => activityButton;
     public Button RoleButton => roleButton;
@@ -154,10 +157,11 @@ public sealed class HomePageBookView : MonoBehaviour
         mainPage = FindComponent<RectTransform>("MainBookPage");
         statusText = FindComponent<Text>("MainBookPage/Status");
         avatarButton = FindComponent<Button>("MainBookPage/BookAvatarFrame/AvatarButton");
-        avatarNameText = FindComponent<Text>("MainBookPage/BookAvatarFrame/BookAvatarName");
-        avatarLevelText = FindComponent<Text>("MainBookPage/BookAvatarFrame/BookAvatarLevel");
+        avatarNameText = FindComponent<TMP_Text>("MainBookPage/BookAvatarFrame/BookAvatarName");
+        avatarLevelText = FindComponent<TMP_Text>("MainBookPage/BookAvatarFrame/BookAvatarLevel");
         avatarExperienceBackground = FindComponent<Image>("MainBookPage/BookAvatarFrame/BookAvatarExperienceBackground");
         avatarExperienceFill = FindComponent<Image>("MainBookPage/BookAvatarFrame/BookAvatarExperienceBackground/BookAvatarExperienceFill");
+        avatarExperienceText = FindComponent<TMP_Text>("MainBookPage/BookAvatarFrame/BookAvatarExperienceText");
 
         CaptureMetrics();
 
@@ -196,12 +200,12 @@ public sealed class HomePageBookView : MonoBehaviour
     {
         if (mainPage == null)
         {
-            metricTexts = new Text[0];
+            metricTexts = new TMP_Text[0];
             metricPlusButtons = new Button[0];
             return;
         }
 
-        List<Text> texts = new List<Text>();
+        List<TMP_Text> texts = new List<TMP_Text>();
         List<Button> plusButtons = new List<Button>();
         for (int i = 0; i < mainPage.childCount; i++)
         {
@@ -214,7 +218,7 @@ public sealed class HomePageBookView : MonoBehaviour
             Transform textTransform = child.Find("BookMetricText");
             if (textTransform != null)
             {
-                texts.Add(textTransform.GetComponent<Text>());
+                texts.Add(textTransform.GetComponent<TMP_Text>());
             }
 
             Transform plusTransform = child.Find("MetricPlusButton");

@@ -97,15 +97,9 @@ public static class ApiRuntimeConfig
         return true;
     }
 
-    public static bool TryBuildRealtimeUrl(string token, out string url, out string error)
+    public static bool TryBuildRealtimeUrl(out string url, out string error)
     {
         url = string.Empty;
-        if (string.IsNullOrEmpty(token))
-        {
-            error = "登录 token 为空，无法建立实时连接。";
-            return false;
-        }
-
         if (!TryBuildUrl("/ws/realtime", out string httpUrl, out error))
         {
             return false;
@@ -114,8 +108,7 @@ public static class ApiRuntimeConfig
         UriBuilder builder = new UriBuilder(httpUrl)
         {
             Scheme = httpUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase) ? "wss" : "ws",
-            Port = new Uri(httpUrl).IsDefaultPort ? -1 : new Uri(httpUrl).Port,
-            Query = "token=" + Uri.EscapeDataString(token)
+            Port = new Uri(httpUrl).IsDefaultPort ? -1 : new Uri(httpUrl).Port
         };
         url = builder.Uri.AbsoluteUri;
         return true;

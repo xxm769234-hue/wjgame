@@ -30,6 +30,7 @@ public partial class HomePageUI
     private bool v37LastLoadFailed;
     private bool v37FriendRequestCreationBlocked;
     private string v37StatusMessage = string.Empty;
+    private Coroutine v38PresenceRefreshCoroutine;
 
     private void ResetServerFriendRequestPanel()
     {
@@ -431,6 +432,50 @@ public partial class HomePageUI
 
         button.interactable = enabled;
         SetSceneButtonText(button, label);
+    }
+
+    private static void ConfigureFriendFilterButton(Button button, bool selected)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        Image background = button.GetComponent<Image>();
+        if (background != null)
+        {
+            background.color = selected
+                ? new Color(0.20f, 0.56f, 0.66f, 1f)
+                : new Color(0.90f, 0.79f, 0.59f, 1f);
+        }
+
+        Text label = button.GetComponentInChildren<Text>(true);
+        if (label != null)
+        {
+            label.color = selected ? Color.white : new Color(0.36f, 0.20f, 0.10f, 1f);
+        }
+    }
+
+    private static Color GetFriendAvatarColor(string id)
+    {
+        Color[] colors =
+        {
+            new Color(0.28f, 0.62f, 0.76f, 1f),
+            new Color(0.88f, 0.48f, 0.30f, 1f),
+            new Color(0.38f, 0.66f, 0.36f, 1f),
+            new Color(0.64f, 0.42f, 0.72f, 1f),
+            new Color(0.86f, 0.66f, 0.22f, 1f)
+        };
+        int hash = 0;
+        if (!string.IsNullOrEmpty(id))
+        {
+            for (int index = 0; index < id.Length; index++)
+            {
+                hash = (hash * 31 + id[index]) & int.MaxValue;
+            }
+        }
+
+        return colors[hash % colors.Length];
     }
 
     private void RenderV37FriendRows(Transform root, bool interactionLocked)
@@ -1219,7 +1264,7 @@ public partial class HomePageUI
 
     private void ApplyV38FriendPresence(FriendPresenceChange presence)
     {
-        if (presence == null || presence.playerId <= 0)
+        if (presence == null || presence.playerId <= 0 || presence.presenceVersion <= 0)
         {
             return;
         }
@@ -1244,7 +1289,7 @@ public partial class HomePageUI
 
     private void RefreshV38FriendPresenceAfterRealtimeConnected()
     {
-        if (!HasAuthSession())
+        if (!HasAuthSession() || !realtimeConnected)
         {
             return;
         }
@@ -1252,11 +1297,32 @@ public partial class HomePageUI
         HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.Friends);
         if (panel != null)
         {
-            StartCoroutine(RefreshServerFriendRequestState(
-                panel.PanelRoot,
-                true,
-                "实时连接已恢复，好友在线状态已刷新"));
+            if (v38PresenceRefreshCoroutine != null)
+            {
+                StopCoroutine(v38PresenceRefreshCoroutine);
+            }
+
+            v38PresenceRefreshCoroutine = StartCoroutine(
+                RefreshV38FriendPresenceAfterRealtimeReconnect(panel.PanelRoot));
         }
+    }
+
+    private IEnumerator RefreshV38FriendPresenceAfterRealtimeReconnect(Transform root)
+    {
+        while ((v37Loading || v37MutationRunning) && realtimeConnected && HasAuthSession())
+        {
+            yield return null;
+        }
+
+        if (realtimeConnected && HasAuthSession())
+        {
+            yield return RefreshServerFriendRequestState(
+                root,
+                true,
+                "实时连接已恢复，好友在线状态已刷新");
+        }
+
+        v38PresenceRefreshCoroutine = null;
     }
 
     private static void CopyV38Presence(ServerFriendResponse source, ServerFriendResponse target)

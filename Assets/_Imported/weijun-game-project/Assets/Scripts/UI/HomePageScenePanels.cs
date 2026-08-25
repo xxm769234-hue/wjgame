@@ -50,6 +50,34 @@ public sealed class HomePageScenePanels : MonoBehaviour
         schemaVersion = version;
     }
 
+    public void EditorAppendPanel(HomePageScenePanel panel, int version)
+    {
+        if (panel == null)
+        {
+            return;
+        }
+
+        HomePageScenePanel[] existing = panels ?? Array.Empty<HomePageScenePanel>();
+        for (int i = 0; i < existing.Length; i++)
+        {
+            if (existing[i] == panel || (existing[i] != null && existing[i].PanelType == panel.PanelType))
+            {
+                schemaVersion = version;
+                return;
+            }
+        }
+
+        HomePageScenePanel[] updated = new HomePageScenePanel[existing.Length + 1];
+        for (int i = 0; i < existing.Length; i++)
+        {
+            updated[i] = existing[i];
+        }
+
+        updated[existing.Length] = panel;
+        panels = updated;
+        schemaVersion = version;
+    }
+
     public void EditorSetSchemaVersion(int version)
     {
         schemaVersion = version;

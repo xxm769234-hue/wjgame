@@ -52,6 +52,13 @@ public partial class GameBoot : MonoBehaviour
     {
         defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         BuildLoginUI();
+        string complianceBlockedMessage = PlayerPrefs.GetString("ComplianceBlockedMessage", string.Empty);
+        if (!string.IsNullOrEmpty(complianceBlockedMessage))
+        {
+            PlayerPrefs.DeleteKey("ComplianceBlockedMessage");
+            PlayerPrefs.Save();
+            ShowError(complianceBlockedMessage);
+        }
         StartCoroutine(LoadClientRuntimePolicy());
     }
 
@@ -437,7 +444,7 @@ public partial class GameBoot : MonoBehaviour
     private void TryLogin()
     {
         lastLoginWasWeChat = false;
-        if (runtimePolicyBlocked || requestRunning || !ValidateAccountAndPassword())
+        if (runtimePolicyBlocked || requestRunning || !ValidatePrivacyConsentForAuthentication() || !ValidateAccountAndPassword())
         {
             return;
         }
@@ -454,7 +461,7 @@ public partial class GameBoot : MonoBehaviour
     private void TryRegister()
     {
         lastLoginWasWeChat = false;
-        if (runtimePolicyBlocked || requestRunning || !ValidateAccountAndPassword())
+        if (runtimePolicyBlocked || requestRunning || !ValidatePrivacyConsentForAuthentication() || !ValidateAccountAndPassword())
         {
             return;
         }
@@ -479,35 +486,25 @@ public partial class GameBoot : MonoBehaviour
 
     private void TryWeChatLogin()
     {
-        if (runtimePolicyBlocked || requestRunning)
+        if (runtimePolicyBlocked || requestRunning || !ValidatePrivacyConsentForAuthentication())
         {
             return;
         }
 
         lastLoginWasWeChat = true;
-        if (privacyConsentToggle != null && privacyConsentToggle.isOn)
+        if (string.IsNullOrEmpty(privacyConsentRequestId))
         {
             privacyConsentRequestId = NewRequestId();
-            waitingForManagementConsent = false;
-            SetBusyState(true, "正在调用微信隐私授权...");
-            if (WeChatPlatformBridge.IsAvailable)
-            {
-                WeChatPlatformBridge.RequestPrivacyAuthorization(this);
-            }
-            else
-            {
-                BeginWeChatLogin();
-            }
-            return;
         }
 
-        privacyConsentRequestId = string.Empty;
-        if (runtimePolicyBlocked || requestRunning)
+        waitingForManagementConsent = false;
+        SetBusyState(true, "正在调用微信隐私授权...");
+        if (WeChatPlatformBridge.IsAvailable)
         {
+            WeChatPlatformBridge.RequestPrivacyAuthorization(this);
             return;
         }
 
-        SetBusyState(true, "正在调用微信登录...");
         BeginWeChatLogin();
     }
 
@@ -547,13 +544,9 @@ public partial class GameBoot : MonoBehaviour
         {
             code = code,
             nickname = nicknameInput.text.Trim(),
-            privacyAuthorized = privacyConsentToggle != null && privacyConsentToggle.isOn,
-            privacyPolicyVersion = privacyConsentToggle != null && privacyConsentToggle.isOn
-                ? currentPolicyVersion
-                : null,
-            privacyConsentRequestId = privacyConsentToggle != null && privacyConsentToggle.isOn
-                ? privacyConsentRequestId
-                : null,
+            privacyAuthorized = true,
+            privacyPolicyVersion = currentPolicyVersion,
+            privacyConsentRequestId = privacyConsentRequestId,
             clientVersion = Application.version,
             recoverCancellation = pendingCancellationRecovery,
             cancellationRecoveryRequestId = pendingCancellationRecovery
@@ -585,6 +578,24 @@ public partial class GameBoot : MonoBehaviour
         {
             ShowError("请输入密码");
             passwordInput.Select();
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool ValidatePrivacyConsentForAuthentication()
+    {
+        if (!privacyPolicyLoaded || string.IsNullOrEmpty(currentPolicyVersion))
+        {
+            ShowError("隐私政策尚未加载完成，请稍后重试。");
+            return false;
+        }
+
+        if (privacyConsentToggle == null || !privacyConsentToggle.isOn)
+        {
+            ShowError("请阅读并勾选同意当前隐私政策后再登录。");
+            ShowPrivacyPolicyOverlay();
             return false;
         }
 
@@ -733,6 +744,7 @@ public partial class GameBoot : MonoBehaviour
             }
 
             SaveLoginState(response.data);
+            PlayerComplianceGuard.StartSession();
             SceneManager.LoadScene(HomeSceneName);
         }
     }
@@ -902,6 +914,10 @@ public partial class GameBoot : MonoBehaviour
         PlayerPrefs.SetString("PlayerAvatarSource", user.avatarSource ?? "DEFAULT");
         PlayerPrefs.SetString("PlayerAvatarVersion", Math.Max(0L, user.avatarVersion).ToString(CultureInfo.InvariantCulture));
         PlayerPrefs.SetString("PlayerAvatarUpdatedTime", user.avatarUpdatedTime ?? string.Empty);
+        PlayerPrefs.SetString("PlayerNicknameVersion", Math.Max(0L, user.nicknameVersion).ToString(CultureInfo.InvariantCulture));
+        PlayerPrefs.SetString("PlayerNicknameUpdatedTime", user.nicknameUpdatedTime ?? string.Empty);
+        PlayerPrefs.SetInt("PlayerNicknameChangeCount", Math.Max(0, user.nicknameChangeCount));
+        PlayerPrefs.SetInt("PlayerNicknameChangeRequired", user.nicknameChangeRequired ? 1 : 0);
         PlayerPrefs.Save();
     }
 
@@ -1171,6 +1187,10 @@ public partial class GameBoot : MonoBehaviour
         public int id;
         public string username;
         public string nickname;
+        public long nicknameVersion;
+        public string nicknameUpdatedTime;
+        public int nicknameChangeCount;
+        public bool nicknameChangeRequired;
         public int level;
         public long totalExperience;
         public int levelCurveRevision;
