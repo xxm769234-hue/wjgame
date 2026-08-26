@@ -139,6 +139,7 @@ public partial class HomePageUI : MonoBehaviour
         if (HasAuthSession())
         {
             StartCoroutine(RefreshAccountSnapshot(string.Empty));
+            LoadServerOnboarding();
         }
         BeginRealtimeConnection();
     }
@@ -259,14 +260,14 @@ public partial class HomePageUI : MonoBehaviour
         return PlayerPrefs.GetInt("PurificationAgent", 0);
     }
 
-    private static int GetHomeStamina()
+    private int GetHomeStamina()
     {
-        if (PlayerPrefs.HasKey("PlayerStamina"))
+        if (serverStaminaLoaded)
         {
-            return PlayerPrefs.GetInt("PlayerStamina", 0);
+            return GetAuthoritativeHomeStamina();
         }
 
-        return PlayerPrefs.GetInt("PlayerEnergy", 100);
+        return 0;
     }
 
     private void EnsureBookAvatarSummaryControls()
@@ -1767,7 +1768,7 @@ public partial class HomePageUI : MonoBehaviour
         Image reward = CreateImage("TaskReward", row.transform, new Color(0.99f, 0.79f, 0.37f, 0.88f));
         SetRect(reward.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(704f, -18f), new Vector2(188f, 82f));
         AddTaskRewardIcon(reward.transform, task.rewardKey, new Vector2(12f, -20f), new Vector2(40f, 40f));
-        Text rewardText = CreateMailText("TaskRewardText", reward.transform, $"{task.rewardName}\nx{task.rewardAmount}", 16, FontStyle.Bold, new Color(0.38f, 0.17f, 0.06f, 1f), TextAnchor.MiddleLeft);
+        Text rewardText = CreateMailText("TaskRewardText", reward.transform, string.IsNullOrEmpty(task.rewardSummary) ? $"{task.rewardName}\nx{task.rewardAmount}" : task.rewardSummary, 16, FontStyle.Bold, new Color(0.38f, 0.17f, 0.06f, 1f), TextAnchor.MiddleLeft);
         SetRect(rewardText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(62f, -10f), new Vector2(116f, 62f));
 
         string buttonLabel = claimed ? "已领取" : task.IsComplete ? "领取" : task.goAction != null ? "前往" : "进行中";
@@ -5684,6 +5685,7 @@ public partial class HomePageUI : MonoBehaviour
         public readonly bool serverBacked;
         public readonly long serverTaskId;
         public readonly string serverStatus;
+        public readonly string rewardSummary;
 
         public bool IsComplete => serverBacked
             ? string.Equals(serverStatus, "COMPLETED", StringComparison.OrdinalIgnoreCase)
@@ -5704,7 +5706,8 @@ public partial class HomePageUI : MonoBehaviour
             Action goAction,
             bool serverBacked = false,
             long serverTaskId = 0,
-            string serverStatus = null)
+            string serverStatus = null,
+            string rewardSummary = null)
         {
             this.id = id;
             this.title = title;
@@ -5719,6 +5722,7 @@ public partial class HomePageUI : MonoBehaviour
             this.serverBacked = serverBacked;
             this.serverTaskId = serverTaskId;
             this.serverStatus = serverStatus;
+            this.rewardSummary = rewardSummary;
         }
     }
 

@@ -1,9 +1,11 @@
 # Weijun Game Project 后端接口文档
 
-重新生成时间：2026-08-20
-更新日期：2026-08-20
-同步说明：已按当前玩家端、公共端和 `/api/ops/**` 管理端路由复核并同步至 Flyway V93。V85-V91 的一键升级、资源收获任务、场景宝箱和永久累计成就能力保持不变；V92 以不可变首发 CRC32 `1615105684` 新增空配置起步的服务端驱动 NPC 获取渠道、独立发布版本、图鉴聚合接口、短效获取指令及奖励到账实时刷新事件；V93 不改写 V92，以 CRC32 `-2034435388` 前向加固渠道数据库契约，并在列变窄期间临时强制 `STRICT_ALL_TABLES` 防止脏数据被静默截断，成功后恢复原会话模式。V1-V93 执行成功后均禁止修改，后续数据库变化从 V94 开始。
-Unity 本次需要修改：新增 `GET /api/npc/catalog` 和 `GET /api/npc/{npcId}/acquisition-guide` 接入，支持六种获取状态、两种动作、五个路由白名单、60 秒内短效指令和 `PLAYER_NPC_ACQUISITION_RESOLVED` 去重刷新；HTTP 图鉴是权威状态，Unity 不得根据跳转指令本地发放 NPC。旧 `/api/npc/config/list` 与 `/api/npc/list/{playerId}` 继续兼容，既有任务、一键升级、登录、抽奖和 Token 用法不变。
+重新生成时间：2026-08-26
+更新日期：2026-08-26
+同步说明：已按当前玩家端、微信公共回调和 `/api/ops/**` 管理端路由复核并同步至 Flyway V96。V94 将公告、系统邮件和系统奖励的展示业务编号与创建幂等键分离；V95 新增微信小游戏官方客服联系人、工单、消息和可靠发送 Outbox，并接入管理端客服工作台、统一异常中心、指标和审计；V96 以前向迁移放宽临时会话工单时间列并加固 Outbox 节点租约大小写语义。本次新增单 JAR 的 `all/api/worker` 运行角色、调度职责隔离、Worker HTTP 防护、优雅停机、角色健康检查及双进程部署模板，并补充挂机冒险编队运营查询、本人实时刷新、局部保存原子合并和既有安全边界；没有新增或修改 Flyway SQL。V1-V96 执行成功后均禁止修改，后续数据库变化从 V97 开始。
+Unity 本次需要修改：保留既有 NPC 获取渠道改造，并新增 `GET /api/customer-service/entry` 预取；玩家点击客服按钮的 touch/click 回调中调用微信官方 `wx.openCustomerServiceConversation`，支持 `sessionFrom` 过期重拉、最低基础库 `2.0.3`、关闭状态和 SDK 失败提示。管理端工单、微信回调和 Outbox 不需要 Unity 实现。
+本次运行角色部署改造的客户端影响：Unity 与管理端接口路径、请求参数、响应 JSON、鉴权方式和错误码全部保持不变，不需要为了 API/Worker 分进程修改客户端代码。
+本次挂机冒险编队改造的客户端影响：既有 HTTP 路径和请求结构不变；Unity 可新增监听 `IDLE_ADVENTURE_FORMATION_CHANGED`，但必须把消息作为刷新提示并重新查询服务端编队，不能直接用可能乱序的事件快照覆盖本地状态。本次关卡敌人预览只新增响应字段，旧 Unity 忽略未知字段即可继续运行；若要显示等级、图标、模型或槽位布局，需要同步扩展 Unity DTO/UI。
 客户端：Unity / 微信小游戏前端
 后端基础地址：`http://localhost:8080/api`
 统一 Content-Type：`application/json; charset=UTF-8`
@@ -9496,7 +9498,7 @@ GROUP BY LOWER(TRIM(nickname))
 HAVING COUNT(*) > 1;
 ```
 
-结果必须为空。生产发布时停止旧版本写流量、备份数据库、启动一个当前版本节点并由 Flyway 迁移至 V93，验证注册、微信登录、policy、改名和玩家任务接口后再恢复全部节点。V1-V80 以及 V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 禁止修改，下一次数据库变化使用 V94。
+结果必须为空。生产发布时停止旧版本写流量、备份数据库、启动一个当前版本节点并由 Flyway 迁移至仓库当前最高版本 V96，验证注册、微信登录、policy、改名和玩家任务接口后再恢复全部节点。V1-V96 已发布迁移禁止修改，下一次数据库变化使用 V97。
 
 验证记录：真实 MySQL 8 已从 V1 完整迁移到 V61；后端全量测试、昵称定向测试、管理端 TypeScript 检查和生产构建均通过。
 
@@ -10806,6 +10808,10 @@ Content-Type: application/json
 
 入口为“配置中心 -> 挂机冒险”，模块和配置键均为 `IDLE_ADVENTURE`。仍按“编辑 -> 校验 -> 保存草稿 -> 发布”执行，草稿不影响线上版本。
 
+管理端基础规则页会明确区分两个可变开关和一个只读状态：`staminaEnabled`（闯关体力扣除）控制开始、继续和失败重试是否扣体力；`afkAccelerationEnabled`（挂机加速按钮）控制是否允许消耗体力领取完整挂机上限奖励，普通挂机自然产出不受影响；`enabled/status/active_marker`（玩法版本状态）由服务端要求正式版本必须启用，页面显示“必须启用”，不能用它停运玩法。启用挂机加速前必须先启用体力规则，关闭开关前页面会二次确认。
+
+误操作恢复顺序：未保存时点击“撤销页面修改”；已保存但未发布时点击“丢弃”并确认；已发布时从“版本历史”选择目标版本执行“回滚”，系统先生成回滚草稿，核对发布预览后再发布。`CLIENT_RUNTIME` 是全局客户端登录/维护策略，不是挂机冒险专用停运开关，不能用来替代本玩法停运。
+
 | 字段 | 规则 |
 | --- | --- |
 | `afkAccelerationEnabled` | 是否开放加速，默认关闭 |
@@ -11578,7 +11584,7 @@ Authorization: Bearer <operator-token>
 - `anti_addiction_provider_outbox`
 - `anti_addiction_audit_log`
 
-V72 还为 `auth_token` 增加 `access_scope`，并为 `operator_account.role` 增加 `COMPLIANCE_ADMIN`。V73 为 `anti_addiction_game_session` 增加 `session_generation`，并增加日历发布事务锁；当前 V1 至 V80 已冻结，V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 同样冻结。已有数据库启动当前应用时由 Flyway迁移至 V93，下一次数据库变化从 V94 新建迁移；禁止用 `repair` 掩盖已执行脚本漂移。
+V72 还为 `auth_token` 增加 `access_scope`，并为 `operator_account.role` 增加 `COMPLIANCE_ADMIN`。V73 为 `anti_addiction_game_session` 增加 `session_generation`，并增加日历发布事务锁；当前 V1 至 V96 已发布迁移全部冻结。已有数据库启动当前应用时由 Flyway 迁移至仓库当前最高版本 V96，下一次数据库变化从 V97 新建迁移；禁止用 `repair` 掩盖已执行脚本漂移。
 
 ## 十、生产配置与启用顺序
 
@@ -11868,7 +11874,7 @@ OPERATOR_MFA_ENCRYPTION_KEY_BASE64=32字节随机密钥的Base64文本
 OPERATOR_MFA_ALLOWED_CLOCK_SKEW_WINDOWS=1
 ```
 
-V77-V78 是该工作台首次交付时的历史迁移边界。当前上线应先备份数据库，只启动一个当前版本实例并由 Flyway 迁移至 V93，再启动其余实例；后续数据库变化从 V94 开始。Redis 用于实时在线人数和 DAU；生产必须正确配置 `OPERATOR_TRUSTED_PROXY_ADDRESSES`。MFA 加密密钥上线后不得随意更换。
+V77-V78 是该工作台首次交付时的历史迁移边界。当前上线应先备份数据库，只启动一个当前版本实例并由 Flyway 迁移至仓库当前最高版本 V96，再启动其余实例；后续数据库变化从 V97 开始。Redis 用于实时在线人数和 DAU；生产必须正确配置 `OPERATOR_TRUSTED_PROXY_ADDRESSES`。MFA 加密密钥上线后不得随意更换。
 
 本节全部是 `/api/ops/**`、后台指标任务和 `admin-web` 管理端能力。Unity 使用的玩家接口路径、请求体和成功响应没有变化，Unity 不需要修改。
 
@@ -11981,7 +11987,7 @@ REDIS_HEALTH_ENABLED=true
 
 V79 文件为 `V79__add_unique_special_buildings_and_purification_agent.sql`，固定 CRC32 为 `1556615827`。迁移增加单例组配置与建造快照、`(player_id, singleton_group_snapshot)` 唯一索引、净化策略与历史消耗快照、`purification_agent` 物品、两座建筑及默认配方、地块准入和钻石产出审计表。
 
-以下是 V79 首次交付时的历史验收边界：确认 `version=79`、`success=1`、`checksum=1556615827`，并核对两座建筑、净化剂、唯一索引、净化策略字段和审计表。当前上线应先备份数据库，只启动一个当前版本节点由 Flyway 迁移至 V93，再启动其余节点；V1-V93 已发布迁移禁止修改，下一次数据库变化从 V94 开始。
+以下是 V79 首次交付时的历史验收边界：确认 `version=79`、`success=1`、`checksum=1556615827`，并核对两座建筑、净化剂、唯一索引、净化策略字段和审计表。当前上线应先备份数据库，只启动一个当前版本节点由 Flyway 迁移至仓库当前最高版本 V96，再启动其余节点；V1-V96 已发布迁移禁止修改，下一次数据库变化从 V97 开始。
 
 ### 54.5 验证结果
 
@@ -12876,6 +12882,372 @@ FLYWAY_ENABLED=true
 FLYWAY_BASELINE_ON_MIGRATE=false
 ```
 
-已有 `flyway_schema_history` 的数据库直接启动当前版本，由 Flyway 先验证历史脚本再按顺序执行到 V93；不要手工执行 V92/V93。迁移完成后确认版本 `92` 的 `success=1`、脚本名为 `V92__add_npc_acquisition_channels.sql`、校验和为 `1615105684`，并确认版本 `93` 的 `success=1`、脚本名为 `V93__harden_npc_acquisition_channel_contract.sql`、校验和为 `-2034435388`。V92 初次迁移后渠道表为空、发布版本为 `0` 属于正常状态，运营发布第一份正式配置后玩家图鉴才会出现静态获取入口。已执行 V92 的旧库无需 `repair`，正常启动会自动执行 V93。
+已有 `flyway_schema_history` 的数据库直接启动当前版本，由 Flyway 先验证历史脚本再按顺序执行到仓库当前最高版本 V96；不要手工执行 V92-V96。迁移完成后确认版本 `92` 的 `success=1`、脚本名为 `V92__add_npc_acquisition_channels.sql`、校验和为 `1615105684`，并确认版本 `93` 的 `success=1`、脚本名为 `V93__harden_npc_acquisition_channel_contract.sql`、校验和为 `-2034435388`。V92 初次迁移后渠道表为空、发布版本为 `0` 属于正常状态，运营发布第一份正式配置后玩家图鉴才会出现静态获取入口。已执行 V92 的旧库无需 `repair`，正常启动会自动继续执行 V93-V96；V94-V96 的具体校验值和客服结构核对见后续微信客服章节。
 
 完整字段与异常边界见仓库 `docs/npc-acquisition-api.md`；数据库核对 SQL 见 `docs/database-script-guide.md`。
+
+## 62. 微信小游戏官方客服
+
+### 62.1 最终效果
+
+该功能打开的是微信小游戏官方客服会话，不是游戏公屏轮播、公告或 Unity 自建聊天窗口。玩家文字、图片和小游戏卡片由微信回调到后端形成工单；运营人员在“玩家运维 -> 客服工单”中认领、分类、流转和回复，回复通过微信官方 `sendcustommessage` 异步发送。
+
+### 62.2 Unity 玩家入口
+
+```http
+GET /api/customer-service/entry?scene=PLAYER_SUPPORT&page=pages/index/index
+Authorization: Bearer <player-token>
+```
+
+响应：
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "enabled": true,
+    "sessionFrom": "v1.eyJ...signature",
+    "sessionFromExpiresAt": "2026-08-24T04:15:00Z",
+    "showMessageCard": true,
+    "sendMessageTitle": "联系客服",
+    "sendMessagePath": "pages/index/index",
+    "sendMessageImg": null,
+    "minimumBaseLibraryVersion": "2.0.3"
+  }
+}
+```
+
+页面加载时预取该接口；距 `sessionFromExpiresAt` 不足 30 秒时重新获取。只允许在玩家实际 touch/click 回调中调用：
+
+```javascript
+wx.openCustomerServiceConversation({
+  sessionFrom: entry.sessionFrom,
+  showMessageCard: entry.showMessageCard,
+  sendMessageTitle: entry.sendMessageTitle,
+  sendMessagePath: entry.sendMessagePath,
+  sendMessageImg: entry.sendMessageImg,
+  success() {},
+  fail(error) {
+    // 显示“客服会话打开失败，请稍后重试”。
+  }
+})
+```
+
+`enabled=false` 时 Unity 隐藏入口或提示暂未开放，不调用微信 API。该接口要求玩家登录，但豁免游戏时长拦截；未绑定微信账号返回 409。旧 Unity 不调用该接口时，其他功能不受影响，但不会显示新客服入口。
+
+### 62.3 微信回调
+
+继续复用：
+
+```http
+GET  /api/wechat/message-push
+POST /api/wechat/message-push
+```
+
+支持 AES 安全模式下的 JSON/XML；生产必须使用安全模式。GET 验证和所有 POST 验签都会严格校验纯数字 `timestamp` 处于服务端时间前后 5 分钟内。POST 明文因官方 signature 不覆盖正文，dev/prod 均默认拒绝；仅本地联调可短时显式设置 `WECHAT_MESSAGE_PUSH_ALLOW_PLAINTEXT=true`。客服类型为 `text`、`image`、`miniprogrampage` 和 `event/user_enter_tempsession`；礼包事件继续走原发货逻辑。入站消息按 `MsgId` 或事件摘要去重，OpenID 不返回管理端、不写日志。
+
+官方限制：玩家发消息后 48 小时最多回复 5 条；仅进入会话时 1 分钟最多回复 2 条；已有有效 48 小时窗口时不叠加进入会话额度。`sessionFrom` 最长 1000 UTF-8 字节，客户端基础库最低 `2.0.3`。
+
+### 62.4 管理端接口
+
+```http
+GET  /api/ops/customer-service/tickets
+GET  /api/ops/customer-service/tickets/{ticketId}
+POST /api/ops/customer-service/tickets/{ticketId}/read
+POST /api/ops/customer-service/tickets/{ticketId}/claim
+PUT  /api/ops/customer-service/tickets/{ticketId}/classification
+PUT  /api/ops/customer-service/tickets/{ticketId}/status
+POST /api/ops/customer-service/tickets/{ticketId}/reply
+Authorization: Bearer <operator-token>
+```
+
+查看沿用玩家读取权限；认领、分类、流转和回复允许 `REFUND_ADMIN / CONFIG_ADMIN / COMPLIANCE_ADMIN`。写操作携带详情中的 `expectedVersion`，409 后刷新详情。分类、流转和回复只允许 `assignedOperatorId` 等于当前操作员；`CONFIG_ADMIN` 也必须先通过认领接口填写原因并显式接管，接管审计成功后才能处置，不能静默覆盖原负责人。
+
+列表和详情共用 `replyAllowed`、`replyUnavailableReason` 契约：未分配负责人返回 `CLAIM_REQUIRED` 并显示“需先认领”；`CONFIG_ADMIN` 查看其他客服负责的工单时返回 `TAKEOVER_REQUIRED` 并显示“需先接管”；普通客服查看他人负责的工单返回 `ASSIGNED_TO_OTHER`。以上状态下 `replyAllowed=false`，未先完成认领或接管时调用分类、流转或回复接口均返回 409。回复原因按权限、全局开关、工单关闭、负责人、官方窗口、剩余额度依次判定，全局关闭时统一返回 `FEATURE_DISABLED`。
+
+状态流转：
+
+```text
+PENDING        -> PROCESSING / RESOLVED / CLOSED
+PROCESSING     -> WAITING_PLAYER / RESOLVED / CLOSED
+WAITING_PLAYER -> PROCESSING / RESOLVED / CLOSED
+RESOLVED       -> PROCESSING / CLOSED
+CLOSED         -> 无
+```
+
+回复请求：
+
+```http
+POST /api/ops/customer-service/tickets/1001/reply
+Idempotency-Key: 95000000-0000-4000-8000-000000000001
+
+{
+  "content": "您好，请提供微信支付订单号，我们会尽快核查。",
+  "expectedVersion": 9
+}
+```
+
+网络结果不明确时必须复用相同 UUID 和正文；后端直接重放第一次结果，不重复扣额度或发送。正文默认最多 1000 个 Unicode 字符并执行本地内容安全检查。
+
+### 62.5 Outbox 与运维
+
+回复事务只预留额度并写 `PENDING` Outbox，微信网络调用在事务外执行。临时失败按 `2/5/15/30/60/120/300` 秒退避；最终状态为 `SENT/FAILED/EXPIRED`。发送完成按消息顺序和工单终态加栅栏，旧任务不会覆盖新玩家消息或已解决/已关闭状态。`FAILED/EXPIRED` 会以“微信客服回复”出现在异常任务中心。
+
+指标：
+
+```text
+game.wechat.customer.service.outbox.events{outcome=sent|retry_scheduled|failed|expired}
+game.wechat.customer.service.outbox.pending
+```
+
+### 62.6 配置与 V95/V96
+
+默认关闭，至少配置：
+
+```text
+WECHAT_MESSAGE_PUSH_ENABLED=true
+WECHAT_MESSAGE_PUSH_TOKEN=<Token>
+WECHAT_MESSAGE_PUSH_ENCODING_AES_KEY=<EncodingAESKey>
+WECHAT_MESSAGE_PUSH_ALLOW_PLAINTEXT=false
+WECHAT_MINI_GAME_APP_ID=<AppID>
+WECHAT_MINI_GAME_APP_SECRET=<AppSecret>
+WECHAT_CUSTOMER_SERVICE_ENABLED=true
+```
+
+V95 新增 `wechat_customer_service_contact`、`wechat_customer_service_ticket`、`wechat_customer_service_message`、`wechat_customer_service_send_outbox`，原始固定 CRC32 为 `-1236124090`。V96 不修改接口契约，只以前向迁移将 `wechat_customer_service_ticket.last_player_message_time` 放宽为可空，并将 `wechat_customer_service_send_outbox.claimed_by` 固定为区分大小写的 `utf8mb4_bin`；V96 固定 CRC32 为 `292469054`。当前最高迁移为 V96，下一次数据库变化必须新增 V97。
+
+保持 `FLYWAY_ENABLED=true`、`FLYWAY_BASELINE_ON_MIGRATE=false`，用户手动启动后由 Flyway 自动升级到 V96；已经执行 V95 的数据库只会继续执行 V96，无需且不得 `flyway repair`。不要手工执行迁移，也不要修改 V95/V96。客服开启且明文关闭时，启动会校验 EncodingAESKey 恰好 43 字符且 Base64 解码为 32 字节。多节点环境先启动一个新节点，确认 V95、V96 均为 `success=1` 且校验和分别为 `-1236124090`、`292469054`，再完成 AES 回调验收；确认服务器 NTP 正常、明文开关为 `false` 后，才滚动启动其他节点。
+
+完整官方约束、字段、错误处理、环境变量和验收清单见仓库 `docs/wechat-customer-service-api.md`。
+
+## 63. 单 JAR API / Worker 运行角色部署
+
+### 63.1 改造后的效果
+
+后端仍然只构建一个 JAR，不拆数据库、不拆仓库，也不增加服务之间的 HTTP 调用。正式环境把同一份、同一 SHA-256 的 JAR 启动为两个 Java 进程：
+
+```text
+Unity / 微信小游戏 / 管理端 / 微信回调
+                    |
+               HTTPS Nginx
+                    |
+             APP_ROLE=api
+      HTTP、支付/微信回调、WebSocket
+                    |
+             MySQL + Redis
+                    |
+           APP_ROLE=worker
+   异步消费、定时扫描、重试、对账和清理
+```
+
+Nginx 只代理 API 业务端口。Worker 的业务端口和 API/Worker 的 Actuator 管理端口只绑定 `127.0.0.1`，不得加入 Nginx 上游或开放到公网。
+
+### 63.2 三种运行角色
+
+| `APP_ROLE` | 使用场景 | 加载职责 |
+| --- | --- | --- |
+| `all` | 本地开发、旧单进程兼容 | 同时加载 API、WebSocket 和全部 Worker 调度器 |
+| `api` | 正式在线进程 | 玩家/管理端 HTTP、支付和微信回调、WebSocket、本机会话续租 |
+| `worker` | 正式后台进程 | 支付发货、客服 Outbox、广播 Outbox、生产结算、系统奖励、对账和清理 |
+
+未配置 `APP_ROLE` 时默认 `all`，原有 IDE 或 `mvn spring-boot:run` 本地启动方式保持兼容。正式环境只运行 `api + worker`，不要再额外启动第三个 `all` 进程。
+
+生产分角色进程有强制启动保护：
+
+1. Worker 的 `FLYWAY_ENABLED` 必须为 `false`；只有指定 API 或独立迁移节点可以执行迁移。
+2. 生产 API 与 Worker 的 `REALTIME_PUSH_MODE` 都必须为 `redis_pubsub`。
+3. 生产 Worker 的 `SERVER_ADDRESS` 和 `MANAGEMENT_SERVER_ADDRESS` 必须明确为回环地址。
+4. 生产 Worker 的 `MANAGEMENT_SERVER_PORT` 必须显式配置为 `1..65535` 的独立端口。
+5. Worker 主端口由最高优先级 Filter 在认证和 CORS 前统一返回 404，WebSocket 和 Redis 实时订阅器只在 API 角色注册。
+6. 上述角色、Flyway、实时模式和 Worker 网络边界会在数据源、迁移和端口初始化前完成校验。
+
+### 63.3 客户端与外部接口兼容
+
+本次改造不改变任何玩家或运营业务接口：
+
+- Unity HTTPS 基础地址仍为 `https://你的域名/api`。
+- Unity WebSocket 地址仍为 `wss://你的域名/api/ws/realtime`。
+- 管理端仍通过原域名访问 `/api/ops/**`。
+- 微信登录、微信支付回调、消息推送和客服回调路径不变。
+- 请求参数、响应字段、业务错误码、Bearer Token 和运营权限均不变。
+
+Unity 和管理端不需要知道请求由哪个 API 进程处理，也不能直接访问 Worker。已有客户端无需因本次部署改造重新发版。
+
+### 63.4 正式端口与关键变量
+
+| 配置 | API | Worker |
+| --- | --- | --- |
+| `APP_ROLE` | `api` | `worker` |
+| `SERVER_ADDRESS` | `127.0.0.1` | `127.0.0.1` |
+| `SERVER_PORT` | `8080` | `18081` |
+| `MANAGEMENT_SERVER_ADDRESS` | `127.0.0.1` | `127.0.0.1` |
+| `MANAGEMENT_SERVER_PORT` | `18080` | `18082` |
+| `FLYWAY_ENABLED` | 首个迁移节点可为 `true` | 固定 `false` |
+| `REALTIME_PUSH_MODE` | `redis_pubsub` | `redis_pubsub` |
+| `DB_POOL_MAX_SIZE` | 模板为 `30` | 模板为 `10` |
+
+`MANAGEMENT_SERVER_ADDRESS=127.0.0.1` 是监听网卡地址，不是 HTTPS 域名，不要改成证书域名。HTTPS 仍只在 Nginx 终止。
+
+每个进程必须使用不同的 `APP_INSTANCE_ID` 和 `LOG_INSTANCE_ID`。API 与 Worker 必须连接同一 MySQL、Redis、对象存储和实时频道，并使用同一版本化 JAR；不能让两个进程长期混跑不同代码版本。
+
+### 63.5 健康检查与优雅停机
+
+生产 readiness 同时检查：
+
+```text
+readinessState + runtimeRole + db + redis
+```
+
+本机检查地址：
+
+```http
+GET http://127.0.0.1:18080/actuator/health/readiness
+GET http://127.0.0.1:18082/actuator/health/readiness
+```
+
+两者都必须返回 HTTP 200 且 `status=UP`。`runtimeRole` 记录角色、实例 ID 和排空状态；应用开始关闭后转为 `OUT_OF_SERVICE`。readiness 不通过 Nginx 对外暴露，也不能替代任务积压、微信平台和支付渠道监控。
+
+应用已启用：
+
+- Web 容器 graceful shutdown；
+- Spring 调度器停止领取新一轮任务并等待当前轮结束；
+- 每个生命周期阶段默认最多等待 60 秒；
+- systemd 使用 `SIGTERM`；API、Worker 和 Windows 停止脚本均预留 180 秒外层排空预算。
+
+正常停止顺序固定为：先 Worker、后 API。正常启动顺序固定为：先 API 完成 Flyway 和 readiness、后 Worker。Windows 脚本通过仅绑定本机的 Actuator shutdown 触发优雅关闭；任务管理器结束进程或 `Stop-Process -Force` 只用于明确接受租约恢复和重试的故障处置。
+
+### 63.6 Flyway 与版本化 JAR
+
+本次运行角色改造没有新增 Flyway 文件，数据库最高版本仍为 V96，V1-V96 的历史 SQL 和校验和均未修改。
+
+正式发布必须：
+
+1. 生成不可覆盖的新 JAR 文件名和 `.sha256` 校验文件。
+2. API 与 Worker 同时指向该同一绝对 JAR 路径和校验文件。
+3. 启动前再次执行 SHA-256 校验，校验失败禁止启动。
+4. Worker 永远保持 `FLYWAY_ENABLED=false`。
+5. 只让一个指定 API 或独立迁移节点执行 Flyway；确认迁移成功和 API readiness 后再启动 Worker。
+6. 禁止覆盖 Windows 正在运行的 JAR，禁止修改已执行迁移或使用 `flyway repair` 掩盖漂移。
+
+标准发布顺序：构建与测试 → 复制版本化 JAR并校验 → 备份数据库 → 停 Worker → API 摘流并停止 → 切换两个角色的 JAR 路径 → 启动唯一 API 迁移节点 → 恢复 Nginx → 启动 Worker → 核对角色、实例 ID、JAR SHA 和任务积压。
+
+### 63.7 异步消息和恢复边界
+
+支付 Redis Stream 新消息携带 `contractVersion=1`，历史未携带版本的消息按 V1 读取。Worker 遇到无法识别的显式版本或事件类型时会记录错误并保留 pending，不会直接 ACK 丢弃；部署支持该契约的新 Worker 后再接管。
+
+数据库状态机、事务、唯一键、幂等键、租约和重试共同降低重复副作用风险，但不能把 MySQL、Redis 和微信外部接口组合成一个跨系统原子事务。Worker 异常退出后，先确认旧进程已结束，再使用与 API 相同 SHA 的 JAR恢复；长时间积压应逐步观察和消化，不要直接放大连接池与批次。
+
+仓库完整部署说明：`docs/runtime-role-deployment.md`。systemd 模板位于 `deploy/systemd`，Windows 启停脚本位于 `deploy/windows`。
+
+## 64. 挂机冒险编队运营查询与实时刷新
+
+### 64.1 管理端查看任意玩家编队
+
+```http
+GET /api/ops/players/{playerId}/idle-adventure/formation
+Authorization: Bearer <operator-token>
+```
+
+该接口供管理端“玩家中心 -> 挂机编队”页签查询指定玩家当前保存的编队，沿用玩家中心只读权限。接口严格只读：运营查看从未进入过挂机冒险的玩家时，不会创建玩家进度、不会初始化编队，也不会自动填充 NPC。
+
+响应固定返回六个槽位，并包含：
+
+- 玩家基础信息和挂机冒险进度；
+- 玩家 NPC 实例 ID、NPC 配置 ID、名称、品质、等级和实例状态；
+- 槽位位置、前后排信息和是否为空；
+- 当前生命、攻击、防御、速度等总属性；
+- `combatProfileAvailable`，用于标识 NPC 或当前等级战斗配置是否完整、启用且可用于战斗。
+
+管理端只提供查询，不提供代替玩家换阵、绕过 NPC 归属校验或修改战斗属性的能力。玩家不存在时返回业务码 `2001`。
+
+### 64.2 玩家编队变化 WebSocket 消息
+
+玩家保存局部或完整编队、自动填充、主动清空、首次默认初始化，以及开战前触发默认初始化成功后，服务端向该玩家本人的全部在线连接发送：
+
+```json
+{
+  "type": "IDLE_ADVENTURE_FORMATION_CHANGED",
+  "requestId": null,
+  "eventId": "33fddf13-598e-4f48-a1d9-0fb4ec011547",
+  "playerId": 7,
+  "data": {
+    "player_id": 7,
+    "deployed_count": 1,
+    "slots": []
+  },
+  "serverTime": "2026-08-26T10:30:00.123456"
+}
+```
+
+`data` 与玩家编队查询接口保持同一结构，实际始终返回完整六槽位。该事件是玩家本人状态变化通知，不是全服广播、公屏轮播或公告，也不会发送给其他玩家。
+
+- 消息只在数据库事务提交成功后发送，事务回滚不发送；
+- 推送失败只记录日志和指标，不回滚已经提交的编队；
+- 多 API 实例正式部署时必须使用 `REALTIME_PUSH_MODE=redis_pubsub` 并保证 Redis 可用；
+- 离线、断线和 WebSocket 丢包不会影响数据库中的权威编队。
+
+### 64.3 Unity 正确处理方式
+
+WebSocket 事件只能作为“需要刷新”的提示。Unity 收到事件、WebSocket 重连、应用回到前台或本地状态不确定时，应重新调用：
+
+```http
+GET /api/idle-adventure/players/{player_id}/formation
+```
+
+当前响应没有 `formationVersion`，因此 Unity 不能直接使用事件中的快照覆盖刚完成的 HTTP 保存结果，否则乱序消息可能让界面回退到旧阵容。建议合并短时间内重复的刷新信号，并以最后一次 HTTP 查询结果覆盖本地状态。
+
+不接入新 WebSocket 事件时，原有 HTTP 编队功能仍可正常使用；接入后可改善同账号多设备和跨页面的刷新及时性。管理端新增的运营查询接口不需要 Unity 调用。
+
+### 64.4 并发保存与失效 NPC 防护
+
+局部编队保存已经调整为在同一玩家锁事务内读取当前六槽位、合并本次局部修改并一次性持久化，避免两个并发请求各自基于旧快照保存后互相覆盖。完整保存、自动填充、清空和开战读取继续复用统一编队校验。
+
+读取编队时会清理已经删除、停用或不再属于玩家的 NPC 实例所形成的“幽灵槽位”。开战前再次进行权威校验；编队为空或没有有效可参战 NPC 时返回业务码 `6502`，不会创建非法战斗会话。
+
+### 64.5 相关接口契约补充
+
+挂机领取接口：
+
+```http
+POST /api/idle-adventure/players/{player_id}/afk-reward/collect
+```
+
+新 Unity 必须优先遍历响应中的 `collected_rewards` 完整奖励列表。旧字段 `collected_reward` 仅作为兼容字段保留，配置版本切换导致一次领取包含两种产物时，只读取旧字段会漏展示第二项奖励。
+
+额外 Buff 接口：
+
+```http
+POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/buffs/apply
+```
+
+在尚未具备服务端授权凭证、消费流水和防重放校验前，该旧路径统一返回 HTTP 403、业务码 `6515`，不会修改战斗会话。客户端幂等键不能替代玩家获得 Buff 的业务资格。
+
+### 64.6 数据库与兼容性
+
+本次没有新增 Flyway 迁移，数据库最高版本仍为 V96，也没有修改任何已执行 SQL 或校验和。既有 Unity 挂机冒险 HTTP 路径、请求字段和主要响应结构保持不变；新增内容仅包括运营只读接口、本人 WebSocket 刷新事件，以及服务端并发与失效数据防护。
+
+完整的 28 条玩家端接口、字段示例、错误码、体力、奖励和战斗规则见仓库 `docs/idle-adventure-api.md`，桌面专项文档 `IdleAdventure模式接口文档.md` 已同步同一版本。
+
+### 64.7 关卡敌人属性与管理端预览
+
+玩家端关卡敌人查询接口保持原路径：
+
+```http
+GET /api/idle-adventure/stages/{stage}/enemies
+Authorization: Bearer <player-token>
+```
+
+响应继续返回固定六个槽位，并新增以下只读字段：
+
+- `stage_name`：当前已发布关卡名称；
+- `column`、`row`、`front_column`：槽位布局信息；
+- `enemy.icon`、`enemy.model_key`：展示资源和模型资源标识；
+- `enemy.level`：该关卡槽位最终生效等级；
+- `enemy.max_health`、`attack`、`defense`、`speed`：该槽位最终生效属性。
+
+空槽位仍返回 `enemy: null`。新增字段不改变 URL、鉴权、请求方式或既有字段，旧 Unity 可兼容；新 Unity 若需要展示这些信息，需在敌人响应模型中增加字段并在 UI 中使用 `stage_name`、等级、属性和资源标识。客户端不得根据等级自行推算属性。
+
+管理端路径为“配置中心 -> 挂机冒险 -> 关卡配置”。展开关卡后，敌方阵容编辑表下方显示“阵容属性预览”，固定展示六槽位、前后排、等级、战斗属性、技能、图标、模型以及生命/攻击/防御合计和速度总和（仅用于配置核对）。该预览只读计算，不写回配置；正式发布仍由后端严格校验。
+
+当前敌人配置没有品质字段，项目也没有统一战斗力公式，因此接口和管理端不返回推测的 `quality` 或 `combat_power`。本次没有新增 Flyway 迁移，也不需要修改数据库结构。

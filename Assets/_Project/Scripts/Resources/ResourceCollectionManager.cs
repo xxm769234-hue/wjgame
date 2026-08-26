@@ -143,6 +143,7 @@ public sealed class ResourceCollectionManager : MonoBehaviour
         textRect.offsetMax = new Vector2(-8f, -4f);
 
         collectAllButtonText = textObject.GetComponent<TMP_Text>();
+        collectAllButtonText.font = RuntimeFontAssetProvider.Resolve();
         collectAllButtonText.fontSize = 24f;
         collectAllButtonText.color = Color.white;
         collectAllButtonText.alignment = TextAlignmentOptions.Center;

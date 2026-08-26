@@ -780,6 +780,10 @@ public partial class HomePageUI
         {
             yield return RefreshCardDrawInventoryState(syncedCategories, failedCategories);
         }
+        else if (string.Equals(result.rewardType, "STAMINA", StringComparison.OrdinalIgnoreCase))
+        {
+            RefreshStaminaAfterShopPurchase();
+        }
 
         if (inventoryPanelObject != null && inventoryPanelObject.activeInHierarchy
             && string.Equals(result.rewardType, "ITEM", StringComparison.OrdinalIgnoreCase))
@@ -926,6 +930,10 @@ public partial class HomePageUI
         {
             return "growth";
         }
+        if (string.Equals(product.rewardType, "STAMINA", StringComparison.OrdinalIgnoreCase))
+        {
+            return "resource";
+        }
         if (string.Equals(product.rewardCategory, "RESOURCE", StringComparison.OrdinalIgnoreCase))
         {
             return "resource";
@@ -969,9 +977,17 @@ public partial class HomePageUI
         {
             return product.rewardName;
         }
+        if (string.Equals(product.rewardType, "STAMINA", StringComparison.OrdinalIgnoreCase))
+        {
+            return "体力";
+        }
         if (!string.IsNullOrEmpty(product.rewardKey))
         {
             return product.rewardKey;
+        }
+        if (string.Equals(product.rewardType, "STAMINA", StringComparison.OrdinalIgnoreCase))
+        {
+            return "体力";
         }
         return string.Equals(product.rewardType, "EQUIPMENT", StringComparison.OrdinalIgnoreCase) ? "装备" : "物品";
     }
@@ -1061,6 +1077,7 @@ public partial class HomePageUI
         string name = !string.IsNullOrEmpty(result.rewardName)
             ? result.rewardName
             : (!string.IsNullOrEmpty(result.rewardKey) ? result.rewardKey : "奖励");
+        if (string.Equals(result.rewardType, "STAMINA", StringComparison.OrdinalIgnoreCase)) name = "体力";
         return name + " x" + result.grantedQuantity;
     }
 

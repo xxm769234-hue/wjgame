@@ -77,6 +77,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private readonly Dictionary<string, int> pendingRunRewards = new Dictionary<string, int>();
     private readonly Dictionary<string, int> grantedRewards = new Dictionary<string, int>();
     private readonly Dictionary<string, string> rewardDisplayNames = new Dictionary<string, string>();
+    private readonly HashSet<string> backendStageClearRequests = new HashSet<string>();
 
     [Header("Persistent Scene References")]
     [SerializeField] private Camera sceneCamera;
@@ -102,7 +103,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private TextMeshProUGUI resultText;
     private Button pauseButton;
     private TextMeshProUGUI pauseButtonText;
+    private TextMeshProUGUI staminaText;
+    private TextMeshProUGUI accelerationText;
+    private Button accelerateButton;
     private bool interfaceBuildInProgress;
+    private bool staminaRequestPending;
 
     private int stage = 1;
     private int round = 1;
@@ -774,9 +779,19 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         TextMeshProUGUI timerText = CreateText("Timer Text", panel, "30s", 16, FontStyles.Bold, TextAlignmentOptions.Center);
         Anchor(timerText.rectTransform, new Vector2(0.58f, 0.18f), new Vector2(1f, 0.50f), new Vector2(0f, 0f), new Vector2(-10f, 0f));
 
+        staminaText = CreateText("Stamina Text", panel, "体力 --", 14, FontStyles.Normal, TextAlignmentOptions.Center);
+        Anchor(staminaText.rectTransform, new Vector2(0.58f, 0.86f), new Vector2(1f, 1f), new Vector2(0f, 0f), new Vector2(-10f, 0f));
+
+        accelerateButton = CreateButton("Accelerate Button", panel, "加速");
+        Anchor(accelerateButton.GetComponent<RectTransform>(), new Vector2(0.58f, 0f), new Vector2(1f, 0.18f), new Vector2(0f, 4f), new Vector2(-10f, -2f));
+        accelerateButton.onClick.AddListener(AccelerateAfkReward);
+        accelerationText = CreateText("Acceleration Text", panel, string.Empty, 11, FontStyles.Normal, TextAlignmentOptions.Center);
+        Anchor(accelerationText.rectTransform, new Vector2(0f, 0f), new Vector2(0.58f, 0.18f), new Vector2(12f, 4f), new Vector2(-8f, -2f));
+
         afkRewardSource = panel.gameObject.AddComponent<IdleAdventureAfkRewardSource>();
         afkRewardSource.Initialize(rewardLedger, collectButton, iconImage, progressFill, iconText, amountText, timerText);
         afkRewardSource.SetHighestClearedStage(HighestClearedStage());
+        RefreshStaminaView();
     }
 
     private void BuildInterface()
@@ -1639,6 +1654,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         backendRequestPending = true;
         if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", "Starting from backend...");
 
+        yield return RefreshBackendStamina(service);
         yield return RefreshBackendHomeBeforeSessionStart(service);
         if (!string.IsNullOrEmpty(backendRunningSessionKey))
         {
@@ -2627,6 +2643,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         backendHomeLoadRoutine = null;
         if (service == null || !service.IsAuthenticated) yield break;
 
+        yield return RefreshBackendStamina(service);
+
         BackendResult<IdleAdventureHomeResponse> result = null;
         yield return service.LoadIdleAdventureHome(value => result = value);
         if (result != null && result.Success && result.Data != null)
@@ -2639,9 +2657,89 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         }
     }
 
+    private IEnumerator RefreshBackendStamina(BackendGameService service)
+    {
+        if (staminaRequestPending || service == null || !service.IsAuthenticated)
+        {
+            RefreshStaminaView();
+            yield break;
+        }
+
+        staminaRequestPending = true;
+        BackendResult<IdleAdventureStaminaResponse> result = null;
+        yield return service.LoadStamina(value => result = value);
+        staminaRequestPending = false;
+        if (result == null || !result.Success || result.Data == null)
+        {
+            AddLog("体力同步失败：" + BackendResultMessage(result));
+        }
+        RefreshStaminaView();
+    }
+
+    private void RefreshStaminaView()
+    {
+        BackendGameService service = BackendGameService.Instance;
+        IdleAdventureStaminaResponse stamina = service == null ? null : service.CurrentStamina;
+        if (staminaText != null)
+        {
+            staminaText.text = stamina == null
+                ? "体力 --"
+                : $"体力 {Mathf.Max(0, ToInt(stamina.CurrentStamina))}/{Mathf.Max(0, ToInt(stamina.MaxStamina))}";
+        }
+
+        if (accelerationText != null)
+        {
+            accelerationText.text = stamina == null
+                ? "等待服务器"
+                : $"下次恢复 {stamina.SecondsToNextRecovery}s";
+        }
+
+        if (accelerateButton != null)
+        {
+            accelerateButton.interactable = !staminaRequestPending
+                && stamina != null
+                && stamina.CurrentStamina > 0L;
+        }
+    }
+
+    private void AccelerateAfkReward()
+    {
+        if (staminaRequestPending) return;
+
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated)
+        {
+            AddLog("请先登录账号后再加速挂机收益。");
+            return;
+        }
+
+        staminaRequestPending = true;
+        RefreshStaminaView();
+        service.AccelerateIdleAdventure(result =>
+        {
+            staminaRequestPending = false;
+            if (result != null && result.Success && result.Data != null)
+            {
+                int cycles = Mathf.Max(0, result.Data.acceleration_cycles);
+                AddLog(cycles > 0 ? $"挂机加速完成，结算 {cycles} 个周期。" : "挂机加速完成。");
+                if (afkRewardSource != null) afkRewardSource.TryLoadServerState();
+            }
+            else
+            {
+                AddLog("挂机加速失败：" + BackendResultMessage(result));
+            }
+            RefreshStaminaView();
+        });
+    }
+
     private void ApplyBackendHome(IdleAdventureHomeResponse home)
     {
         if (home == null) return;
+
+        if (home.stamina != null)
+        {
+            RefreshStaminaView();
+        }
 
         backendHighestStage = Mathf.Max(0, home.highest_stage);
         backendNextStage = Mathf.Max(1, home.next_stage > 0 ? home.next_stage : backendHighestStage + 1);
@@ -3469,6 +3567,15 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     private void OpenBackendStageCompletePanel(IdleAdventureSessionResponse session)
     {
+        if (session != null && !string.IsNullOrEmpty(session.session_key))
+        {
+            string clearKey = session.session_key + ":" + Mathf.Max(1, session.stage);
+            if (backendStageClearRequests.Add(clearKey))
+            {
+                StartCoroutine(ConfirmBackendStageClear(session.session_key, Mathf.Max(1, session.stage)));
+            }
+        }
+
         stageChoicePending = true;
         stageFailedPending = false;
         modePausedByChoice = false;
@@ -3489,6 +3596,32 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         RefreshBattleView();
         HidePausePanel();
         ShowEndPanel();
+    }
+
+    private IEnumerator ConfirmBackendStageClear(string sessionKey, int clearedStage)
+    {
+        BackendGameService service = ResolveBackendService();
+        if (service == null || !service.IsAuthenticated)
+        {
+            yield break;
+        }
+
+        BackendResult<IdleAdventureStageClearResponse> result = null;
+        yield return service.ClearIdleAdventureStage(sessionKey, clearedStage, Guid.NewGuid().ToString("D"), value => result = value);
+        if (result == null || !result.Success)
+        {
+            AddLog("关卡结算同步失败：" + BackendResultMessage(result));
+            yield break;
+        }
+
+        if (result.Data != null && result.Data.progress != null)
+        {
+            backendHighestStage = Mathf.Max(backendHighestStage, result.Data.progress.highest_stage);
+            backendNextStage = Mathf.Max(1, result.Data.progress.highest_stage + 1);
+            if (stageProgress != null) stageProgress.SetProgressFromServer(result.Data.progress.highest_stage);
+            if (afkRewardSource != null) afkRewardSource.SetHighestClearedStageFromProgress(result.Data.progress.highest_stage);
+        }
+        RefreshStaminaView();
     }
 
     private void OpenBackendStageFailedPanel(IdleAdventureSessionResponse session)
@@ -4183,6 +4316,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         textObject.transform.SetParent(parent, false);
         TextMeshProUGUI label = textObject.GetComponent<TextMeshProUGUI>();
         label.text = text;
+        label.font = RuntimeFontAssetProvider.Resolve();
         label.fontSize = fontSize;
         label.fontStyle = style;
         label.alignment = alignment;

@@ -13,13 +13,20 @@ public sealed class BackendResult<T>
 {
     public readonly bool Success;
     public readonly int HttpStatus;
+    public readonly int Code;
     public readonly string Message;
     public readonly T Data;
 
     public BackendResult(bool success, int httpStatus, string message, T data)
+        : this(success, httpStatus, 0, message, data)
+    {
+    }
+
+    public BackendResult(bool success, int httpStatus, int code, string message, T data)
     {
         Success = success;
         HttpStatus = httpStatus;
+        Code = code;
         Message = message;
         Data = data;
     }
@@ -47,12 +54,14 @@ public sealed class RegisterRequest
 public sealed class PlayerIdRequest
 {
     public int playerId;
+    public int sceneId;
 }
 
 [Serializable]
 public sealed class PlaceLandRequest
 {
     public int playerId;
+    public int sceneId;
     public int landId;
     public int positionX;
     public int positionY;
@@ -62,14 +71,21 @@ public sealed class PlaceLandRequest
 public sealed class PurchaseLandSlotRequest
 {
     public int playerId;
+    public int sceneId;
     public int positionX;
     public int positionY;
+    public long expectedSceneVersion;
+    public long expectedPolicyRevision;
+    public int purificationItemId;
+    public string purificationItemKey;
+    public int purificationItemAmount;
 }
 
 [Serializable]
 public sealed class BuildBuildingRequest
 {
     public int playerId;
+    public int sceneId;
     public int buildingId;
     public int landId;
 }
@@ -78,6 +94,7 @@ public sealed class BuildBuildingRequest
 public sealed class PlayerBuildingRequest
 {
     public int playerId;
+    public int sceneId;
     public int playerBuildingId;
 }
 
@@ -85,6 +102,7 @@ public sealed class PlayerBuildingRequest
 public sealed class NpcSettleRequest
 {
     public int playerId;
+    public int sceneId;
     public int playerBuildingId;
     public int playerNpcId;
 }
@@ -93,6 +111,7 @@ public sealed class NpcSettleRequest
 public sealed class MoveBuildingRequest
 {
     public int playerId;
+    public int sceneId;
     public int playerBuildingId;
     public int targetLandId;
 }
@@ -143,6 +162,17 @@ public sealed class InventoryItemResponse
 public sealed class MapDataResponse
 {
     public int playerId;
+    public int sceneId;
+    public string sceneKey;
+    public string sceneName;
+    public string backgroundKey;
+    public string terrainKey;
+    public string bgmKey;
+    public long sceneConfigVersion;
+    public long landPolicyRevision;
+    public int landGridWidth;
+    public int landGridHeight;
+    public int landSlotCount;
     public int width;
     public int height;
     public LandSlotStateResponse[] landSlots;
@@ -153,6 +183,7 @@ public sealed class MapDataResponse
 [Serializable]
 public sealed class LandSlotStateResponse
 {
+    public int sceneId;
     public int positionX;
     public int positionY;
     public int unitIndex;
@@ -161,6 +192,9 @@ public sealed class LandSlotStateResponse
     public bool requiresPurification;
     public bool purified;
     public bool purificationAvailable;
+    public int purificationItemId;
+    public string purificationItemKey;
+    public int purificationItemAmount;
     public bool requiresPurchase;
     public bool purchased;
     public bool purchaseAvailable;
@@ -171,6 +205,7 @@ public sealed class LandSlotStateResponse
 [Serializable]
 public sealed class LandTileResponse
 {
+    public int sceneId;
     public int playerLandId;
     public int landId;
     public string landType;
@@ -246,6 +281,7 @@ public sealed class BuildingConditionResponse
 [Serializable]
 public sealed class BuildingResponse
 {
+    public int sceneId;
     public int playerBuildingId;
     public int buildingId;
     public int landId;
@@ -289,6 +325,8 @@ public sealed class ExperienceGrantResponse
 [Serializable]
 public sealed class ProductionResponse
 {
+    public int sceneId;
+    public int playerLandId;
     public int playerBuildingId;
     public int landId;
     public int buildingId;
@@ -511,6 +549,7 @@ public sealed class IdleAdventureHomeResponse
     public IdleAdventureModeConfigResponse mode_config;
     public IdleAdventureFormationDataResponse formation;
     public IdleAdventurePlayerNpcResponse[] available_npc_list;
+    public IdleAdventureStaminaResponse stamina;
 }
 
 [Serializable]
@@ -625,6 +664,7 @@ public sealed class IdleAdventureSessionResponse
     public IdleAdventureCombatantStateResponse[] enemies;
     public string[] logs;
     public IdleAdventureRewardItemResponse[] pending_rewards;
+    public IdleAdventureRewardItemResponse[] random_drops;
     public int[] settled_stages;
     public IdleAdventureRewardItemResponse[] granted_rewards;
     public IdleAdventureInventoryItemResponse[] items;
@@ -784,4 +824,389 @@ public sealed class IdleAdventureBuffAppliedResponse
 {
     public IdleAdventureCombatantStateResponse target;
     public string log;
+}
+
+[Serializable]
+public sealed class LandSceneResponse
+{
+    public int sceneId;
+    public int scene_id;
+    public string sceneKey;
+    public string scene_key;
+    public string sceneName;
+    public string scene_name;
+    public int sortOrder;
+    public int sort_order;
+    public int[] requiredLevels;
+    public int[] required_levels;
+    public int paidSlotGoldCost;
+    public int paid_slot_gold_cost;
+    public string backgroundKey;
+    public string background_key;
+    public string terrainKey;
+    public string terrain_key;
+    public string bgmKey;
+    public string bgm_key;
+    public string icon;
+    public string status;
+    public bool current;
+    public bool canEnter;
+    public bool can_enter;
+    public int unlockedSlotCount;
+    public int unlocked_slot_count;
+    public int totalSlotCount;
+    public int total_slot_count;
+    public bool completed;
+    public int nextSceneId;
+    public int next_scene_id;
+    public string unlockedTime;
+    public string unlocked_time;
+    public string completedTime;
+    public string completed_time;
+    public string lastEnteredTime;
+    public string last_entered_time;
+    public long configVersion;
+    public long config_version;
+    public long landPolicyRevision;
+    public long land_policy_revision;
+
+    public int ResolvedSceneId => sceneId > 0 ? sceneId : scene_id;
+    public string ResolvedSceneKey => string.IsNullOrEmpty(sceneKey) ? scene_key : sceneKey;
+    public string ResolvedSceneName => string.IsNullOrEmpty(sceneName) ? scene_name : sceneName;
+    public bool IsEnterable => canEnter || can_enter;
+    public long ResolvedConfigVersion => configVersion > 0L ? configVersion : config_version;
+    public long ResolvedPolicyRevision => landPolicyRevision > 0L ? landPolicyRevision : land_policy_revision;
+}
+
+[Serializable]
+public sealed class SceneSwitchRequest
+{
+    public int playerId;
+    public int sceneId;
+}
+
+[Serializable]
+public sealed class SceneSwitchResponse
+{
+    public int sceneId;
+    public string sceneKey;
+    public string sceneName;
+    public string status;
+    public long configVersion;
+    public long landPolicyRevision;
+    public long land_policy_revision;
+
+    public long ResolvedPolicyRevision => landPolicyRevision > 0L ? landPolicyRevision : land_policy_revision;
+}
+
+[Serializable]
+public sealed class IdleAdventureStaminaResponse
+{
+    public bool enabled;
+    public long current_stamina;
+    public long max_stamina;
+    public bool over_cap;
+    public long overflow_amount;
+    public int recovery_interval_seconds;
+    public string next_recovery_at;
+    public int seconds_to_next_recovery;
+    public int seconds_to_full;
+    public string server_time;
+    public long config_version;
+
+    public long CurrentStamina => Math.Max(0L, current_stamina);
+    public long MaxStamina => Math.Max(0L, max_stamina);
+    public int SecondsToNextRecovery => Math.Max(0, seconds_to_next_recovery);
+}
+
+[Serializable]
+public sealed class IdleAdventureAccelerateResponse
+{
+    public long player_id;
+    public int mode_config_id;
+    public int mode_config_version;
+    public int highest_stage;
+    public long stamina_before;
+    public long stamina_cost;
+    public long stamina_after;
+    public int acceleration_cycles;
+    public IdleAdventureRewardItemResponse[] natural_rewards;
+    public IdleAdventureRewardItemResponse[] acceleration_rewards;
+    public IdleAdventureRewardItemResponse[] total_rewards;
+    public IdleAdventureStaminaResponse stamina;
+    public IdleAdventureProgressResponse progress;
+    public IdleAdventureAfkRewardStateResponse state;
+    public IdleAdventureInventoryItemResponse[] items;
+    public bool idempotent_replay;
+}
+
+[Serializable]
+public sealed class IdleAdventureStageClearResponse
+{
+    public IdleAdventureProgressResponse progress;
+    public IdleAdventureRewardItemResponse[] random_drops;
+    public IdleAdventureRewardItemResponse[] granted_rewards;
+    public IdleAdventureInventoryItemResponse[] items;
+    public IdleAdventureStaminaResponse stamina;
+    public bool idempotent_replay;
+}
+
+[Serializable]
+public sealed class ProductionFuelResponse
+{
+    public int itemId;
+    public string itemKey;
+    public string itemName;
+    public string itemType;
+    public string icon;
+    public int workSecondsPerItem;
+    public int ownedQuantity;
+    public int maxConsumableQuantity;
+    public long configVersion;
+}
+
+[Serializable]
+public sealed class ProductionWorkStateResponse
+{
+    public long currentWorkClockSeconds;
+    public long remainingWorkSeconds;
+    public long maxWorkSeconds;
+    public string workUntil;
+    public string anchorTime;
+    public string serverTime;
+    public string usageDate;
+    public long dailyGainedWorkSeconds;
+    public long dailyRemainingGainSeconds;
+    public int activeBuildingCount;
+    public bool productionRunning;
+    public long configVersion;
+    public ProductionFuelResponse[] fuels;
+}
+
+[Serializable]
+public sealed class ProductionWorkTimeRequest
+{
+    public int sceneId;
+    public int itemId;
+    public int quantity;
+    public long expectedConfigVersion;
+}
+
+[Serializable]
+public sealed class ProductionWorkTimePreviewResponse
+{
+    public int itemId;
+    public int quantity;
+    public long requestedWorkSeconds;
+    public long currentRemainingWorkSeconds;
+    public long afterRemainingWorkSeconds;
+    public long dailyRemainingGainSeconds;
+    public int maxConsumableQuantity;
+    public bool canConsume;
+    public string unavailableReason;
+    public long configVersion;
+}
+
+[Serializable]
+public sealed class ProductionWorkTimeConsumeResponse
+{
+    public string idempotencyKey;
+    public int itemId;
+    public string itemKey;
+    public string itemName;
+    public int consumedQuantity;
+    public long grantedWorkSeconds;
+    public int itemRemainingQuantity;
+    public ProductionWorkStateResponse workState;
+}
+
+[Serializable]
+public sealed class ProductionRecipeResponse
+{
+    public long recipeId;
+    public string recipeCode;
+    public string displayName;
+    public int cycleSeconds;
+    public int storageCapacity;
+    public bool defaultRecipe;
+    public bool active;
+    public long configVersion;
+    public ProductionRecipeLineResponse[] inputs;
+    public ProductionRecipeLineResponse[] outputs;
+}
+
+[Serializable]
+public sealed class ProductionRecipeLineResponse
+{
+    public int itemId;
+    public string itemKey;
+    public string itemName;
+    public string icon;
+    public int amount;
+    public int probabilityUnits;
+}
+
+[Serializable]
+public sealed class ProductionRecipesResponse
+{
+    public int playerBuildingId;
+    public long activeRecipeId;
+    public long activeRecipeVersion;
+    public ProductionRecipeResponse[] recipes;
+}
+
+[Serializable]
+public sealed class ProductionRecipeSwitchRequest
+{
+    public int sceneId;
+    public int playerBuildingId;
+    public long recipeId;
+    public long expectedRecipeVersion;
+}
+
+[Serializable]
+public sealed class ProductionRecipeSwitchResponse
+{
+    public string idempotencyKey;
+    public int playerBuildingId;
+    public long previousRecipeId;
+    public ProductionRecipeResponse activeRecipe;
+    public ProductionResponse[] productions;
+}
+
+[Serializable]
+public sealed class AutoUpgradeBlockedRequirementResponse
+{
+    public string requirementType;
+    public string itemKey;
+    public long itemId;
+    public int requiredAmount;
+    public int availableAmount;
+    public string message;
+}
+
+[Serializable]
+public sealed class AutoUpgradeStepResponse
+{
+    public int targetLevel;
+    public int beforeHealth;
+    public int afterHealth;
+    public int beforeAttack;
+    public int afterAttack;
+    public int beforeDefense;
+    public int afterDefense;
+    public int beforeSpeed;
+    public int afterSpeed;
+    public int health;
+    public int attack;
+    public int defense;
+    public int speed;
+    public int goldCost;
+    public AutoUpgradeBlockedRequirementResponse[] requirements;
+}
+
+[Serializable]
+public sealed class AutoUpgradePreviewResponse
+{
+    public long playerNpcId;
+    public long playerEquipmentId;
+    public int currentLevel;
+    public int requestedTargetLevel;
+    public int payableTargetLevel;
+    public int upgradeLevelCount;
+    public bool targetReached;
+    public string outcome;
+    public string stopReason;
+    public int blockedLevel;
+    public AutoUpgradeBlockedRequirementResponse[] blockedRequirements;
+    public string planFingerprint;
+    public AutoUpgradeStepResponse[] upgradeSteps;
+}
+
+[Serializable]
+public sealed class AutoUpgradeRequest
+{
+    public long playerNpcId;
+    public long playerEquipmentId;
+    public int expectedCurrentLevel;
+    public int targetLevel;
+    public string planFingerprint;
+}
+
+[Serializable]
+public sealed class AutoUpgradeResponse
+{
+    public long playerNpcId;
+    public long playerEquipmentId;
+    public int fromLevel;
+    public int reachedLevel;
+    public int level;
+    public bool targetReached;
+    public string outcome;
+    public AutoUpgradeStepResponse[] upgradeSteps;
+    public InventoryItemResponse[] items;
+    public NpcResponse[] npcs;
+    public long remainingGold;
+    public bool idempotent_replay;
+}
+
+[Serializable]
+public sealed class OnboardingCurrentResponse
+{
+    public bool available;
+    public int contractVersion;
+    public long minimumClientVersionCode;
+    public string guideCode;
+    public int guideVersion;
+    public long instanceId;
+    public long stateVersion;
+    public string status;
+    public bool allowSkip;
+    public OnboardingStepResponse currentStep;
+    public string serverTime;
+}
+
+[Serializable]
+public sealed class OnboardingStepResponse
+{
+    public string stepCode;
+    public int sequence;
+    public string sceneCode;
+    public string presentationType;
+    public string uiTargetKey;
+    public string inputMode;
+    public string actionKey;
+    public string completionType;
+    public string title;
+    public string content;
+    public string presentationParams;
+    public OnboardingBusinessContextResponse businessContext;
+}
+
+[Serializable]
+public sealed class OnboardingBusinessContextResponse
+{
+    public string eventType;
+    public int landConfigId;
+    public int buildingConfigId;
+    public int playerLandId;
+    public int playerBuildingId;
+}
+
+[Serializable]
+public sealed class OnboardingMutationRequest
+{
+    public long expectedGuideVersion;
+    public long expectedStateVersion;
+}
+
+[Serializable]
+public sealed class OnboardingMutationResponse
+{
+    public bool available;
+    public int guideVersion;
+    public long stateVersion;
+    public string status;
+    public OnboardingStepResponse currentStep;
+    public string serverTime;
 }

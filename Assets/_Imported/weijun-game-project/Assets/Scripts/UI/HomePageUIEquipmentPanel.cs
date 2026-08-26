@@ -31,6 +31,16 @@ public partial class HomePageUI
     private long equipmentUpgradePreviewRequestId;
     private bool equipmentUpgradePreviewRunning;
     private string equipmentUpgradePreviewError = string.Empty;
+    private EquipmentAutoUpgradePreviewData equipmentAutoUpgradePreview;
+    private long equipmentAutoUpgradePreviewId;
+    private bool equipmentAutoUpgradePreviewRunning;
+    private string equipmentAutoUpgradePreviewError = string.Empty;
+    private NpcAutoUpgradePreviewData npcAutoUpgradePreview;
+    private long npcAutoUpgradePreviewId;
+    private bool npcAutoUpgradePreviewRunning;
+    private string npcAutoUpgradePreviewError = string.Empty;
+    private string npcAutoUpgradeIdempotencyKey = string.Empty;
+    private string equipmentAutoUpgradeIdempotencyKey = string.Empty;
 
     private void ShowEquipmentPanel()
     {
@@ -52,6 +62,7 @@ public partial class HomePageUI
         equipmentPageIndex = 0;
         equipmentStatusMessage = string.Empty;
         ResetEquipmentUpgradePreview();
+        ResetEquipmentAutoUpgradePreviews();
 
         equipmentRefreshRunning = true;
         ShowEquipmentScenePanel(
@@ -1501,13 +1512,25 @@ public partial class HomePageUI
         previous.gameObject.SetActive(true);
         next.gameObject.SetActive(true);
         upgrade.gameObject.SetActive(true);
+        PlayerNpcResponse selectedNpc = GetCurrentEquipmentNpc();
+        EnsureNpcAutoUpgradePreview(selectedNpc);
         bool canSwitch = serverPlayerNpcs.Length > 1 && !equipmentRefreshRunning && !equipmentMutationRunning;
         previous.interactable = canSwitch;
         next.interactable = canSwitch;
-        upgrade.interactable = GetCurrentEquipmentNpc() != null && !equipmentRefreshRunning && !equipmentMutationRunning;
+        bool autoReady = selectedNpc != null
+            && npcAutoUpgradePreviewId == selectedNpc.playerNpcId
+            && npcAutoUpgradePreview != null
+            && !string.IsNullOrEmpty(npcAutoUpgradePreview.planFingerprint);
+        bool autoLoading = selectedNpc != null
+            && npcAutoUpgradePreviewId == selectedNpc.playerNpcId
+            && npcAutoUpgradePreviewRunning;
+        upgrade.interactable = selectedNpc != null && !equipmentRefreshRunning && !equipmentMutationRunning && !autoLoading;
+        SetSceneButtonText(upgrade, autoLoading ? "读取中..." : autoReady ? "一键升级" : "NPC升级");
         BindSceneButton(previous, () => ChangeEquipmentNpc(-1));
         BindSceneButton(next, () => ChangeEquipmentNpc(1));
-        BindSceneButton(upgrade, UpgradeCurrentServerNpc);
+        BindSceneButton(upgrade, autoReady
+            ? () => StartCoroutine(AutoUpgradeCurrentServerNpc(selectedNpc))
+            : UpgradeCurrentServerNpc);
     }
 
     private void ChangeEquipmentNpc(int offset)
@@ -1618,21 +1641,30 @@ public partial class HomePageUI
 
         upgrade.gameObject.SetActive(true);
         lockButton.gameObject.SetActive(true);
+        EnsureEquipmentAutoUpgradePreview(item);
         bool previewMatches = item != null
             && equipmentUpgradePreviewRequestId == item.playerEquipmentId;
         bool previewLoading = previewMatches && equipmentUpgradePreviewRunning;
         bool maxLevelReached = previewMatches
             && equipmentUpgradePreview != null
             && equipmentUpgradePreview.maxLevelReached;
+        bool autoPreviewMatches = item != null && equipmentAutoUpgradePreviewId == item.playerEquipmentId;
+        bool autoPreviewLoading = autoPreviewMatches && equipmentAutoUpgradePreviewRunning;
+        bool autoReady = autoPreviewMatches && equipmentAutoUpgradePreview != null
+            && !string.IsNullOrEmpty(equipmentAutoUpgradePreview.planFingerprint)
+            && equipmentAutoUpgradePreview.payableTargetLevel > equipmentAutoUpgradePreview.currentLevel;
         upgrade.interactable = item != null
             && !equipmentMutationRunning
             && !equipmentRefreshRunning
             && !previewLoading
-            && !maxLevelReached;
+            && !maxLevelReached
+            && !autoPreviewLoading;
         lockButton.interactable = item != null && !equipmentMutationRunning && !equipmentRefreshRunning;
-        SetSceneButtonText(upgrade, maxLevelReached ? "已满级" : (previewLoading ? "读取中..." : "升级"));
+        SetSceneButtonText(upgrade, maxLevelReached ? "已满级" : autoPreviewLoading ? "读取中..." : autoReady ? "一键升级" : (previewLoading ? "读取中..." : "升级"));
         SetSceneButtonText(lockButton, item != null && item.locked ? "解锁" : "锁定");
-        BindSceneButton(upgrade, () => UpgradeServerEquipment(item));
+        BindSceneButton(upgrade, autoReady
+            ? () => StartCoroutine(AutoUpgradeServerEquipment(item))
+            : () => UpgradeServerEquipment(item));
         BindSceneButton(lockButton, () => ToggleServerEquipmentLock(item));
     }
 
@@ -1659,6 +1691,240 @@ public partial class HomePageUI
         {
             StartCoroutine(UpgradeServerNpcRequest(npc.playerNpcId));
         }
+    }
+
+    private void ResetEquipmentAutoUpgradePreviews()
+    {
+        equipmentAutoUpgradePreview = null;
+        equipmentAutoUpgradePreviewId = 0L;
+        equipmentAutoUpgradePreviewRunning = false;
+        equipmentAutoUpgradePreviewError = string.Empty;
+        npcAutoUpgradePreview = null;
+        npcAutoUpgradePreviewId = 0L;
+        npcAutoUpgradePreviewRunning = false;
+        npcAutoUpgradePreviewError = string.Empty;
+        npcAutoUpgradeIdempotencyKey = string.Empty;
+        equipmentAutoUpgradeIdempotencyKey = string.Empty;
+    }
+
+    private void EnsureNpcAutoUpgradePreview(PlayerNpcResponse npc)
+    {
+        if (!equipmentServerBacked || npc == null || npc.playerNpcId <= 0L || equipmentRefreshRunning || equipmentMutationRunning)
+        {
+            return;
+        }
+
+        if (npcAutoUpgradePreviewId == npc.playerNpcId
+            && (npcAutoUpgradePreviewRunning || npcAutoUpgradePreview != null || !string.IsNullOrEmpty(npcAutoUpgradePreviewError)))
+        {
+            return;
+        }
+
+        npcAutoUpgradePreview = null;
+        npcAutoUpgradePreviewId = npc.playerNpcId;
+        npcAutoUpgradePreviewRunning = true;
+        npcAutoUpgradePreviewError = string.Empty;
+        StartCoroutine(LoadNpcAutoUpgradePreview(npc.playerNpcId));
+    }
+
+    private IEnumerator LoadNpcAutoUpgradePreview(long playerNpcId)
+    {
+        UnityWebRequest request = CreateAuthorizedGet($"/npc/{playerNpcId}/auto-upgrade-preview?targetLevel=100");
+        if (request == null)
+        {
+            npcAutoUpgradePreviewRunning = false;
+            npcAutoUpgradePreviewError = requestCreationError;
+            RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (npcAutoUpgradePreviewId != playerNpcId)
+            {
+                yield break;
+            }
+            if (HandleUnauthorizedResponse(request))
+            {
+                npcAutoUpgradePreviewRunning = false;
+                yield break;
+            }
+
+            NpcAutoUpgradePreviewApiResponse response = ParseJson<NpcAutoUpgradePreviewApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+            {
+                npcAutoUpgradePreviewError = response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                    : GetApiError(response);
+            }
+            else
+            {
+                npcAutoUpgradePreview = response.data;
+                npcAutoUpgradePreviewError = string.Empty;
+            }
+        }
+
+        npcAutoUpgradePreviewRunning = false;
+        if (equipmentPanelObject != null) RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+    }
+
+    private IEnumerator AutoUpgradeCurrentServerNpc(PlayerNpcResponse npc)
+    {
+        if (npc == null || npcAutoUpgradePreview == null || string.IsNullOrEmpty(npcAutoUpgradePreview.planFingerprint))
+        {
+            UpgradeCurrentServerNpc();
+            yield break;
+        }
+
+        equipmentMutationRunning = true;
+        equipmentStatusMessage = "正在执行 NPC 一键升级...";
+        RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+        AutoUpgradeRequestPayload payload = new AutoUpgradeRequestPayload
+        {
+            playerNpcId = npc.playerNpcId,
+            expectedCurrentLevel = Mathf.Max(1, npcAutoUpgradePreview.currentLevel),
+            targetLevel = npcAutoUpgradePreview.payableTargetLevel,
+            planFingerprint = npcAutoUpgradePreview.planFingerprint
+        };
+        yield return SendAutoUpgradeRequest("/npc/auto-upgrade", JsonUtility.ToJson(payload), true, npc.playerNpcId);
+    }
+
+    private void EnsureEquipmentAutoUpgradePreview(InventoryItemResponse item)
+    {
+        if (!equipmentServerBacked || item == null || item.playerEquipmentId <= 0L || equipmentRefreshRunning || equipmentMutationRunning)
+        {
+            return;
+        }
+
+        if (equipmentAutoUpgradePreviewId == item.playerEquipmentId
+            && (equipmentAutoUpgradePreviewRunning || equipmentAutoUpgradePreview != null || !string.IsNullOrEmpty(equipmentAutoUpgradePreviewError)))
+        {
+            return;
+        }
+
+        equipmentAutoUpgradePreview = null;
+        equipmentAutoUpgradePreviewId = item.playerEquipmentId;
+        equipmentAutoUpgradePreviewRunning = true;
+        equipmentAutoUpgradePreviewError = string.Empty;
+        StartCoroutine(LoadEquipmentAutoUpgradePreview(item.playerEquipmentId));
+    }
+
+    private IEnumerator LoadEquipmentAutoUpgradePreview(long playerEquipmentId)
+    {
+        UnityWebRequest request = CreateAuthorizedGet($"/equipment/{playerEquipmentId}/auto-upgrade-preview?targetLevel=100");
+        if (request == null)
+        {
+            equipmentAutoUpgradePreviewRunning = false;
+            equipmentAutoUpgradePreviewError = requestCreationError;
+            RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (equipmentAutoUpgradePreviewId != playerEquipmentId)
+            {
+                yield break;
+            }
+            if (HandleUnauthorizedResponse(request))
+            {
+                equipmentAutoUpgradePreviewRunning = false;
+                yield break;
+            }
+
+            EquipmentAutoUpgradePreviewApiResponse response = ParseJson<EquipmentAutoUpgradePreviewApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+            {
+                equipmentAutoUpgradePreviewError = response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                    : GetApiError(response);
+            }
+            else
+            {
+                equipmentAutoUpgradePreview = response.data;
+                equipmentAutoUpgradePreviewError = string.Empty;
+            }
+        }
+
+        equipmentAutoUpgradePreviewRunning = false;
+        if (equipmentPanelObject != null) RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+    }
+
+    private IEnumerator AutoUpgradeServerEquipment(InventoryItemResponse item)
+    {
+        if (item == null || equipmentAutoUpgradePreview == null || string.IsNullOrEmpty(equipmentAutoUpgradePreview.planFingerprint))
+        {
+            UpgradeServerEquipment(item);
+            yield break;
+        }
+
+        equipmentMutationRunning = true;
+        equipmentStatusMessage = "正在执行装备一键升级...";
+        RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+        AutoUpgradeRequestPayload payload = new AutoUpgradeRequestPayload
+        {
+            playerEquipmentId = item.playerEquipmentId,
+            expectedCurrentLevel = Mathf.Max(1, equipmentAutoUpgradePreview.currentLevel),
+            targetLevel = equipmentAutoUpgradePreview.payableTargetLevel,
+            planFingerprint = equipmentAutoUpgradePreview.planFingerprint
+        };
+        yield return SendAutoUpgradeRequest("/equipment/auto-upgrade", JsonUtility.ToJson(payload), false, item.playerEquipmentId);
+    }
+
+    private IEnumerator SendAutoUpgradeRequest(string path, string json, bool npc, long targetId)
+    {
+        if (!ApiRequestUtility.TryCreateJsonRequest(path, UnityWebRequest.kHttpVerbPOST, json, true, out UnityWebRequest request, out string error))
+        {
+            equipmentMutationRunning = false;
+            equipmentStatusMessage = error;
+            RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+            yield break;
+        }
+
+        string idempotencyKey = npc ? npcAutoUpgradeIdempotencyKey : equipmentAutoUpgradeIdempotencyKey;
+        if (string.IsNullOrEmpty(idempotencyKey))
+        {
+            idempotencyKey = System.Guid.NewGuid().ToString("D");
+            if (npc)
+            {
+                npcAutoUpgradeIdempotencyKey = idempotencyKey;
+            }
+            else
+            {
+                equipmentAutoUpgradeIdempotencyKey = idempotencyKey;
+            }
+        }
+        ApiRequestUtility.SetIdempotencyKey(request, idempotencyKey);
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (HandleUnauthorizedResponse(request))
+            {
+                equipmentMutationRunning = false;
+                yield break;
+            }
+
+            AutoUpgradeApiResponse response = ParseJson<AutoUpgradeApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+            {
+                equipmentMutationRunning = false;
+                equipmentStatusMessage = (npc ? "NPC" : "装备") + "一键升级失败：" + (response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                    : GetApiError(response));
+                RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+                yield break;
+            }
+
+            equipmentStatusMessage = (npc ? "NPC" : "装备") + $"已升级到 Lv.{response.data.reachedLevel}，资源已由服务器结算";
+        }
+
+        equipmentMutationRunning = false;
+        ResetEquipmentAutoUpgradePreviews();
+        equipmentRefreshRunning = true;
+        yield return GetEquipmentInventoryList();
+        RenderEquipmentScenePanel(GetEquipmentPanelRoot());
     }
 
     private IEnumerator EquipServerEquipment(long playerNpcId, long playerEquipmentId)
@@ -2170,6 +2436,62 @@ public partial class HomePageUI
         public int attack;
         public int defense;
         public float produceBonusRate;
+    }
+
+    [Serializable]
+    private class AutoUpgradeRequestPayload
+    {
+        public long playerNpcId;
+        public long playerEquipmentId;
+        public int expectedCurrentLevel;
+        public int targetLevel;
+        public string planFingerprint;
+    }
+
+    [Serializable]
+    private class NpcAutoUpgradePreviewApiResponse : BasicApiResponse
+    {
+        public NpcAutoUpgradePreviewData data;
+    }
+
+    [Serializable]
+    private class NpcAutoUpgradePreviewData
+    {
+        public long playerNpcId;
+        public int currentLevel;
+        public int payableTargetLevel;
+        public string planFingerprint;
+    }
+
+    [Serializable]
+    private class EquipmentAutoUpgradePreviewApiResponse : BasicApiResponse
+    {
+        public EquipmentAutoUpgradePreviewData data;
+    }
+
+    [Serializable]
+    private class EquipmentAutoUpgradePreviewData
+    {
+        public long playerEquipmentId;
+        public int currentLevel;
+        public int payableTargetLevel;
+        public string planFingerprint;
+    }
+
+    [Serializable]
+    private class AutoUpgradeApiResponse : BasicApiResponse
+    {
+        public AutoUpgradeData data;
+    }
+
+    [Serializable]
+    private class AutoUpgradeData
+    {
+        public long playerNpcId;
+        public long playerEquipmentId;
+        public int reachedLevel;
+        public int level;
+        public string outcome;
     }
 #pragma warning restore 0649
 

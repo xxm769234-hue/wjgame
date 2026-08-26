@@ -96,9 +96,11 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
         purificationMode = slot.IsPurificationAvailable;
         titleText.text = purificationMode ? "Purify Land" : "Unlock Land";
         purchaseButtonText.text = purificationMode ? "Purify" : "Purchase";
-        costText.gameObject.SetActive(!purificationMode);
+        costText.gameObject.SetActive(true);
         balanceText.gameObject.SetActive(!purificationMode);
-        costText.text = purificationMode ? string.Empty : $"{slot.PurchaseGoldCost:N0} Gold";
+        costText.text = purificationMode
+            ? BuildPurificationCostText(slot)
+            : $"{slot.PurchaseGoldCost:N0} Gold";
         statusText.text = string.Empty;
         if (!purificationMode) RefreshBalance();
         purchaseButton.interactable = true;
@@ -159,6 +161,19 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
         BackendGameService service = BackendGameService.Instance;
         int gold = service != null && service.CurrentUser != null ? service.CurrentUser.gold : 0;
         balanceText.text = $"Balance: {gold:N0} Gold";
+    }
+
+    private static string BuildPurificationCostText(LandSlotController slot)
+    {
+        if (slot == null || slot.PurificationItemAmount <= 0)
+        {
+            return "Purification cost unavailable";
+        }
+
+        string itemName = string.IsNullOrEmpty(slot.PurificationItemKey)
+            ? (slot.PurificationItemId > 0 ? "Item " + slot.PurificationItemId : "Purification item")
+            : slot.PurificationItemKey;
+        return $"{itemName} x{slot.PurificationItemAmount}";
     }
 
     private IEnumerator ArmBackgroundDismissal()
@@ -259,6 +274,7 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
         GameObject textObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
         textObject.transform.SetParent(parent, false);
         TMP_Text text = textObject.GetComponent<TMP_Text>();
+        text.font = RuntimeFontAssetProvider.Resolve();
         text.text = value;
         text.fontSize = fontSize;
         text.fontStyle = style;

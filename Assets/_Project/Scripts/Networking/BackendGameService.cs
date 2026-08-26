@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using UnityEngine;
 
-public sealed class BackendGameService : MonoBehaviour
+public sealed partial class BackendGameService : MonoBehaviour
 {
     private const string TokenKey = "weijun.backend.token";
     private const string PlayerIdKey = "weijun.backend.playerId";
@@ -23,7 +23,7 @@ public sealed class BackendGameService : MonoBehaviour
     [Header("Connection")]
     [SerializeField] private string baseUrl = "http://localhost:8080/api";
     [SerializeField] private bool connectOnStart = true;
-    [SerializeField] private bool autoLoginWhenMissingToken = true;
+    [SerializeField] private bool autoLoginWhenMissingToken = false;
     [SerializeField] private string defaultUsername = "player1";
     [SerializeField] private string defaultPassword = "123456";
     [SerializeField] private bool registerDefaultUserIfLoginFails;
@@ -81,6 +81,7 @@ public sealed class BackendGameService : MonoBehaviour
         }
         Token = PlayerPrefs.GetString(TokenKey, string.Empty);
         PlayerId = PlayerPrefs.GetInt(PlayerIdKey, 0);
+        CurrentSceneId = PlayerPrefs.GetInt(SceneIdKey, 0);
         observedSessionRevision = PlayerPrefs.GetInt(SessionRevisionKey, 0);
     }
 
@@ -683,11 +684,13 @@ public sealed class BackendGameService : MonoBehaviour
 
     private IEnumerator LoadInitialDataRoutine()
     {
+        yield return LoadLandScenesRoutine(null);
         yield return LoadAvailableLandsRoutine();
         yield return LoadAvailableBuildingsRoutine();
         yield return SyncBuildingStatusRoutine(null);
         yield return SyncMapRoutine(null);
         yield return RefreshProductionsRoutine(null);
+        yield return LoadProductionWorkStateRoutine(null);
         yield return RequestUserRoutine(null);
         yield return RequestInventoryRoutine(null);
         yield return LoadNpcCatalogRoutine(null);
@@ -797,21 +800,21 @@ public sealed class BackendGameService : MonoBehaviour
     private IEnumerator CheckBuildingRoutine(BuildingConfig config, Action<BackendResult<BuildingConditionResponse>> onComplete)
     {
         BackendResult<BuildingConditionResponse> result = null;
-        yield return BackendApiClient.Get<BuildingConditionResponse>(baseUrl, Token, $"building/check/{PlayerId}/{config.buildingId}", value => result = value);
+        yield return BackendApiClient.Get<BuildingConditionResponse>(baseUrl, Token, AddSceneQuery($"building/check/{PlayerId}/{config.buildingId}"), value => result = value);
         onComplete?.Invoke(result);
     }
 
     private IEnumerator CheckBuildingForLandRoutine(LandSlotController slot, BuildingConfig config, Action<BackendResult<BuildingConditionResponse>> onComplete)
     {
         BackendResult<BuildingConditionResponse> result = null;
-        yield return BackendApiClient.Get<BuildingConditionResponse>(baseUrl, Token, $"building/check/{PlayerId}/{config.buildingId}/{slot.PlayerLandId}", value => result = value);
+        yield return BackendApiClient.Get<BuildingConditionResponse>(baseUrl, Token, AddSceneQuery($"building/check/{PlayerId}/{config.buildingId}/{slot.PlayerLandId}"), value => result = value);
         onComplete?.Invoke(result);
     }
 
     private IEnumerator LoadBuildingListRoutine(Action<BackendResult<BuildingResponse[]>> onComplete)
     {
         BackendResult<BuildingResponse[]> result = null;
-        yield return BackendApiClient.Get<BuildingResponse[]>(baseUrl, Token, $"building/list/{PlayerId}", value => result = value);
+        yield return BackendApiClient.Get<BuildingResponse[]>(baseUrl, Token, AddSceneQuery($"building/list/{PlayerId}"), value => result = value);
 
         if (result != null && result.Success && result.Data != null)
         {
@@ -828,7 +831,7 @@ public sealed class BackendGameService : MonoBehaviour
     private IEnumerator LoadBuildingDetailRoutine(LandSlotController slot, Action<BackendResult<BuildingResponse>> onComplete)
     {
         BackendResult<BuildingResponse> result = null;
-        yield return BackendApiClient.Get<BuildingResponse>(baseUrl, Token, $"building/detail/{PlayerId}/{slot.PlayerBuildingId}", value => result = value);
+        yield return BackendApiClient.Get<BuildingResponse>(baseUrl, Token, AddSceneQuery($"building/detail/{PlayerId}/{slot.PlayerBuildingId}"), value => result = value);
 
         if (result != null && result.Success && result.Data != null)
         {
@@ -852,7 +855,7 @@ public sealed class BackendGameService : MonoBehaviour
 
         buildingSyncPending = true;
         BackendResult<BuildingResponse[]> result = null;
-        yield return BackendApiClient.Post<BuildingResponse[]>(baseUrl, Token, $"building/sync/{PlayerId}", null, value => result = value);
+        yield return BackendApiClient.Post<BuildingResponse[]>(baseUrl, Token, AddSceneQuery($"building/sync/{PlayerId}"), null, value => result = value);
         buildingSyncPending = false;
 
         if (result != null && result.Success && result.Data != null)
@@ -870,11 +873,31 @@ public sealed class BackendGameService : MonoBehaviour
     private IEnumerator SyncMapRoutine(Action<bool, string> onComplete)
     {
         BackendResult<MapDataResponse> result = null;
-        yield return BackendApiClient.Get<MapDataResponse>(baseUrl, Token, $"land/map/{PlayerId}", value => result = value);
+        yield return BackendApiClient.Get<MapDataResponse>(baseUrl, Token, AddSceneQuery($"land/map/{PlayerId}"), value => result = value);
 
         bool success = result != null && result.Success && result.Data != null;
         if (success)
         {
+            CurrentSceneId = result.Data.sceneId > 0 ? result.Data.sceneId : CurrentSceneId;
+            if (result.Data.sceneConfigVersion > 0L)
+            {
+                CurrentSceneConfigVersion = result.Data.sceneConfigVersion;
+            }
+            if (result.Data.landPolicyRevision > 0L)
+            {
+                CurrentLandPolicyRevision = result.Data.landPolicyRevision;
+            }
+            if (CurrentSceneId > 0) PlayerPrefs.SetInt(SceneIdKey, CurrentSceneId);
+            PlayerPrefs.Save();
+            purificationSnapshots.Clear();
+            if (result.Data.landSlots != null)
+            {
+                for (int i = 0; i < result.Data.landSlots.Length; i++)
+                {
+                    LandSlotStateResponse state = result.Data.landSlots[i];
+                    if (state != null) purificationSnapshots[BuildPurificationKey(state.positionX, state.positionY)] = state;
+                }
+            }
             if (MapManager.Instance != null) MapManager.Instance.ApplyRemoteMapData(result.Data);
         }
         else
@@ -888,7 +911,7 @@ public sealed class BackendGameService : MonoBehaviour
     private IEnumerator RefreshProductionsRoutine(Action<bool, string> onComplete)
     {
         BackendResult<ProductionResponse[]> result = null;
-        yield return BackendApiClient.Get<ProductionResponse[]>(baseUrl, Token, $"production/list/{PlayerId}", value => result = value);
+        yield return BackendApiClient.Get<ProductionResponse[]>(baseUrl, Token, AddSceneQuery($"production/list/{PlayerId}"), value => result = value);
 
         bool success = result != null && result.Success && result.Data != null;
         if (success)
@@ -911,7 +934,7 @@ public sealed class BackendGameService : MonoBehaviour
     private IEnumerator LoadProductionDetailRoutine(LandSlotController slot, Action<BackendResult<ProductionResponse[]>> onComplete)
     {
         BackendResult<ProductionResponse[]> result = null;
-        yield return BackendApiClient.Get<ProductionResponse[]>(baseUrl, Token, $"production/detail/{PlayerId}/{slot.PlayerBuildingId}", value => result = value);
+        yield return BackendApiClient.Get<ProductionResponse[]>(baseUrl, Token, AddSceneQuery($"production/detail/{PlayerId}/{slot.PlayerBuildingId}"), value => result = value);
 
         if (result != null && result.Success && result.Data != null)
         {
@@ -930,6 +953,7 @@ public sealed class BackendGameService : MonoBehaviour
         PlaceLandRequest request = new PlaceLandRequest
         {
             playerId = PlayerId,
+            sceneId = CurrentSceneId,
             landId = config.landId,
             positionX = slot.GridPosition.x,
             positionY = slot.GridPosition.y
@@ -955,6 +979,7 @@ public sealed class BackendGameService : MonoBehaviour
         BuildBuildingRequest request = new BuildBuildingRequest
         {
             playerId = PlayerId,
+            sceneId = CurrentSceneId,
             buildingId = config.buildingId,
             landId = slot.PlayerLandId
         };
@@ -988,6 +1013,7 @@ public sealed class BackendGameService : MonoBehaviour
         PlayerBuildingRequest request = new PlayerBuildingRequest
         {
             playerId = PlayerId,
+            sceneId = CurrentSceneId,
             playerBuildingId = slot.PlayerBuildingId
         };
 
@@ -1015,6 +1041,7 @@ public sealed class BackendGameService : MonoBehaviour
         PlayerBuildingRequest request = new PlayerBuildingRequest
         {
             playerId = PlayerId,
+            sceneId = CurrentSceneId,
             playerBuildingId = slot.PlayerBuildingId
         };
 
@@ -1036,6 +1063,7 @@ public sealed class BackendGameService : MonoBehaviour
         MoveBuildingRequest request = new MoveBuildingRequest
         {
             playerId = PlayerId,
+            sceneId = CurrentSceneId,
             playerBuildingId = source.PlayerBuildingId,
             targetLandId = target.PlayerLandId
         };
@@ -1057,6 +1085,7 @@ public sealed class BackendGameService : MonoBehaviour
         PlayerBuildingRequest request = new PlayerBuildingRequest
         {
             playerId = PlayerId,
+            sceneId = CurrentSceneId,
             playerBuildingId = slot.PlayerBuildingId
         };
 
@@ -1081,8 +1110,11 @@ public sealed class BackendGameService : MonoBehaviour
         PurchaseLandSlotRequest request = new PurchaseLandSlotRequest
         {
             playerId = PlayerId,
+            sceneId = CurrentSceneId,
             positionX = slot.GridPosition.x,
-            positionY = slot.GridPosition.y
+            positionY = slot.GridPosition.y,
+            expectedSceneVersion = CurrentSceneConfigVersion,
+            expectedPolicyRevision = CurrentLandPolicyRevision
         };
 
         BackendResult<LandSlotStateResponse> result = null;
@@ -1111,9 +1143,20 @@ public sealed class BackendGameService : MonoBehaviour
         PurchaseLandSlotRequest request = new PurchaseLandSlotRequest
         {
             playerId = PlayerId,
+            sceneId = CurrentSceneId,
             positionX = slot.GridPosition.x,
-            positionY = slot.GridPosition.y
+            positionY = slot.GridPosition.y,
+            expectedSceneVersion = CurrentSceneConfigVersion,
+            expectedPolicyRevision = CurrentLandPolicyRevision
         };
+
+        LandSlotStateResponse snapshot = FindPurificationSnapshot(slot.GridPosition.x, slot.GridPosition.y);
+        if (snapshot != null)
+        {
+            request.purificationItemId = snapshot.purificationItemId;
+            request.purificationItemKey = snapshot.purificationItemKey;
+            request.purificationItemAmount = snapshot.purificationItemAmount;
+        }
 
         BackendResult<LandSlotStateResponse> result = null;
         yield return BackendApiClient.Post<LandSlotStateResponse>(
@@ -1135,7 +1178,7 @@ public sealed class BackendGameService : MonoBehaviour
 
     private IEnumerator CollectAllProductionsRoutine(Action<bool, string, int> onComplete)
     {
-        PlayerIdRequest request = new PlayerIdRequest { playerId = PlayerId };
+        PlayerIdRequest request = new PlayerIdRequest { playerId = PlayerId, sceneId = CurrentSceneId };
         BackendResult<ProductionCollectResponse> result = null;
         yield return BackendApiClient.Post<ProductionCollectResponse>(baseUrl, Token, "production/collect-all", request, value => result = value);
 
@@ -1164,6 +1207,10 @@ public sealed class BackendGameService : MonoBehaviour
     {
         BackendResult<IdleAdventureHomeResponse> result = null;
         yield return BackendApiClient.Get<IdleAdventureHomeResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/home", value => result = value);
+        if (result != null && result.Success && result.Data != null && result.Data.stamina != null)
+        {
+            ApplyAuthoritativeStamina(result.Data.stamina);
+        }
         onComplete?.Invoke(result);
     }
 
@@ -1264,7 +1311,7 @@ public sealed class BackendGameService : MonoBehaviour
     private IEnumerator GetAvailableNpcsRoutine(LandSlotController slot, Action<BackendResult<NpcResponse[]>> onComplete)
     {
         BackendResult<NpcResponse[]> result = null;
-        yield return BackendApiClient.Get<NpcResponse[]>(baseUrl, Token, $"npc/available/{PlayerId}?playerBuildingId={slot.PlayerBuildingId}", value => result = value);
+        yield return BackendApiClient.Get<NpcResponse[]>(baseUrl, Token, AddSceneQuery($"npc/available/{PlayerId}?playerBuildingId={slot.PlayerBuildingId}"), value => result = value);
         onComplete?.Invoke(result);
     }
 
@@ -1307,6 +1354,7 @@ public sealed class BackendGameService : MonoBehaviour
         NpcSettleRequest request = new NpcSettleRequest
         {
             playerId = PlayerId,
+            sceneId = CurrentSceneId,
             playerBuildingId = slot.PlayerBuildingId,
             playerNpcId = playerNpcId
         };
@@ -1330,6 +1378,7 @@ public sealed class BackendGameService : MonoBehaviour
         PlayerBuildingRequest request = new PlayerBuildingRequest
         {
             playerId = PlayerId,
+            sceneId = CurrentSceneId,
             playerBuildingId = slot.PlayerBuildingId
         };
 
@@ -1433,6 +1482,13 @@ public sealed class BackendGameService : MonoBehaviour
         CurrentInventory = null;
         NpcCatalog = null;
         PlayerNpcs = null;
+        LandScenes = null;
+        CurrentSceneId = 0;
+        CurrentSceneConfigVersion = 0L;
+        CurrentLandPolicyRevision = 0L;
+        CurrentStamina = null;
+        CurrentWorkState = null;
+        PlayerPrefs.DeleteKey(SceneIdKey);
         PlayerPrefs.DeleteKey(TokenKey);
         PlayerPrefs.DeleteKey(PlayerIdKey);
         PlayerPrefs.DeleteKey(HomeTokenKey);
@@ -1466,6 +1522,12 @@ public sealed class BackendGameService : MonoBehaviour
         CurrentInventory = null;
         NpcCatalog = null;
         PlayerNpcs = null;
+        LandScenes = null;
+        CurrentStamina = null;
+        CurrentWorkState = null;
+        CurrentSceneId = PlayerPrefs.GetInt(SceneIdKey, 0);
+        CurrentSceneConfigVersion = 0L;
+        CurrentLandPolicyRevision = 0L;
         nextProductionPollAt = 0f;
 
         if (IsAuthenticated && !IsConnecting)
@@ -1484,7 +1546,11 @@ public sealed class BackendGameService : MonoBehaviour
     private static string ResultMessage<T>(BackendResult<T> result)
     {
         if (result == null) return "No backend response.";
-        return string.IsNullOrEmpty(result.Message) ? $"HTTP {result.HttpStatus}" : result.Message;
+        if (!string.IsNullOrEmpty(result.Message))
+        {
+            return result.Code > 0 ? $"[{result.Code}] {result.Message}" : result.Message;
+        }
+        return result.Code > 0 ? $"code={result.Code}, HTTP {result.HttpStatus}" : $"HTTP {result.HttpStatus}";
     }
 
     private static void SyncWeChatFriendLevel(int level)

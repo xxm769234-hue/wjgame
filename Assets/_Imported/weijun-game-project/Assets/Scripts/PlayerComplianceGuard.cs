@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
@@ -16,8 +17,8 @@ public sealed class PlayerComplianceGuard : MonoBehaviour
     private float lastStatusRequestTime = -ResumeCheckCooldownSeconds;
     private GameObject noticeCanvasObject;
     private Image noticeBlocker;
-    private Text noticeTitle;
-    private Text noticeMessage;
+    private TMP_Text noticeTitle;
+    private TMP_Text noticeMessage;
     private Coroutine noticeHideCoroutine;
 
     public static void StartSession()
@@ -257,8 +258,8 @@ public sealed class PlayerComplianceGuard : MonoBehaviour
         noticeTitle = CreateText("Title", card.transform, string.Empty, 26, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
         SetRect(noticeTitle.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -12f), new Vector2(-44f, 38f));
         noticeMessage = CreateText("Message", card.transform, string.Empty, 18, FontStyle.Normal, new Color(0.93f, 0.95f, 0.98f, 1f), TextAnchor.MiddleCenter);
-        noticeMessage.horizontalOverflow = HorizontalWrapMode.Wrap;
-        noticeMessage.verticalOverflow = VerticalWrapMode.Overflow;
+        noticeMessage.enableWordWrapping = true;
+        noticeMessage.overflowMode = TextOverflowModes.Overflow;
         SetRect(noticeMessage.rectTransform, Vector2.zero, new Vector2(1f, 1f), new Vector2(0.5f, 0.5f), new Vector2(0f, -18f), new Vector2(-44f, 56f));
         noticeCanvasObject.SetActive(false);
     }
@@ -309,19 +310,37 @@ public sealed class PlayerComplianceGuard : MonoBehaviour
         return image;
     }
 
-    private static Text CreateText(string name, Transform parent, string value, int fontSize, FontStyle fontStyle, Color color, TextAnchor alignment)
+    private static TMP_Text CreateText(string name, Transform parent, string value, int fontSize, FontStyle fontStyle, Color color, TextAnchor alignment)
     {
-        GameObject gameObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+        GameObject gameObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
         gameObject.transform.SetParent(parent, false);
-        Text text = gameObject.GetComponent<Text>();
-        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        TMP_Text text = gameObject.GetComponent<TMP_Text>();
+        text.font = RuntimeFontAssetProvider.Resolve();
         text.text = value;
         text.fontSize = fontSize;
-        text.fontStyle = fontStyle;
+        text.fontStyle = fontStyle == FontStyle.Bold
+            ? FontStyles.Bold
+            : fontStyle == FontStyle.Italic ? FontStyles.Italic : FontStyles.Normal;
         text.color = color;
-        text.alignment = alignment;
+        text.alignment = ResolveTextAlignment(alignment);
         text.raycastTarget = false;
         return text;
+    }
+
+    private static TextAlignmentOptions ResolveTextAlignment(TextAnchor alignment)
+    {
+        switch (alignment)
+        {
+            case TextAnchor.UpperLeft: return TextAlignmentOptions.TopLeft;
+            case TextAnchor.UpperCenter: return TextAlignmentOptions.Top;
+            case TextAnchor.UpperRight: return TextAlignmentOptions.TopRight;
+            case TextAnchor.MiddleLeft: return TextAlignmentOptions.MidlineLeft;
+            case TextAnchor.MiddleRight: return TextAlignmentOptions.MidlineRight;
+            case TextAnchor.LowerLeft: return TextAlignmentOptions.BottomLeft;
+            case TextAnchor.LowerCenter: return TextAlignmentOptions.Bottom;
+            case TextAnchor.LowerRight: return TextAlignmentOptions.BottomRight;
+            default: return TextAlignmentOptions.Center;
+        }
     }
 
     private static void Stretch(RectTransform rect)

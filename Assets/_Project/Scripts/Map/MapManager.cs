@@ -238,7 +238,9 @@ public sealed class MapManager : MonoBehaviour
     {
         if (mapData == null) return;
 
-        mapSize = new Vector2Int(Mathf.Max(1, mapData.width), Mathf.Max(1, mapData.height));
+        int resolvedWidth = mapData.width > 0 ? mapData.width : mapData.landGridWidth;
+        int resolvedHeight = mapData.height > 0 ? mapData.height : mapData.landGridHeight;
+        mapSize = new Vector2Int(Mathf.Max(1, resolvedWidth), Mathf.Max(1, resolvedHeight));
         RebuildSlotCache();
         ClearRemoteSlotState();
 
@@ -382,6 +384,11 @@ public sealed class MapManager : MonoBehaviour
         GameObject template = FindTemplateUnit(units);
         if (template == null) return;
 
+        for (int i = 0; i < units.Count; i++)
+        {
+            DisableExcessUnitSlots(units[i]);
+        }
+
         Bounds unitLocalBounds = CalculateUnitLocalBounds(template);
         if (unitLocalBounds.size.x <= 0.0001f || unitLocalBounds.size.y <= 0.0001f) return;
 
@@ -456,6 +463,7 @@ public sealed class MapManager : MonoBehaviour
         }
 
         ApplyRuntimeLandUnlockLayout(units, ResolveCurrentPlayerLevel());
+        RebuildSlotCache();
     }
 
     public void RefreshLandUnlockState(int playerLevel)
@@ -693,6 +701,18 @@ public sealed class MapManager : MonoBehaviour
 
         int verticalOrder = left.CenterWorld.y.CompareTo(right.CenterWorld.y);
         return verticalOrder != 0 ? verticalOrder : left.CenterWorld.x.CompareTo(right.CenterWorld.x);
+    }
+
+    private static void DisableExcessUnitSlots(GameObject unit)
+    {
+        if (unit == null) return;
+
+        LandSlotController[] slots = unit.GetComponentsInChildren<LandSlotController>(true);
+        System.Array.Sort(slots, CompareSlotsForLogicalPosition);
+        for (int i = LandUnlockRules.SlotsPerUnit; i < slots.Length; i++)
+        {
+            if (slots[i] != null) slots[i].gameObject.SetActive(false);
+        }
     }
 
     private static int ResolveCurrentPlayerLevel()

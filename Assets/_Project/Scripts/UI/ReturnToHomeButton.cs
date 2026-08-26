@@ -51,6 +51,7 @@ public sealed class ReturnToHomeButton : MonoBehaviour
             label = labelObject.GetComponent<TextMeshProUGUI>();
         }
 
+        label.font = RuntimeFontAssetProvider.Resolve();
         label.text = buttonLabel;
         label.fontSize = 20f;
         label.fontStyle = FontStyles.Bold;

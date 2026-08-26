@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Security.Cryptography;
 using System.Text;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
@@ -10,12 +11,12 @@ public partial class GameBoot
 {
     private Toggle privacyConsentToggle;
     private Button privacyPolicyButton;
-    private Text privacyConsentLabel;
+    private TMP_Text privacyConsentLabel;
     private GameObject privacyPolicyOverlay;
     private GameObject accountManagementPanel;
     private GameObject realNamePanel;
-    private Text accountManagementStatus;
-    private Text accountManagementCompliance;
+    private TMP_Text accountManagementStatus;
+    private TMP_Text accountManagementCompliance;
     private Button accountConsentButton;
     private Button accountWithdrawButton;
     private Button accountApplyCancellationButton;
@@ -23,9 +24,9 @@ public partial class GameBoot
     private Button accountRefreshButton;
     private Button accountRealNameButton;
     private Button accountReloginButton;
-    private InputField realNameInput;
-    private InputField identityNumberInput;
-    private Text realNameStatus;
+    private TMP_InputField realNameInput;
+    private TMP_InputField identityNumberInput;
+    private TMP_Text realNameStatus;
 
     private string currentPolicyVersion;
     private string currentPolicyContent;
@@ -82,7 +83,7 @@ public partial class GameBoot
             privacyConsentToggle.graphic = checkmark;
             privacyConsentToggle.isOn = false;
 
-            privacyConsentLabel = CreateText(
+            privacyConsentLabel = CreateComplianceText(
                 "Label",
                 toggleObject.transform,
                 "我已阅读并同意当前隐私政策",
@@ -101,7 +102,7 @@ public partial class GameBoot
 
         if (privacyPolicyButton == null)
         {
-            privacyPolicyButton = CreateFixedButton(
+            privacyPolicyButton = CreateComplianceButton(
                 root,
                 "PrivacyPolicyButton",
                 "查看隐私政策",
@@ -259,10 +260,10 @@ public partial class GameBoot
 
         Image card = CreateImage("PrivacyPolicyCard", overlay.transform, new Color(1f, 1f, 1f, 0.98f));
         SetRect(card.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), Vector2.zero, new Vector2(860f, 720f));
-        Text title = CreateText("Title", card.transform, "隐私政策", 30, FontStyle.Bold, BrandColor, TextAnchor.MiddleCenter);
+        TMP_Text title = CreateComplianceText("Title", card.transform, "隐私政策", 30, FontStyle.Bold, BrandColor, TextAnchor.MiddleCenter);
         SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(-70f, 54f));
 
-        Text metadata = CreateText(
+        TMP_Text metadata = CreateComplianceText(
             "Metadata",
             card.transform,
             "版本：" + (currentPolicyVersion ?? "未获取") + "\n正文校验：" + (string.IsNullOrEmpty(currentPolicyContentSha256) ? "未提供" : "已校验"),
@@ -286,10 +287,9 @@ public partial class GameBoot
         contentRect.anchoredPosition = Vector2.zero;
         contentRect.sizeDelta = new Vector2(-28f, 500f);
 
-        Text body = CreateText("Body", contentObject.transform, currentPolicyContent ?? "暂未获取隐私政策正文。", 17, FontStyle.Normal, FieldTextColor, TextAnchor.UpperLeft);
-        body.horizontalOverflow = HorizontalWrapMode.Wrap;
-        body.verticalOverflow = VerticalWrapMode.Overflow;
-        body.resizeTextForBestFit = false;
+        TMP_Text body = CreateComplianceText("Body", contentObject.transform, currentPolicyContent ?? "暂未获取隐私政策正文。", 17, FontStyle.Normal, FieldTextColor, TextAnchor.UpperLeft);
+        body.enableWordWrapping = true;
+        body.overflowMode = TextOverflowModes.Overflow;
         SetRect(body.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
         Canvas.ForceUpdateCanvases();
         contentRect.sizeDelta = new Vector2(-28f, Mathf.Max(500f, body.preferredHeight + 24f));
@@ -301,7 +301,7 @@ public partial class GameBoot
         scrollRect.vertical = true;
         scrollRect.movementType = ScrollRect.MovementType.Clamped;
 
-        Button closeButton = CreateFixedButton(
+        Button closeButton = CreateComplianceButton(
             card.transform,
             "CloseButton",
             "关闭",
@@ -312,7 +312,7 @@ public partial class GameBoot
             18);
         closeButton.onClick.AddListener(HidePrivacyPolicyOverlay);
 
-        Button agreeButton = CreateFixedButton(
+        Button agreeButton = CreateComplianceButton(
             card.transform,
             "AgreeButton",
             "同意并继续",
@@ -389,10 +389,10 @@ public partial class GameBoot
 
         Image card = CreateImage("AccountManagementCard", overlay.transform, new Color(1f, 1f, 1f, 0.98f));
         SetRect(card.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), Vector2.zero, new Vector2(900f, 790f));
-        Text title = CreateText("Title", card.transform, "账号管理", 32, FontStyle.Bold, BrandColor, TextAnchor.MiddleCenter);
+        TMP_Text title = CreateComplianceText("Title", card.transform, "账号管理", 32, FontStyle.Bold, BrandColor, TextAnchor.MiddleCenter);
         SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -20f), new Vector2(-70f, 54f));
 
-        Text description = CreateText(
+        TMP_Text description = CreateComplianceText(
             "Description",
             card.transform,
             "当前账号只能进行隐私授权、实名和注销管理，完成准入后需要重新登录。",
@@ -402,31 +402,31 @@ public partial class GameBoot
             TextAnchor.MiddleCenter);
         SetRect(description.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -70f), new Vector2(-70f, 44f));
 
-        accountManagementCompliance = CreateText("Compliance", card.transform, string.Empty, 18, FontStyle.Normal, FieldTextColor, TextAnchor.UpperLeft);
-        accountManagementCompliance.horizontalOverflow = HorizontalWrapMode.Wrap;
-        accountManagementCompliance.verticalOverflow = VerticalWrapMode.Overflow;
+        accountManagementCompliance = CreateComplianceText("Compliance", card.transform, string.Empty, 18, FontStyle.Normal, FieldTextColor, TextAnchor.UpperLeft);
+        accountManagementCompliance.enableWordWrapping = true;
+        accountManagementCompliance.overflowMode = TextOverflowModes.Overflow;
         SetRect(accountManagementCompliance.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -130f), new Vector2(-90f, 94f));
 
-        accountManagementStatus = CreateText("Status", card.transform, string.Empty, 16, FontStyle.Normal, ErrorColor, TextAnchor.MiddleCenter);
+        accountManagementStatus = CreateComplianceText("Status", card.transform, string.Empty, 16, FontStyle.Normal, ErrorColor, TextAnchor.MiddleCenter);
         SetRect(accountManagementStatus.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -222f), new Vector2(-90f, 42f));
 
-        accountConsentButton = CreateFixedButton(card.transform, "ConsentButton", "同意隐私政策", new Vector2(-225f, -292f), new Vector2(210f, 52f), PrimaryColor, Color.white, 17);
+        accountConsentButton = CreateComplianceButton(card.transform, "ConsentButton", "同意隐私政策", new Vector2(-225f, -292f), new Vector2(210f, 52f), PrimaryColor, Color.white, 17);
         accountConsentButton.onClick.AddListener(BeginPrivacyConsent);
-        accountWithdrawButton = CreateFixedButton(card.transform, "WithdrawButton", "撤回隐私授权", new Vector2(0f, -292f), new Vector2(210f, 52f), SecondaryButtonColor, FieldTextColor, 17);
+        accountWithdrawButton = CreateComplianceButton(card.transform, "WithdrawButton", "撤回隐私授权", new Vector2(0f, -292f), new Vector2(210f, 52f), SecondaryButtonColor, FieldTextColor, 17);
         accountWithdrawButton.onClick.AddListener(BeginWithdrawConsent);
-        accountRefreshButton = CreateFixedButton(card.transform, "RefreshButton", "刷新状态", new Vector2(225f, -292f), new Vector2(160f, 52f), SecondaryButtonColor, FieldTextColor, 17);
+        accountRefreshButton = CreateComplianceButton(card.transform, "RefreshButton", "刷新状态", new Vector2(225f, -292f), new Vector2(160f, 52f), SecondaryButtonColor, FieldTextColor, 17);
         accountRefreshButton.onClick.AddListener(() => StartCoroutine(RefreshManagementState()));
 
-        accountApplyCancellationButton = CreateFixedButton(card.transform, "ApplyCancellationButton", "申请注销", new Vector2(-225f, -366f), new Vector2(210f, 52f), new Color(0.70f, 0.25f, 0.20f, 1f), Color.white, 17);
+        accountApplyCancellationButton = CreateComplianceButton(card.transform, "ApplyCancellationButton", "申请注销", new Vector2(-225f, -366f), new Vector2(210f, 52f), new Color(0.70f, 0.25f, 0.20f, 1f), Color.white, 17);
         accountApplyCancellationButton.onClick.AddListener(BeginAccountCancellation);
-        accountCancelCancellationButton = CreateFixedButton(card.transform, "CancelCancellationButton", "撤销注销", new Vector2(0f, -366f), new Vector2(210f, 52f), SecondaryButtonColor, FieldTextColor, 17);
+        accountCancelCancellationButton = CreateComplianceButton(card.transform, "CancelCancellationButton", "撤销注销", new Vector2(0f, -366f), new Vector2(210f, 52f), SecondaryButtonColor, FieldTextColor, 17);
         accountCancelCancellationButton.onClick.AddListener(BeginCancelAccountCancellation);
-        accountRealNameButton = CreateFixedButton(card.transform, "RealNameButton", "实名认证", new Vector2(225f, -366f), new Vector2(160f, 52f), PrimaryColor, Color.white, 17);
+        accountRealNameButton = CreateComplianceButton(card.transform, "RealNameButton", "实名认证", new Vector2(225f, -366f), new Vector2(160f, 52f), PrimaryColor, Color.white, 17);
         accountRealNameButton.onClick.AddListener(ShowRealNamePanel);
 
-        accountReloginButton = CreateFixedButton(card.transform, "ReloginButton", "重新登录", new Vector2(-100f, -444f), new Vector2(200f, 52f), PrimaryColor, Color.white, 18);
+        accountReloginButton = CreateComplianceButton(card.transform, "ReloginButton", "重新登录", new Vector2(-100f, -444f), new Vector2(200f, 52f), PrimaryColor, Color.white, 18);
         accountReloginButton.onClick.AddListener(ReloginAfterCompliance);
-        Button closeButton = CreateFixedButton(card.transform, "CloseButton", "返回", new Vector2(125f, -444f), new Vector2(160f, 52f), SecondaryButtonColor, FieldTextColor, 18);
+        Button closeButton = CreateComplianceButton(card.transform, "CloseButton", "返回", new Vector2(125f, -444f), new Vector2(160f, 52f), SecondaryButtonColor, FieldTextColor, 18);
         closeButton.onClick.AddListener(CloseAccountManagementPanel);
 
         accountManagementPanel.transform.SetAsLastSibling();
@@ -819,29 +819,29 @@ public partial class GameBoot
         Stretch(panel.rectTransform);
         Image card = CreateImage("RealNameCard", panel.transform, new Color(1f, 1f, 1f, 0.98f));
         SetRect(card.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), Vector2.zero, new Vector2(660f, 470f));
-        Text title = CreateText("Title", card.transform, "实名认证", 30, FontStyle.Bold, BrandColor, TextAnchor.MiddleCenter);
+        TMP_Text title = CreateComplianceText("Title", card.transform, "实名认证", 30, FontStyle.Bold, BrandColor, TextAnchor.MiddleCenter);
         SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -24f), new Vector2(-70f, 50f));
-        Text hint = CreateText("Hint", card.transform, "信息仅用于本次认证请求，不会写入客户端日志。", 15, FontStyle.Normal, MutedTextColor, TextAnchor.MiddleCenter);
+        TMP_Text hint = CreateComplianceText("Hint", card.transform, "信息仅用于本次认证请求，不会写入客户端日志。", 15, FontStyle.Normal, MutedTextColor, TextAnchor.MiddleCenter);
         SetRect(hint.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -72f), new Vector2(-70f, 36f));
 
-        Text nameLabel = CreateText("NameLabel", card.transform, "真实姓名", 16, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleLeft);
+        TMP_Text nameLabel = CreateComplianceText("NameLabel", card.transform, "真实姓名", 16, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleLeft);
         SetRect(nameLabel.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(-220f, 76f), new Vector2(120f, 38f));
-        realNameInput = CreateInputField(card.transform, "RealNameInput", "请输入真实姓名");
+        realNameInput = CreateComplianceInput(card.transform, "RealNameInput", "请输入真实姓名");
         realNameInput.characterLimit = 64;
         SetRect(realNameInput.GetComponent<RectTransform>(), CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(90f, 76f), new Vector2(360f, 42f));
 
-        Text identityLabel = CreateText("IdentityLabel", card.transform, "证件号码", 16, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleLeft);
+        TMP_Text identityLabel = CreateComplianceText("IdentityLabel", card.transform, "证件号码", 16, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleLeft);
         SetRect(identityLabel.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(-220f, 18f), new Vector2(120f, 38f));
-        identityNumberInput = CreateInputField(card.transform, "IdentityNumberInput", "请输入证件号码");
+        identityNumberInput = CreateComplianceInput(card.transform, "IdentityNumberInput", "请输入证件号码");
         identityNumberInput.characterLimit = 32;
         SetRect(identityNumberInput.GetComponent<RectTransform>(), CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(90f, 18f), new Vector2(360f, 42f));
 
-        realNameStatus = CreateText("Status", card.transform, string.Empty, 15, FontStyle.Normal, ErrorColor, TextAnchor.MiddleCenter);
+        realNameStatus = CreateComplianceText("Status", card.transform, string.Empty, 15, FontStyle.Normal, ErrorColor, TextAnchor.MiddleCenter);
         SetRect(realNameStatus.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, -52f), new Vector2(560f, 38f));
 
-        Button submit = CreateFixedButton(card.transform, "SubmitButton", "提交认证", new Vector2(-105f, -125f), new Vector2(190f, 50f), PrimaryColor, Color.white, 18);
+        Button submit = CreateComplianceButton(card.transform, "SubmitButton", "提交认证", new Vector2(-105f, -125f), new Vector2(190f, 50f), PrimaryColor, Color.white, 18);
         submit.onClick.AddListener(SubmitRealName);
-        Button close = CreateFixedButton(card.transform, "CloseButton", "取消", new Vector2(105f, -125f), new Vector2(150f, 50f), SecondaryButtonColor, FieldTextColor, 18);
+        Button close = CreateComplianceButton(card.transform, "CloseButton", "取消", new Vector2(105f, -125f), new Vector2(150f, 50f), SecondaryButtonColor, FieldTextColor, 18);
         close.onClick.AddListener(HideRealNamePanel);
         realNamePanel.transform.SetAsLastSibling();
     }
@@ -962,6 +962,96 @@ public partial class GameBoot
         managementConsent = null;
         managementCancellation = null;
         managementCompliance = null;
+    }
+
+    private TMP_Text CreateComplianceText(
+        string name,
+        Transform parent,
+        string value,
+        int fontSize,
+        FontStyle fontStyle,
+        Color color,
+        TextAnchor alignment)
+    {
+        GameObject textObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(parent, false);
+        TMP_Text text = textObject.GetComponent<TMP_Text>();
+        text.font = RuntimeFontAssetProvider.Resolve();
+        text.text = value ?? string.Empty;
+        text.fontSize = fontSize;
+        text.fontStyle = fontStyle == FontStyle.Bold
+            ? FontStyles.Bold
+            : fontStyle == FontStyle.Italic ? FontStyles.Italic : FontStyles.Normal;
+        text.color = color;
+        text.alignment = ResolveComplianceAlignment(alignment);
+        text.enableWordWrapping = true;
+        text.overflowMode = TextOverflowModes.Overflow;
+        text.raycastTarget = false;
+        return text;
+    }
+
+    private Button CreateComplianceButton(
+        Transform parent,
+        string name,
+        string value,
+        Vector2 position,
+        Vector2 size,
+        Color color,
+        Color textColor,
+        int fontSize)
+    {
+        Image image = CreateImage(name, parent, color);
+        SetRect(image.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), position, size);
+        image.raycastTarget = true;
+        Button button = image.gameObject.AddComponent<Button>();
+        button.targetGraphic = image;
+
+        TMP_Text label = CreateComplianceText("Text", image.transform, value, fontSize, FontStyle.Normal, textColor, TextAnchor.MiddleCenter);
+        label.rectTransform.anchorMin = Vector2.zero;
+        label.rectTransform.anchorMax = Vector2.one;
+        label.rectTransform.offsetMin = Vector2.zero;
+        label.rectTransform.offsetMax = Vector2.zero;
+        return button;
+    }
+
+    private TMP_InputField CreateComplianceInput(Transform parent, string name, string placeholder)
+    {
+        Image frame = CreateImage(name, parent, FieldColor);
+        frame.raycastTarget = true;
+        TMP_InputField input = frame.gameObject.AddComponent<TMP_InputField>();
+        input.targetGraphic = frame;
+        input.lineType = TMP_InputField.LineType.SingleLine;
+
+        TMP_Text text = CreateComplianceText("Text", frame.transform, string.Empty, 14, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleLeft);
+        text.rectTransform.anchorMin = Vector2.zero;
+        text.rectTransform.anchorMax = Vector2.one;
+        text.rectTransform.offsetMin = new Vector2(16f, 0f);
+        text.rectTransform.offsetMax = new Vector2(-16f, 0f);
+        input.textComponent = text;
+
+        TMP_Text placeholderText = CreateComplianceText("Placeholder", frame.transform, placeholder, 12, FontStyle.Normal, new Color(0.56f, 0.61f, 0.68f, 1f), TextAnchor.MiddleLeft);
+        placeholderText.rectTransform.anchorMin = Vector2.zero;
+        placeholderText.rectTransform.anchorMax = Vector2.one;
+        placeholderText.rectTransform.offsetMin = new Vector2(16f, 0f);
+        placeholderText.rectTransform.offsetMax = new Vector2(-16f, 0f);
+        input.placeholder = placeholderText;
+        return input;
+    }
+
+    private static TextAlignmentOptions ResolveComplianceAlignment(TextAnchor alignment)
+    {
+        switch (alignment)
+        {
+            case TextAnchor.UpperLeft: return TextAlignmentOptions.TopLeft;
+            case TextAnchor.UpperCenter: return TextAlignmentOptions.Top;
+            case TextAnchor.UpperRight: return TextAlignmentOptions.TopRight;
+            case TextAnchor.MiddleLeft: return TextAlignmentOptions.MidlineLeft;
+            case TextAnchor.MiddleRight: return TextAlignmentOptions.MidlineRight;
+            case TextAnchor.LowerLeft: return TextAlignmentOptions.BottomLeft;
+            case TextAnchor.LowerCenter: return TextAlignmentOptions.Bottom;
+            case TextAnchor.LowerRight: return TextAlignmentOptions.BottomRight;
+            default: return TextAlignmentOptions.Center;
+        }
     }
 
     private void ClearClosedAccountLocalState()

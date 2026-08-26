@@ -131,6 +131,13 @@ public static class ApiRequestUtility
         Configure(request, authorized, authorized ? GameSession.Token : string.Empty);
     }
 
+    public static void SetIdempotencyKey(UnityWebRequest request, string idempotencyKey)
+    {
+        if (request == null || string.IsNullOrWhiteSpace(idempotencyKey)) return;
+        if (!Guid.TryParse(idempotencyKey, out _)) return;
+        request.SetRequestHeader("Idempotency-Key", idempotencyKey);
+    }
+
     private static void Configure(UnityWebRequest request, bool authorized, string token)
     {
         request.downloadHandler = request.downloadHandler ?? new DownloadHandlerBuffer();

@@ -91,7 +91,7 @@ public partial class HomePageUI
             }
 
             bool selected = categoryId == category;
-            bool supported = !HasAuthSession() || categoryId == "daily" || categoryId == "main";
+            bool supported = true;
             Image background = button.GetComponent<Image>();
             if (background != null)
             {

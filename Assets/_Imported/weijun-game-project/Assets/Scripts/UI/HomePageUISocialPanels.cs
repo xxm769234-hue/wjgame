@@ -73,7 +73,7 @@ public partial class HomePageUI
         SetSceneText(root, "ProfileWood", PlayerPrefs.GetInt("Wood", 500).ToString());
         SetSceneText(root, "ProfileStone", PlayerPrefs.GetInt("Stone", 500).ToString());
         SetSceneText(root, "ProfileIron", PlayerPrefs.GetInt("Iron", 300).ToString());
-        SetSceneText(root, "ProfileVital", $"生命  {PlayerPrefs.GetInt("PlayerHp", 1000)}    体力  {PlayerPrefs.GetInt("PlayerEnergy", 100)}");
+        SetSceneText(root, "ProfileVital", $"生命  {PlayerPrefs.GetInt("PlayerHp", 1000)}    体力  {GetHomeStamina()}");
         SetSceneText(root, "ProfileSignStat", $"签到天数\n{PlayerPrefs.GetInt("DailySignDays", 0)} 天");
         SetSceneText(root, "ProfileFriendStat", $"好友数量\n{v37Friends.Count} 人");
         SetSceneText(root, "ProfileExploreStat", $"领地探索\n{PlayerPrefs.GetInt("TaskMapEntered", 0)} 次");

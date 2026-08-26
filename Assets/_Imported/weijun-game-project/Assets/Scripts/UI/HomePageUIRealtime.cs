@@ -1,5 +1,7 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -10,19 +12,35 @@ public partial class HomePageUI
     private Coroutine realtimeHeartbeatCoroutine;
     private Coroutine realtimeReconnectCoroutine;
     private Coroutine realtimeHandshakeTimeoutCoroutine;
+    private Coroutine realtimeFallbackCoroutine;
+    private readonly HashSet<string> realtimeEventIds = new HashSet<string>();
+    private readonly Queue<string> realtimeEventOrder = new Queue<string>();
     private bool realtimeConnected;
     private bool realtimeTransportOpen;
     private bool realtimeClosing;
     private bool realtimeBackfillRunning;
+    private bool realtimeLandRefreshRunning;
+    private bool realtimeLandRefreshQueued;
+    private bool realtimeLandRefreshScenesQueued;
+    private bool realtimeLandRefreshInventoryQueued;
+    private string realtimeLandRefreshStatus = string.Empty;
     private bool resumeRealtimeAfterPause;
     private int realtimeHeartbeatSequence;
 
     private void BeginRealtimeConnection()
     {
-        if (!HasAuthSession() || !RealtimePlatformBridge.IsAvailable)
+        if (!HasAuthSession())
         {
             return;
         }
+
+        if (!RealtimePlatformBridge.IsAvailable)
+        {
+            BeginRealtimeFallbackPolling();
+            return;
+        }
+
+        StopRealtimeFallbackPolling();
 
         if (realtimeTransportOpen || realtimeConnected)
         {
@@ -63,13 +81,29 @@ public partial class HomePageUI
             return;
         }
 
+        if (!string.IsNullOrEmpty(realtimeEvent.eventId))
+        {
+            if (!realtimeEventIds.Add(realtimeEvent.eventId))
+            {
+                return;
+            }
+
+            realtimeEventOrder.Enqueue(realtimeEvent.eventId);
+            while (realtimeEventOrder.Count > 512)
+            {
+                string oldestEventId = realtimeEventOrder.Dequeue();
+                realtimeEventIds.Remove(oldestEventId);
+            }
+        }
+
         if (realtimeEvent.type == "CONNECTED")
         {
             ConfirmRealtimeHandshake(realtimeEvent);
             return;
         }
 
-        if (!realtimeConnected || !IsCurrentPlayerRealtimeEvent(realtimeEvent))
+        bool isPublicBroadcast = realtimeEvent.type == "CARD_DRAW_RARE_BROADCAST";
+        if (!realtimeConnected || (!isPublicBroadcast && !IsCurrentPlayerRealtimeEvent(realtimeEvent)))
         {
             return;
         }
@@ -120,6 +154,52 @@ public partial class HomePageUI
         {
             CoinShopPurchaseRealtimeEvent purchaseEvent = ParseJson<CoinShopPurchaseRealtimeEvent>(json);
             HandleDiamondShopPurchaseRealtime(purchaseEvent == null ? null : purchaseEvent.data, realtimeEvent.eventId);
+            return;
+        }
+
+        if (realtimeEvent.type == "CARD_DRAW_RARE_BROADCAST")
+        {
+            RareCardDrawRealtimeEvent rareEvent = ParseJson<RareCardDrawRealtimeEvent>(json);
+            RareCardDrawData rareData = rareEvent == null ? null : rareEvent.data;
+            string reward = rareData == null ? string.Empty : rareData.rewardName;
+            if (string.IsNullOrEmpty(reward) && rareData != null)
+            {
+                reward = rareData.rewardKey;
+            }
+
+            string content = rareData == null ? string.Empty : rareData.content;
+            if (string.IsNullOrEmpty(content))
+            {
+                content = string.IsNullOrEmpty(reward) ? "抽奖稀有奖品" : reward;
+            }
+
+            string expiresAt = rareData == null ? string.Empty : rareData.expiresAt;
+            SetStatus("抽奖稀有奖品广播：" + content
+                + (string.IsNullOrEmpty(expiresAt) ? string.Empty : "（有效期至 " + expiresAt + "）"));
+            return;
+        }
+
+        if (realtimeEvent.type == "PLAYER_PROGRESSION_CHANGED")
+        {
+            StartCoroutine(RefreshAccountSnapshot("玩家成长数据已更新"));
+            return;
+        }
+
+        if (realtimeEvent.type == "LAND_SCENE_UNLOCKED" || realtimeEvent.type == "LAND_SCENE_SWITCHED")
+        {
+            QueueRealtimeLandRefresh(true, true, "经营场景状态已刷新");
+            return;
+        }
+
+        if (realtimeEvent.type == "LAND_SLOT_STATE_CHANGED" || realtimeEvent.type == "PRODUCTION_COLLECTED")
+        {
+            QueueRealtimeLandRefresh(false, true, "经营数据已刷新");
+            return;
+        }
+
+        if (realtimeEvent.type == "PLAYER_ONBOARDING_UPDATED")
+        {
+            SetStatus("新手引导状态已更新，请按当前提示继续");
             return;
         }
 
@@ -195,6 +275,120 @@ public partial class HomePageUI
         return realtimeEvent != null && realtimeEvent.playerId == GameSession.PlayerId;
     }
 
+    private void QueueRealtimeLandRefresh(bool reloadScenes, bool refreshInventory, string status)
+    {
+        if (!HasAuthSession())
+        {
+            return;
+        }
+
+        realtimeLandRefreshQueued = true;
+        realtimeLandRefreshScenesQueued |= reloadScenes;
+        realtimeLandRefreshInventoryQueued |= refreshInventory;
+        realtimeLandRefreshStatus = status ?? string.Empty;
+        if (!realtimeLandRefreshRunning)
+        {
+            StartCoroutine(RefreshRealtimeLandState());
+        }
+    }
+
+    private IEnumerator RefreshRealtimeLandState()
+    {
+        realtimeLandRefreshRunning = true;
+        while (realtimeLandRefreshQueued && HasAuthSession())
+        {
+            realtimeLandRefreshQueued = false;
+            bool reloadScenes = realtimeLandRefreshScenesQueued;
+            bool refreshInventory = realtimeLandRefreshInventoryQueued;
+            realtimeLandRefreshScenesQueued = false;
+            realtimeLandRefreshInventoryQueued = false;
+
+            object service;
+            Type serviceType;
+            if (!TryGetBackendGameService(out service, out serviceType))
+            {
+                break;
+            }
+
+            if (reloadScenes)
+            {
+                yield return InvokeBackendServiceCoroutine(service, serviceType, "LoadLandScenes");
+            }
+
+            yield return InvokeBackendServiceCoroutine(service, serviceType, "SyncMap");
+            yield return InvokeBackendServiceCoroutine(service, serviceType, "RefreshProductions");
+            if (refreshInventory)
+            {
+                yield return InvokeBackendServiceCoroutine(service, serviceType, "RefreshInventory");
+            }
+
+            yield return RefreshAccountSnapshot(realtimeLandRefreshStatus);
+        }
+
+        realtimeLandRefreshStatus = string.Empty;
+        realtimeLandRefreshRunning = false;
+    }
+
+    private static bool TryGetBackendGameService(out object service, out Type serviceType)
+    {
+        service = null;
+        serviceType = Type.GetType("BackendGameService, Assembly-CSharp");
+        if (serviceType == null)
+        {
+            Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
+            for (int i = 0; i < assemblies.Length && serviceType == null; i++)
+            {
+                serviceType = assemblies[i].GetType("BackendGameService");
+            }
+        }
+
+        if (serviceType == null)
+        {
+            Debug.LogWarning("Realtime refresh could not find BackendGameService.");
+            return false;
+        }
+
+        PropertyInfo instanceProperty = serviceType.GetProperty(
+            "Instance",
+            BindingFlags.Public | BindingFlags.Static);
+        PropertyInfo authenticatedProperty = serviceType.GetProperty(
+            "IsAuthenticated",
+            BindingFlags.Public | BindingFlags.Instance);
+        service = instanceProperty == null ? null : instanceProperty.GetValue(null, null);
+        return service != null
+            && authenticatedProperty != null
+            && authenticatedProperty.GetValue(service, null) is bool authenticated
+            && authenticated;
+    }
+
+    private static IEnumerator InvokeBackendServiceCoroutine(object service, Type serviceType, string methodName)
+    {
+        MethodInfo method = serviceType.GetMethod(
+            methodName,
+            BindingFlags.Public | BindingFlags.Instance);
+        if (method == null)
+        {
+            Debug.LogWarning("Realtime refresh could not find BackendGameService." + methodName + ".");
+            yield break;
+        }
+
+        object operation;
+        try
+        {
+            operation = method.Invoke(service, new object[] { null });
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning("Realtime refresh failed to invoke BackendGameService." + methodName + ": " + exception.Message);
+            yield break;
+        }
+
+        if (operation != null)
+        {
+            yield return operation;
+        }
+    }
+
     public void OnRealtimeClosed(string message)
     {
         realtimeConnected = false;
@@ -202,6 +396,7 @@ public partial class HomePageUI
         StopRealtimeHandshakeTimeout();
         StopRealtimeHeartbeat();
         ScheduleRealtimeReconnect();
+        BeginRealtimeFallbackPolling();
     }
 
     public void OnRealtimeError(string message)
@@ -222,11 +417,43 @@ public partial class HomePageUI
             Debug.LogWarning("实时连接异常：" + message);
         }
         ScheduleRealtimeReconnect();
+        BeginRealtimeFallbackPolling();
     }
 
-    private IEnumerator RefreshRealtimeBacklog()
+    private void BeginRealtimeFallbackPolling()
     {
-        if (!realtimeConnected || !HasAuthSession())
+        if (realtimeFallbackCoroutine == null && HasAuthSession() && isActiveAndEnabled)
+        {
+            realtimeFallbackCoroutine = StartCoroutine(RealtimeFallbackPolling());
+        }
+    }
+
+    private void StopRealtimeFallbackPolling()
+    {
+        if (realtimeFallbackCoroutine != null)
+        {
+            StopCoroutine(realtimeFallbackCoroutine);
+            realtimeFallbackCoroutine = null;
+        }
+    }
+
+    private IEnumerator RealtimeFallbackPolling()
+    {
+        while (HasAuthSession() && isActiveAndEnabled)
+        {
+            yield return new WaitForSecondsRealtime(20f);
+            if (HasAuthSession() && !realtimeConnected && !realtimeBackfillRunning)
+            {
+                StartCoroutine(RefreshRealtimeBacklog(true));
+                StartCoroutine(RefreshAccountSnapshot(string.Empty));
+            }
+        }
+        realtimeFallbackCoroutine = null;
+    }
+
+    private IEnumerator RefreshRealtimeBacklog(bool allowFallback = false)
+    {
+        if ((!realtimeConnected && !allowFallback) || !HasAuthSession())
         {
             yield break;
         }
@@ -277,7 +504,7 @@ public partial class HomePageUI
             }
         }
 
-        if (!realtimeConnected || !HasAuthSession())
+        if ((!realtimeConnected && !allowFallback) || !HasAuthSession())
         {
             realtimeBackfillRunning = false;
             yield break;
@@ -371,6 +598,10 @@ public partial class HomePageUI
             realtimeReconnectCoroutine = null;
         }
         RealtimePlatformBridge.Close();
+        StopRealtimeFallbackPolling();
+        realtimeLandRefreshQueued = false;
+        realtimeLandRefreshScenesQueued = false;
+        realtimeLandRefreshInventoryQueued = false;
     }
 
     private void StopRealtimeHeartbeat()
@@ -401,6 +632,7 @@ public partial class HomePageUI
         else if (resumeRealtimeAfterPause && HasAuthSession() && isActiveAndEnabled)
         {
             resumeRealtimeAfterPause = false;
+            StartCoroutine(RefreshServerStamina());
             BeginRealtimeConnection();
         }
     }
@@ -502,6 +734,22 @@ public partial class HomePageUI
         public int playerId;
         public CoinShopPurchaseResult data;
         public string serverTime;
+    }
+
+    [Serializable]
+    private class RareCardDrawRealtimeEvent
+    {
+        public RareCardDrawData data;
+    }
+
+    [Serializable]
+    private class RareCardDrawData
+    {
+        public string rewardName;
+        public string rewardKey;
+        public string rarity;
+        public string content;
+        public string expiresAt;
     }
 
     [Serializable]

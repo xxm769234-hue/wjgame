@@ -134,7 +134,7 @@ public partial class HomePageUI
         SetStatus("正在同步服务器地图...");
 
         int playerId = GameSession.PlayerId;
-        UnityWebRequest request = CreateAuthorizedGet($"/land/map/{playerId}");
+        UnityWebRequest request = CreateAuthorizedGet(AppendSceneIdQuery($"/land/map/{playerId}"));
         if (request == null)
         {
             mapEntryRunning = false;
@@ -170,6 +170,8 @@ public partial class HomePageUI
             PlayerPrefs.SetInt("ServerMapHeight", response.data.height);
             PlayerPrefs.SetInt("ServerLandCount", response.data.lands == null ? 0 : response.data.lands.Length);
             PlayerPrefs.SetInt("ServerBuildingCount", response.data.buildings == null ? 0 : response.data.buildings.Length);
+            int responseSceneId = response.data.sceneId > 0 ? response.data.sceneId : response.data.scene_id;
+            if (responseSceneId > 0) PlayerPrefs.SetInt("weijun.backend.sceneId", responseSceneId);
             PlayerPrefs.SetString("ServerMapLastSync", DateTime.UtcNow.ToString("O"));
             PlayerPrefs.Save();
         }
@@ -487,6 +489,7 @@ public partial class HomePageUI
             if (request.result == UnityWebRequest.Result.Success && response != null && response.code == 200 && response.data != null)
             {
                 SaveUserProfile(response.data);
+                yield return RefreshServerStamina();
                 if (!string.IsNullOrEmpty(successMessage))
                 {
                     SetStatus(successMessage);
@@ -501,13 +504,15 @@ public partial class HomePageUI
 
     private bool TryCreateAuthorizedPost(string path, string json, out UnityWebRequest request, out string error)
     {
-        return ApiRequestUtility.TryCreateJsonRequest(
+        bool created = ApiRequestUtility.TryCreateJsonRequest(
             path,
             UnityWebRequest.kHttpVerbPOST,
             json,
             true,
             out request,
             out error);
+        if (created) ApiRequestUtility.SetIdempotencyKey(request, Guid.NewGuid().ToString("D"));
+        return created;
     }
 
     private bool HandleUnauthorizedResponse(UnityWebRequest request)
@@ -550,6 +555,8 @@ public partial class HomePageUI
     private class MapDataResponse
     {
         public int playerId;
+        public int sceneId;
+        public int scene_id;
         public int width;
         public int height;
         public MapLandResponse[] lands;
@@ -574,6 +581,13 @@ public partial class HomePageUI
         public long playerLandId;
         public int level;
         public string status;
+    }
+
+    private static string AppendSceneIdQuery(string path)
+    {
+        int sceneId = PlayerPrefs.GetInt("weijun.backend.sceneId", 0);
+        if (sceneId <= 0) return path;
+        return path + (path.Contains("?") ? "&" : "?") + "sceneId=" + sceneId;
     }
 
     [Serializable]

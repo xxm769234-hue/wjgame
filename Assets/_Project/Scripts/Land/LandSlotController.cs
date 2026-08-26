@@ -74,6 +74,9 @@ public sealed class LandSlotController : MonoBehaviour
     private bool runtimePurchaseAvailable;
     private bool runtimePlacementUnlocked = true;
     private int runtimePurchaseGoldCost;
+    private int runtimePurificationItemId;
+    private string runtimePurificationItemKey = string.Empty;
+    private int runtimePurificationItemAmount;
     private bool hasRemoteUnlockState;
     private bool hasRuntimeLayoutGridPosition;
     private TextMeshPro purchaseIndicator;
@@ -119,6 +122,9 @@ public sealed class LandSlotController : MonoBehaviour
     public bool IsPurchaseAvailable => runtimePurchaseAvailable;
     public bool IsPlacementUnlocked => runtimePlacementUnlocked;
     public int PurchaseGoldCost => runtimePurchaseGoldCost;
+    public int PurificationItemId => runtimePurificationItemId;
+    public string PurificationItemKey => runtimePurificationItemKey;
+    public int PurificationItemAmount => runtimePurificationItemAmount;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetSortingOrderAllocator()
@@ -265,6 +271,9 @@ public sealed class LandSlotController : MonoBehaviour
         runtimeRequiresPurification = false;
         runtimePurified = true;
         runtimePurificationAvailable = false;
+        runtimePurificationItemId = 0;
+        runtimePurificationItemKey = string.Empty;
+        runtimePurificationItemAmount = 0;
         runtimePurchaseGoldCost = requiresGoldPurchase ? LandUnlockRules.DefaultPaidSlotGoldCost : 0;
         if (!requiresGoldPurchase)
         {
@@ -291,6 +300,9 @@ public sealed class LandSlotController : MonoBehaviour
         runtimeRequiresPurification = response.requiresPurification;
         runtimePurified = !response.requiresPurification || response.purified;
         runtimePurificationAvailable = response.purificationAvailable;
+        runtimePurificationItemId = Mathf.Max(0, response.purificationItemId);
+        runtimePurificationItemKey = response.purificationItemKey ?? string.Empty;
+        runtimePurificationItemAmount = Mathf.Max(0, response.purificationItemAmount);
         runtimeRequiresGoldPurchase = response.requiresPurchase;
         runtimePurchased = !response.requiresPurchase || response.purchased;
         runtimePurchaseAvailable = response.purchaseAvailable;
@@ -314,6 +326,9 @@ public sealed class LandSlotController : MonoBehaviour
         runtimeRequiresPurification = false;
         runtimePurified = true;
         runtimePurificationAvailable = false;
+        runtimePurificationItemId = 0;
+        runtimePurificationItemKey = string.Empty;
+        runtimePurificationItemAmount = 0;
         runtimePurchased = !runtimeRequiresGoldPurchase;
         runtimePurchaseAvailable = false;
         runtimePlacementUnlocked = runtimeUnlocked && IsPurchased;
@@ -510,6 +525,7 @@ public sealed class LandSlotController : MonoBehaviour
             GameObject indicatorObject = new GameObject("Land Purchase Indicator");
             indicatorObject.transform.SetParent(transform, false);
             purchaseIndicator = indicatorObject.AddComponent<TextMeshPro>();
+            purchaseIndicator.font = RuntimeFontAssetProvider.Resolve();
             purchaseIndicator.alignment = TextAlignmentOptions.Center;
             purchaseIndicator.enableWordWrapping = false;
             purchaseIndicator.fontSize = 1.25f;

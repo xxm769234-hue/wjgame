@@ -18,6 +18,11 @@ public partial class HomePageUI
     private bool roleCatalogMode;
     private int roleSelectedNpcId;
     private string roleStatusMessage = string.Empty;
+    private RoleAutoUpgradePreviewData roleAutoUpgradePreview;
+    private long roleAutoUpgradePreviewNpcId;
+    private bool roleAutoUpgradePreviewRunning;
+    private string roleAutoUpgradePreviewError = string.Empty;
+    private string roleAutoUpgradeIdempotencyKey = string.Empty;
 
     private void ShowRolePanel()
     {
@@ -46,6 +51,7 @@ public partial class HomePageUI
         roleSelectedNpcId = 0;
         rolePanelLoading = true;
         roleUpgradeRunning = false;
+        ResetRoleAutoUpgradePreview();
         roleStatusMessage = HasAuthSession() ? "正在同步服务器角色数据..." : "请先登录账号后查看角色数据";
         RenderRolePanel();
 
@@ -335,6 +341,8 @@ public partial class HomePageUI
         SetSceneText(root, "RoleDetailDescription", string.IsNullOrEmpty(entry.catalog.description) ? "暂无角色描述" : entry.catalog.description);
         SetSceneText(root, "RoleDetailAcquisition", BuildRoleAcquisitionText(entry));
 
+        EnsureRoleAutoUpgradePreview(entry);
+
         Image icon = FindSceneComponent<Image>(root, "RoleDetailIcon");
         TMP_Text fallback = FindSceneComponent<TMP_Text>(root, "RoleDetailIconText");
         ApplyRoleIcon(icon, fallback, entry.catalog.icon, entry.catalog.name);
@@ -342,9 +350,24 @@ public partial class HomePageUI
         if (upgrade != null)
         {
             upgrade.gameObject.SetActive(entry.player != null);
-            upgrade.interactable = entry.player != null && !roleUpgradeRunning && entry.player.level < entry.catalog.maxLevel;
-            SetSceneButtonText(upgrade, entry.player != null && entry.player.level >= entry.catalog.maxLevel ? "已达上限" : "升级");
-            BindSceneButton(upgrade, entry.player == null || roleUpgradeRunning ? null : () => StartCoroutine(UpgradeRole(entry.player.playerNpcId)));
+            bool previewMatches = entry.player != null && roleAutoUpgradePreviewNpcId == entry.player.playerNpcId;
+            bool previewLoading = previewMatches && roleAutoUpgradePreviewRunning;
+            bool maxLevelReached = previewMatches && roleAutoUpgradePreview != null
+                && roleAutoUpgradePreview.payableTargetLevel <= roleAutoUpgradePreview.currentLevel;
+            bool useAutoUpgrade = previewMatches && roleAutoUpgradePreview != null;
+            upgrade.interactable = entry.player != null && !roleUpgradeRunning && !previewLoading && !maxLevelReached;
+            SetSceneButtonText(upgrade, entry.player == null || maxLevelReached
+                ? "已达上限"
+                : previewLoading
+                    ? "读取中..."
+                    : useAutoUpgrade
+                        ? $"一键升至 Lv.{roleAutoUpgradePreview.payableTargetLevel}"
+                        : "升级");
+            BindSceneButton(upgrade, entry.player == null || roleUpgradeRunning || previewLoading
+                ? null
+                : useAutoUpgrade
+                    ? () => StartCoroutine(AutoUpgradeRole(entry.player, entry.catalog.maxLevel))
+                    : () => StartCoroutine(UpgradeRole(entry.player.playerNpcId)));
         }
 
         if (acquire != null)
@@ -402,6 +425,157 @@ public partial class HomePageUI
         }
 
         roleUpgradeRunning = false;
+        yield return LoadRolePanelData();
+    }
+
+    private void ResetRoleAutoUpgradePreview()
+    {
+        roleAutoUpgradePreview = null;
+        roleAutoUpgradePreviewNpcId = 0L;
+        roleAutoUpgradePreviewRunning = false;
+        roleAutoUpgradePreviewError = string.Empty;
+        roleAutoUpgradeIdempotencyKey = string.Empty;
+    }
+
+    private void EnsureRoleAutoUpgradePreview(RoleDisplayEntry entry)
+    {
+        if (!HasAuthSession() || entry == null || entry.player == null || entry.player.playerNpcId <= 0L)
+        {
+            return;
+        }
+
+        long playerNpcId = entry.player.playerNpcId;
+        if (roleAutoUpgradePreviewNpcId == playerNpcId
+            && (roleAutoUpgradePreviewRunning || roleAutoUpgradePreview != null || !string.IsNullOrEmpty(roleAutoUpgradePreviewError)))
+        {
+            return;
+        }
+
+        roleAutoUpgradePreview = null;
+        roleAutoUpgradePreviewNpcId = playerNpcId;
+        roleAutoUpgradePreviewRunning = true;
+        roleAutoUpgradePreviewError = string.Empty;
+        int targetLevel = entry.catalog.maxLevel > 0 ? entry.catalog.maxLevel : entry.player.level;
+        StartCoroutine(LoadRoleAutoUpgradePreview(playerNpcId, Mathf.Max(1, targetLevel)));
+    }
+
+    private IEnumerator LoadRoleAutoUpgradePreview(long playerNpcId, int targetLevel)
+    {
+        UnityWebRequest request = CreateAuthorizedGet($"/npc/{playerNpcId}/auto-upgrade-preview?targetLevel={Mathf.Clamp(targetLevel, 1, 100)}");
+        if (request == null)
+        {
+            roleAutoUpgradePreviewRunning = false;
+            roleAutoUpgradePreviewError = requestCreationError;
+            RenderRolePanel();
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (HandleUnauthorizedResponse(request))
+            {
+                roleAutoUpgradePreviewRunning = false;
+                yield break;
+            }
+
+            RoleAutoUpgradePreviewApiResponse response = ParseJson<RoleAutoUpgradePreviewApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+            {
+                roleAutoUpgradePreviewError = response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                    : GetApiError(response);
+            }
+            else
+            {
+                roleAutoUpgradePreview = response.data;
+                roleAutoUpgradePreviewError = string.Empty;
+            }
+        }
+
+        roleAutoUpgradePreviewRunning = false;
+        RenderRolePanel();
+    }
+
+    private IEnumerator AutoUpgradeRole(RolePlayerEntry player, int fallbackTargetLevel)
+    {
+        if (player == null || player.playerNpcId <= 0L || roleUpgradeRunning) yield break;
+
+        int currentLevel = Mathf.Max(1, player.level);
+        int targetLevel = roleAutoUpgradePreview != null && roleAutoUpgradePreviewNpcId == player.playerNpcId
+            ? roleAutoUpgradePreview.payableTargetLevel
+            : Mathf.Max(currentLevel, fallbackTargetLevel);
+        if (targetLevel <= currentLevel)
+        {
+            roleStatusMessage = string.IsNullOrEmpty(roleAutoUpgradePreviewError) ? "角色已经无法继续升级" : roleAutoUpgradePreviewError;
+            RenderRolePanel();
+            yield break;
+        }
+
+        string planFingerprint = roleAutoUpgradePreview == null ? string.Empty : roleAutoUpgradePreview.planFingerprint;
+        if (string.IsNullOrEmpty(planFingerprint))
+        {
+            roleStatusMessage = "升级方案已失效，请重新读取后再试";
+            ResetRoleAutoUpgradePreview();
+            RenderRolePanel();
+            yield break;
+        }
+
+        roleUpgradeRunning = true;
+        if (string.IsNullOrEmpty(roleAutoUpgradeIdempotencyKey))
+        {
+            roleAutoUpgradeIdempotencyKey = System.Guid.NewGuid().ToString("D");
+        }
+        roleStatusMessage = "正在执行角色一键升级...";
+        RenderRolePanel();
+
+        string json = JsonUtility.ToJson(new RoleAutoUpgradeRequest
+        {
+            playerNpcId = player.playerNpcId,
+            expectedCurrentLevel = currentLevel,
+            targetLevel = targetLevel,
+            planFingerprint = planFingerprint
+        });
+        if (!ApiRequestUtility.TryCreateJsonRequest(
+            "/npc/auto-upgrade",
+            UnityWebRequest.kHttpVerbPOST,
+            json,
+            true,
+            out UnityWebRequest request,
+            out string error))
+        {
+            roleUpgradeRunning = false;
+            roleStatusMessage = error;
+            RenderRolePanel();
+            yield break;
+        }
+
+        ApiRequestUtility.SetIdempotencyKey(request, roleAutoUpgradeIdempotencyKey);
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (HandleUnauthorizedResponse(request))
+            {
+                roleUpgradeRunning = false;
+                yield break;
+            }
+
+            RoleAutoUpgradeApiResponse response = ParseJson<RoleAutoUpgradeApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+            {
+                roleUpgradeRunning = false;
+                roleStatusMessage = "角色一键升级失败：" + (response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                    : GetApiError(response));
+                RenderRolePanel();
+                yield break;
+            }
+
+            roleStatusMessage = $"角色已升级到 Lv.{response.data.reachedLevel}，服务器已同步资源";
+        }
+
+        roleUpgradeRunning = false;
+        ResetRoleAutoUpgradePreview();
         yield return LoadRolePanelData();
     }
 
@@ -696,6 +870,46 @@ public partial class HomePageUI
     private sealed class RoleUpgradeApiResponse : BasicApiResponse
     {
         public RoleUpgradeData data;
+    }
+
+    [Serializable]
+    private sealed class RoleAutoUpgradePreviewApiResponse : BasicApiResponse
+    {
+        public RoleAutoUpgradePreviewData data;
+    }
+
+    [Serializable]
+    private sealed class RoleAutoUpgradePreviewData
+    {
+        public long playerNpcId;
+        public int currentLevel;
+        public int requestedTargetLevel;
+        public int payableTargetLevel;
+        public string planFingerprint;
+    }
+
+    [Serializable]
+    private sealed class RoleAutoUpgradeRequest
+    {
+        public long playerNpcId;
+        public int expectedCurrentLevel;
+        public int targetLevel;
+        public string planFingerprint;
+    }
+
+    [Serializable]
+    private sealed class RoleAutoUpgradeApiResponse : BasicApiResponse
+    {
+        public RoleAutoUpgradeData data;
+    }
+
+    [Serializable]
+    private sealed class RoleAutoUpgradeData
+    {
+        public long playerNpcId;
+        public int reachedLevel;
+        public int level;
+        public string outcome;
     }
 
     [Serializable]

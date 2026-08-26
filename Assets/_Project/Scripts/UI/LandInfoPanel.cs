@@ -1,3 +1,5 @@
+using System;
+using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -32,6 +34,19 @@ public sealed class LandInfoPanel : MonoBehaviour
     [SerializeField] private RectTransform npcListPanel;
     [SerializeField] private RectTransform npcListContent;
     [SerializeField] private bool logButtonClicks = true;
+    private Button workTimeButton;
+    private Button recipeButton;
+    private ProductionWorkTimePreviewResponse workTimePreview;
+    private ProductionWorkTimeRequest workTimePreviewRequest;
+    private string workTimeIdempotencyKey = string.Empty;
+    private ProductionRecipesResponse productionRecipes;
+    private int productionRecipesBuildingId;
+    private bool workStateRequestRunning;
+    private bool workTimeRequestRunning;
+    private bool recipesRequestRunning;
+    private bool recipeSwitchRequestRunning;
+    private string recipeSwitchIdempotencyKey = string.Empty;
+    private string productionActionMessage = string.Empty;
     private LandSlotController current;
     private RectTransform panelRect;
     private RectTransform canvasRect;
@@ -55,6 +70,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         EnsureBuildControls();
         EnsureBuildingActionControls();
         EnsureNpcControls();
+        EnsureProductionControls();
         panel.SetActive(false);
     }
 
@@ -62,6 +78,7 @@ public sealed class LandInfoPanel : MonoBehaviour
     {
         if (slot == null || slot.CurrentLand == null) return;
         current = slot;
+        ResetProductionActionsIfBuildingChanged(slot);
         LandConfig data = slot.CurrentLand;
         SetText(nameText, data.landName);
         SetText(descText, data.description);
@@ -69,6 +86,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         RefreshBuildingStatus();
         RefreshProductionStatus();
         RefreshNpcStatus();
+        RefreshProductionControls();
         panel.SetActive(true);
         shownFrame = Time.frameCount;
         PositionNearSlot(slot);
@@ -81,6 +99,13 @@ public sealed class LandInfoPanel : MonoBehaviour
         HideBuildingList();
         HideNpcList();
         current = null;
+        workTimePreview = null;
+        workTimePreviewRequest = null;
+        workTimeIdempotencyKey = string.Empty;
+        productionRecipes = null;
+        productionRecipesBuildingId = 0;
+        recipeSwitchIdempotencyKey = string.Empty;
+        productionActionMessage = string.Empty;
     }
 
     public void RefreshIfShowing(LandSlotController slot)
@@ -89,6 +114,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         RefreshBuildingStatus();
         RefreshProductionStatus();
         RefreshNpcStatus();
+        RefreshProductionControls();
     }
 
     public void SetBuildingMessage(string message)
@@ -128,6 +154,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             }
             RefreshProductionStatus();
             RefreshNpcStatus();
+            RefreshProductionControls();
         });
     }
 
@@ -376,6 +403,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             HideNpcList();
             RefreshProductionStatus();
             RefreshNpcStatus();
+            RefreshProductionControls();
         }, out string reason))
         {
             SetText(npcText, $"NPC failed: {reason}");
@@ -465,6 +493,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         if (!current.HasBuilding)
         {
             SetText(productionText, "Production: Build first");
+            RefreshProductionControls();
             return;
         }
 
@@ -472,10 +501,338 @@ public sealed class LandInfoPanel : MonoBehaviour
         if (productions == null || productions.Count == 0)
         {
             SetText(productionText, current.IsBuildingCompleted ? "Production: Syncing..." : "Production: Paused");
+            RefreshProductionControls();
             return;
         }
 
-        SetText(productionText, FormatProductionStatus(current, productions));
+        string status = FormatProductionStatus(current, productions);
+        string workState = FormatWorkState(BackendGameService.Instance != null
+            ? BackendGameService.Instance.CurrentWorkState
+            : null);
+        if (!string.IsNullOrEmpty(workState)) status += "\n" + workState;
+        if (!string.IsNullOrEmpty(productionActionMessage)) status += "\n" + productionActionMessage;
+        SetText(productionText, status);
+        RefreshProductionControls();
+    }
+
+    private void ResetProductionActionsIfBuildingChanged(LandSlotController slot)
+    {
+        int buildingId = slot != null && slot.HasBuilding ? slot.PlayerBuildingId : 0;
+        if (productionRecipesBuildingId == buildingId) return;
+
+        workTimePreview = null;
+        workTimePreviewRequest = null;
+        workTimeIdempotencyKey = string.Empty;
+        productionRecipes = null;
+        productionRecipesBuildingId = buildingId;
+        recipeSwitchIdempotencyKey = string.Empty;
+        productionActionMessage = string.Empty;
+    }
+
+    private void EnsureProductionControls()
+    {
+        if (panelRect == null) return;
+
+        if (workTimeButton == null)
+        {
+            workTimeButton = CreateTextButton(
+                "Production Work Time Button",
+                panelRect,
+                "补充工时",
+                new Vector2(35f, -214f),
+                new Vector2(145f, 38f),
+                16f,
+                OnWorkTimeButtonClicked);
+        }
+
+        if (recipeButton == null)
+        {
+            recipeButton = CreateTextButton(
+                "Production Recipe Button",
+                panelRect,
+                "读取配方",
+                new Vector2(190f, -214f),
+                new Vector2(145f, 38f),
+                16f,
+                OnRecipeButtonClicked);
+        }
+
+        ConfigureButtonRect(workTimeButton, new Vector2(35f, -214f), new Vector2(145f, 38f));
+        ConfigureButtonRect(recipeButton, new Vector2(190f, -214f), new Vector2(145f, 38f));
+        RefreshProductionControls();
+    }
+
+    private void RefreshProductionControls()
+    {
+        if (workTimeButton == null || recipeButton == null) return;
+
+        BackendGameService service = BackendGameService.Instance;
+        bool canUseProduction = current != null
+            && current.HasBuilding
+            && current.IsBuildingCompleted
+            && service != null
+            && service.IsAuthenticated;
+        bool workTimeBusy = workStateRequestRunning || workTimeRequestRunning;
+        bool recipesBusy = recipesRequestRunning || recipeSwitchRequestRunning;
+        SetButtonVisible(workTimeButton, canUseProduction, !workTimeBusy);
+        SetButtonVisible(recipeButton, canUseProduction, !recipesBusy);
+
+        SetButtonLabel(workTimeButton, workTimePreview != null ? "确认补充" : "补充工时");
+        SetButtonLabel(recipeButton, productionRecipes != null ? "切换配方" : "读取配方");
+    }
+
+    private void OnWorkTimeButtonClicked()
+    {
+        if (workTimeRequestRunning || workStateRequestRunning) return;
+
+        if (workTimePreview != null && workTimePreviewRequest != null)
+        {
+            StartCoroutine(ConsumeWorkTime());
+            return;
+        }
+
+        BackendGameService service = BackendGameService.Instance;
+        if (service == null || !service.IsAuthenticated)
+        {
+            productionActionMessage = "请先登录账号";
+            RefreshProductionStatus();
+            return;
+        }
+
+        if (service.CurrentWorkState == null)
+        {
+            EnsureWorkStateLoaded(service);
+            return;
+        }
+
+        ProductionFuelResponse fuel = FindAvailableFuel(service.CurrentWorkState);
+        if (fuel == null)
+        {
+            productionActionMessage = "没有可用于补充工时的物品";
+            RefreshProductionStatus();
+            return;
+        }
+
+        workTimePreviewRequest = new ProductionWorkTimeRequest
+        {
+            itemId = fuel.itemId,
+            quantity = Mathf.Max(1, Mathf.Min(1, fuel.maxConsumableQuantity)),
+            expectedConfigVersion = service.CurrentWorkState.configVersion
+        };
+        workTimeRequestRunning = true;
+        productionActionMessage = "正在预览补充工时...";
+        workTimeIdempotencyKey = string.Empty;
+        RefreshProductionStatus();
+        service.PreviewProductionWorkTime(workTimePreviewRequest, result =>
+        {
+            workTimeRequestRunning = false;
+            if (result == null || !result.Success || result.Data == null || !result.Data.canConsume)
+            {
+                workTimePreview = null;
+                workTimePreviewRequest = null;
+                productionActionMessage = result == null
+                    ? "补充工时预览失败"
+                    : string.IsNullOrEmpty(result.Message) ? "当前无法补充工时" : result.Message;
+            }
+            else
+            {
+                workTimePreview = result.Data;
+                productionActionMessage = $"预计增加 {FormatDuration(result.Data.requestedWorkSeconds)}，再次点击确认";
+            }
+            RefreshProductionStatus();
+        });
+    }
+
+    private IEnumerator ConsumeWorkTime()
+    {
+        BackendGameService service = BackendGameService.Instance;
+        if (service == null || workTimePreviewRequest == null)
+        {
+            workTimePreview = null;
+            workTimePreviewRequest = null;
+            RefreshProductionStatus();
+            yield break;
+        }
+
+        workTimeRequestRunning = true;
+        productionActionMessage = "正在确认补充工时...";
+        RefreshProductionStatus();
+        if (string.IsNullOrEmpty(workTimeIdempotencyKey))
+        {
+            workTimeIdempotencyKey = System.Guid.NewGuid().ToString("D");
+        }
+        BackendResult<ProductionWorkTimeConsumeResponse> result = null;
+        yield return service.ConsumeProductionWorkTime(
+            workTimePreviewRequest,
+            workTimeIdempotencyKey,
+            value => result = value);
+        workTimeRequestRunning = false;
+        if (result == null || !result.Success || result.Data == null)
+        {
+            productionActionMessage = result == null
+                ? "补充工时失败"
+                : string.IsNullOrEmpty(result.Message) ? "补充工时失败" : result.Message;
+        }
+        else
+        {
+            productionActionMessage = $"已补充 {FormatDuration(result.Data.grantedWorkSeconds)}";
+            workTimePreview = null;
+            workTimePreviewRequest = null;
+            workTimeIdempotencyKey = string.Empty;
+            service.RefreshInventory();
+        }
+        RefreshProductionStatus();
+    }
+
+    private void OnRecipeButtonClicked()
+    {
+        if (recipesRequestRunning || recipeSwitchRequestRunning || current == null || !current.HasBuilding) return;
+
+        BackendGameService service = BackendGameService.Instance;
+        if (service == null || !service.IsAuthenticated) return;
+
+        if (productionRecipes == null || productionRecipesBuildingId != current.PlayerBuildingId)
+        {
+            recipesRequestRunning = true;
+            productionActionMessage = "正在读取服务器配方...";
+            RefreshProductionStatus();
+            service.LoadProductionRecipes(current.PlayerBuildingId, result =>
+            {
+                recipesRequestRunning = false;
+                if (result == null || !result.Success || result.Data == null)
+                {
+                    productionRecipes = null;
+                    productionActionMessage = result == null
+                        ? "读取配方失败"
+                        : string.IsNullOrEmpty(result.Message) ? "读取配方失败" : result.Message;
+                }
+                else
+                {
+                    productionRecipes = result.Data;
+                    productionRecipesBuildingId = current == null ? 0 : current.PlayerBuildingId;
+                    productionActionMessage = FormatRecipeSummary(productionRecipes);
+                }
+                RefreshProductionStatus();
+            });
+            return;
+        }
+
+        ProductionRecipeResponse target = FindSwitchTarget(productionRecipes);
+        if (target == null)
+        {
+            productionActionMessage = "当前没有可切换的配方";
+            RefreshProductionStatus();
+            return;
+        }
+
+        recipeSwitchRequestRunning = true;
+        productionActionMessage = "正在切换配方...";
+        if (string.IsNullOrEmpty(recipeSwitchIdempotencyKey))
+        {
+            recipeSwitchIdempotencyKey = System.Guid.NewGuid().ToString("D");
+        }
+        RefreshProductionStatus();
+        ProductionRecipeSwitchRequest request = new ProductionRecipeSwitchRequest
+        {
+            playerBuildingId = current.PlayerBuildingId,
+            recipeId = target.recipeId,
+            expectedRecipeVersion = productionRecipes.activeRecipeVersion
+        };
+        service.SwitchProductionRecipe(request, recipeSwitchIdempotencyKey, result =>
+        {
+            recipeSwitchRequestRunning = false;
+            if (result == null || !result.Success || result.Data == null)
+            {
+                productionActionMessage = result == null
+                    ? "切换配方失败"
+                    : string.IsNullOrEmpty(result.Message) ? "切换配方失败" : result.Message;
+            }
+            else
+            {
+                productionRecipes = null;
+                recipeSwitchIdempotencyKey = string.Empty;
+                productionActionMessage = "配方已切换，生产状态已刷新";
+                RefreshProductionStatus();
+            }
+            RefreshProductionStatus();
+        });
+    }
+
+    private void EnsureWorkStateLoaded(BackendGameService service)
+    {
+        if (workStateRequestRunning || service == null || !service.IsAuthenticated) return;
+
+        workStateRequestRunning = true;
+        productionActionMessage = "正在读取工作时间...";
+        RefreshProductionStatus();
+        service.LoadProductionWorkState(result =>
+        {
+            workStateRequestRunning = false;
+            productionActionMessage = result == null || !result.Success
+                ? "读取工作时间失败"
+                : "工作时间已同步，请再次点击补充";
+            RefreshProductionStatus();
+        });
+    }
+
+    private static ProductionFuelResponse FindAvailableFuel(ProductionWorkStateResponse state)
+    {
+        if (state == null || state.fuels == null) return null;
+        for (int i = 0; i < state.fuels.Length; i++)
+        {
+            ProductionFuelResponse fuel = state.fuels[i];
+            if (fuel != null && fuel.itemId > 0 && fuel.maxConsumableQuantity > 0) return fuel;
+        }
+        return null;
+    }
+
+    private static ProductionRecipeResponse FindSwitchTarget(ProductionRecipesResponse recipes)
+    {
+        if (recipes == null || recipes.recipes == null) return null;
+        for (int i = 0; i < recipes.recipes.Length; i++)
+        {
+            ProductionRecipeResponse recipe = recipes.recipes[i];
+            if (recipe != null && recipe.recipeId > 0 && recipe.recipeId != recipes.activeRecipeId) return recipe;
+        }
+        return null;
+    }
+
+    private static string FormatRecipeSummary(ProductionRecipesResponse recipes)
+    {
+        if (recipes == null || recipes.recipes == null || recipes.recipes.Length == 0) return "服务器没有可用配方";
+
+        List<string> names = new List<string>();
+        for (int i = 0; i < recipes.recipes.Length; i++)
+        {
+            ProductionRecipeResponse recipe = recipes.recipes[i];
+            if (recipe == null) continue;
+            string name = string.IsNullOrEmpty(recipe.displayName) ? recipe.recipeCode : recipe.displayName;
+            if (!string.IsNullOrEmpty(name)) names.Add(name + (recipe.active ? "（当前）" : string.Empty));
+        }
+        return names.Count == 0 ? "服务器没有可用配方" : "配方：" + string.Join("、", names.ToArray());
+    }
+
+    private static string FormatWorkState(ProductionWorkStateResponse state)
+    {
+        if (state == null) return string.Empty;
+        string running = state.productionRunning ? "生产中" : "生产暂停";
+        return $"工作时间：{FormatDuration(state.remainingWorkSeconds)}，{running}";
+    }
+
+    private static string FormatDuration(long seconds)
+    {
+        long safeSeconds = Math.Max(0L, seconds);
+        long hours = safeSeconds / 3600L;
+        long minutes = (safeSeconds % 3600L) / 60L;
+        long remainder = safeSeconds % 60L;
+        return hours > 0L ? $"{hours}小时{minutes}分" : minutes > 0L ? $"{minutes}分{remainder}秒" : $"{remainder}秒";
+    }
+
+    private static void SetButtonLabel(Button button, string label)
+    {
+        if (button == null) return;
+        TMP_Text text = button.GetComponentInChildren<TMP_Text>(true);
+        if (text != null) text.text = label ?? string.Empty;
     }
 
     private void HideBuildingList()
@@ -824,6 +1181,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         textObject.transform.SetParent(parent, false);
 
         TMP_Text text = textObject.GetComponent<TMP_Text>();
+        text.font = RuntimeFontAssetProvider.Resolve();
         text.color = Color.black;
         text.alignment = TextAlignmentOptions.MidlineLeft;
         text.enableWordWrapping = true;
@@ -883,6 +1241,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         textRect.offsetMax = new Vector2(-10f, -4f);
 
         TMP_Text text = textObject.GetComponent<TMP_Text>();
+        text.font = RuntimeFontAssetProvider.Resolve();
         text.text = label;
         text.fontSize = fontSize;
         text.color = Color.white;

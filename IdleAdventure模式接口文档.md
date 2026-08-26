@@ -1,18 +1,57 @@
-# Weijun Game Project Idle Adventure 模式后端接口文档
+# Idle Adventure 模式接口文档
 
-生成时间：2026-07-20  
-适用模式：Idle Adventure mode / 放置闯关模式  
-客户端：Unity  
-后端基础地址：`http://localhost:8080/api`  
-统一 Content-Type：`application/json; charset=UTF-8`
+本文档对应 Flyway V16、V17、V51、V52、V67、V68、V69、V70 和当前 Java 实现。Idle Adventure 对外提供 28 条 `snake_case` 接口；原 10 条无 `player_id` 的精简接口已经下线并返回 HTTP 404。28 条接口共用一套服务端权威战斗、进度、体力、固定奖励、随机掉落、挂机加速和幂等逻辑，不存在客户端结算分支。好友体力赠礼的发送接口属于好友模块，见 [`friend-stamina-gift-api.md`](friend-stamina-gift-api.md)；V70 复用同一体力聚合服务支持钻石商城购买，商城契约见 [`diamond-shop-api.md`](diamond-shop-api.md)。
 
-同步说明：本文档根据 Unity 当前 Idle Adventure 模式功能整理，用于后续后端接口开发。当前 Unity 玩法中，战斗、编队、技能、buff、开始界面、结束面板等逻辑主要在客户端脚本中实现；本文档将这些功能抽象为后端接口契约，方便后端保存玩家编队、下发角色配置、下发关卡敌人、创建战斗会话、结算战斗回合和记录闯关进度。
+基础地址：`http://localhost:8080/api`
 
-## 1. 通用规则
+## 一、接口总览
 
-### 1.1 统一返回结构
+| 序号 | 方法 | 路径 | 用途 |
+| ---: | --- | --- | --- |
+| 1 | `GET` | `/idle-adventure/players/{player_id}/home` | 获取首页聚合数据 |
+| 2 | `GET` | `/idle-adventure/config` | 获取玩法固定规则 |
+| 3 | `GET` | `/idle-adventure/buff-presets` | 获取非场地 buff 配置 |
+| 4 | `GET` | `/idle-adventure/skills` | 获取技能配置 |
+| 5 | `GET` | `/idle-adventure/field-buffs` | 获取场地 buff 配置 |
+| 6 | `GET` | `/idle-adventure/attribute-restraints` | 获取属性克制关系 |
+| 7 | `GET` | `/idle-adventure/stage-rewards` | 获取全部关卡奖励配置 |
+| 8 | `GET` | `/idle-adventure/players/{player_id}/npcs` | 获取玩家可参战 NPC |
+| 9 | `GET` | `/idle-adventure/stages/{stage}/enemies` | 获取关卡敌人六槽位及完整属性预览 |
+| 10 | `GET` | `/idle-adventure/players/{player_id}/formation` | 获取保存编队 |
+| 11 | `PUT` | `/idle-adventure/players/{player_id}/formation` | 保存完整或局部编队变更 |
+| 12 | `POST` | `/idle-adventure/players/{player_id}/formation/auto-fill` | 自动填充默认编队 |
+| 13 | `POST` | `/idle-adventure/players/{player_id}/formation/clear` | 主动清空编队 |
+| 14 | `POST` | `/idle-adventure/players/{player_id}/sessions/start` | 创建战斗会话 |
+| 15 | `GET` | `/idle-adventure/players/{player_id}/sessions/{session_key}` | 查询或恢复会话 |
+| 16 | `POST` | `/idle-adventure/players/{player_id}/sessions/{session_key}/pause` | 暂停会话 |
+| 17 | `POST` | `/idle-adventure/players/{player_id}/sessions/{session_key}/resume` | 恢复会话 |
+| 18 | `POST` | `/idle-adventure/players/{player_id}/sessions/{session_key}/end` | 结束并结算奖励 |
+| 19 | `POST` | `/idle-adventure/players/{player_id}/sessions/{session_key}/rounds/resolve` | 权威结算一回合 |
+| 20 | `POST` | `/idle-adventure/players/{player_id}/sessions/{session_key}/buffs/apply` | 应用后端配置的额外 buff |
+| 21 | `POST` | `/idle-adventure/players/{player_id}/sessions/{session_key}/stages/continue` | 继续下一关 |
+| 22 | `POST` | `/idle-adventure/players/{player_id}/sessions/{session_key}/stages/retry` | 重试当前关 |
+| 23 | `GET` | `/idle-adventure/players/{player_id}/progress` | 获取权威进度 |
+| 24 | `POST` | `/idle-adventure/players/{player_id}/progress/stage-clear` | 核实服务端通关结果 |
+| 25 | `GET` | `/idle-adventure/players/{player_id}/afk-reward` | 查询挂机奖励 |
+| 26 | `POST` | `/idle-adventure/players/{player_id}/afk-reward/collect` | 领取挂机奖励 |
+| 27 | `GET` | `/idle-adventure/players/{player_id}/stamina` | 刷新并获取当前体力与恢复倒计时 |
+| 28 | `POST` | `/idle-adventure/players/{player_id}/afk-reward/accelerate` | 消耗体力领取一份完整挂机上限奖励 |
 
-所有接口统一返回：
+## 二、通用约定
+
+### 2.1 登录与玩家边界
+
+所有接口必须携带：
+
+```http
+Authorization: Bearer <token>
+```
+
+包含 `{player_id}` 的路径必须传 token 对应玩家 ID。认证拦截器和业务服务会分别校验一次，不允许客户端通过路径访问其他玩家。没有 `{player_id}` 的配置接口仍然需要登录。
+
+### 2.2 请求与响应格式
+
+请求体和响应 `data` 统一使用 `snake_case`，例如 `session_key`、`formation_slots`、`client_round`。统一响应外层保持：
 
 ```json
 {
@@ -22,2904 +61,609 @@
 }
 ```
 
-字段说明：
+业务错误主要通过响应体 `code` 表达，前端不能只判断 HTTP 状态。HTTP 401 表示未登录，HTTP 403 表示路径玩家越权，HTTP 404 表示接口不存在。
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| code | number | 业务状态码，200 表示成功 |
-| message | string | 提示信息 |
-| data | object / array / null | 业务数据 |
+### 2.3 幂等请求头
 
-常见失败：
-
-| 场景 | 返回 |
-| --- | --- |
-| 参数缺失或格式错误 | `code=400`，`message` 为具体字段错误 |
-| 未登录或 token 过期 | HTTP 401，`code=401`，`message=未登录或登录已过期` |
-| 访问其他玩家数据 | HTTP 403，`code=403`，`message=不能访问其他玩家的数据` |
-| 编队为空 | `code=400`，`message=至少需要上阵 1 名友方角色` |
-| 编队槽位越界 | `code=400`，`message=slot_index 必须在 0-5 范围内` |
-| 角色不可用 | `code=400`，`message=该角色不可用于当前模式` |
-| 战斗会话不存在 | `code=404`，`message=战斗会话不存在` |
-| 战斗会话状态错误 | `code=409`，`message=当前战斗状态不允许此操作` |
-| 系统异常 | HTTP 500，`code=500`，`message=系统异常，请联系管理员` |
-
-### 1.2 登录鉴权
-
-除登录、注册、健康检查等公共接口外，Idle Adventure 模式接口都需要携带：
+以下写接口支持 `Idempotency-Key`：创建、暂停、恢复、结束、回合结算、应用 buff、继续、重试、挂机领取和挂机加速。
 
 ```http
-Authorization: Bearer <token>
+Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
 ```
 
-`user.id` 就是游戏里的 `player_id`。例如用户 id 为 3，就调用：
+旧 Unity 为兼容可以省略，服务端会按会话、回合或领取周期生成受控键；新代码应主动传入。每次按钮操作生成一个 1 至 64 字符的新值，同一次网络超时重试必须复用原值。相同键和相同请求返回首次响应；相同键用于不同操作或不同请求内容返回 `6507`。
+
+### 2.4 推荐调用流程
+
+1. 登录后调用 `GET /players/{player_id}/home`，保存其中的 `stamina`。
+2. 根据 `available_npc_list` 和 `formation` 展示编队。
+3. 需要调整时调用保存、自动填充或清空接口。
+4. 调用 `/sessions/start`，保存返回的 `session_key`；成功后刷新体力接口。
+5. `status=RUNNING` 时按返回的 `round` 提交 `client_round`，按 `actions.action_order` 播放。
+6. `STAGE_COMPLETE` 时先展示 `pending_rewards` 和 `random_drops`，再继续下一关或结束；`FAILED` 时重试或结束。
+7. 断线后使用玩家 ID 和 `session_key` 查询会话，不在客户端恢复战斗数值。
+8. 开始、继续和失败重试成功后都重新查询体力；暂停、恢复、回合结算和结束不扣体力。
+9. 离开玩法前调用 `/end`，由后端原子发放本会话待结算奖励；需要快速结算挂机收益时调用 `/afk-reward/accelerate`，网络超时必须复用同一幂等键取得首次完整响应。
+
+## 三、编队与槽位
+
+六个槽位固定为两列三行：
+
+| `slot_index` | `column` | `row` | `front_column` |
+| ---: | ---: | ---: | --- |
+| 0 | 0 | 0 | `true` |
+| 1 | 0 | 1 | `true` |
+| 2 | 0 | 2 | `true` |
+| 3 | 1 | 0 | `false` |
+| 4 | 1 | 1 | `false` |
+| 5 | 1 | 2 | `false` |
+
+一个玩家 NPC 实例不能占用多个槽位。首次读取尚未初始化的空编队时，后端按配置人数自动保存默认前排编队。玩家调用清空接口后，V17 的 `formation_initialized` 标记会保留主动空编队，后续首页、编队查询和开战不会偷偷填回。
+
+## 四、配置与预览接口
+
+### 4.1 首页
 
 ```http
-GET /api/idle-adventure/players/3/home
-Authorization: Bearer <token>
+GET /api/idle-adventure/players/{player_id}/home
 ```
 
-后端必须校验路径或请求体中的 `player_id` 是否等于 token 对应用户 ID，不能用 A 用户 token 请求或修改 B 用户数据。
+返回 `player_id`、`highest_stage`、`next_stage`、`has_running_session`、`running_session_key`、`mode_config`、`stamina`、`formation` 和 `available_npc_list`。首页会在同一玩家事务中惰性恢复体力并聚合当前服务端时间点的数据，但不会执行任何战斗回合或发奖。首次进入玩法且尚无体力记录时，`current_stamina` 直接初始化为当前配置的 `max_stamina`。
 
-### 1.3 模式固定规则
+### 4.2 独立配置
 
-当前版本 Idle Adventure 模式固定规则如下：
+以下接口无请求体：
 
-| 规则项 | 当前值 | 说明 |
-| --- | --- | --- |
-| 最大友方数量 | 6 | 玩家最多上阵 6 名友方角色 |
-| 最大敌方数量 | 6 | 单关最多存在 6 名敌方角色 |
-| 阵型布局 | 2 列 3 行 | 两列三行，前列 3 个，后列 3 个 |
-| 槽位编号 | 0-5 | `0,1,2` 为前排；`3,4,5` 为后排 |
-| 行号计算 | `slot_index % 3` | 行号为 0-2 |
-| 友方技能槽 | 2 | 每名友方角色最多 2 个技能槽 |
-| 敌方技能槽 | 1 | 每名敌方角色最多 1 个技能槽 |
-| buff 图标显示 | 6 | 客户端每个角色最多显示 6 个 buff 图标 |
-| 战斗开始条件 | 至少 1 名友方角色 | 编队为空时开始按钮不可用 |
-| 关卡结束条件 | 当前槽位中的敌人全部死亡 | 弹出结束面板 |
-| 结束面板行为 | 继续下一关 / 结束模式 | 当前版本“结束模式”先设计为暂停当前战斗 |
-
-槽位布局：
-
-| slot_index | 列 | 行 | 定位 |
-| --- | --- | --- | --- |
-| 0 | 前排 | 第 1 行 | front row 1 |
-| 1 | 前排 | 第 2 行 | front row 2 |
-| 2 | 前排 | 第 3 行 | front row 3 |
-| 3 | 后排 | 第 1 行 | back row 1 |
-| 4 | 后排 | 第 2 行 | back row 2 |
-| 5 | 后排 | 第 3 行 | back row 3 |
-
-### 1.4 战斗结算规则
-
-后端如承担权威战斗结算，应按以下逻辑生成每回合动作结果：
-
-1. 每回合开始时，收集双方所有存活角色。
-2. 按 `effective_speed` 从高到低排序，速度高者先行动。
-3. 速度相同情况下，友方优先；仍相同时按 `slot_index` 从小到大。
-4. 行动角色优先使用第一个可用技能；无可用技能时使用普通攻击。
-5. 目标选择先判断对方前排 `slot_index=0,1,2` 是否仍有存活角色。
-6. 如果前排有存活角色，只能攻击前排；前排全部死亡后，才能攻击后排 `slot_index=3,4,5`。
-7. 在可攻击列中，优先攻击与自己同一行的敌人。
-8. 同一行无敌人时，优先攻击上一行的敌人。
-9. 上方也无敌人时，再攻击下方行的敌人。
-10. 每个角色行动前再次确认自身仍然存活；如果该角色已经死亡，则跳过本次行动。
-11. 每个行动后立即结算伤害、死亡、技能冷却、技能附加 buff。
-12. 每回合结束后，双方所有存活角色的 buff 持续回合减少 1，技能冷却减少 1。
-13. 任一方全部死亡时，本关结束。
-
-伤害计算：
-
-```text
-基础伤害 = max(0, attacker.effective_attack - target.effective_defense)
-增益倍率 = 普通buff倍率 + 对应属性buff倍率 + 场地buff倍率 + 属性克制倍率 + 1
-普通攻击伤害 = floor(基础伤害 * 增益倍率)
-技能伤害 = floor(基础伤害 * 技能倍率 * 增益倍率)
+```http
+GET /api/idle-adventure/config
+GET /api/idle-adventure/buff-presets
+GET /api/idle-adventure/skills
+GET /api/idle-adventure/field-buffs?stage=1
+GET /api/idle-adventure/attribute-restraints
+GET /api/idle-adventure/stage-rewards
 ```
 
-说明：倍率字段使用小数表达，`0.25` 表示增加 25%，`-0.2` 表示降低 20%。如果最终伤害需要保底 1 点，后端可在最后一步执行 `max(1, final_damage)`；如果允许完全被防御抵消，则使用上面的 `max(0, ...)` 规则。属性克制倍率不从 buff 表读取，只要攻击者角色属性克制目标角色属性，就固定取 `0.2`。
+- `config` 返回阵型、技能槽、动画时间、克制倍率和服务端战斗规则。
+- `buff-presets` 只返回当前玩法版本已启用的非场地 buff。
+- `skills` 返回技能倍率、冷却、攻击属性及关联 buff ID。
+- `field-buffs` 的 `stage` 可省略；传入时必须是存在且启用的关卡。
+- `attribute-restraints` 返回有方向的克制关系和倍率。
+- `stage-rewards` 按关卡及奖励顺序返回当前版本的固定物品奖励预览，不代表已经发放；随机池候选概率不通过该接口公开，实际命中结果在通关会话响应的 `random_drops` 中返回。
 
-倍率来源：
+### 4.3 玩家 NPC 与关卡敌人
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| normal_buff_multiplier | number | 普通伤害增益/减益 buff 倍率，直接参与所有伤害计算 |
-| attribute_buff_multiplier | number | 属性增强/减益 buff 倍率，只在行动角色 `attribute_type` 与 buff 的 `affected_attribute` 匹配时生效 |
-| field_buff_multiplier | number | 场地 buff 倍率，只对符合场地 buff `affected_attribute` 的角色生效 |
-| attribute_restraint_multiplier | number | 属性克制倍率，攻击者角色属性克制目标角色属性时固定为 `0.2`，否则为 `0` |
-| bonus_multiplier | number | 最终增益倍率，即上述四项相加后再加 1 |
-
-buff 倍率分类：
-
-| buff 类型 | effect_type | category | 生效范围 |
-| --- | --- | --- | --- |
-| 伤害增益/减益 buff（普通） | NORMAL_DAMAGE | `BENEFIT` / `DETRIMENT` | 对所有属性角色的伤害计算生效 |
-| 属性增强/减益 buff | ATTRIBUTE_DAMAGE | `BENEFIT` / `DETRIMENT` | 只对角色 `attribute_type` 与 `affected_attribute` 匹配的角色生效 |
-| 场地 buff | FIELD | `BENEFIT` / `DETRIMENT` | 只对 `affected_attribute` 匹配的角色生效，通常来自关卡或战场环境 |
-| 属性克制倍率 | 无需 buff | 无需 category | 攻击者角色属性克制目标角色属性时固定增加 20% |
-
-属性计算：
-
-```text
-effective_attack = max(0, base_attack + sum(active_buff.attack_modifier))
-effective_defense = max(0, base_defense + sum(active_buff.defense_modifier))
-effective_speed = max(1, base_speed + sum(active_buff.speed_modifier))
+```http
+GET /api/idle-adventure/players/{player_id}/npcs
+GET /api/idle-adventure/stages/{stage}/enemies
 ```
 
-## 2. 枚举定义
+玩家 NPC 的 `definition_id` 对应 NPC 配置 ID；`quality` 返回 `COMMON / FINE / EXCELLENT / EPIC / LEGENDARY` 五档稳定编码。保存或临时编队时后端会转换为当前玩家拥有的实例 ID并再次校验归属。
 
-### 2.1 BattleSide
-
-| 值 | 说明 |
-| --- | --- |
-| FRIENDLY | 友方 |
-| ENEMY | 敌方 |
-
-### 2.2 BattleSessionStatus
-
-| 值 | 说明 |
-| --- | --- |
-| CREATED | 已创建，未开始 |
-| RUNNING | 战斗中 |
-| PAUSED | 已暂停 |
-| STAGE_COMPLETE | 当前关卡胜利，等待玩家选择 |
-| FAILED | 友方全部死亡 |
-| ENDED | 模式结束 |
-
-### 2.3 BuffCategory
-
-| 值 | 说明 |
-| --- | --- |
-| BENEFIT | 增益 buff |
-| DETRIMENT | 减益 buff |
-
-### 2.4 BuffSource
-
-| 值 | 说明 |
-| --- | --- |
-| CHARACTER_SKILL | 角色技能增加的 buff |
-| OTHER | 其他方式增加的 buff |
-
-### 2.5 BuffEffectType
-
-| 值 | 说明 |
-| --- | --- |
-| NORMAL_DAMAGE | 伤害增益/减益 buff（普通），对所有属性生效 |
-| ATTRIBUTE_DAMAGE | 属性增强/减益 buff，只对对应属性角色生效 |
-| FIELD | 场地 buff，只对对应属性角色生效 |
-
-### 2.6 BattleActionType
-
-| 值 | 说明 |
-| --- | --- |
-| BASIC_ATTACK | 普通攻击 |
-| SKILL | 技能 |
-| BUFF_APPLIED | buff 生效 |
-| BUFF_TICK | buff 回合减少 |
-| BUFF_EXPIRED | buff 过期 |
-| DEFEATED | 角色死亡 |
-| ROUND_END | 回合结束 |
-| STAGE_COMPLETE | 关卡胜利 |
-| PARTY_FAILED | 友方失败 |
-
-### 2.7 DamageAttribute
-
-| 值 | 说明 |
-| --- | --- |
-| PHYSICAL | 物理 / 普通属性 |
-| FIRE | 火属性 |
-| WATER | 水属性 |
-| WOOD | 木属性 |
-| EARTH | 土属性 |
-| ICE | 冰属性 |
-| THUNDER | 雷属性 |
-
-克制关系：水 > 火 > 木 > 土 > 水；物理 > 冰 > 雷 > 物理。
-
-说明：当前没有细分属性时，普通攻击和技能都可以先使用 `PHYSICAL`。属性克制倍率固定为 20%，后端根据攻击者角色 `attribute_type` 与目标角色 `attribute_type` 判断是否命中克制关系；命中时 `attribute_restraint_multiplier=0.2`，未命中时为 `0`。
-
-## 3. 通用数据结构
-
-### 3.1 IdleAdventureModeConfigResponse
+关卡敌人接口返回当前已发布玩法版本的关卡名称、实际敌人数和固定六槽位预览。例如：
 
 ```json
 {
-  "max_party_size": 6,
-  "formation_rows": 3,
-  "formation_columns": 2,
-  "friendly_skill_slot_count": 2,
-  "enemy_skill_slot_count": 1,
-  "max_buff_icon_slots": 6,
-  "starting_friendly_count": 3,
-  "base_enemy_count": 2,
-  "add_enemy_every_stages": 2,
-  "turn_interval": 0.75,
-  "attack_animation_duration": 0.28,
-  "hit_flash_duration": 0.18,
-  "attribute_restraint_multiplier": 0.2,
-  "reward_settlement": "ON_EXIT",
-  "combat_rules": {
-    "initiative": "SPEED_DESC",
-    "front_column_first": true,
-    "prefer_same_row": true,
-    "prefer_upper_row_when_same_row_empty": true
-  }
-}
-```
-
-字段说明：
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| max_party_size | number | 单方最大角色数，当前为 6 |
-| formation_rows | number | 阵型行数，当前为 3 |
-| formation_columns | number | 阵型列数，当前为 2 |
-| friendly_skill_slot_count | number | 友方技能槽数量，当前为 2 |
-| enemy_skill_slot_count | number | 敌方技能槽数量，当前为 1 |
-| max_buff_icon_slots | number | 客户端显示 buff 图标数量 |
-| starting_friendly_count | number | 默认友方数量 |
-| base_enemy_count | number | 未配置关卡敌人时的第 1 关默认敌人数 |
-| add_enemy_every_stages | number | 未配置关卡敌人时，每多少关自动增加 1 名敌人 |
-| turn_interval | number | 客户端每回合间隔，单位秒 |
-| attack_animation_duration | number | 攻击动画时长，单位秒 |
-| hit_flash_duration | number | 受击闪烁时长，单位秒 |
-| attribute_restraint_multiplier | number | 属性克制固定倍率，当前为 0.2 |
-| reward_settlement | string | 奖励结算时机，当前为退出模式时统一结算 |
-| combat_rules | object | 战斗规则说明 |
-
-### 3.2 CombatantDefinition
-
-```json
-{
-  "definition_id": 101,
-  "combatant_key": "hero_1",
-  "combatant_name": "Hero 1",
-  "side": "FRIENDLY",
-  "max_health": 160,
-  "attack": 28,
-  "defense": 5,
-  "speed": 18,
-  "attribute_type": "PHYSICAL",
-  "skill_slots": [
+  "stage": 3,
+  "stage_name": "林地深处",
+  "enemy_count": 1,
+  "slots": [
     {
       "slot_index": 0,
-      "skill": {
-        "skill_id": 1001,
-        "skill_key": "power_strike",
-        "skill_name": "Power Strike",
-        "cooldown_rounds": 2,
-        "skill_multiplier": 1.35,
-        "damage_attribute": "PHYSICAL",
-        "self_buff_preset_id": null,
-        "target_buff_preset_id": null
+      "column": 0,
+      "row": 0,
+      "front_column": true,
+      "enemy": {
+        "definition_id": 101,
+        "combatant_key": "forest_guardian",
+        "combatant_name": "森林守卫",
+        "icon": "enemy/forest-guardian.png",
+        "model_key": "forest_guardian",
+        "level": 12,
+        "side": "ENEMY",
+        "max_health": 2400,
+        "attack": 180,
+        "defense": 95,
+        "speed": 36,
+        "attribute_type": "WOOD",
+        "skill_slots": []
       }
     },
     {
       "slot_index": 1,
-      "skill": {
-        "skill_id": 1002,
-        "skill_key": "battle_focus",
-        "skill_name": "Battle Focus",
-        "cooldown_rounds": 3,
-        "skill_multiplier": 1,
-        "damage_attribute": "PHYSICAL",
-        "self_buff_preset_id": 1,
-        "target_buff_preset_id": null
-      }
+      "column": 0,
+      "row": 1,
+      "front_column": true,
+      "enemy": null
     }
   ]
 }
 ```
 
-字段说明：
+`slots` 始终按 `slot_index=0..5` 返回六项，示例只展开前两项；空槽的 `enemy` 为 `null`。每项同时返回 `column`、`row`、`front_column`，槽位 `0..2` 为前排第 `0` 列，槽位 `3..5` 为后排第 `1` 列，便于 Unity 直接布局而不重复硬编码换算。`level`、生命、攻击、防御和速度均为该敌人在此关卡最终生效的配置，不能用敌人模板或客户端公式重新推算。`icon` 供列表与头像展示，`model_key` 供 Unity 选择模型资源；资源缺失时客户端应使用默认占位图或通用模型，不能阻断战斗。`skill_slots` 继续返回完整技能槽定义。
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| definition_id | number | 角色配置 ID；`side=FRIENDLY` 时对应 `Player_npc.definition_id`，`side=ENEMY` 时对应 `idle_adventure_enemy_config.definition_id` |
-| combatant_key | string | 角色配置 key |
-| combatant_name | string | 显示名称 |
-| side | string | `FRIENDLY` 或 `ENEMY` |
-| max_health | number | 最大生命 |
-| attack | number | 攻击力 |
-| defense | number | 防御力 |
-| speed | number | 速度 |
-| attribute_type | string | 角色自身属性，用于属性克制计算 |
-| skill_slots | array | 技能槽配置 |
+本次只新增响应字段，不改变 URL、请求方式、鉴权和既有字段。旧 Unity 忽略新增字段后仍可运行；如需展示关卡名称、等级、图标或按 `model_key` 加载模型，新 Unity 需要在响应模型中增加对应字段并完成展示逻辑。敌人配置当前没有品质字段，仓库也没有统一战力计算口径，因此接口不会返回推测的 `quality` 或 `combat_power`。
 
-### 3.3 SkillDefinition
+## 五、编队接口
 
-```json
-{
-  "skill_id": 1001,
-  "skill_key": "power_strike",
-  "skill_name": "Power Strike",
-  "cooldown_rounds": 2,
-  "skill_multiplier": 1.35,
-  "damage_attribute": "PHYSICAL",
-  "self_buff_preset_id": null,
-  "target_buff_preset_id": null
-}
-```
-
-字段说明：
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| skill_id | number | 技能 ID |
-| skill_key | string | 技能 key |
-| skill_name | string | 技能显示名 |
-| cooldown_rounds | number | 技能冷却回合数 |
-| skill_multiplier | number | 技能倍率，1 表示 100%，1.35 表示 135% |
-| damage_attribute | string / null | 技能攻击属性；为空时使用角色自身 `attribute_type` |
-| self_buff_preset_id | number / null | 对自己施加的 buff 预设 ID |
-| target_buff_preset_id | number / null | 对目标施加的 buff 预设 ID |
-
-### 3.4 BuffDefinition
-
-```json
-{
-  "buff_preset_id": 1,
-  "buff_key": "normal_damage_up",
-  "display_name": "Damage Up",
-  "category": "BENEFIT",
-  "source": "CHARACTER_SKILL",
-  "effect_type": "NORMAL_DAMAGE",
-  "duration_rounds": 3,
-  "attack_modifier": 8,
-  "defense_modifier": 0,
-  "speed_modifier": 0,
-  "normal_damage_multiplier": 0.15,
-  "attribute_damage_multiplier": 0,
-  "affected_attribute": null
-}
-```
-
-字段说明：
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| buff_preset_id | number | buff 预设 ID |
-| buff_key | string | buff key，同一角色同 key 同 source 时刷新持续时间 |
-| display_name | string | 显示名 |
-| category | string | `BENEFIT` 增益，`DETRIMENT` 减益 |
-| source | string | `CHARACTER_SKILL` 或 `OTHER` |
-| effect_type | string | `NORMAL_DAMAGE`、`ATTRIBUTE_DAMAGE` 或 `FIELD` |
-| duration_rounds | number | 持续回合数，最小为 1 |
-| attack_modifier | number | 攻击修正，可为负数 |
-| defense_modifier | number | 防御修正，可为负数 |
-| speed_modifier | number | 速度修正，可为负数 |
-| normal_damage_multiplier | number | 普通 buff 倍率，参与 `普通buff倍率` 计算 |
-| attribute_damage_multiplier | number | 属性 buff 倍率，只有角色 `attribute_type` 与 `affected_attribute` 匹配时参与 `对应属性buff倍率` 计算 |
-| affected_attribute | string / null | 该 buff 生效的角色属性；普通伤害 buff 可为 null |
-
-### 3.4.1 RewardItemDefinition
-
-```json
-{
-  "item_key": "gold",
-  "display_name": "Gold",
-  "quantity": 120
-}
-```
-
-字段说明：
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| item_key | string | 奖励物品 key，应与背包或资源表中的物品 key 对齐 |
-| display_name | string | 奖励显示名 |
-| quantity | number | 奖励数量 |
-
-### 3.4.2 StageRewardDefinition
-
-```json
-{
-  "stage": 1,
-  "rewards": [
-    {
-      "item_key": "gold",
-      "display_name": "Gold",
-      "quantity": 120
-    },
-    {
-      "item_key": "adventure_token",
-      "display_name": "Adventure Token",
-      "quantity": 1
-    }
-  ]
-}
-```
-
-字段说明：
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| stage | number | 关卡编号 |
-| rewards | array | 当前关卡通关后进入待结算池的奖励 |
-
-### 3.5 FormationSlot
-
-```json
-{
-  "slot_index": 0,
-  "column": 0,
-  "row": 0,
-  "front_column": true,
-  "definition_id": 101,
-  "combatant_name": "Hero 1"
-}
-```
-
-字段说明：
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| slot_index | number | 槽位编号，范围 0-5 |
-| column | number | 0 为前排，1 为后排 |
-| row | number | 行号，范围 0-2 |
-| front_column | boolean | 是否前排 |
-| definition_id | number / null | 上阵友方角色配置 ID，对应 `Player_npc.definition_id`；空槽为 null |
-| combatant_name | string / null | 上阵角色名称，空槽为 null |
-
-### 3.6 CombatantState
-
-```json
-{
-  "runtime_id": "F-0",
-  "definition_id": 101,
-  "combatant_name": "Hero 1",
-  "side": "FRIENDLY",
-  "slot_index": 0,
-  "max_health": 160,
-  "current_health": 128,
-  "attack": 28,
-  "defense": 5,
-  "speed": 18,
-  "attribute_type": "PHYSICAL",
-  "effective_attack": 28,
-  "effective_defense": 5,
-  "effective_speed": 18,
-  "defeated": false,
-  "active_buffs": [
-    {
-      "buff_key": "normal_damage_up",
-      "display_name": "Damage Up",
-      "category": "BENEFIT",
-      "source": "CHARACTER_SKILL",
-      "effect_type": "NORMAL_DAMAGE",
-      "remaining_rounds": 2,
-      "attack_modifier": 0,
-      "defense_modifier": 0,
-      "speed_modifier": 0,
-      "normal_damage_multiplier": 0.15,
-      "attribute_damage_multiplier": 0,
-      "affected_attribute": null
-    }
-  ],
-  "skill_states": [
-    {
-      "slot_index": 0,
-      "skill_id": 1001,
-      "skill_name": "Power Strike",
-      "cooldown_remaining": 1,
-      "can_use": false
-    }
-  ]
-}
-```
-
-说明：`friendlies` / `enemies` 数组在战斗状态接口中固定返回 6 个槽位。空槽返回 `null`；角色生命值归零并完成本次 `DEFEATED` 动作播放后，该槽位后续也返回 `null`，客户端不再显示对应模型、血条和信息。死亡发生的那一次回合由 `BattleAction.defeated_runtime_ids` 告诉客户端播放死亡表现。
-
-### 3.7 BattleAction
-
-```json
-{
-  "action_order": 1,
-  "round": 1,
-  "action_type": "SKILL",
-  "actor_runtime_id": "F-0",
-  "actor_name": "Hero 1",
-  "target_runtime_id": "E-0",
-  "target_name": "Enemy 1",
-  "skill_id": 1001,
-  "skill_name": "Power Strike",
-  "damage": 36,
-  "target_health_before": 95,
-  "target_health_after": 59,
-  "damage_formula": {
-    "base_damage": 27,
-    "skill_multiplier": 1.35,
-    "normal_buff_multiplier": 0,
-    "attribute_buff_multiplier": 0,
-    "field_buff_multiplier": 0,
-    "attribute_restraint_multiplier": 0,
-    "bonus_multiplier": 1,
-    "attacker_attribute": "FIRE",
-    "defender_attribute": "WOOD"
-  },
-  "applied_buffs": [],
-  "defeated_runtime_ids": [],
-  "animation": {
-    "attack_direction": 1,
-    "attack_duration": 0.28,
-    "hit_flash_duration": 0.18
-  },
-  "log": "Hero 1 uses Power Strike on Enemy 1 for 36."
-}
-```
-
-字段说明：
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| action_order | number | 本回合动作顺序 |
-| round | number | 当前回合 |
-| action_type | string | 动作类型 |
-| actor_runtime_id | string | 行动者运行时 ID |
-| target_runtime_id | string / null | 目标运行时 ID |
-| skill_id | number / null | 技能 ID，普通攻击为 null |
-| damage | number | 造成伤害 |
-| damage_formula | object | 本次伤害计算明细，包含基础伤害、技能倍率和四类增益倍率 |
-| applied_buffs | array | 本动作附加的 buff |
-| defeated_runtime_ids | array | 本动作导致死亡的角色 |
-| animation | object | 客户端播放动画所需参数 |
-| log | string | 战斗日志 |
-
-## 4. 模式首页接口
-
-### 4.1 获取 Idle Adventure 首页数据
+### 5.1 获取编队
 
 ```http
-GET /api/idle-adventure/players/{player_id}/home
-Authorization: Bearer <token>
+GET /api/idle-adventure/players/{player_id}/formation
 ```
 
-是否需要 token：是
+返回 `player_id`、`deployed_count` 和固定六个 `slots`。每个槽位包含 `slot_index`、`column`、`row`、`front_column`、`definition_id`、`combatant_name` 和 `quality`；空槽后三个字段为 `null`。
 
-前端传参：无请求体
+### 5.2 保存编队变更
 
-路径参数：
+```http
+PUT /api/idle-adventure/players/{player_id}/formation
+Content-Type: application/json
 
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| player_id | number | 是 | 玩家 ID，必须等于 token 对应用户 ID |
+{
+  "slots": [
+    {"slot_index": 0, "definition_id": 3001},
+    {"slot_index": 1, "definition_id": null}
+  ]
+}
+```
 
-后端处理：
+`slots` 最多六项，同一 `slot_index` 不能重复。传入 `definition_id` 表示设置该槽位，传 `null` 表示清空该槽位，未提交的槽位保持原值。服务端校验 NPC 归属、可用状态、重复上阵和人数上限，并把结果作为完整六槽位返回。
 
-1. 校验 token。
-2. 查询玩家 Idle Adventure 进度。
-3. 查询当前可用 NPC / 友方角色列表。
-4. 查询玩家已保存编队。
-5. 查询模式配置、buff 预设和技能配置。
-6. 返回开始界面、编队界面和战斗开始所需数据。
+### 5.3 自动填充与清空
 
-返回 data：
+```http
+POST /api/idle-adventure/players/{player_id}/formation/auto-fill
+POST /api/idle-adventure/players/{player_id}/formation/clear
+```
+
+自动填充按服务端 NPC 顺序和 `starting_friendly_count` 覆盖当前编队；清空会保存主动空编队。空编队不能使用保存编队开始战斗，但仍可提交合法临时编队。
+
+### 5.4 编队变化 WebSocket 事件
+
+编队成功保存后，服务端向该玩家本人的全部在线连接发送：
 
 ```json
 {
-  "player_id": 1,
-  "highest_stage": 5,
-  "next_stage": 6,
-  "has_running_session": false,
-  "running_session_key": null,
-  "mode_config": {
-    "max_party_size": 6,
-    "formation_rows": 3,
-    "formation_columns": 2,
-    "friendly_skill_slot_count": 2,
-    "enemy_skill_slot_count": 1,
-    "max_buff_icon_slots": 6
-  },
-  "formation": {
-    "deployed_count": 3,
+  "type": "IDLE_ADVENTURE_FORMATION_CHANGED",
+  "requestId": null,
+  "eventId": "33fddf13-598e-4f48-a1d9-0fb4ec011547",
+  "playerId": 7,
+  "data": {
+    "player_id": 7,
+    "deployed_count": 1,
     "slots": [
       {
         "slot_index": 0,
         "column": 0,
         "row": 0,
         "front_column": true,
-        "definition_id": 101,
-        "combatant_name": "Hero 1"
-      },
-      {
-        "slot_index": 1,
-        "column": 0,
-        "row": 1,
-        "front_column": true,
-        "definition_id": 102,
-        "combatant_name": "Hero 2"
-      },
-      {
-        "slot_index": 2,
-        "column": 0,
-        "row": 2,
-        "front_column": true,
-        "definition_id": 103,
-        "combatant_name": "Hero 3"
-      },
-      {
-        "slot_index": 3,
-        "column": 1,
-        "row": 0,
-        "front_column": false,
-        "definition_id": null,
-        "combatant_name": null
-      },
-      {
-        "slot_index": 4,
-        "column": 1,
-        "row": 1,
-        "front_column": false,
-        "definition_id": null,
-        "combatant_name": null
-      },
-      {
-        "slot_index": 5,
-        "column": 1,
-        "row": 2,
-        "front_column": false,
-        "definition_id": null,
-        "combatant_name": null
+        "definition_id": 400001,
+        "combatant_name": "守林人",
+        "quality": "FINE"
       }
     ]
   },
-  "available_npc_list": [
-    {
-      "definition_id": 101,
-      "combatant_key": "hero_1",
-      "combatant_name": "Hero 1",
-      "max_health": 160,
-      "attack": 28,
-      "defense": 5,
-      "speed": 18,
-      "assigned": true
-    }
-  ]
+  "serverTime": "2026-08-26T10:30:00.123456"
 }
 ```
 
-失败情况：
+事件覆盖局部/完整保存、自动填充、主动清空、首次默认编队初始化，以及开战前触发的默认初始化。`data` 与独立编队查询接口保持同一结构并始终补齐六个槽位；示例只展开一个槽位。
 
-| 场景 | message |
-| --- | --- |
-| token 无效 | 未登录或登录已过期 |
-| 访问其他玩家 | 不能访问其他玩家的数据 |
+- 消息只在数据库事务提交成功后发送；事务回滚不发送，推送失败也不会回滚已经保存的编队。
+- 这是本人状态变化消息，不是全服广播、公屏轮播或公告，不会发送给其他玩家。
+- WebSocket 是刷新提示而不是唯一事实来源。消息可能延迟、重复、乱序或在离线期间漏收；收到事件、重连、回到前台或状态不确定时，Unity 应重新调用 `GET /api/idle-adventure/players/{player_id}/formation`。
+- Unity 不应让较晚到达的旧事件覆盖刚完成的 HTTP 保存响应。最稳妥的处理是合并短时间内的刷新请求，再以最后一次 HTTP 查询结果覆盖本地编队。
+- 多 API 实例部署必须启用 `redis_pubsub` 并保证 Redis 可用；单实例 `local_only` 只推送本节点连接。
 
-## 5. 配置接口
-
-### 5.1 获取模式基础配置
-
-```http
-GET /api/idle-adventure/config
-Authorization: Bearer <token>
-```
-
-是否需要 token：是
-
-前端传参：无请求体
-
-后端处理：
-
-1. 查询 Idle Adventure 模式基础配置。
-2. 返回阵型、技能槽、buff 图标、战斗动画时间和基础战斗规则。
-
-返回 data：`IdleAdventureModeConfigResponse`
-
-### 5.2 获取 buff 预设列表
+### 5.5 管理端查看任意玩家编队
 
 ```http
-GET /api/idle-adventure/buff-presets
-Authorization: Bearer <token>
+GET /api/ops/players/{playerId}/idle-adventure/formation
+Authorization: Bearer <operator-token>
 ```
 
-是否需要 token：是
+该接口复用玩家中心只读权限，供管理端查看指定玩家的基础信息、挂机冒险进度和当前保存编队。它严格只读：未进入过玩法的玩家不会因为运营查看而创建进度，也不会自动填充默认编队。
 
-前端传参：无请求体
+管理端响应使用运营接口既有的 `camelCase` 字段，固定返回六个槽位。非空槽位包含玩家 NPC 实例 ID、NPC 配置 ID、名称、品质、等级、状态、战斗属性，以及基础成长和当前穿戴装备合并后的生命、攻击、防御、速度。`combatProfileAvailable=false` 表示对应 NPC 或当前等级战斗配置已停用、缺失或不可用于当前战斗，便于运营发现异常保存数据。玩家不存在返回业务码 `2001`。该接口不授予编辑、代替玩家换阵或绕过 NPC 归属校验的能力。
 
-后端处理：
+## 六、战斗会话接口
 
-1. 查询 Idle Adventure 模式可用 buff 预设。
-2. 按 `buff_preset_id` 升序返回。
-
-返回 data：
-
-```json
-[
-  {
-    "buff_preset_id": 1,
-    "buff_key": "normal_damage_up",
-    "display_name": "Damage Up",
-    "category": "BENEFIT",
-    "source": "CHARACTER_SKILL",
-    "effect_type": "NORMAL_DAMAGE",
-    "duration_rounds": 3,
-    "attack_modifier": 0,
-    "defense_modifier": 0,
-    "speed_modifier": 0,
-    "normal_damage_multiplier": 0.15,
-    "attribute_damage_multiplier": 0,
-    "affected_attribute": null
-  },
-  {
-    "buff_preset_id": 2,
-    "buff_key": "fire_damage_down",
-    "display_name": "Fire Damage Down",
-    "category": "DETRIMENT",
-    "source": "CHARACTER_SKILL",
-    "effect_type": "ATTRIBUTE_DAMAGE",
-    "duration_rounds": 3,
-    "attack_modifier": 0,
-    "defense_modifier": 0,
-    "speed_modifier": 0,
-    "normal_damage_multiplier": 0,
-    "attribute_damage_multiplier": -0.15,
-    "affected_attribute": "FIRE"
-  }
-]
-```
-
-### 5.3 获取技能配置列表
-
-```http
-GET /api/idle-adventure/skills
-Authorization: Bearer <token>
-```
-
-是否需要 token：是
-
-前端传参：无请求体
-
-后端处理：
-
-1. 查询 Idle Adventure 模式技能配置。
-2. 返回技能伤害、冷却和关联 buff 预设。
-
-返回 data：
-
-```json
-[
-  {
-    "skill_id": 1001,
-    "skill_key": "power_strike",
-    "skill_name": "Power Strike",
-    "cooldown_rounds": 2,
-    "skill_multiplier": 1.35,
-    "damage_attribute": "PHYSICAL",
-    "self_buff_preset_id": null,
-    "target_buff_preset_id": null
-  }
-]
-```
-
-### 5.4 获取场地 buff 配置
-
-```http
-GET /api/idle-adventure/field-buffs?stage=1
-Authorization: Bearer <token>
-```
-
-是否需要 token：是
-
-前端传参：无请求体
-
-查询参数：
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| stage | number | 否 | 关卡编号；传入后只返回当前关卡生效的场地 buff |
-
-后端处理：
-
-1. 查询当前模式或指定关卡正在生效的场地 buff。
-2. 只返回启用状态的配置。
-3. 场地 buff 只对 `affected_attribute` 匹配的角色生效。
-
-返回 data：
-
-```json
-[
-  {
-    "field_buff_id": 1,
-    "stage": 1,
-    "field_buff_key": "fire_field_up",
-    "display_name": "Fire Field Up",
-    "category": "BENEFIT",
-    "effect_type": "FIELD",
-    "target_side": null,
-    "affected_attribute": "FIRE",
-    "field_damage_multiplier": 0.15
-  }
-]
-```
-
-字段说明：
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| field_buff_id | number | 场地 buff ID |
-| stage | number / null | 生效关卡；null 表示全局生效 |
-| field_buff_key | string | 场地 buff key |
-| display_name | string | 显示名 |
-| category | string | `BENEFIT` 增益，`DETRIMENT` 减益 |
-| effect_type | string | 固定为 `FIELD` |
-| target_side | string / null | 限定阵营；null 表示双方都可生效 |
-| affected_attribute | string | 生效角色属性 |
-| field_damage_multiplier | number | 场地伤害倍率，可正可负 |
-
-### 5.5 获取属性克制关系
-
-```http
-GET /api/idle-adventure/attribute-restraints
-Authorization: Bearer <token>
-```
-
-是否需要 token：是
-
-前端传参：无请求体
-
-后端处理：
-
-1. 查询属性克制关系。
-2. 属性克制关系只表示“是否克制”，不配置可变倍率。
-3. 命中克制关系时，`attribute_restraint_multiplier` 固定为 `0.2`。
-
-返回 data：
-
-```json
-{
-  "restraint_multiplier": 0.2,
-  "relations": [
-    {
-      "attacker_attribute": "FIRE",
-      "defender_attribute": "WOOD"
-    },
-    {
-      "attacker_attribute": "WATER",
-      "defender_attribute": "FIRE"
-    },
-    {
-      "attacker_attribute": "WOOD",
-      "defender_attribute": "EARTH"
-    },
-    {
-      "attacker_attribute": "EARTH",
-      "defender_attribute": "WATER"
-    },
-    {
-      "attacker_attribute": "PHYSICAL",
-      "defender_attribute": "ICE"
-    },
-    {
-      "attacker_attribute": "ICE",
-      "defender_attribute": "THUNDER"
-    },
-    {
-      "attacker_attribute": "THUNDER",
-      "defender_attribute": "PHYSICAL"
-    }
-  ]
-}
-```
-
-### 5.6 获取关卡奖励配置
-
-```http
-GET /api/idle-adventure/stage-rewards
-Authorization: Bearer <token>
-```
-
-是否需要 token：是
-
-前端传参：无请求体
-
-后端处理：
-
-1. 查询 Idle Adventure 模式每个关卡的奖励配置。
-2. 每个关卡可以配置不同奖励。
-3. 通关时奖励只进入待结算池，不立即发放。
-4. 玩家选择退出模式时，统一结算并发放所有已通关关卡的待结算奖励。
-
-返回 data：
-
-```json
-[
-  {
-    "stage": 1,
-    "rewards": [
-      {
-        "item_key": "gold",
-        "display_name": "Gold",
-        "quantity": 120
-      },
-      {
-        "item_key": "adventure_token",
-        "display_name": "Adventure Token",
-        "quantity": 1
-      }
-    ]
-  },
-  {
-    "stage": 2,
-    "rewards": [
-      {
-        "item_key": "gold",
-        "display_name": "Gold",
-        "quantity": 180
-      },
-      {
-        "item_key": "wood",
-        "display_name": "Wood",
-        "quantity": 60
-      }
-    ]
-  }
-]
-```
-
-## 6. 友方角色与敌人接口
-
-### 6.1 获取玩家可用于编队的 NPC 列表
-
-```http
-GET /api/idle-adventure/players/{player_id}/npcs
-Authorization: Bearer <token>
-```
-
-是否需要 token：是
-
-路径参数：
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| player_id | number | 是 | 玩家 ID |
-
-后端处理：
-
-1. 校验 token 与 `player_id`。
-2. 查询玩家已拥有或系统默认可用的 Idle Adventure 友方角色，角色基础配置来源为 `Player_npc`。
-3. 查询每个角色的基础属性与技能槽。
-4. 标记该角色当前是否已在编队中。
-
-返回 data：
-
-```json
-[
-  {
-    "definition_id": 101,
-    "combatant_key": "hero_1",
-    "combatant_name": "Hero 1",
-    "side": "FRIENDLY",
-    "max_health": 160,
-    "attack": 28,
-    "defense": 5,
-    "speed": 18,
-    "attribute_type": "PHYSICAL",
-    "assigned": true,
-    "skill_slots": [
-      {
-        "slot_index": 0,
-        "skill": {
-          "skill_id": 1001,
-          "skill_key": "power_strike",
-          "skill_name": "Power Strike",
-          "cooldown_rounds": 2,
-          "skill_multiplier": 1.35,
-          "damage_attribute": "PHYSICAL",
-          "self_buff_preset_id": null,
-          "target_buff_preset_id": null
-        }
-      },
-      {
-        "slot_index": 1,
-        "skill": {
-          "skill_id": 1002,
-          "skill_key": "battle_focus",
-          "skill_name": "Battle Focus",
-          "cooldown_rounds": 3,
-          "skill_multiplier": 1,
-          "damage_attribute": "PHYSICAL",
-          "self_buff_preset_id": 1,
-          "target_buff_preset_id": null
-        }
-      }
-    ]
-  }
-]
-```
-
-失败情况：
-
-| 场景 | message |
-| --- | --- |
-| 访问其他玩家 | 不能访问其他玩家的数据 |
-
-### 6.2 获取指定关卡敌人列表
-
-```http
-GET /api/idle-adventure/stages/{stage}/enemies
-Authorization: Bearer <token>
-```
-
-是否需要 token：是
-
-路径参数：
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| stage | number | 是 | 关卡编号，从 1 开始 |
-
-后端处理：
-
-1. 查询 `idle_adventure_stage_enemy_config` 中第 `stage` 关启用的敌方槽位配置。
-2. 通过 `definition_id` 关联 `idle_adventure_enemy_config`，读取敌人基础属性和技能槽。
-3. `enemy_count` 等于当前关卡启用的敌方槽位数量。
-4. 可根据 `idle_adventure_stage_enemy_config.level` 和关卡成长规则计算敌人最终属性。
-5. 返回固定 6 个槽位，未配置或未启用的槽位为 `null`，方便客户端按两列三行布局渲染。
-
-敌人数计算：
-
-```text
-enemy_count = count(enabled idle_adventure_stage_enemy_config where stage = path.stage)
-```
-
-敌人成长（可选，具体数值可由后端配置）：
-
-```text
-health = enemy_config.max_health + (level - 1) * enemy_health_per_level
-attack = enemy_config.attack + (level - 1) * enemy_attack_per_level
-speed = enemy_config.speed + (level - 1) * enemy_speed_per_level
-```
-
-返回 data：
-
-```json
-{
-  "stage": 1,
-  "enemy_count": 2,
-  "slots": [
-    {
-      "slot_index": 0,
-      "enemy": {
-        "definition_id": 201,
-        "combatant_key": "enemy_1",
-        "combatant_name": "Enemy 1",
-        "side": "ENEMY",
-        "max_health": 95,
-        "attack": 15,
-        "defense": 1,
-        "speed": 15,
-        "attribute_type": "PHYSICAL",
-        "skill_slots": [
-          {
-            "slot_index": 0,
-            "skill": {
-              "skill_id": 2001,
-              "skill_key": "claw",
-              "skill_name": "Claw",
-              "cooldown_rounds": 2,
-              "skill_multiplier": 1.2,
-              "damage_attribute": "PHYSICAL",
-              "self_buff_preset_id": null,
-              "target_buff_preset_id": null
-            }
-          }
-        ]
-      }
-    },
-    {
-      "slot_index": 1,
-      "enemy": {
-        "definition_id": 202,
-        "combatant_key": "enemy_2",
-        "combatant_name": "Enemy 2",
-        "side": "ENEMY",
-        "max_health": 107,
-        "attack": 17,
-        "defense": 1,
-        "speed": 14,
-        "attribute_type": "PHYSICAL",
-        "skill_slots": []
-      }
-    },
-    {
-      "slot_index": 2,
-      "enemy": null
-    },
-    {
-      "slot_index": 3,
-      "enemy": null
-    },
-    {
-      "slot_index": 4,
-      "enemy": null
-    },
-    {
-      "slot_index": 5,
-      "enemy": null
-    }
-  ]
-}
-```
-
-## 7. 编队接口
-
-### 7.1 获取玩家当前编队
-
-```http
-GET /api/idle-adventure/players/{player_id}/formation
-Authorization: Bearer <token>
-```
-
-是否需要 token：是
-
-后端处理：
-
-1. 校验 token 与 `player_id`。
-2. 查询玩家已保存的 Idle Adventure 编队。
-3. 如果玩家没有编队记录，生成默认编队：按可用 NPC 顺序填入前几个槽位。
-4. 返回固定 6 个槽位。
-
-返回 data：
-
-```json
-{
-  "player_id": 1,
-  "deployed_count": 3,
-  "slots": [
-    {
-      "slot_index": 0,
-      "column": 0,
-      "row": 0,
-      "front_column": true,
-      "definition_id": 101,
-      "combatant_name": "Hero 1"
-    },
-    {
-      "slot_index": 1,
-      "column": 0,
-      "row": 1,
-      "front_column": true,
-      "definition_id": 102,
-      "combatant_name": "Hero 2"
-    },
-    {
-      "slot_index": 2,
-      "column": 0,
-      "row": 2,
-      "front_column": true,
-      "definition_id": 103,
-      "combatant_name": "Hero 3"
-    },
-    {
-      "slot_index": 3,
-      "column": 1,
-      "row": 0,
-      "front_column": false,
-      "definition_id": null,
-      "combatant_name": null
-    },
-    {
-      "slot_index": 4,
-      "column": 1,
-      "row": 1,
-      "front_column": false,
-      "definition_id": null,
-      "combatant_name": null
-    },
-    {
-      "slot_index": 5,
-      "column": 1,
-      "row": 2,
-      "front_column": false,
-      "definition_id": null,
-      "combatant_name": null
-    }
-  ]
-}
-```
-
-### 7.2 保存玩家编队
-
-```http
-PUT /api/idle-adventure/players/{player_id}/formation
-Authorization: Bearer <token>
-Content-Type: application/json
-```
-
-是否需要 token：是
-
-前端传参：
-
-```json
-{
-  "slots": [
-    {
-      "slot_index": 0,
-      "definition_id": 101
-    },
-    {
-      "slot_index": 1,
-      "definition_id": 102
-    },
-    {
-      "slot_index": 2,
-      "definition_id": 103
-    },
-    {
-      "slot_index": 3,
-      "definition_id": null
-    },
-    {
-      "slot_index": 4,
-      "definition_id": null
-    },
-    {
-      "slot_index": 5,
-      "definition_id": null
-    }
-  ]
-}
-```
-
-参数说明：
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| slots | array | 是 | 固定 6 个槽位，也允许只传发生变化的槽位 |
-| slots[].slot_index | number | 是 | 槽位编号，0-5 |
-| slots[].definition_id | number / null | 是 | 友方角色配置 ID，对应 `Player_npc.definition_id`；null 表示空槽 |
-
-后端处理：
-
-1. 校验 token 与 `player_id`。
-2. 校验 `slot_index` 范围必须为 0-5。
-3. 校验 `definition_id` 必须属于该玩家可用 NPC。
-4. 校验同一名角色不能重复上阵。
-5. 校验保存后至少存在 1 名上阵角色。
-6. 保存玩家编队。
-7. 返回保存后的完整 6 槽位编队。
-
-返回 data：同 `7.1 获取玩家当前编队`
-
-失败情况：
-
-| 场景 | message |
-| --- | --- |
-| 编队为空 | 至少需要上阵 1 名友方角色 |
-| 槽位越界 | slot_index 必须在 0-5 范围内 |
-| 角色重复上阵 | 同一角色不能重复上阵 |
-| 角色不可用 | 该角色不可用于当前模式 |
-
-### 7.3 自动填充默认编队
-
-```http
-POST /api/idle-adventure/players/{player_id}/formation/auto-fill
-Authorization: Bearer <token>
-```
-
-是否需要 token：是
-
-前端传参：无请求体
-
-后端处理：
-
-1. 查询玩家可用 NPC。
-2. 根据默认友方数量 `starting_friendly_count`，从可用 NPC 中按配置顺序填充。
-3. 优先填充前排 `slot_index=0,1,2`，数量超过 3 时再填充后排。
-4. 保存并返回完整编队。
-
-返回 data：同 `7.1 获取玩家当前编队`
-
-### 7.4 清空编队
-
-```http
-POST /api/idle-adventure/players/{player_id}/formation/clear
-Authorization: Bearer <token>
-```
-
-是否需要 token：是
-
-说明：当前客户端“开始战斗”要求至少 1 名角色，因此清空编队后开始按钮应置为不可用。后端允许临时保存空编队，或也可以按业务要求拒绝清空。推荐允许清空，保存时返回 `deployed_count=0`。
-
-后端处理：
-
-1. 校验 token 与 `player_id`。
-2. 删除或置空玩家 6 个编队槽位。
-3. 返回空编队。
-
-返回 data：
-
-```json
-{
-  "player_id": 1,
-  "deployed_count": 0,
-  "slots": [
-    {
-      "slot_index": 0,
-      "column": 0,
-      "row": 0,
-      "front_column": true,
-      "definition_id": null,
-      "combatant_name": null
-    },
-    {
-      "slot_index": 1,
-      "column": 0,
-      "row": 1,
-      "front_column": true,
-      "definition_id": null,
-      "combatant_name": null
-    },
-    {
-      "slot_index": 2,
-      "column": 0,
-      "row": 2,
-      "front_column": true,
-      "definition_id": null,
-      "combatant_name": null
-    },
-    {
-      "slot_index": 3,
-      "column": 1,
-      "row": 0,
-      "front_column": false,
-      "definition_id": null,
-      "combatant_name": null
-    },
-    {
-      "slot_index": 4,
-      "column": 1,
-      "row": 1,
-      "front_column": false,
-      "definition_id": null,
-      "combatant_name": null
-    },
-    {
-      "slot_index": 5,
-      "column": 1,
-      "row": 2,
-      "front_column": false,
-      "definition_id": null,
-      "combatant_name": null
-    }
-  ]
-}
-```
-
-## 8. 战斗会话接口
-
-### 8.1 创建并开始战斗
+### 6.1 创建会话
 
 ```http
 POST /api/idle-adventure/players/{player_id}/sessions/start
-Authorization: Bearer <token>
 Content-Type: application/json
-```
+Idempotency-Key: start-20260722-001
 
-是否需要 token：是
-
-前端传参：
-
-```json
 {
+  "stage": 1,
   "use_saved_formation": true,
   "formation_slots": null
 }
 ```
 
-也可以传入临时编队：
+`stage` 可省略，默认挑战 `highest_stage + 1`；允许重打已开放关卡，不允许跳过未通关关卡。`use_saved_formation` 默认 `true`。使用临时编队时传：
 
 ```json
 {
-  "stage": 6,
+  "stage": 1,
   "use_saved_formation": false,
   "formation_slots": [
-    {
-      "slot_index": 0,
-      "definition_id": 101
-    },
-    {
-      "slot_index": 3,
-      "definition_id": 102
-    }
+    {"slot_index": 0, "definition_id": 3001}
   ]
 }
 ```
 
-参数说明：
+临时编队只用于本次会话，不覆盖保存编队。后端锁定玩家，读取一次数据库业务时间，固化玩法版本、NPC 属性、装备加成、技能、敌人、场地 buff、克制、固定奖励、随机池和 NPC 重复碎片规则快照。
 
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| stage | number | 否 | 开始关卡；不传时默认 `highest_stage + 1`，即玩家下一关未通关关卡 |
-| use_saved_formation | boolean | 否 | 是否使用后端保存的编队，默认 true |
-| formation_slots | array / null | 否 | 临时编队，仅 `use_saved_formation=false` 时使用 |
+创建会话会在同一事务内按该关 `stamina_cost` 扣除体力。体力关闭时仍保留恢复数据但不扣除；体力不足时返回 HTTP 409、业务码 `6511`，会话创建及其他写入全部回滚。相同 `Idempotency-Key` 的成功重试只重放首次响应，不会再次扣体力。会话响应不内嵌扣除后的体力，Unity 应在成功后调用独立体力接口刷新显示。
 
-后端处理：
-
-1. 校验 token 与 `player_id`。
-2. 查询玩家最高通关关卡 `highest_stage`。
-3. 如果请求未传 `stage`，从 `highest_stage + 1` 开始；如果传入 `stage`，需校验该关卡允许挑战。
-4. 读取保存编队或请求中的临时编队。
-5. 校验至少 1 名友方角色上阵。
-6. 生成友方运行时状态，空槽保留为 null。
-7. 根据关卡生成敌方运行时状态，空槽保留为 null。
-8. 创建战斗会话，状态设为 `RUNNING`。
-9. 返回初始战斗状态。
-
-返回 data：
-
-```json
-{
-  "session_key": "ia-20260720-000001",
-  "player_id": 1,
-  "stage": 6,
-  "round": 1,
-  "status": "RUNNING",
-  "paused": false,
-  "stage_choice_pending": false,
-  "pending_next_stage": null,
-  "friendlies": [
-    {
-      "runtime_id": "F-0",
-      "definition_id": 101,
-      "combatant_name": "Hero 1",
-      "side": "FRIENDLY",
-      "slot_index": 0,
-      "max_health": 160,
-      "current_health": 160,
-      "attack": 28,
-      "defense": 5,
-      "speed": 18,
-      "attribute_type": "PHYSICAL",
-      "effective_attack": 28,
-      "effective_defense": 5,
-      "effective_speed": 18,
-      "defeated": false,
-      "active_buffs": [],
-      "skill_states": [
-        {
-          "slot_index": 0,
-          "skill_id": 1001,
-          "skill_name": "Power Strike",
-          "cooldown_remaining": 0,
-          "can_use": true
-        }
-      ]
-    },
-    null,
-    null,
-    null,
-    null,
-    null
-  ],
-  "enemies": [
-    {
-      "runtime_id": "E-0",
-      "definition_id": 201,
-      "combatant_name": "Enemy 1",
-      "side": "ENEMY",
-      "slot_index": 0,
-      "max_health": 95,
-      "current_health": 95,
-      "attack": 15,
-      "defense": 1,
-      "speed": 15,
-      "attribute_type": "PHYSICAL",
-      "effective_attack": 15,
-      "effective_defense": 1,
-      "effective_speed": 15,
-      "defeated": false,
-      "active_buffs": [],
-      "skill_states": []
-    },
-    null,
-    null,
-    null,
-    null,
-    null
-  ],
-  "logs": [
-    "Stage 6 begins. 1 friendly unit(s) vs 1 enemy unit(s)."
-  ]
-}
-```
-
-失败情况：
-
-| 场景 | message |
-| --- | --- |
-| 编队为空 | 至少需要上阵 1 名友方角色 |
-| 指定关卡非法 | stage 必须大于等于 1，且不能跳过未通关关卡 |
-| 已存在运行中的会话 | 已存在进行中的战斗会话 |
-
-### 8.2 获取战斗会话状态
+### 6.2 查询、暂停和恢复
 
 ```http
-GET /api/idle-adventure/players/{player_id}/sessions/{session_key}
-Authorization: Bearer <token>
-```
-
-是否需要 token：是
-
-后端处理：
-
-1. 校验 token 与 `player_id`。
-2. 查询战斗会话。
-3. 返回当前关卡、回合、暂停状态、双方角色状态、日志和待选择的下一关。
-
-返回 data：同 `8.1 创建并开始战斗`
-
-### 8.3 暂停战斗
-
-```http
+GET  /api/idle-adventure/players/{player_id}/sessions/{session_key}
 POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/pause
-Authorization: Bearer <token>
-```
-
-是否需要 token：是
-
-后端处理：
-
-1. 校验会话属于该玩家。
-2. 如果会话状态为 `RUNNING`，更新为 `PAUSED`。
-3. 返回最新会话状态。
-
-返回 data：
-
-```json
-{
-  "session_key": "ia-20260720-000001",
-  "status": "PAUSED",
-  "paused": true,
-  "message": "Battle paused."
-}
-```
-
-失败情况：
-
-| 场景 | message |
-| --- | --- |
-| 会话不存在 | 战斗会话不存在 |
-| 已在关卡选择中 | 当前战斗状态不允许此操作 |
-
-### 8.4 恢复战斗
-
-```http
 POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/resume
-Authorization: Bearer <token>
 ```
 
-是否需要 token：是
+暂停只把 `RUNNING` 改为 `PAUSED`，不释放活动会话、不改变回合和战斗快照。暂停时禁止回合结算和额外 buff。恢复只允许 `PAUSED -> RUNNING`。已经处于目标状态的暂停或恢复请求也会写入幂等账本，之后使用同一请求号严格重放首次响应。
 
-后端处理：
-
-1. 校验会话属于该玩家。
-2. 如果会话状态为 `PAUSED`，更新为 `RUNNING`。
-3. 返回最新会话状态。
-
-返回 data：
-
-```json
-{
-  "session_key": "ia-20260720-000001",
-  "status": "RUNNING",
-  "paused": false,
-  "message": "Battle resumed."
-}
-```
-
-### 8.5 结束模式
-
-```http
-POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/end
-Authorization: Bearer <token>
-```
-
-是否需要 token：是
-
-说明：玩家选择结束/退出模式时，后端应结算本次模式中所有已通关关卡的待发放奖励，并将奖励发放到玩家背包或资源账户。未通关的当前关卡不产生奖励。
-
-奖励计算规则：收取待结算奖励池中的所有奖励（来自10.1）
-
-后端处理：
-
-1. 校验会话属于该玩家。
-2. 查询本次会话中已通关但尚未结算的关卡。
-3. 若当前会话正停留在 `STAGE_COMPLETE`，且该关奖励尚未写入待结算奖励池，则先将该关奖励加入待结算奖励池。
-4. 将待结算奖励池中的奖励写入玩家背包/资源账户。
-5. 标记这些关卡奖励已结算，避免重复领取。
-6. 将会话状态更新为 `ENDED`。
-7. 返回本次发放奖励明细和最新背包快照。
-
-返回 data：
-
-```json
-{
-  "session_key": "ia-20260720-000001",
-  "status": "ENDED",
-  "settled_stages": [1, 2],
-  "granted_rewards": [
-    {
-      "item_key": "gold",
-      "display_name": "Gold",
-      "quantity": 300
-    },
-    {
-      "item_key": "adventure_token",
-      "display_name": "Adventure Token",
-      "quantity": 2
-    }
-  ],
-  "items": [
-    {
-      "item_id": 1,
-      "item_key": "gold",
-      "name": "金币",
-      "item_type": "CURRENCY",
-      "icon": "gold",
-      "quantity": 10300
-    }
-  ],
-  "message": "Idle Adventure rewards granted."
-}
-```
-
-## 9. 回合结算接口
-
-### 9.1 结算一整个回合
+### 6.3 权威结算回合
 
 ```http
 POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/rounds/resolve
-Authorization: Bearer <token>
 Content-Type: application/json
+Idempotency-Key: round-ia-session-1-1
+
+{"client_round":1}
 ```
 
-是否需要 token：是
+客户端只能提交期望回合号。行动顺序、目标、技能、伤害、buff、死亡、胜负、进度和奖励均由后端计算。`initiative_order` 是回合开始时的不可变顺序，即使某角色在行动前被击败，也仍保留在顺序中但不会产生动作。
 
-前端传参：
+产生 `STAGE_COMPLETE` 时，后端先根据更新前的 `highest_stage` 判断是否首通，再持久化符合 `grant_scope` 的固定奖励和随机抽取结果。每个启用随机池独立执行 `draw_count` 次，每次必定命中一个候选奖励，不存在空奖励；同一回合幂等重放不会重复抽取。
 
-```json
-{
-  "client_round": 1
-}
-```
-
-参数说明：
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| client_round | number | 是 | 客户端认为正在结算的回合，用于防止重复请求 |
-
-后端处理：
-
-1. 校验 token 与 `player_id`。
-2. 校验会话属于该玩家，且状态为 `RUNNING`。
-3. 校验 `client_round` 等于服务端当前回合。
-4. 构建行动顺序：所有存活角色按 `effective_speed` 降序。
-5. 按行动顺序逐个结算攻击、技能、buff、死亡；行动前如果角色已死亡，则跳过该角色。
-6. 如果当前关敌人全部死亡，状态设为 `STAGE_COMPLETE`，设置 `pending_next_stage=stage+1`，并更新玩家最高通关关卡。
-7. 如果友方全部死亡，状态设为 `FAILED`。
-8. 如果双方都未全部死亡，回合数加 1。
-9. 返回动作列表和最新战斗状态。
-
-返回 data：
-
-```json
-{
-  "session_key": "ia-20260720-000001",
-  "stage": 1,
-  "round_before": 1,
-  "round_after": 2,
-  "status": "RUNNING",
-  "initiative_order": [
-    {
-      "runtime_id": "F-0",
-      "combatant_name": "Hero 1",
-      "side": "FRIENDLY",
-      "slot_index": 0,
-      "effective_speed": 18
-    },
-    {
-      "runtime_id": "E-0",
-      "combatant_name": "Enemy 1",
-      "side": "ENEMY",
-      "slot_index": 0,
-      "effective_speed": 15
-    }
-  ],
-  "actions": [
-    {
-      "action_order": 1,
-      "round": 1,
-      "action_type": "SKILL",
-      "actor_runtime_id": "F-0",
-      "actor_name": "Hero 1",
-      "target_runtime_id": "E-0",
-      "target_name": "Enemy 1",
-      "skill_id": 1001,
-      "skill_name": "Power Strike",
-      "damage": 36,
-      "target_health_before": 95,
-      "target_health_after": 59,
-      "damage_formula": {
-        "base_damage": 27,
-        "skill_multiplier": 1.35,
-        "normal_buff_multiplier": 0,
-        "attribute_buff_multiplier": 0,
-        "field_buff_multiplier": 0,
-        "attribute_restraint_multiplier": 0,
-        "bonus_multiplier": 1,
-        "attacker_attribute": "FIRE",
-        "defender_attribute": "WOOD"
-      },
-      "applied_buffs": [],
-      "defeated_runtime_ids": [],
-      "animation": {
-        "attack_direction": 1,
-        "attack_duration": 0.28,
-        "hit_flash_duration": 0.18
-      },
-      "log": "Hero 1 uses Power Strike on Enemy 1 for 36."
-    },
-    {
-      "action_order": 2,
-      "round": 1,
-      "action_type": "BASIC_ATTACK",
-      "actor_runtime_id": "E-0",
-      "actor_name": "Enemy 1",
-      "target_runtime_id": "F-0",
-      "target_name": "Hero 1",
-      "skill_id": null,
-      "skill_name": null,
-      "damage": 10,
-      "target_health_before": 160,
-      "target_health_after": 150,
-      "damage_formula": {
-        "base_damage": 10,
-        "skill_multiplier": 1,
-        "normal_buff_multiplier": 0,
-        "attribute_buff_multiplier": 0,
-        "field_buff_multiplier": 0,
-        "attribute_restraint_multiplier": 0,
-        "bonus_multiplier": 1,
-        "attacker_attribute": "WOOD",
-        "defender_attribute": "FIRE"
-      },
-      "applied_buffs": [],
-      "defeated_runtime_ids": [],
-      "animation": {
-        "attack_direction": -1,
-        "attack_duration": 0.28,
-        "hit_flash_duration": 0.18
-      },
-      "log": "Enemy 1 uses Attack on Hero 1 for 10."
-    }
-  ],
-  "friendlies": [],
-  "enemies": [],
-  "logs": [
-    "Initiative: Hero 1(18) > Enemy 1(15)",
-    "Hero 1 uses Power Strike on Enemy 1 for 36.",
-    "Enemy 1 uses Attack on Hero 1 for 10."
-  ]
-}
-```
-
-说明：`friendlies` 和 `enemies` 应返回完整最新状态，结构同固定 6 槽位的 `CombatantState[]`，空槽与已死亡槽位返回 `null`。示例中省略是为了减少篇幅，实际接口不得省略。
-
-失败情况：
-
-| 场景 | message |
-| --- | --- |
-| 会话不存在 | 战斗会话不存在 |
-| 会话未运行 | 当前战斗状态不允许此操作 |
-| 回合号不一致 | 客户端回合号与服务端不一致，请刷新战斗状态 |
-
-### 9.2 手动施加 buff
+### 6.4 应用配置化额外 buff
 
 ```http
 POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/buffs/apply
-Authorization: Bearer <token>
 Content-Type: application/json
-```
+Idempotency-Key: buff-ia-session-1-001
 
-是否需要 token：是
-
-说明：此接口用于后续道具、事件、关卡机制等“其他方式增加的 buff”。当前 Unity 脚本中已区分 `CHARACTER_SKILL` 和 `OTHER` 来源；技能自带 buff 不需要调用此接口，由回合结算自动处理。
-
-前端传参：
-
-```json
 {
   "target_side": "FRIENDLY",
   "slot_index": 0,
-  "buff_preset_id": 3,
+  "buff_preset_id": 16001,
   "source": "OTHER"
 }
 ```
 
-参数说明：
+该旧路径暂时保留以避免已发布 Unity 直接遇到 404，但当前统一返回 HTTP 403、业务码 `6515`，不会读取或修改战斗会话。原因是现有请求没有服务端签发的广告、活动、道具消耗或次数凭证，客户端提交的幂等键与 buff 配置 ID 不能证明玩家有资格获得增益。只有后续补齐服务端授权凭证、消费流水和防重放校验后，才能重新开放实际施加逻辑。
 
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| target_side | string | 是 | `FRIENDLY` 或 `ENEMY` |
-| slot_index | number | 是 | 目标槽位，0-5 |
-| buff_preset_id | number | 是 | buff 预设 ID |
-| source | string | 否 | 推荐固定为 `OTHER` |
-
-后端处理：
-
-1. 校验战斗会话属于该玩家。
-2. 校验目标槽位存在存活角色。
-3. 查询 buff 预设。
-4. 如果同一角色已有相同 `buff_key + source`，刷新剩余回合为两者较大值。
-5. 否则追加新 buff。
-6. 返回目标角色最新状态。
-
-返回 data：
-
-```json
-{
-  "target": {
-    "runtime_id": "F-0",
-    "combatant_name": "Hero 1",
-    "side": "FRIENDLY",
-    "slot_index": 0,
-    "active_buffs": [
-      {
-        "buff_key": "normal_damage_up",
-        "display_name": "Damage Up",
-        "category": "BENEFIT",
-        "source": "OTHER",
-        "effect_type": "NORMAL_DAMAGE",
-        "remaining_rounds": 3,
-        "attack_modifier": 0,
-        "defense_modifier": 0,
-        "speed_modifier": 0,
-        "normal_damage_multiplier": 0.15,
-        "attribute_damage_multiplier": 0,
-        "affected_attribute": null
-      }
-    ]
-  },
-  "log": "Hero 1 gained Damage Up from Other."
-}
-```
-
-## 10. 关卡结算接口
-
-### 10.1 继续下一关
+### 6.5 继续与重试
 
 ```http
 POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/stages/continue
-Authorization: Bearer <token>
-```
-
-是否需要 token：是
-
-调用时机：当前关敌方全部死亡，服务端会话状态为 `STAGE_COMPLETE`，客户端显示结束面板后，玩家点击“继续下一关”。
-
-后端处理：
-
-1. 校验会话属于该玩家。
-2. 校验会话状态为 `STAGE_COMPLETE`。
-3. 将 `stage` 更新为 `pending_next_stage`。
-4. 友方角色恢复满血。
-5. 根据新关卡生成敌方阵容。
-6. 将刚通关关卡的奖励加入本次会话待结算池，但不立即发放。
-
-奖励计算规则：在待结算奖励池中加入当前通过层的奖励
-
-7. 清空或保留战斗日志，推荐保留最近 8 条。
-8. 状态更新为 `RUNNING`。
-9. 返回新关卡初始战斗状态和当前待结算奖励摘要。
-
-返回 data：同 `8.1 创建并开始战斗`
-
-失败情况：
-
-| 场景 | message |
-| --- | --- |
-| 当前关尚未完成 | 当前战斗状态不允许此操作 |
-| 会话不存在 | 战斗会话不存在 |
-
-### 10.2 重新挑战当前关
-
-```http
 POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/stages/retry
-Authorization: Bearer <token>
 ```
 
-是否需要 token：是
+继续只允许 `STAGE_COMPLETE`，进入下一关后回到 `RUNNING`、`stage_attempt=1`、`round=1`。重试只允许 `FAILED`，关卡不变、尝试次数加一、回合重置。两者都重新生成运行时状态，但继续使用会话创建时固化的友方属性、技能和玩法版本。
 
-调用时机：友方全部死亡，服务端会话状态为 `FAILED`。当前 Unity 脚本中存在友方恢复并重新生成敌人的逻辑，后端可用该接口承接。
+继续按下一关的 `stamina_cost` 扣体力，失败重试按当前关的 `stamina_cost` 再扣一次；两种操作都在会话状态更新前完成同事务校验，体力不足时全部回滚。暂停、恢复和重复查询不扣体力。成功后 Unity 应刷新独立体力接口。
 
-后端处理：
-
-1. 校验会话属于该玩家。
-2. 校验会话状态为 `FAILED`。
-3. 友方角色恢复满血。
-4. 重新生成当前关敌方阵容。
-5. 回合重置为 1。
-6. 状态更新为 `RUNNING`。
-
-返回 data：同 `8.1 创建并开始战斗`
-
-## 11. 进度接口
-
-### 11.1 获取玩家闯关进度
+### 6.6 结束并发奖
 
 ```http
-GET /api/idle-adventure/players/{player_id}/progress
-Authorization: Bearer <token>
+POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/end
+Idempotency-Key: end-ia-session-1
 ```
 
-是否需要 token：是
+允许从 `RUNNING`、`PAUSED`、`STAGE_COMPLETE` 或 `FAILED` 结束。后端在同一事务中锁定会话和未结算奖励，发放物品、创建独立装备实例、创建 NPC 或执行 NPC 重复碎片转换，然后标记奖励已结算并把会话改为 `ENDED`。任一资产发放失败都会整体回滚；当前未通关关卡不产生奖励，相同请求号不会重复发放。
 
-后端处理：
+`granted_rewards` 是本次实际入账结果，`items` 是发奖后的完整物品背包。装备和 NPC 不在 `items` 中，应依据 `granted_rewards` 刷新对应仓库。随机抽中一个玩家已经拥有的 NPC 时，`random_drops` 仍显示抽中的 NPC，`granted_rewards` 则返回实际碎片物品并标记 `fallback_applied=true`。网络超时后必须用原 `Idempotency-Key` 重试 `/end`，服务端会返回第一次的完整发奖结构。
 
-1. 校验 token 与 `player_id`。
-2. 查询玩家最高通关关卡、最近会话、累计胜利次数、累计失败次数。
+## 七、进度与挂机接口
 
-返回 data：
-
-```json
-{
-  "player_id": 1,
-  "highest_stage": 5,
-  "last_stage": 3,
-  "running_session_key": null,
-  "total_wins": 12,
-  "total_failures": 2,
-  "updated_at": "2026-07-20T12:30:00+08:00"
-}
-```
-
-### 11.2 保存关卡胜利进度
+### 7.1 获取和确认进度
 
 ```http
+GET  /api/idle-adventure/players/{player_id}/progress
 POST /api/idle-adventure/players/{player_id}/progress/stage-clear
-Authorization: Bearer <token>
 Content-Type: application/json
-```
 
-是否需要 token：是
-
-前端传参：
-
-```json
 {
-  "session_key": "ia-20260720-000001",
-  "cleared_stage": 5
+  "session_key": "ia-session-1",
+  "cleared_stage": 1
 }
 ```
 
-说明：如果后端已经在 `rounds/resolve` 中权威判断胜利，则此接口可以不开放给客户端，避免客户端伪造通关。推荐由后端在关卡胜利时自动更新进度。
+进度查询返回 `highest_stage`、`last_stage`、`running_session_key`、`total_wins`、`total_failures` 和 `updated_at`。`stage-clear` 只核实指定会话已经处于对应 `STAGE_COMPLETE` 且权威进度已写入，不接受客户端推进关卡、伪造胜利或触发发奖。
 
-后端处理：
-
-1. 校验会话属于该玩家。
-2. 校验该会话确实已通关 `cleared_stage`。
-3. 更新玩家最高通关关卡。
-4. 返回最新进度。
-
-返回 data：同 `11.1 获取玩家闯关进度`
-
-### 11.3 挂机奖励接口
-
-说明：挂机奖励由服务端按时间结算，客户端仅负责展示状态和发起领取。
-奖励计算规则：由初始奖励数*层数*每层提升数
-
-### 11.3.1 获取挂机奖励状态
+### 7.2 查询挂机奖励
 
 ```http
 GET /api/idle-adventure/players/{player_id}/afk-reward
-Authorization: Bearer <token>
 ```
 
-是否需要 token：是
+返回奖励物品、基础单周期数量、最高关卡增量、最终单周期数量、周期秒数、最大存储量、当前存储量及服务端 Unix 时间。时间和数量由数据库业务时间及玩家挂机规则快照计算。
 
-前端传参：无请求体
-
-后端处理：
-
-1. 校验 token 与 `player_id`。
-2. 读取玩家挂机奖励的服务端结算状态。
-3. 奖励计算规则：由初始奖励数*层数*每层提升数
-4. 返回当前挂机奖励状态快照。
-
-返回 data：
-
-```json
-{
-  "player_id": 1,
-  "item_key": "gold",
-  "display_name": "Gold",
-  "base_quantity_per_cycle": 10,
-  "quantity_per_highest_stage": 2,
-  "quantity_per_cycle": 60,
-  "production_interval_seconds": 30,
-  "max_stored_quantity": 1000,
-  "stored_quantity": 600,
-  "highest_stage": 3,
-  "server_unix_seconds": 1784536691,
-  "last_settled_server_unix_seconds": 1784536391
-}
-```
-
-### 11.3.2 领取挂机奖励
+### 7.3 领取挂机奖励
 
 ```http
 POST /api/idle-adventure/players/{player_id}/afk-reward/collect
-Authorization: Bearer <token>
+Idempotency-Key: afk-collect-20260722-001
 ```
 
-是否需要 token：是
+无请求体。后端锁定玩家和挂机状态后计算可领取增量，原子写入背包并保存完整幂等响应。玩法版本切换时先按旧快照结算到同一业务时间，再启用新规则，不用新配置追溯旧挂机时间。
 
-前端传参：无请求体
+响应中的 `collected_rewards` 是本次实际入账的完整奖励列表；配置切换恰好跨越两种挂机产物时会返回两项。旧字段 `collected_reward` 继续保留，指向列表第一项；没有可领取数量时返回旧产物的零数量兼容项。新 Unity 必须优先遍历 `collected_rewards`，不能只读取旧字段，否则可能漏展示切换后的第二种产物。
 
-后端处理：
+### 7.4 查询体力
 
-1. 校验 token 与 `player_id`。
-2. 按服务端时间计算当前可领取挂机奖励。
-3. 奖励计算规则：奖励数=基础奖励数*层数*每层提升数
-4. 将奖励写入玩家背包或资源账户。
-5. 刷新挂机奖励状态并返回最新快照。
+```http
+GET /api/idle-adventure/players/{player_id}/stamina
+```
 
-返回 data：
+无请求体。接口会使用数据库统一北京时间惰性结算已经完成的恢复周期；客户端不得自行增加体力，只能用倒计时做平滑展示。示例：
 
 ```json
 {
-  "player_id": 1,
-  "collected_item": {
-    "item_id": 1,
-    "item_key": "gold",
-    "display_name": "金币",
-    "quantity": 600
-  },
-  "items": [
-    {
-      "item_id": 1,
-      "item_key": "gold",
-      "display_name": "金币",
-      "item_type": "CURRENCY",
-      "icon": "gold",
-      "quantity": 10600
-    }
-  ],
-  "state": {
-    "player_id": 1,
-    "item_key": "gold",
-    "display_name": "Gold",
-    "base_quantity_per_cycle": 10,
-    "quantity_per_highest_stage": 2,
-    "quantity_per_cycle": 60,
-    "production_interval_seconds": 30,
-    "max_stored_quantity": 1000,
-    "stored_quantity": 0,
-    "highest_stage": 3,
-    "server_unix_seconds": 1784536691,
-    "last_settled_server_unix_seconds": 1784536691
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "enabled": true,
+    "current_stamina": 97,
+    "max_stamina": 100,
+    "over_cap": false,
+    "overflow_amount": 0,
+    "recovery_interval_seconds": 300,
+    "next_recovery_at": "2026-08-03T14:05:00+08:00",
+    "seconds_to_next_recovery": 180,
+    "seconds_to_full": 780,
+    "server_time": "2026-08-03T14:02:00+08:00",
+    "config_version": 12
   }
 }
 ```
 
-## 12. 数据库表
+- `current_stamina` 使用 64 位整数；Unity C# 必须用 `long`，不要用 `int` 承接。
+- `seconds_to_next_recovery` 和 `seconds_to_full` 为服务端快照。Unity 可用 `server_time` 校正本地倒计时，到零后重新请求，不能在本地直接确认恢复成功。
+- 满体力或超上限时 `next_recovery_at=null`，两个秒数字段均为 `0`。
+- 运营降低上限时不会截断玩家已有体力。此时 `over_cap=true`、`overflow_amount=current_stamina-max_stamina`，恢复暂停，消费到低于新上限后重新开始计时。
+- 已有活动会话继续使用会话创建时的体力上限和恢复周期；结束会话后下一次查询才切换到当前活动版本，避免进行中的会话被中途改规则。
+- 发布新恢复周期时，服务端先按旧周期结算完整恢复次数，再从同一数据库业务时间按新周期重新建立锚点，旧周期剩余秒数不折算。
+- 好友赠礼、钻石商城购买等外部发放先结算自然恢复，再原子增加体力；允许超过当前运营上限，超额期间 `over_cap=true` 且暂停自然恢复。好友赠礼不扣发送方体力，完整规则见 [`friend-stamina-gift-api.md`](friend-stamina-gift-api.md)；钻石购买与钻石扣减、订单和每日额度在同一事务中提交，成功后 Unity 应重新调用本接口刷新完整体力快照。
 
-### 12.0 接口字段与数据库字段对应规则
+### 7.5 挂机加速
 
-说明：
-
-1. 接口请求参数、路径占位符和返回字段统一使用 snake_case，例如 `definition_id`、`slot_index`、`player_id`。
-2. 数据库字段也统一使用 snake_case，例如 `definition_id`、`slot_index`、`player_id`。
-3. 直接暴露给接口的配置字段名与数据库字段名保持一致，例如 `definition_id`、`skill_id`、`buff_preset_id`、`combatant_key`、`combatant_name`。
-4. 接口中的 `definition_id` 根据阵营对应不同配置表：友方对应 `Player_npc.definition_id`，敌方对应 `idle_adventure_enemy_config.definition_id`。
-5. 接口中的 `skill_id` 对应 `idle_adventure_skill_config.skill_id`。
-6. 接口中的 `buff_preset_id` 对应 `idle_adventure_buff_preset.buff_preset_id`。
-7. 接口中的 `field_buff_id` 对应 `idle_adventure_field_buff_config.field_buff_id`。
-8. 接口中的 `session_key` 对应 `idle_adventure_session.session_key`；数据库内部关联字段可使用 `session_id` 指向 `idle_adventure_session.id`，但不直接作为接口字段返回。
-9. 接口中的 `runtime_id` 对应 `idle_adventure_session_combatant.runtime_id`；数据库内部关联字段可使用 `session_combatant_id` 指向 `idle_adventure_session_combatant.id`，但不直接作为接口字段返回。
-10. `effective_attack`、`effective_defense`、`effective_speed`、`can_use`、`quantity_per_cycle`、`server_unix_seconds` 等为后端计算字段，不直接作为独立数据库字段存储。
-
-### 12.1 Player_npc
-
-友方角色配置表。
-
-> 友方角色配置表位置标注：本节 `12.1 Player_npc`。你后续手动调整友方角色属性、技能归属、可用状态时，优先改这张表及 `player_npc_skill`。
-
-说明：
-
-1. `Player_npc` 只存友方角色 / 玩家可上阵 NPC 的基础配置。
-2. 接口返回中的友方 `definition_id` 对应 `Player_npc.definition_id`。
-3. 友方阵营固定为 `FRIENDLY`，不再与敌人共用配置表，也不再通过 `side` 区分。
-
-```sql
-CREATE TABLE Player_npc (
-  definition_id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  combatant_key VARCHAR(64) NOT NULL UNIQUE,
-  combatant_name VARCHAR(64) NOT NULL,
-  max_health INT NOT NULL DEFAULT 100,
-  attack INT NOT NULL DEFAULT 10,
-  defense INT NOT NULL DEFAULT 0,
-  speed INT NOT NULL DEFAULT 1,
-  attribute_type VARCHAR(32) NOT NULL DEFAULT 'PHYSICAL',
-  enabled TINYINT NOT NULL DEFAULT 1,
-  sort_order INT NOT NULL DEFAULT 0,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+```http
+POST /api/idle-adventure/players/{player_id}/afk-reward/accelerate
+Authorization: Bearer <token>
+Idempotency-Key: afk-accelerate-20260806-001
 ```
 
-字段说明：
+请求体为空。`Idempotency-Key` 必须由客户端生成并在同一次网络超时重试中保持不变，长度为 1 至 64 个字符。一次成功请求只消耗一次管理端配置的体力，并立即发放一份按当前最高关卡计算的完整挂机累计上限奖励。
 
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| definition_id | definition_id | 友方角色配置 ID |
-| combatant_key | combatant_key | 友方角色配置 key |
-| combatant_name | combatant_name | 友方角色显示名称 |
-| max_health | max_health | 最大生命值 |
-| attack | attack | 攻击力 |
-| defense | defense | 防御力 |
-| speed | speed | 速度，参与行动顺序计算 |
-| attribute_type | attribute_type | 角色属性，参与属性 buff 和属性克制计算 |
-| enabled | 无 | 是否启用该角色配置 |
-| sort_order | 无 | 默认排序，用于 NPC 列表和自动编队 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
+响应的核心结构如下：
 
-### 12.1.1 idle_adventure_enemy_config
-
-敌方角色配置表。
-
-说明：
-
-1. `idle_adventure_enemy_config` 只存敌方角色基础配置。
-2. 接口返回中的敌方 `definition_id` 对应 `idle_adventure_enemy_config.definition_id`。
-3. 敌方阵营固定为 `ENEMY`。
-
-```sql
-CREATE TABLE idle_adventure_enemy_config (
-  definition_id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  combatant_key VARCHAR(64) NOT NULL UNIQUE,
-  combatant_name VARCHAR(64) NOT NULL,
-  max_health INT NOT NULL DEFAULT 100,
-  attack INT NOT NULL DEFAULT 10,
-  defense INT NOT NULL DEFAULT 0,
-  speed INT NOT NULL DEFAULT 1,
-  attribute_type VARCHAR(32) NOT NULL DEFAULT 'PHYSICAL',
-  enabled TINYINT NOT NULL DEFAULT 1,
-  sort_order INT NOT NULL DEFAULT 0,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
+```json
+{
+  "code": 200,
+  "message": "挂机加速成功",
+  "data": {
+    "player_id": 7,
+    "mode_config_id": 18,
+    "mode_config_version": 3,
+    "highest_stage": 5,
+    "stamina_before": 50,
+    "stamina_cost": 10,
+    "stamina_after": 40,
+    "acceleration_cycles": 720,
+    "natural_rewards": [],
+    "acceleration_rewards": [],
+    "total_rewards": [],
+    "stamina": {},
+    "state": {},
+    "items": [],
+    "idempotent_replay": false
+  }
+}
 ```
 
-字段说明：
+`natural_rewards` 是本次先结算的自然挂机增量，`acceleration_rewards` 是本次完整上限奖励，`total_rewards` 是按物品主键合并后的实际入账明细。三组奖励项均使用 `AssetReward` 字段：`reward_source` 分别为 `AFK_NATURAL`、`AFK_ACCELERATION`、`AFK_TOTAL`，并包含 `reward_type`、`asset_id`、`reward_key`、`reward_name`、`reward_icon`、`reward_category`、`item_id`、`item_key`、`item_name`、`quantity` 和 `fallback_applied`。同一物品会合并数量，不同物品仍分别返回。
 
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| definition_id | definition_id | 敌方角色配置 ID |
-| combatant_key | combatant_key | 敌方角色配置 key |
-| combatant_name | combatant_name | 敌方角色显示名称 |
-| max_health | max_health | 最大生命值 |
-| attack | attack | 攻击力 |
-| defense | defense | 防御力 |
-| speed | speed | 速度，参与行动顺序计算 |
-| attribute_type | attribute_type | 敌方角色属性 |
-| enabled | 无 | 是否启用该敌人配置 |
-| sort_order | 无 | 默认排序 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
+结算规则：
 
-### 12.1.2 idle_adventure_stage_enemy_config
+1. 先按挂机状态保存的旧物品、类型、产率和余数结算自然收益；配置切换时不会把旧物品 ID 与新物品类型混用，未满周期余数会按新规则继续折算。
+2. 再按本次采用的玩法版本和最新最高关卡计算 `afk_max_seconds / afk_interval_seconds` 对应的完整奖励，`acceleration_cycles` 是完整周期数。
+3. 体力、自然奖励、加速奖励、挂机状态和加速幂等流水在同一事务中提交；背包入账按物品主键快照执行，不依赖物品当前名称或启停状态。
+4. 体力不足、奖励超过经济护栏、背包余额可能溢出或任一写入失败时，整笔事务回滚，不推进挂机时钟、不扣体力、不写成功幂等流水。
+5. 存在进行中的战斗会话时沿用该会话的 `mode_config_id`；没有进行中会话时使用当前 `ACTIVE` 玩法版本。
+6. 相同玩家和相同幂等键再次请求只返回第一次完整响应，并将 `idempotent_replay` 设为 `true`，不会再次扣体力或发奖。
 
-关卡敌人配置表。
+Unity 端点击后应立即禁用重复点击并生成新幂等键；超时、断线或 5xx 使用同一个键重试，成功或业务错误后再恢复按钮。成功后直接使用 `total_rewards` 和 `items` 刷新显示，并以响应中的 `stamina` 更新体力。`6511` 表示体力不足，`6513` 表示加速未开放，`6514` 表示奖励超过物理上限；客户端不得自行扣除或补发。
 
-说明：
+## 八、战斗响应模型
 
-1. 用于支持 `GET /api/idle-adventure/stages/{stage}/enemies`。
-2. 每个关卡最多配置 6 个敌方槽位。
-3. `definition_id` 对应 `idle_adventure_enemy_config.definition_id`。
-4. 如果某个槽位未配置敌人，接口返回该槽位 `enemy=null`。
+会话响应主要字段：
 
-```sql
-CREATE TABLE idle_adventure_stage_enemy_config (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  stage INT NOT NULL,
-  slot_index INT NOT NULL,
-  definition_id BIGINT NOT NULL,
-  level INT NOT NULL DEFAULT 1,
-  enabled TINYINT NOT NULL DEFAULT 1,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_idle_stage_enemy_slot (stage, slot_index)
-);
+| 字段 | 说明 |
+| --- | --- |
+| `session_key`、`player_id` | 会话业务标识和 token 玩家 |
+| `stage`、`stage_name`、`stage_attempt` | 当前关卡及尝试次数 |
+| `round`、`round_before`、`round_after` | 下一次期望回合及本次回合变化 |
+| `status`、`paused` | `RUNNING/PAUSED/STAGE_COMPLETE/FAILED/ENDED` |
+| `stage_choice_pending`、`pending_next_stage` | 胜利后是否等待继续或结束；已到最终关时下一关为 `null` |
+| `initiative_order` | 回合开始时服务端确定的完整行动顺序 |
+| `actions` | 本回合按 `action_order` 播放的权威动作 |
+| `friendlies`、`enemies` | 固定六槽位；空槽或已经死亡的槽位为 `null` |
+| `logs` | 行动顺序和战斗日志 |
+| `pending_rewards` | 已通关但尚未结束领取的固定或随机资产快照 |
+| `random_drops` | 本会话已产生的逐抽命中结果和审计区间 |
+| `settled_stages`、`granted_rewards` | 已结算关卡和本次实际入账的通用资产增量 |
+| `items` | 发奖后的完整物品背包；装备和 NPC 需刷新各自接口 |
+| `message`、`idempotent_replay` | 操作提示和是否重放首次响应 |
+
+`actions.damage_formula` 包含基础伤害、技能倍率、普通 buff、属性 buff、场地 buff、克制倍率、最终倍率及攻防属性。Unity 只负责播放和展示，不得重新计算并覆盖结果。
+
+### 8.1 通用奖励字段
+
+`pending_rewards` 与 `granted_rewards` 都使用 `AssetReward`：
+
+| 字段 | 说明 |
+| --- | --- |
+| `reward_source` | 待结算时为 `FIXED` 或 `RANDOM`；实际入账汇总项可以为 `null` |
+| `reward_type` | `ITEM`、`EQUIPMENT` 或 `NPC` |
+| `asset_id`、`reward_key` | 资产主键和稳定编码；新 Unity 以这两个字段识别奖励 |
+| `reward_name`、`reward_icon`、`reward_category` | 通关时冻结的展示快照，不受之后改名、停用影响 |
+| `item_id`、`item_key`、`display_name` | 旧 Unity 兼容字段；非物品奖励为 `null` |
+| `quantity` | 奖励数量；NPC 固定为 `1`，装备按数量创建独立实例 |
+| `grant_scope` | 待结算时为 `FIRST_CLEAR` 或 `EVERY_CLEAR`；实际入账项可以为 `null` |
+| `fallback_applied` | 实际入账时是否因 NPC 已拥有而转换为碎片；待结算项可以为 `null` |
+
+### 8.2 随机掉落字段
+
+`random_drops` 每一项对应一次真实抽取：
+
+| 字段 | 说明 |
+| --- | --- |
+| `drop_result_id` | 服务端逐抽审计主键 |
+| `pool_key`、`pool_name` | 发布时冻结的掉落池编码和名称 |
+| `draw_index` | 当前池内从 `1` 开始的抽取序号 |
+| `random_value` | `[0, 100000000)` 内的服务端安全随机值 |
+| `interval_start`、`interval_end` | 左闭右开命中区间，满足 `start <= value < end` |
+| `reward_type`、`asset_id`、`reward_key` | 抽中的原始资产，不代表 NPC 重复转换后的最终资产 |
+| `reward_name`、`reward_icon`、`reward_category`、`quantity` | 通关时冻结的展示结果 |
+
+客户端可以直接用 `random_drops` 播放掉落动画，但资产到账提示必须以 `/end` 返回的 `granted_rewards` 为准。
+
+## 九、状态机与错误码
+
+```text
+创建 -> RUNNING
+RUNNING --pause--> PAUSED
+PAUSED --resume--> RUNNING
+RUNNING --回合胜利--> STAGE_COMPLETE
+RUNNING --全灭或达到最大回合--> FAILED
+STAGE_COMPLETE --continue--> RUNNING
+FAILED --retry--> RUNNING
+RUNNING/PAUSED/STAGE_COMPLETE/FAILED --end--> ENDED
 ```
 
-字段说明：
+| code | 含义 |
+| ---: | --- |
+| 6501 | 玩法未开放或当前配置不存在 |
+| 6502 | 编队为空、越权、重复或配置不完整 |
+| 6503 | 关卡不存在、配置不完整或不允许跳关 |
+| 6504 | 会话不存在或不属于当前玩家 |
+| 6505 | 当前会话状态不允许该操作 |
+| 6506 | 客户端回合号与服务端不一致 |
+| 6507 | 幂等键被用于不同操作或不同内容 |
+| 6508 | 玩法配置或会话快照无效 |
+| 6509 | 会话被并发修改 |
+| 6510 | 挂机配置或算术无效 |
+| 6511 | 体力不足；HTTP 状态为 `409 Conflict`，刷新体力后再挑战 |
+| 6512 | 外部体力发放将超过数据库物理上限；HTTP 409，本次事务整体回滚 |
+| 6513 | 挂机加速未开放；HTTP 状态为 `409 Conflict`，不扣体力且不发奖 |
+| 6514 | 挂机奖励超过系统物理上限；HTTP 状态为 `409 Conflict`，本次事务整体回滚 |
+| 6515 | 额外战斗增益没有服务端授权；HTTP 状态为 `403 Forbidden`，不读取或修改会话 |
 
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| id | 无 | 关卡敌人配置记录 ID |
-| stage | stage | 关卡编号 |
-| slot_index | slot_index | 敌人所在槽位，范围 0-5 |
-| definition_id | enemy.definition_id | 敌人配置 ID，对应 `idle_adventure_enemy_config.definition_id` |
-| level | 无 | 敌人等级或成长系数，后端可用它计算关卡内属性成长 |
-| enabled | 无 | 是否启用该槽位配置 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
-| uk_idle_stage_enemy_slot | 无 | 保证同一关卡同一槽位只有一条配置 |
+## 十、数据库与版本边界
 
-### 12.2 idle_adventure_skill_config
+V16 新增版本化玩法、buff、技能、敌人、关卡、克制、奖励、编队、进度、会话、幂等命令、待结算奖励和挂机状态。V17 增加 `PAUSED`、`PAUSE/RESUME/BUFF_APPLY` 命令类型和 `formation_initialized` 编队初始化标记。V18 增加独立配置草稿、正式版本、配置锁和追加审计；V19 把 Buff、技能和敌人主键改为数据库自增，供完整版本发布安全分配全局 ID。
 
-```sql
-CREATE TABLE idle_adventure_skill_config (
-  skill_id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  skill_key VARCHAR(64) NOT NULL UNIQUE,
-  skill_name VARCHAR(64) NOT NULL,
-  cooldown_rounds INT NOT NULL DEFAULT 0,
-  skill_multiplier DECIMAL(8,4) NOT NULL DEFAULT 1.0000,
-  damage_attribute VARCHAR(32) NULL,
-  self_buff_preset_id BIGINT NULL,
-  target_buff_preset_id BIGINT NULL,
-  enabled TINYINT NOT NULL DEFAULT 1,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-```
+已开放玩法版本不得原地修改或删除。运营配置中心的 `IDLE_ADVENTURE` 模块每次发布都会创建完整新版本，校验全部引用后在同一事务中切换唯一 `ACTIVE`；历史会话继续引用旧 `mode_config_id` 和 JSON 快照，不会被新配置追溯修改。直接 SQL 修改会被实时指纹识别并阻止旧草稿覆盖，但不会自动产生页面发布审计，因此生产配置优先通过管理端发布。
 
-字段说明：
+V20 增加装备逐级速度加成；新建战斗会话会把 NPC 基础速度与已穿戴装备速度相加后固化到战斗快照，已有会话不受后续配置或换装影响。V21 至 V50 继续增加运营安全、成长、好友、商城、统一资产、运行策略和数据库约束加固。
 
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| skill_id | skill_id | 技能配置 ID |
-| skill_key | skill_key | 技能 key |
-| skill_name | skill_name | 技能显示名称 |
-| cooldown_rounds | cooldown_rounds | 技能冷却回合数 |
-| skill_multiplier | skill_multiplier | 技能倍率 |
-| damage_attribute | damage_attribute | 技能攻击属性；为空时使用角色自身 `attribute_type` |
-| self_buff_preset_id | self_buff_preset_id | 技能命中或释放时对自己施加的 buff 预设 |
-| target_buff_preset_id | target_buff_preset_id | 技能命中或释放时对目标施加的 buff 预设 |
-| enabled | 无 | 是否启用该技能 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
+V51 新增：
 
-### 12.3 player_npc_skill
+- `idle_adventure_mode_config.stamina_enabled/max_stamina/recovery_interval_seconds`。
+- `idle_adventure_stage_config.stamina_cost` 和固定奖励 `grant_scope`。
+- `player_idle_adventure_stamina` 玩家体力、策略快照、恢复锚点和乐观版本。
+- 版本化随机池、随机候选奖励、通关抽取批次和逐抽结果表。
+- 待结算奖励对 `ITEM / EQUIPMENT / NPC` 的通用资产快照及 NPC 重复碎片快照。
 
-友方角色技能槽配置表。友方最多 2 个技能槽。
+V52 不修改已经执行的 V51，而是独立加固默认值、CHECK 约束、复合索引和级联外键。历史固定奖励在 V51 回填为 `EVERY_CLEAR` 保持原行为；V52 以后新建固定奖励的数据库默认值和管理端默认值为 `FIRST_CLEAR`。V61 为玩家 NPC 和编队响应增加统一品质字段，详细编码见 [`asset-quality-api.md`](asset-quality-api.md)。V67 为游戏好友体力赠礼增加体力配置字段和幂等流水，固定 CRC32 为 `459381446`。V68 增加挂机加速开关、体力成本和加速幂等审计流水，固定 CRC32 为 `-1616972206`；V69 在不修改已执行 V68 的前提下补齐挂机物品类型快照、历史回填和非空约束，固定 CRC32 为 `423149015`。V70 扩展钻石商城商品和订单 CHECK，使 `STAMINA / stamina` 可以通过同一体力聚合服务原子发放，固定 CRC32 为 `1183825380`。V71 增加独立建筑生产能力，不改变 Idle Adventure 接口。V72-V73 增加并加固实名与防沉迷能力，同样不改变 Idle Adventure 玩法契约。当前仓库 V1 至 V80 以及 V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 一旦成功执行均禁止修改；已有 V92 数据库正常执行 V93，后续变化必须从 V94 新增迁移，禁止用 `repair` 掩盖已执行脚本漂移。
 
-说明：`definition_id` 对应 `Player_npc.definition_id`。
+### 10.1 管理端配置
 
-```sql
-CREATE TABLE player_npc_skill (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  definition_id BIGINT NOT NULL,
-  slot_index INT NOT NULL,
-  skill_id BIGINT NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_player_npc_skill_slot (definition_id, slot_index)
-);
-```
+运营进入管理端“配置中心 -> 挂机冒险”，读取模块 `IDLE_ADVENTURE`、配置键 `IDLE_ADVENTURE`。操作仍遵循“编辑 -> 校验 -> 保存草稿 -> 发布”，保存草稿不影响玩家，发布时才创建完整新玩法版本并原子切换 `ACTIVE`。
 
-字段说明：
+#### 10.1.1 开关含义与误操作恢复
 
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| id | 无 | 友方技能槽配置记录 ID |
-| definition_id | definition_id | 友方角色配置 ID，对应 `Player_npc.definition_id` |
-| slot_index | skill_slots[].slot_index | 技能槽位，友方范围 0-1 |
-| skill_id | skill_slots[].skill.skill_id | 技能配置 ID，对应 `idle_adventure_skill_config.skill_id` |
-| created_at | 无 | 创建时间 |
-| uk_player_npc_skill_slot | 无 | 保证同一友方角色同一技能槽只有一个技能 |
+管理端基础规则页只提供两个可变玩法开关和一个只读状态标识，三者不能混用：
 
-### 12.3.1 idle_adventure_enemy_skill
-
-敌方角色技能槽配置表。敌方最多 1 个技能槽。
-
-说明：`definition_id` 对应 `idle_adventure_enemy_config.definition_id`。
-
-```sql
-CREATE TABLE idle_adventure_enemy_skill (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  definition_id BIGINT NOT NULL,
-  slot_index INT NOT NULL,
-  skill_id BIGINT NOT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_idle_enemy_skill_slot (definition_id, slot_index)
-);
-```
-
-字段说明：
-
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| id | 无 | 敌方技能槽配置记录 ID |
-| definition_id | definition_id | 敌方角色配置 ID，对应 `idle_adventure_enemy_config.definition_id` |
-| slot_index | skill_slots[].slot_index | 技能槽位，敌方当前只使用 0 |
-| skill_id | skill_slots[].skill.skill_id | 技能配置 ID，对应 `idle_adventure_skill_config.skill_id` |
-| created_at | 无 | 创建时间 |
-| uk_idle_enemy_skill_slot | 无 | 保证同一敌方角色同一技能槽只有一个技能 |
-
-### 12.4 idle_adventure_buff_preset
-
-```sql
-CREATE TABLE idle_adventure_buff_preset (
-  buff_preset_id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  buff_key VARCHAR(64) NOT NULL,
-  display_name VARCHAR(64) NOT NULL,
-  category VARCHAR(16) NOT NULL,
-  source VARCHAR(32) NOT NULL,
-  effect_type VARCHAR(32) NOT NULL DEFAULT 'NORMAL_DAMAGE',
-  duration_rounds INT NOT NULL DEFAULT 1,
-  attack_modifier INT NOT NULL DEFAULT 0,
-  defense_modifier INT NOT NULL DEFAULT 0,
-  speed_modifier INT NOT NULL DEFAULT 0,
-  normal_damage_multiplier DECIMAL(8,4) NOT NULL DEFAULT 0.0000,
-  attribute_damage_multiplier DECIMAL(8,4) NOT NULL DEFAULT 0.0000,
-  affected_attribute VARCHAR(32) NULL,
-  enabled TINYINT NOT NULL DEFAULT 1,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_buff_key_source (buff_key, source)
-);
-```
-
-字段说明：
-
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| buff_preset_id | buff_preset_id | buff 预设 ID |
-| buff_key | buff_key | buff key |
-| display_name | display_name | buff 显示名称 |
-| category | category | `BENEFIT` 增益或 `DETRIMENT` 减益 |
-| source | source | `CHARACTER_SKILL` 或 `OTHER` |
-| effect_type | effect_type | `NORMAL_DAMAGE`、`ATTRIBUTE_DAMAGE` 或 `FIELD` |
-| duration_rounds | duration_rounds | 持续回合数 |
-| attack_modifier | attack_modifier | 攻击力修正值 |
-| defense_modifier | defense_modifier | 防御力修正值 |
-| speed_modifier | speed_modifier | 速度修正值 |
-| normal_damage_multiplier | normal_damage_multiplier | 普通伤害 buff 倍率 |
-| attribute_damage_multiplier | attribute_damage_multiplier | 属性伤害 buff 倍率 |
-| affected_attribute | affected_attribute | 生效属性；普通伤害 buff 可为空 |
-| enabled | 无 | 是否启用该 buff 预设 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
-| uk_buff_key_source | 无 | 保证同一来源下 buff key 唯一 |
-
-### 12.4.1 idle_adventure_field_buff_config
-
-场地 buff 配置表，用于计算 `场地buff倍率`。后续可以按关卡、地图、天气或特殊事件决定是否启用。
-
-```sql
-CREATE TABLE idle_adventure_field_buff_config (
-  field_buff_id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  stage INT NULL,
-  field_buff_key VARCHAR(64) NOT NULL,
-  display_name VARCHAR(64) NOT NULL,
-  category VARCHAR(16) NOT NULL DEFAULT 'BENEFIT',
-  target_side VARCHAR(16) NULL,
-  affected_attribute VARCHAR(32) NOT NULL,
-  field_damage_multiplier DECIMAL(8,4) NOT NULL DEFAULT 0.0000,
-  enabled TINYINT NOT NULL DEFAULT 1,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  KEY idx_idle_field_buff_stage (stage)
-);
-```
-
-字段说明：
-
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| field_buff_id | field_buff_id | 场地 buff 配置 ID |
-| stage | stage | 生效关卡；为空表示全局生效 |
-| field_buff_key | field_buff_key | 场地 buff key |
-| display_name | display_name | 场地 buff 显示名称 |
-| category | category | `BENEFIT` 增益或 `DETRIMENT` 减益 |
-| target_side | target_side | 限定阵营；为空表示双方生效 |
-| affected_attribute | affected_attribute | 生效角色属性 |
-| field_damage_multiplier | field_damage_multiplier | 场地伤害倍率 |
-| enabled | 无 | 是否启用该场地 buff |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
-| idx_idle_field_buff_stage | 无 | 按关卡查询场地 buff 的索引 |
-
-说明：接口字段 `effect_type` 固定返回 `FIELD`，可由后端派生，不需要单独存储。
-
-### 12.4.2 idle_adventure_attribute_restraint_config
-
-属性克制配置表，用于判断属性克制关系。克制关系命中时，`attribute_restraint_multiplier` 固定为 `0.2`，不在数据库中配置可变倍率。
-
-```sql
-CREATE TABLE idle_adventure_attribute_restraint_config (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  attacker_attribute VARCHAR(32) NOT NULL,
-  defender_attribute VARCHAR(32) NOT NULL,
-  enabled TINYINT NOT NULL DEFAULT 1,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_idle_attribute_restraint (attacker_attribute, defender_attribute)
-);
-```
-
-字段说明：
-
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| id | 无 | 属性克制配置记录 ID |
-| attacker_attribute | relations[].attacker_attribute | 攻击者属性 |
-| defender_attribute | relations[].defender_attribute | 被攻击者属性 |
-| enabled | 无 | 是否启用该克制关系 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
-| uk_idle_attribute_restraint | 无 | 保证同一克制关系不重复 |
-
-说明：接口字段 `restraint_multiplier` 固定为 `0.2`，不从数据库读取。
-
-### 12.4.3 idle_adventure_stage_reward_config
-
-关卡奖励配置表。每个关卡可以配置多条奖励，通关时写入会话待结算池，玩家退出模式时统一发放。
-
-```sql
-CREATE TABLE idle_adventure_stage_reward_config (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  stage INT NOT NULL,
-  item_key VARCHAR(64) NOT NULL,
-  display_name VARCHAR(64) NOT NULL,
-  quantity INT NOT NULL DEFAULT 1,
-  enabled TINYINT NOT NULL DEFAULT 1,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_idle_stage_reward_item (stage, item_key)
-);
-```
-
-字段说明：
-
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| id | 无 | 关卡奖励配置记录 ID |
-| stage | stage | 关卡编号 |
-| item_key | rewards[].item_key | 奖励物品 key |
-| display_name | rewards[].display_name | 奖励显示名称 |
-| quantity | rewards[].quantity | 奖励数量 |
-| enabled | 无 | 是否启用该奖励 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
-| uk_idle_stage_reward_item | 无 | 保证同一关卡同一物品奖励只配置一条 |
-
-### 12.5 player_idle_adventure_npc
-
-玩家已解锁友方 NPC 关系表。
-
-说明：`definition_id` 对应 `Player_npc.definition_id`。若当前版本所有玩家默认拥有同一批 NPC，也可以暂时不建该表，直接从 `Player_npc` 返回启用状态的友方角色。
-
-```sql
-CREATE TABLE player_idle_adventure_npc (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  player_id BIGINT NOT NULL,
-  definition_id BIGINT NOT NULL,
-  unlocked TINYINT NOT NULL DEFAULT 1,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_player_idle_npc (player_id, definition_id)
-);
-```
-
-字段说明：
-
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| id | 无 | 玩家 NPC 解锁记录 ID |
-| player_id | player_id | 玩家 ID |
-| definition_id | definition_id | 友方角色配置 ID，对应 `Player_npc.definition_id` |
-| unlocked | 无 | 是否已解锁；未解锁的角色不应出现在可编队列表中 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
-| uk_player_idle_npc | 无 | 保证同一玩家同一 NPC 只存在一条解锁记录 |
-
-### 12.6 player_idle_adventure_formation
-
-玩家编队表。每名玩家最多保存 6 个槽位。
-
-```sql
-CREATE TABLE player_idle_adventure_formation (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  player_id BIGINT NOT NULL,
-  slot_index INT NOT NULL,
-  definition_id BIGINT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_player_idle_formation_slot (player_id, slot_index)
-);
-```
-
-字段说明：
-
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| id | 无 | 编队槽位记录 ID |
-| player_id | player_id | 玩家 ID |
-| slot_index | slots[].slot_index | 编队槽位，范围 0-5 |
-| definition_id | slots[].definition_id | 上阵友方角色配置 ID；为空表示空槽 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
-| uk_player_idle_formation_slot | 无 | 保证同一玩家同一槽位只有一条编队记录 |
-
-### 12.7 idle_adventure_session
-
-战斗会话主表。
-
-```sql
-CREATE TABLE idle_adventure_session (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  session_key VARCHAR(64) NOT NULL UNIQUE,
-  player_id BIGINT NOT NULL,
-  stage INT NOT NULL DEFAULT 1,
-  round INT NOT NULL DEFAULT 1,
-  status VARCHAR(32) NOT NULL,
-  paused TINYINT NOT NULL DEFAULT 0,
-  mode_paused_by_choice TINYINT NOT NULL DEFAULT 0,
-  pending_next_stage INT NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-```
-
-字段说明：
-
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| id | 无 | 战斗会话内部 ID，供其他表关联 |
-| session_key | session_key | 对外返回的战斗会话 ID |
-| player_id | player_id | 玩家 ID |
-| stage | stage | 当前挑战关卡 |
-| round | round | 当前回合数 |
-| status | status | 会话状态，对应 `BattleSessionStatus` |
-| paused | paused | 是否暂停 |
-| mode_paused_by_choice | 无 | 是否由关卡选择、结束面板等玩家选择导致暂停 |
-| pending_next_stage | pending_next_stage | 当前关卡完成后可进入的下一关 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
-
-### 12.8 idle_adventure_session_combatant
-
-战斗会话角色状态表。
-
-说明：`definition_type=PLAYER_NPC` 时，`definition_id` 对应 `Player_npc.definition_id`；`definition_type=ENEMY` 时，`definition_id` 对应 `idle_adventure_enemy_config.definition_id`。
-
-```sql
-CREATE TABLE idle_adventure_session_combatant (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  session_id BIGINT NOT NULL,
-  runtime_id VARCHAR(32) NOT NULL,
-  definition_type VARCHAR(16) NOT NULL,
-  definition_id BIGINT NOT NULL,
-  side VARCHAR(16) NOT NULL,
-  slot_index INT NOT NULL,
-  combatant_name VARCHAR(64) NOT NULL,
-  max_health INT NOT NULL,
-  current_health INT NOT NULL,
-  attack INT NOT NULL,
-  defense INT NOT NULL,
-  speed INT NOT NULL,
-  attribute_type VARCHAR(32) NOT NULL DEFAULT 'PHYSICAL',
-  defeated TINYINT NOT NULL DEFAULT 0,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_session_runtime (session_id, runtime_id),
-  UNIQUE KEY uk_session_side_slot (session_id, side, slot_index)
-);
-```
-
-字段说明：
-
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| id | 无 | 会话角色内部 ID |
-| session_id | 无 | 战斗会话内部关联 ID，对应 `idle_adventure_session.id`，不直接作为接口字段返回 |
-| runtime_id | runtime_id | 本次会话中的角色运行时 ID |
-| definition_type | 无 | 配置来源类型，`PLAYER_NPC` 或 `ENEMY` |
-| definition_id | definition_id | 配置 ID；根据 `definition_type` 对应 `Player_npc.definition_id` 或 `idle_adventure_enemy_config.definition_id` |
-| side | side | `FRIENDLY` 或 `ENEMY` |
-| slot_index | slot_index | 当前阵营槽位，范围 0-5 |
-| combatant_name | combatant_name | 战斗中显示名称 |
-| max_health | max_health | 最大生命值 |
-| current_health | current_health | 当前生命值 |
-| attack | attack | 基础攻击力快照 |
-| defense | defense | 基础防御力快照 |
-| speed | speed | 基础速度快照 |
-| attribute_type | attribute_type | 属性快照 |
-| defeated | defeated | 是否已死亡 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
-| uk_session_runtime | 无 | 保证同一会话 runtime_id 唯一 |
-| uk_session_side_slot | 无 | 保证同一会话同一阵营同一槽位只有一个角色 |
-
-说明：接口字段 `effective_attack`、`effective_defense`、`effective_speed` 由本表基础属性加上 `idle_adventure_session_buff` 中仍生效的修正值计算得出，不单独存储。
-
-### 12.8.1 idle_adventure_session_pending_reward
-
-战斗会话待结算奖励表。当前会话每通关一关，将该关奖励累计到此表；玩家选择退出模式时发放并标记为已结算。
-
-```sql
-CREATE TABLE idle_adventure_session_pending_reward (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  session_id BIGINT NOT NULL,
-  player_id BIGINT NOT NULL,
-  cleared_stage INT NOT NULL,
-  item_key VARCHAR(64) NOT NULL,
-  display_name VARCHAR(64) NOT NULL,
-  quantity INT NOT NULL DEFAULT 1,
-  settled TINYINT NOT NULL DEFAULT 0,
-  settled_at DATETIME NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_idle_session_stage_reward (session_id, cleared_stage, item_key)
-);
-```
-
-字段说明：
-
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| id | 无 | 待结算奖励记录 ID |
-| session_id | 无 | 战斗会话内部关联 ID，对应 `idle_adventure_session.id`，不直接作为接口字段返回 |
-| player_id | player_id | 玩家 ID |
-| cleared_stage | settled_stages[] / cleared_stage | 已通关并进入待结算池的关卡 |
-| item_key | granted_rewards[].item_key | 奖励物品 key |
-| display_name | granted_rewards[].display_name | 奖励显示名称 |
-| quantity | granted_rewards[].quantity | 奖励数量 |
-| settled | 无 | 是否已发放 |
-| settled_at | 无 | 发放时间 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
-| uk_idle_session_stage_reward | 无 | 防止同一会话同一关卡同一物品重复进入待结算池 |
-
-### 12.9 idle_adventure_session_buff
-
-战斗会话角色身上的运行时 buff。
-
-```sql
-CREATE TABLE idle_adventure_session_buff (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  session_combatant_id BIGINT NOT NULL,
-  buff_key VARCHAR(64) NOT NULL,
-  display_name VARCHAR(64) NOT NULL,
-  category VARCHAR(16) NOT NULL,
-  source VARCHAR(32) NOT NULL,
-  effect_type VARCHAR(32) NOT NULL DEFAULT 'NORMAL_DAMAGE',
-  remaining_rounds INT NOT NULL,
-  attack_modifier INT NOT NULL DEFAULT 0,
-  defense_modifier INT NOT NULL DEFAULT 0,
-  speed_modifier INT NOT NULL DEFAULT 0,
-  normal_damage_multiplier DECIMAL(8,4) NOT NULL DEFAULT 0.0000,
-  attribute_damage_multiplier DECIMAL(8,4) NOT NULL DEFAULT 0.0000,
-  affected_attribute VARCHAR(32) NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_combatant_buff_source (session_combatant_id, buff_key, source)
-);
-```
-
-字段说明：
-
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| id | 无 | 运行时 buff 记录 ID |
-| session_combatant_id | 无 | 会话角色内部关联 ID，对应 `idle_adventure_session_combatant.id`，不直接作为接口字段返回 |
-| buff_key | active_buffs[].buff_key | buff key |
-| display_name | active_buffs[].display_name | buff 显示名称 |
-| category | active_buffs[].category | `BENEFIT` 增益或 `DETRIMENT` 减益 |
-| source | active_buffs[].source | `CHARACTER_SKILL` 或 `OTHER` |
-| effect_type | active_buffs[].effect_type | buff 效果类型 |
-| remaining_rounds | active_buffs[].remaining_rounds | 剩余回合数 |
-| attack_modifier | active_buffs[].attack_modifier | 攻击力修正 |
-| defense_modifier | active_buffs[].defense_modifier | 防御力修正 |
-| speed_modifier | active_buffs[].speed_modifier | 速度修正 |
-| normal_damage_multiplier | active_buffs[].normal_damage_multiplier | 普通伤害 buff 倍率 |
-| attribute_damage_multiplier | active_buffs[].attribute_damage_multiplier | 属性伤害 buff 倍率 |
-| affected_attribute | active_buffs[].affected_attribute | 生效属性 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
-| uk_combatant_buff_source | 无 | 同一角色同一 `buff_key + source` 只保留一条，重复施加时刷新持续时间 |
-
-### 12.10 idle_adventure_session_skill_state
-
-战斗会话技能冷却状态表。
-
-```sql
-CREATE TABLE idle_adventure_session_skill_state (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  session_combatant_id BIGINT NOT NULL,
-  slot_index INT NOT NULL,
-  skill_id BIGINT NULL,
-  cooldown_remaining INT NOT NULL DEFAULT 0,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uk_combatant_skill_state_slot (session_combatant_id, slot_index)
-);
-```
-
-字段说明：
-
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| id | 无 | 运行时技能状态记录 ID |
-| session_combatant_id | 无 | 会话角色内部关联 ID，对应 `idle_adventure_session_combatant.id`，不直接作为接口字段返回 |
-| slot_index | skill_states[].slot_index | 技能槽位 |
-| skill_id | skill_states[].skill_id | 技能配置 ID，对应 `idle_adventure_skill_config.skill_id`；为空表示该技能槽为空 |
-| cooldown_remaining | skill_states[].cooldown_remaining | 当前剩余冷却回合数 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
-| uk_combatant_skill_state_slot | 无 | 保证同一会话角色同一技能槽只有一条冷却状态 |
-
-说明：接口字段 `can_use` 由 `skill_id IS NOT NULL` 且 `cooldown_remaining <= 0` 计算得出，不单独存储。
-
-### 12.11 player_idle_adventure_progress
-
-```sql
-CREATE TABLE player_idle_adventure_progress (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  player_id BIGINT NOT NULL UNIQUE,
-  highest_stage INT NOT NULL DEFAULT 0,
-  last_stage INT NOT NULL DEFAULT 1,
-  total_wins INT NOT NULL DEFAULT 0,
-  total_failures INT NOT NULL DEFAULT 0,
-  running_session_key VARCHAR(64) NULL,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-```
-
-字段说明：
-
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| id | 无 | 玩家闯关进度记录 ID |
-| player_id | player_id | 玩家 ID |
-| highest_stage | highest_stage | 玩家历史最高通关关卡 |
-| last_stage | last_stage | 最近挑战或停留的关卡 |
-| total_wins | total_wins | 累计通关次数 |
-| total_failures | total_failures | 累计失败次数 |
-| running_session_key | running_session_key | 当前未结束会话的对外会话 key；为空表示没有运行中会话 |
-| created_at | 无 | 创建时间 |
-| updated_at | updated_at | 更新时间 |
-
-说明：首页接口中的 `next_stage` 由 `highest_stage + 1` 计算得出。
-
-### 12.12 player_idle_adventure_afk_reward
-
-玩家挂机奖励状态表。
-
-说明：
-
-1. 用于支持 `GET /api/idle-adventure/players/{player_id}/afk-reward` 和 `POST /api/idle-adventure/players/{player_id}/afk-reward/collect`。
-2. 结算时间以服务端时间为准，客户端只展示服务端快照。
-3. 奖励计算规则：由初始奖励数*层数*每层提升数。
-
-```sql
-CREATE TABLE player_idle_adventure_afk_reward (
-  id BIGINT PRIMARY KEY AUTO_INCREMENT,
-  player_id BIGINT NOT NULL UNIQUE,
-  item_key VARCHAR(64) NOT NULL DEFAULT 'gold',
-  display_name VARCHAR(64) NOT NULL DEFAULT 'Gold',
-  base_quantity_per_cycle INT NOT NULL DEFAULT 10,
-  quantity_per_highest_stage INT NOT NULL DEFAULT 2,
-  production_interval_seconds INT NOT NULL DEFAULT 30,
-  max_stored_quantity INT NOT NULL DEFAULT 1000,
-  stored_quantity INT NOT NULL DEFAULT 0,
-  last_settled_server_unix_seconds BIGINT NOT NULL DEFAULT 0,
-  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-);
-```
-
-字段说明：
-
-| 字段 | 对应接口字段 | 说明 |
-| --- | --- | --- |
-| id | 无 | 玩家挂机奖励状态记录 ID |
-| player_id | player_id | 玩家 ID |
-| item_key | item_key / collected_item.item_key | 挂机产出的物品 key |
-| display_name | display_name | 挂机奖励显示名称 |
-| base_quantity_per_cycle | base_quantity_per_cycle | 每个单位周期的基础奖励数 |
-| quantity_per_highest_stage | quantity_per_highest_stage | 最高通关层数对单位周期奖励的提升参数 |
-| production_interval_seconds | production_interval_seconds | 单位产出周期，单位秒 |
-| max_stored_quantity | max_stored_quantity | 最大存储上限 |
-| stored_quantity | stored_quantity | 当前已结算但未领取数量 |
-| last_settled_server_unix_seconds | last_settled_server_unix_seconds | 上次服务端结算时间戳 |
-| created_at | 无 | 创建时间 |
-| updated_at | 无 | 更新时间 |
-
-说明：接口字段 `quantity_per_cycle`、`server_unix_seconds` 为计算字段。`quantity_per_cycle` 按当前文档规则由 `base_quantity_per_cycle`、`quantity_per_highest_stage` 和玩家 `highest_stage` 计算；`server_unix_seconds` 使用服务端当前时间。
-
-## 13. Unity 前端联调边界
-
-### 13.1 开始界面
-
-开始界面只负责展示模式入口，不应自动进入战斗。流程：
-
-1. 进入 `Idle Adventure mode` 场景。
-2. Unity 调用 `GET /api/idle-adventure/players/{player_id}/home`。
-3. 渲染开始界面。
-4. 玩家点击 `Formation` 时打开编队界面。
-5. 玩家点击 `Start Battle` 时调用 `POST /api/idle-adventure/players/{player_id}/sessions/start`。
-6. 后端返回 `RUNNING` 后，Unity 隐藏开始界面，显示战斗界面。
-
-### 13.2 编队界面
-
-编队界面交互：
-
-1. 下方显示 `available_npc_list`。
-2. 中间显示 6 个 `FormationSlot`。
-3. 拖动 NPC 到槽位时，Unity 本地可以先预览。
-4. 点击确认时调用 `PUT /api/idle-adventure/players/{player_id}/formation` 保存。
-5. 后端返回保存后的完整编队。
-6. 如果 `deployed_count=0`，开始按钮置为不可点击。
-
-### 13.3 战斗界面
-
-如果后端权威结算：
-
-1. Unity 调用 `POST /rounds/resolve` 请求结算一整个回合。
-2. 后端返回 `actions`。
-3. Unity 按 `actions` 顺序播放攻击动画、受击动画、血条变化、buff 图标变化、死亡表现。
-4. 播放完毕后，如果 `status=RUNNING`，继续请求下一回合。
-5. 如果 `status=STAGE_COMPLETE`，弹出结束面板。
-6. 如果 `status=FAILED`，显示失败或重试界面。
-
-如果客户端暂时继续本地结算：
-
-1. 后端只提供配置、编队、敌人和进度保存。
-2. Unity 按当前脚本本地结算战斗。
-3. 关卡胜利后调用进度接口保存结果。
-4. 后续正式上线前建议迁移到后端权威结算，避免客户端伪造战斗结果。
-
-### 13.4 buff 显示
-
-客户端只保留角色图标下方一排 buff 图标，不显示额外文字信息。每个 buff 图标颜色或样式可按 `effect_type + category + source` 区分：
-
-| effect_type | category | source | 建议显示 |
+| 页面字段 | 对应配置 | 实际影响 | 关闭后的行为 |
 | --- | --- | --- | --- |
-| NORMAL_DAMAGE | BENEFIT | CHARACTER_SKILL / OTHER | 普通伤害增益图标 |
-| NORMAL_DAMAGE | DETRIMENT | CHARACTER_SKILL / OTHER | 普通伤害减益图标 |
-| ATTRIBUTE_DAMAGE | BENEFIT | CHARACTER_SKILL / OTHER | 属性增强图标，并标记 `affected_attribute` |
-| ATTRIBUTE_DAMAGE | DETRIMENT | CHARACTER_SKILL / OTHER | 属性减益图标，并标记 `affected_attribute` |
-| FIELD | BENEFIT | OTHER | 场地增益图标，并标记 `affected_attribute` |
-| FIELD | DETRIMENT | OTHER | 场地减益图标，并标记 `affected_attribute` |
+| 闯关体力扣除 | `staminaEnabled` | 开始关卡、继续下一关、失败重试是否扣 `staminaCost` | 不再扣关卡体力；体力仍按恢复规则增长，挂机自然产出不变 |
+| 挂机加速按钮 | `afkAccelerationEnabled` | 是否允许调用挂机加速接口并消耗一次体力 | 加速接口返回 `6513 / HTTP 409`；普通挂机和已产生的待领取奖励不受影响 |
+| 玩法版本状态 | `enabled`、`status`、`active_marker` | 当前版本是否可被运行时选中 | 正式发布要求始终为启用；页面显示“必须启用”，不能用它停运玩法 |
 
-## 14. 最小联调接口清单
+启用挂机加速前必须先启用闯关体力扣除；页面会阻止不满足前置条件的操作。关闭任一可变开关会弹出二次确认，取消确认不会修改当前草稿。关卡、敌人槽位、场地 Buff、固定奖励、随机池和属性克制的 `enabled` 由发布规则强制为启用，不需要的条目应删除；Buff、技能和敌人模板可以停用，但仍被引用时发布会被拒绝。
 
-如果后端想先支持当前 Unity 模式进入可用状态，建议优先实现以下接口：
+误操作按是否发布处理：
 
-| 优先级 | 接口 | 用途 |
-| --- | --- | --- |
-| P0 | `GET /api/idle-adventure/players/{player_id}/home` | 进入模式时加载首页、可用 NPC、保存编队 |
-| P0 | `GET /api/idle-adventure/players/{player_id}/npcs` | 编队界面下方 NPC 列表 |
-| P0 | `GET /api/idle-adventure/players/{player_id}/formation` | 获取保存编队 |
-| P0 | `PUT /api/idle-adventure/players/{player_id}/formation` | 保存拖拽后的编队 |
-| P0 | `GET /api/idle-adventure/stages/{stage}/enemies` | 获取当前关卡敌人槽位 |
-| P0 | `GET /api/idle-adventure/players/{player_id}/afk-reward` | 开始界面挂机奖励状态 |
-| P0 | `POST /api/idle-adventure/players/{player_id}/sessions/start` | 点击开始后创建战斗 |
-| P1 | `POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/rounds/resolve` | 后端权威回合结算 |
-| P1 | `GET /api/idle-adventure/players/{player_id}/sessions/{session_key}` | 刷新当前战斗会话状态 |
-| P1 | `POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/stages/continue` | 继续下一关 |
-| P1 | `POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/stages/retry` | 失败后重新挑战当前关 |
-| P1 | `POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/pause` | 暂停战斗 |
-| P1 | `POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/resume` | 恢复战斗 |
-| P1 | `POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/end` | 结束模式并结算发放本次通关奖励 |
-| P1 | `POST /api/idle-adventure/players/{player_id}/afk-reward/collect` | 领取挂机奖励 |
-| P2 | `GET /api/idle-adventure/config` | 独立获取玩法配置 |
-| P2 | `GET /api/idle-adventure/buff-presets` | 独立获取 buff 预设 |
-| P2 | `GET /api/idle-adventure/skills` | 独立获取技能配置 |
-| P2 | `GET /api/idle-adventure/field-buffs?stage=1` | 独立获取场地 buff 配置 |
-| P2 | `GET /api/idle-adventure/attribute-restraints` | 独立获取属性克制关系，克制倍率固定 20% |
-| P2 | `GET /api/idle-adventure/stage-rewards` | 独立获取每关奖励配置 |
-| P2 | `POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/buffs/apply` | 道具、事件、关卡机制等额外 buff |
-| P2 | `GET /api/idle-adventure/players/{player_id}/progress` | 获取闯关进度 |
-| P2 | `POST /api/idle-adventure/players/{player_id}/progress/stage-clear` | 客户端本地结算时保存通关进度 |
-| P2 | `POST /api/idle-adventure/players/{player_id}/formation/auto-fill` | 自动填充默认编队 |
-| P2 | `POST /api/idle-adventure/players/{player_id}/formation/clear` | 清空编队 |
+1. **只改了页面、尚未保存**：点击底部“撤销页面修改”，工作副本恢复为最近一次服务端文档。
+2. **已经保存草稿、尚未发布**：点击底部“丢弃”，输入原因后确认；正式配置和玩家运行规则不变。
+3. **已经发布**：打开“版本历史”，查看需要恢复的历史版本，点击“回滚”。系统只创建回滚草稿，不会直接覆盖线上版本；有回滚权限的管理员必须检查校验和发布预览后再发布。
+4. **玩法版本状态显示“配置异常”**：点击页面内“恢复为必须启用”，保存草稿并重新校验。服务端不会接受 `enabled=false` 的正式发布。
 
+`CLIENT_RUNTIME` 的维护字段会影响全局客户端登录/版本策略，不是挂机冒险专用开关，不能用于替代挂机冒险停运。当前如果确实需要只停运挂机冒险，应先增加独立的玩法维护策略和对应 Unity 提示契约，再进行配置发布。
 
+关卡展开后，敌方阵容编辑表下方提供“阵容属性预览”。预览固定展示六个槽位并标明前排/后排、敌人名称、等级、战斗属性、技能、图标、模型标识以及每个槽位的生命、攻击、防御、速度；同时展示生命、攻击、防御合计和速度总和（仅用于配置核对）。预览只读计算，不会回写草稿，也不代表独立的战斗力评分。空槽、重复槽位或未完成填写的行会安全降级为预览状态，正式保存和发布仍由后端执行连续关卡、槽位、引用和数值校验。
+
+敌人配置当前没有品质字段，服务端也没有统一的战斗力公式，因此管理端和 Unity 均不显示推测的“品质/战斗力”。如未来需要该能力，应先定义版本化计算口径，再新增配置和接口，不得用生命、攻击等字段临时相加替代。
+
+体力配置：
+
+- `staminaEnabled`：是否实际扣体力；关闭后开始、继续、重试均不扣除。
+- `maxStamina`：`1..1000000`，新玩家首次进入直接获得该上限。
+- `recoveryIntervalSeconds`：`1..2678400`，表示恢复 1 点需要的秒数。
+- 每关 `staminaCost`：`1..1000000`；启用体力时不得超过 `maxStamina`，否则禁止发布。
+
+挂机加速配置：
+
+- `afkAccelerationEnabled`：是否开放消耗一次体力、领取一份完整挂机上限奖励，默认关闭。
+- `afkAccelerationStaminaCost`：每次加速消耗的体力，范围为 `1..maxStamina`；启用加速但未启用体力系统，或成本超过体力上限时禁止发布。
+- 管理端按最高已配置关卡、基础产量、关卡增量、结算周期和累计上限实时预览单次加速的周期产量、完整周期数和奖励数量；发布时服务端使用同一整数公式再次校验经济保护上限。
+- 加速奖励始终按 `afkMaxSeconds` 计算完整累计上限，不受玩家当前已积累秒数影响；本次自然挂机收益仍会先结算。
+
+固定奖励：
+
+- 每关最多 100 项，只能从已启用物品字典选择，数量为 `1..1000000000`。
+- `grantScope=FIRST_CLEAR` 仅首次通关发放；`EVERY_CLEAR` 每次通关发放。
+
+随机掉落：
+
+- 每关最多 20 个池，每池 `drawCount` 为 `1..100`，每次抽取必定命中，不能配置空奖励。
+- 每池最多 100 个候选项，类型为 `ITEM / EQUIPMENT / NPC`；NPC 数量必须为 `1`。
+- `probabilityUnits` 使用一亿分比，池内启用项必须严格合计 `100000000`。管理端按百分比显示到 6 位小数，`1` 单位等于 `0.000001%`。
+- 池也支持 `FIRST_CLEAR / EVERY_CLEAR`。选择 NPC 时，发布过程自动读取该 NPC 的专属碎片和重复转换数量并冻结快照，运营不手填碎片 ID。
+- 发布会重新校验资产存在、已启用、NPC 可获取、候选不重复、序号连续、概率精确合计和引用类型；任一错误均不创建半成品版本。
+
+管理端正式接口、角色权限、草稿冲突和发布审计见 [`operator-config-center.md`](operator-config-center.md)。
+
+## 十一、验证范围
+
+自动化测试固定以下边界：
+
+1. Idle Adventure 包只允许存在 `IdleAdventureController` 一个 REST 控制器；Unity 字段转换由 API DTO、VO 和 `IdleAdventureFacade` 统一完成。
+2. 28 条方法和路径必须精确匹配本文档，所有请求/响应字段保持 `snake_case`。
+3. MockMvc 逐条请求 28 条路径必须命中，原 10 条精简路径必须全部返回 404。
+4. 路径玩家越权、临时编队归属、主动清空、暂停/恢复幂等、通关防伪和未授权额外 buff 拒绝均有单元测试。
+5. 战斗测试覆盖行动顺序、死亡跳过、目标选择、技能冷却、倍率、状态机、固定奖励和随机池快照。
+6. 体力测试覆盖首次满体力、惰性恢复、恢复余数、满值消费锚点、策略切换、超上限保留、余额不足和乐观锁冲突。
+7. 随机奖励测试覆盖概率边界、首通范围、非法概率、逐抽审计，以及 `ITEM / EQUIPMENT / NPC` 发放和 NPC 重复碎片转换。
+8. V52 阶段验收时，MySQL 集成测试覆盖 V1 至 V52、V51/V52 校验和、CHECK 约束、复合外键和级联关系；当时后端全量测试 587 项通过、0 failure、0 error，63 项外部环境用例按条件跳过，管理端生产构建及真实 Spring Boot 启动均通过。
+9. 2026-08-10 当前验收的后端测试报告共 847 项，0 failure、0 error，其中 63 项外部环境用例按条件跳过；MySQL 8 临时空库 V1 至 V73 顺序迁移和第二次零变更通过；管理端生产构建转换 3562 个模块。
+10. 编队补强测试覆盖运营只读权限与六槽位聚合、Mapper 只读 SQL、局部更新在玩家锁内原子合并、失效槽清理、事务提交后推送、回滚不推送和推送故障隔离；管理端生产构建同时校验类型契约。
+
+## 十二、上线前必须确认
+
+1. **运营必须复核经济配置**：体力和 `FIRST_CLEAR / EVERY_CLEAR` 已实现，但高价值物品、装备、NPC、随机概率及重复刷取范围仍需在发布前人工复核；付费货币原则上只配置为首通奖励。
+2. **回合没有服务端时间限频**：体力只在开始、继续和失败重试时扣除，动画间隔仍不阻止玩家在单场内用不同请求号快速提交回合。需要真实回合节奏时应增加服务端冷却，而不是信任 Unity 动画时长。
+3. **挂机最高关卡倍率会追溯生效**：当前领取时按最新最高关卡计算未领取时间；更严格方案需要在通关事务中先结算旧倍率。
+4. **入驻 NPC 当前仍可参战**：`IDLE` 和 `SETTLED` NPC 都能进入编队。如产品要求互斥，查询与开战校验必须同时限制。
+5. **buff 展示上限需统一**：快照安全上限高于旧 Unity 六个图标槽，运营配置应控制同时生效数量。
+6. **历史流水需要清理策略**：会话命令、挂机幂等、随机批次和逐抽审计会持续增长，只能分批清理终态、已结算且超过审计保留期的数据；不得先删仍被待结算奖励引用的逐抽记录。
+7. **额外 buff 仍未开放**：旧 HTTP 路径当前固定返回 6515，不会修改会话。正式开放按钮前必须增加服务端授权凭证、消耗流水、次数/过期校验和防重放规则；幂等键不能替代资格校验。

@@ -75,11 +75,12 @@ public partial class HomePageUI
         SetSceneText(root, "ProfileWood", PlayerPrefs.GetInt("Wood", 500).ToString());
         SetSceneText(root, "ProfileStone", PlayerPrefs.GetInt("Stone", 500).ToString());
         SetSceneText(root, "ProfileIron", PlayerPrefs.GetInt("Iron", 300).ToString());
+        SetSceneText(root, "ProfileVital", $"生命  {PlayerPrefs.GetInt("PlayerHp", 1000)}    体力  {GetHomeStamina()}");
     }
 
     private void OpenServerTasks(string category)
     {
-        activeTaskCategory = category == "main" ? "main" : "daily";
+        activeTaskCategory = NormalizeServerTaskCategory(category);
         string message = serverTaskListRunning ? "正在同步服务器任务..." : "正在读取服务器任务...";
         ShowTaskPanel(activeTaskCategory, message);
         if (!serverTaskListRunning)
@@ -128,20 +129,21 @@ public partial class HomePageUI
 
     private TaskDisplayItem[] BuildServerTaskItems(string category)
     {
-        string periodType = category == "main" ? "WEEKLY" : "DAILY";
         List<TaskDisplayItem> result = new List<TaskDisplayItem>();
         for (int i = 0; i < currentServerTasks.Length; i++)
         {
             ServerTaskResponse task = currentServerTasks[i];
-            if (task == null || !string.Equals(task.periodType, periodType, StringComparison.OrdinalIgnoreCase))
+            if (task == null || !MatchesServerTaskCategory(task, category))
             {
                 continue;
             }
 
+            string rewardSummary = BuildServerTaskRewardSummary(task);
+
             result.Add(new TaskDisplayItem(
                 string.IsNullOrEmpty(task.taskCode) ? task.id.ToString() : task.taskCode,
                 string.IsNullOrEmpty(task.taskName) ? "服务器任务" : task.taskName,
-                task.description ?? string.Empty,
+                BuildServerTaskDescription(task),
                 Mathf.Max(0, task.progressAmount),
                 Mathf.Max(1, task.targetAmount),
                 "Experience",
@@ -151,7 +153,8 @@ public partial class HomePageUI
                 null,
                 true,
                 task.id,
-                task.status));
+                task.status,
+                rewardSummary));
         }
 
         return result.ToArray();
@@ -199,12 +202,111 @@ public partial class HomePageUI
             }
 
             ApplyExperienceGrant(response.data.experienceGrant);
+            ApplyServerTaskRewardGrants(response.data.rewardGrants);
             UpdateServerTask(response.data.task);
             serverTaskClaimRunning = false;
             int granted = response.data.experienceGrant != null ? response.data.experienceGrant.grantedExperience : 0;
             ShowTaskPanel(activeTaskCategory, granted > 0 ? $"领取成功：经验 +{granted}" : "任务奖励已领取");
             StartCoroutine(RefreshAccountSnapshot(string.Empty));
         }
+    }
+
+    private static string NormalizeServerTaskCategory(string category)
+    {
+        if (string.Equals(category, "main", StringComparison.OrdinalIgnoreCase)) return "main";
+        if (string.Equals(category, "growth", StringComparison.OrdinalIgnoreCase)) return "growth";
+        if (string.Equals(category, "activity", StringComparison.OrdinalIgnoreCase)) return "activity";
+        return "daily";
+    }
+
+    private static bool MatchesServerTaskCategory(ServerTaskResponse task, string category)
+    {
+        if (task == null) return false;
+        string taskCategory = (task.taskCategory ?? string.Empty).Trim().ToUpperInvariant();
+        string periodType = (task.periodType ?? string.Empty).Trim().ToUpperInvariant();
+        switch (NormalizeServerTaskCategory(category))
+        {
+            case "main":
+                return periodType == "WEEKLY" || taskCategory == "MAIN";
+            case "growth":
+                return taskCategory == "GROWTH" || taskCategory == "ACHIEVEMENT" || periodType == "LIFETIME";
+            case "activity":
+                return taskCategory == "ACTIVITY";
+            default:
+                return periodType == "DAILY" || taskCategory == "ROUTINE" && periodType != "WEEKLY" && periodType != "LIFETIME";
+        }
+    }
+
+    private static string BuildServerTaskDescription(ServerTaskResponse task)
+    {
+        if (task == null) return string.Empty;
+        string description = task.description ?? string.Empty;
+        if (task.targetSceneId > 0 && !string.IsNullOrEmpty(task.targetSceneName))
+        {
+            description += $"\n场景：{task.targetSceneName}";
+        }
+        if (!string.IsNullOrEmpty(task.targetItemName))
+        {
+            description += $"\n目标：{task.targetItemName}";
+        }
+        return description;
+    }
+
+    private static string BuildServerTaskRewardSummary(ServerTaskResponse task)
+    {
+        List<string> rewards = new List<string>();
+        if (task != null && task.fixedRewards != null)
+        {
+            for (int i = 0; i < task.fixedRewards.Length; i++)
+            {
+                TaskRewardSnapshot reward = task.fixedRewards[i];
+                if (reward == null) continue;
+                string name = string.IsNullOrEmpty(reward.assetName) ? reward.assetKey : reward.assetName;
+                if (!string.IsNullOrEmpty(name)) rewards.Add(name + " x" + Math.Max(0, reward.quantity));
+            }
+        }
+
+        if (task != null && !string.IsNullOrEmpty(task.randomNpcPoolName))
+        {
+            rewards.Add(task.randomNpcPoolName + (task.randomNpcDrawCount > 0 ? $" x{task.randomNpcDrawCount}" : string.Empty));
+        }
+
+        if (task != null && task.experienceReward > 0) rewards.Add("经验 x" + task.experienceReward);
+        return rewards.Count == 0 ? "无固定奖励" : string.Join("、", rewards.ToArray());
+    }
+
+    private void ApplyServerTaskRewardGrants(TaskRewardGrant[] grants)
+    {
+        if (grants == null || grants.Length == 0) return;
+
+        bool needsInventory = false;
+        bool needsNpc = false;
+        bool needsEquipment = false;
+        List<string> names = new List<string>();
+        for (int i = 0; i < grants.Length; i++)
+        {
+            TaskRewardGrant grant = grants[i];
+            if (grant == null) continue;
+            string type = (grant.grantedType ?? string.Empty).Trim().ToUpperInvariant();
+            if (type == "ITEM") needsInventory = true;
+            if (type == "NPC") needsNpc = true;
+            if (type == "EQUIPMENT") needsEquipment = true;
+            string name = string.IsNullOrEmpty(grant.grantedAssetName) ? grant.selectedNpcName : grant.grantedAssetName;
+            if (!string.IsNullOrEmpty(name)) names.Add(name + " x" + Math.Max(0, grant.grantedQuantity));
+        }
+
+        if (names.Count > 0) SetStatus("任务到账：" + string.Join("、", names.ToArray()));
+        StartCoroutine(RefreshTaskGrantState(needsInventory, needsNpc, needsEquipment));
+    }
+
+    private IEnumerator RefreshTaskGrantState(bool needsInventory, bool needsNpc, bool needsEquipment)
+    {
+        List<string> synced = new List<string>();
+        List<string> failed = new List<string>();
+        if (needsInventory) yield return RefreshCardDrawInventoryState(synced, failed);
+        if (needsNpc) yield return RefreshCardDrawNpcState(synced, failed);
+        if (needsEquipment) yield return RefreshCardDrawEquipmentState(synced, failed);
+        if (failed.Count > 0) SetStatus("任务奖励同步失败：" + string.Join("、", failed.ToArray()));
     }
 
     private void UpdateServerTask(ServerTaskResponse updated)
@@ -1605,14 +1707,27 @@ public partial class HomePageUI
     {
         public long id;
         public string taskCode;
+        public string taskCategory;
         public string taskName;
         public string description;
         public string periodType;
         public string periodKey;
         public string objectiveType;
+        public int targetSceneId;
+        public string targetSceneKey;
+        public string targetSceneName;
+        public long targetItemId;
+        public string targetItemKey;
+        public string targetItemName;
+        public string targetItemIcon;
+        public string targetItemType;
         public int targetAmount;
         public int progressAmount;
         public int experienceReward;
+        public TaskRewardSnapshot[] fixedRewards;
+        public string randomNpcPoolName;
+        public int randomNpcDrawCount;
+        public TaskRewardSnapshot[] randomNpcCandidates;
         public string status;
         public bool canClaim;
         public string completedTime;
@@ -1630,6 +1745,44 @@ public partial class HomePageUI
     {
         public ServerTaskResponse task;
         public ExperienceGrantResponse experienceGrant;
+        public TaskRewardGrant[] rewardGrants;
+    }
+
+    [Serializable]
+    private class TaskRewardSnapshot
+    {
+        public int rewardSeq;
+        public string rewardType;
+        public long assetId;
+        public string assetKey;
+        public string assetName;
+        public string assetIcon;
+        public string assetCategory;
+        public string assetQuality;
+        public int quantity;
+    }
+
+    [Serializable]
+    private class TaskRewardGrant
+    {
+        public int grantSeq;
+        public string rewardSource;
+        public int drawIndex;
+        public long selectedNpcId;
+        public string selectedNpcCode;
+        public string selectedNpcName;
+        public string selectedNpcIcon;
+        public string selectedNpcQuality;
+        public string grantedType;
+        public long grantedAssetId;
+        public string grantedAssetKey;
+        public string grantedAssetName;
+        public string grantedAssetIcon;
+        public string grantedAssetCategory;
+        public string grantedAssetQuality;
+        public int grantedQuantity;
+        public bool duplicateNpcConverted;
+        public long playerNpcInstanceId;
     }
 
     [Serializable]
