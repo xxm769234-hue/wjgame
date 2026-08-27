@@ -17,6 +17,10 @@ public partial class HomePageUI
     private bool profileNicknamePolicyLoading;
     private bool profileNicknameSaving;
     private bool profileSwitchLoginConfirmation;
+    private bool profileCancellationStatusLoading;
+    private bool profileCancellationRequestRunning;
+    private bool profileCancellationConfirmation;
+    private bool profileCancellationStatusLoaded;
     private bool friendDeleteConfirmation;
     private bool friendsOnlineOnly;
     private int friendsPageIndex;
@@ -27,6 +31,9 @@ public partial class HomePageUI
     private bool serverFriendMutationRunning;
     private NicknamePolicyData profileNicknamePolicy;
     private string profileNicknamePolicyStatus = string.Empty;
+    private ProfileCancellationData profileCancellationStatus;
+    private string profileCancellationRequestId = string.Empty;
+    private string profileCancellationRecoveryRequestId = string.Empty;
 
     private void ShowAccountProfilePanel()
     {
@@ -42,10 +49,16 @@ public partial class HomePageUI
 
         accountProfilePanelObject = panel.gameObject;
         profileSwitchLoginConfirmation = false;
+        profileCancellationConfirmation = false;
+        profileCancellationStatusLoading = false;
+        profileCancellationRequestRunning = false;
+        profileCancellationStatusLoaded = false;
+        profileCancellationStatus = null;
         RefreshAccountProfileScenePanel(panel.PanelRoot, "账号资料来自当前登录存档");
         if (HasAuthSession())
         {
             StartCoroutine(RefreshProfileNicknamePolicy(panel.PanelRoot));
+            StartCoroutine(RefreshProfileCancellationStatus(panel.PanelRoot, "正在读取账号注销状态..."));
         }
         SetStatus("已打开个人档案");
     }
@@ -79,6 +92,7 @@ public partial class HomePageUI
         SetSceneText(root, "ProfileExploreStat", $"领地探索\n{PlayerPrefs.GetInt("TaskMapEntered", 0)} 次");
         SetSceneText(root, "ProfileSyncText", GetProfileSyncText(isAuthenticated));
         SetSceneText(root, "ProfileStatus", status);
+        SetSceneText(root, "ProfileCancellationStatus", BuildProfileCancellationStatus(isAuthenticated));
         SetSceneText(root, "ProfileNicknameHint", BuildProfileNicknameHint());
         ConfigureProfileAvatarControls(root, true, nickname);
 
@@ -113,6 +127,21 @@ public partial class HomePageUI
         Button switchButton = FindSceneComponent<Button>(root, "ProfileSwitchLoginButton");
         SetSceneButtonText(switchButton, profileSwitchLoginConfirmation ? "确认切换账号" : "切换账号");
         BindSceneButton(switchButton, () => HandleProfileSwitchLogin(root));
+
+        Button cancellationButton = FindSceneComponent<Button>(root, "ProfileCancelAccountButton");
+        bool cancellationStateReady = isAuthenticated
+            && profileCancellationStatusLoaded
+            && !profileCancellationStatusLoading
+            && !profileCancellationRequestRunning
+            && !profileRefreshRunning;
+        SetSceneButtonText(cancellationButton, GetProfileCancellationButtonText(isAuthenticated));
+        if (cancellationButton != null)
+        {
+            cancellationButton.interactable = cancellationStateReady
+                && !IsProfileCancellationCompleted()
+                && (HasCancellableProfileCancellation() || CanApplyProfileCancellation());
+        }
+        BindSceneButton(cancellationButton, () => HandleProfileCancellation(root));
         BindSceneButton(FindSceneComponent<Button>(root, "ProfileCopyIdButton"), () => CopyProfileIdentifier(root));
         BindSceneButton(FindSceneComponent<Button>(root, "ProfileCloseButton"), HideAccountProfilePanel);
     }
@@ -134,6 +163,397 @@ public partial class HomePageUI
         }
 
         ReturnToLogin();
+    }
+
+    private IEnumerator RefreshProfileCancellationStatus(Transform root, string status)
+    {
+        if (root == null || !HasAuthSession() || profileCancellationStatusLoading)
+        {
+            yield break;
+        }
+
+        profileCancellationStatusLoading = true;
+        profileCancellationStatusLoaded = false;
+        RefreshAccountProfileScenePanel(root, status);
+
+        UnityWebRequest request = CreateAuthorizedGet("/user/privacy/account-cancellation");
+        if (request == null)
+        {
+            profileCancellationStatusLoading = false;
+            RefreshAccountProfileScenePanel(root, requestCreationError);
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+
+            if (HandleUnauthorizedResponse(request))
+            {
+                profileCancellationStatusLoading = false;
+                yield break;
+            }
+
+            ProfileCancellationApiResponse response = ParseJson<ProfileCancellationApiResponse>(request.downloadHandler.text);
+            if (HandleClosedAccountCancellationResponse(response))
+            {
+                yield break;
+            }
+
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+            {
+                profileCancellationStatusLoading = false;
+                RefreshAccountProfileScenePanel(root, response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "注销状态读取失败")
+                    : GetApiError(response));
+                yield break;
+            }
+
+            profileCancellationStatus = response.data;
+            profileCancellationStatusLoaded = true;
+            profileCancellationStatusLoading = false;
+            profileCancellationConfirmation = false;
+            RefreshAccountProfileScenePanel(root, status);
+        }
+    }
+
+    private void HandleProfileCancellation(Transform root)
+    {
+        if (!HasAuthSession() || profileCancellationStatusLoading || profileCancellationRequestRunning)
+        {
+            return;
+        }
+
+        if (!profileCancellationStatusLoaded)
+        {
+            RefreshAccountProfileScenePanel(root, "注销状态尚未同步，请稍候...");
+            StartCoroutine(RefreshProfileCancellationStatus(root, "正在读取账号注销状态..."));
+            return;
+        }
+
+        if (IsProfileCancellationCompleted())
+        {
+            RefreshAccountProfileScenePanel(root, "账号已经完成注销，无法恢复");
+            return;
+        }
+
+        if (HasCancellableProfileCancellation())
+        {
+            if (!profileCancellationConfirmation)
+            {
+                profileCancellationConfirmation = true;
+                RefreshAccountProfileScenePanel(root, "再次点击“确认撤销注销”以恢复账号");
+                return;
+            }
+
+            StartCoroutine(CancelProfileCancellation(root));
+            return;
+        }
+
+        if (!CanApplyProfileCancellation())
+        {
+            RefreshAccountProfileScenePanel(root, "当前注销状态不可提交新申请，请刷新状态");
+            return;
+        }
+
+        if (!profileCancellationConfirmation)
+        {
+            profileCancellationConfirmation = true;
+            RefreshAccountProfileScenePanel(root, "再次点击“确认注销账号”提交申请");
+            return;
+        }
+
+        StartCoroutine(ApplyProfileCancellation(root));
+    }
+
+    private IEnumerator ApplyProfileCancellation(Transform root)
+    {
+        profileCancellationRequestRunning = true;
+        profileCancellationConfirmation = false;
+        if (string.IsNullOrEmpty(profileCancellationRequestId))
+        {
+            profileCancellationRequestId = Guid.NewGuid().ToString("D").ToLowerInvariant();
+        }
+
+        RefreshAccountProfileScenePanel(root, "正在提交注销申请...");
+        ProfileCancellationRequest payload = new ProfileCancellationRequest
+        {
+            requestId = profileCancellationRequestId
+        };
+
+        if (!TryCreateAuthorizedPost(
+                "/user/privacy/account-cancellation",
+                JsonUtility.ToJson(payload),
+                out UnityWebRequest request,
+                out string error))
+        {
+            profileCancellationRequestRunning = false;
+            RefreshAccountProfileScenePanel(root, error);
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+
+            if (HandleUnauthorizedResponse(request))
+            {
+                profileCancellationRequestRunning = false;
+                yield break;
+            }
+
+            ProfileCancellationApiResponse response = ParseJson<ProfileCancellationApiResponse>(request.downloadHandler.text);
+            if (HandleClosedAccountCancellationResponse(response))
+            {
+                yield break;
+            }
+
+            if (request.result == UnityWebRequest.Result.Success && response != null && response.code == 200 && response.data != null)
+            {
+                profileCancellationStatus = response.data;
+                profileCancellationStatusLoaded = true;
+                profileCancellationRequestRunning = false;
+                RefreshAccountProfileScenePanel(root, string.IsNullOrEmpty(response.message)
+                    ? "注销申请已提交，账号进入冷静期"
+                    : response.message);
+                SetStatus("注销申请已提交，冷静期内可以撤销");
+                yield break;
+            }
+
+            profileCancellationRequestRunning = false;
+            profileCancellationStatusLoaded = false;
+            string message = response == null
+                ? ApiRequestUtility.GetErrorMessage(request, "申请账号注销失败")
+                : GetApiError(response);
+            RefreshAccountProfileScenePanel(root, message);
+            yield return RefreshProfileCancellationStatus(root, message);
+        }
+    }
+
+    private IEnumerator CancelProfileCancellation(Transform root)
+    {
+        profileCancellationRequestRunning = true;
+        profileCancellationConfirmation = false;
+        if (string.IsNullOrEmpty(profileCancellationRecoveryRequestId))
+        {
+            profileCancellationRecoveryRequestId = Guid.NewGuid().ToString("D").ToLowerInvariant();
+        }
+
+        RefreshAccountProfileScenePanel(root, "正在撤销注销申请...");
+        ProfileCancellationCancelRequest payload = new ProfileCancellationCancelRequest
+        {
+            requestId = profileCancellationRecoveryRequestId
+        };
+
+        if (!TryCreateAuthorizedPost(
+                "/user/privacy/account-cancellation/cancel",
+                JsonUtility.ToJson(payload),
+                out UnityWebRequest request,
+                out string error))
+        {
+            profileCancellationRequestRunning = false;
+            RefreshAccountProfileScenePanel(root, error);
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+
+            if (HandleUnauthorizedResponse(request))
+            {
+                profileCancellationRequestRunning = false;
+                yield break;
+            }
+
+            ProfileCancellationApiResponse response = ParseJson<ProfileCancellationApiResponse>(request.downloadHandler.text);
+            if (HandleClosedAccountCancellationResponse(response))
+            {
+                yield break;
+            }
+
+            if (request.result == UnityWebRequest.Result.Success && response != null && response.code == 200 && response.data != null)
+            {
+                profileCancellationStatus = response.data;
+                profileCancellationStatusLoaded = true;
+                profileCancellationRequestRunning = false;
+                profileCancellationRequestId = string.Empty;
+                profileCancellationRecoveryRequestId = string.Empty;
+                RefreshAccountProfileScenePanel(root, string.IsNullOrEmpty(response.message)
+                    ? "注销申请已撤销，账号已恢复"
+                    : response.message);
+                SetStatus("注销申请已撤销，账号已恢复");
+                yield break;
+            }
+
+            profileCancellationRequestRunning = false;
+            profileCancellationStatusLoaded = false;
+            string message = response == null
+                ? ApiRequestUtility.GetErrorMessage(request, "撤销账号注销失败")
+                : GetApiError(response);
+            RefreshAccountProfileScenePanel(root, message);
+            yield return RefreshProfileCancellationStatus(root, message);
+        }
+    }
+
+    private bool HasCancellableProfileCancellation()
+    {
+        return profileCancellationStatus != null && profileCancellationStatus.cancellable;
+    }
+
+    private bool CanApplyProfileCancellation()
+    {
+        if (profileCancellationStatus == null)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(profileCancellationStatus.accountStatus)
+            && !string.Equals(profileCancellationStatus.accountStatus, "ACTIVE", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return string.IsNullOrEmpty(profileCancellationStatus.cancellationStatus)
+            || string.Equals(profileCancellationStatus.cancellationStatus, "CANCELLED", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool HandleClosedAccountCancellationResponse(ProfileCancellationApiResponse response)
+    {
+        if (response == null || response.code != 7708)
+        {
+            return false;
+        }
+
+        profileCancellationStatusLoading = false;
+        profileCancellationRequestRunning = false;
+        profileCancellationStatusLoaded = false;
+        profileCancellationStatus = null;
+        ClearClosedAccountProfileState();
+        ReturnToLogin();
+        return true;
+    }
+
+    private void ClearClosedAccountProfileState()
+    {
+        GameSession.Clear();
+        string[] accountStateKeys =
+        {
+            "LoginUsername",
+            "PlayerNickname",
+            "PlayerAvatarUrl",
+            "PlayerAvatarSource",
+            "PlayerAvatarVersion",
+            "PlayerAvatarUpdatedTime",
+            "PlayerTotalExperience",
+            "PlayerLevelCurveRevision",
+            "PlayerCurrentLevelExperience",
+            "PlayerRequiredExperience",
+            "PlayerExperienceProgressBps",
+            "PlayerMaxLevel",
+            "PlayerEconomyFrozen",
+            "PlayerLv",
+            "Gold",
+            "Wood",
+            "Stone",
+            "Iron",
+            "Crystal",
+            "SoulCrystal"
+        };
+
+        for (int index = 0; index < accountStateKeys.Length; index++)
+        {
+            PlayerPrefs.DeleteKey(accountStateKeys[index]);
+        }
+
+        PlayerPrefs.Save();
+    }
+
+    private bool IsProfileCancellationCompleted()
+    {
+        return profileCancellationStatus != null
+            && (string.Equals(profileCancellationStatus.cancellationStatus, "COMPLETED", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(profileCancellationStatus.accountStatus, "CLOSED", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private string GetProfileCancellationButtonText(bool isAuthenticated)
+    {
+        if (!isAuthenticated)
+        {
+            return "账号注销";
+        }
+
+        if (profileCancellationStatusLoading)
+        {
+            return "读取中...";
+        }
+
+        if (profileCancellationRequestRunning)
+        {
+            return "处理中...";
+        }
+
+        if (IsProfileCancellationCompleted())
+        {
+            return "账号已注销";
+        }
+
+        if (HasCancellableProfileCancellation())
+        {
+            return profileCancellationConfirmation ? "确认撤销注销" : "撤销注销";
+        }
+
+        if (CanApplyProfileCancellation())
+        {
+            return profileCancellationConfirmation ? "确认注销账号" : "注销账号";
+        }
+
+        return "注销状态处理中";
+    }
+
+    private string BuildProfileCancellationStatus(bool isAuthenticated)
+    {
+        if (!isAuthenticated)
+        {
+            return "账号注销仅适用于已登录账号";
+        }
+
+        if (profileCancellationStatusLoading)
+        {
+            return "账号注销状态：读取中...";
+        }
+
+        if (!profileCancellationStatusLoaded || profileCancellationStatus == null)
+        {
+            return "账号注销状态：暂未同步";
+        }
+
+        if (string.IsNullOrEmpty(profileCancellationStatus.cancellationStatus))
+        {
+            return "账号注销状态：未申请";
+        }
+
+        string state = profileCancellationStatus.cancellationStatus;
+        if (string.Equals(state, "PENDING", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(state, "PROCESSING", StringComparison.OrdinalIgnoreCase))
+        {
+            string scheduledTime = string.IsNullOrEmpty(profileCancellationStatus.scheduledTime)
+                ? string.Empty
+                : "，冷静期截止：" + profileCancellationStatus.scheduledTime;
+            return "账号注销状态：" + state + scheduledTime;
+        }
+
+        if (string.Equals(state, "CANCELLED", StringComparison.OrdinalIgnoreCase))
+        {
+            return "账号注销状态：已撤销，可重新申请";
+        }
+
+        if (string.Equals(state, "COMPLETED", StringComparison.OrdinalIgnoreCase))
+        {
+            return "账号注销状态：已完成，账号不可恢复";
+        }
+
+        return "账号注销状态：" + state;
     }
 
     private IEnumerator RefreshCurrentUserProfile(Transform root)
@@ -193,6 +613,7 @@ public partial class HomePageUI
 
             SaveUserProfile(response.data);
             yield return RefreshProfileNicknamePolicy(root);
+            yield return RefreshProfileCancellationStatus(root, "正在同步账号注销状态...");
             profileRefreshRunning = false;
             RefreshAccountProfileScenePanel(root, "服务器资料同步完成");
             SetStatus("个人资料已刷新");
@@ -650,6 +1071,37 @@ public partial class HomePageUI
         public int nicknameChangeCount;
         public bool nicknameChangeRequired;
         public string nextChangeAvailableTime;
+    }
+
+    [Serializable]
+    private class ProfileCancellationApiResponse : BasicApiResponse
+    {
+        public ProfileCancellationData data;
+    }
+
+    [Serializable]
+    private class ProfileCancellationData
+    {
+        public long cancellationId;
+        public string accountStatus;
+        public string cancellationStatus;
+        public string requestedTime;
+        public string scheduledTime;
+        public string cancelledTime;
+        public string completedTime;
+        public bool cancellable;
+    }
+
+    [Serializable]
+    private class ProfileCancellationRequest
+    {
+        public string requestId;
+    }
+
+    [Serializable]
+    private class ProfileCancellationCancelRequest
+    {
+        public string requestId;
     }
 
     [Serializable]

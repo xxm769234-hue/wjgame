@@ -459,12 +459,16 @@ public sealed class IdleAdventureAfkRewardCollectResponse
 {
     public long player_id;
     public IdleAdventureCollectedItemResponse collected_item;
+    public IdleAdventureCollectedItemResponse collected_reward;
+    public IdleAdventureCollectedItemResponse[] collected_rewards;
     public IdleAdventureInventoryItemResponse[] items;
     public IdleAdventureAfkRewardStateResponse state;
     public bool idempotent_replay;
 
     public int playerId => (int)player_id;
     public IdleAdventureCollectedItemResponse collectedItem => collected_item;
+    public IdleAdventureCollectedItemResponse collectedReward => collected_reward;
+    public IdleAdventureCollectedItemResponse[] collectedRewards => collected_rewards;
     public bool idempotentReplay => idempotent_replay;
 }
 
@@ -605,6 +609,7 @@ public sealed class IdleAdventureFormationSlotResponse
     public bool front_column;
     public long definition_id;
     public string combatant_name;
+    public string quality;
 }
 
 [Serializable]

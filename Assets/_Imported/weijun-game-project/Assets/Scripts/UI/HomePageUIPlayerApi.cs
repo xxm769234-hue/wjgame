@@ -801,6 +801,7 @@ public partial class HomePageUI
         serverLotteryRewardAmount = 0;
         serverLotteryHasResult = false;
         serverLotteryDisplayPage = 0;
+        ResetLotteryOverlayPanels();
         ShowLotteryPanel(serverLotteryStatus, string.Empty, 0, false);
         if (!serverCardDrawPoolRunning && !serverCardDrawRunning)
         {
@@ -858,7 +859,7 @@ public partial class HomePageUI
         CardDrawOptionResponse option = FindCardDrawOption(optionCode);
         if (option == null)
         {
-            serverLotteryStatus = "当前奖池没有可用的" + (optionCode == "FIVE" ? "五连抽" : "单抽") + "档位";
+            serverLotteryStatus = "当前奖池没有可用的" + (optionCode == "TEN" ? "十连抽" : optionCode == "FIVE" ? "五连抽" : "单抽") + "档位";
             ShowServerLotteryState();
             return;
         }
@@ -875,7 +876,9 @@ public partial class HomePageUI
     private IEnumerator DrawServerCards(string optionCode, string idempotencyKey)
     {
         serverCardDrawRunning = true;
-        serverLotteryStatus = optionCode == "FIVE" ? "正在执行五连抽..." : "正在执行单抽...";
+        serverLotteryStatus = optionCode == "TEN"
+            ? "正在执行十连抽..."
+            : optionCode == "FIVE" ? "正在执行五连抽..." : "正在执行单抽...";
         ShowServerLotteryState(true);
 
         CardDrawRequest payload = new CardDrawRequest { optionCode = optionCode };
@@ -923,6 +926,10 @@ public partial class HomePageUI
             serverCardDrawRunning = false;
             if (response.data.cards != null && response.data.cards.Length > 0)
             {
+                if (serverCardDrawPool == null)
+                {
+                    serverCardDrawPool = new CardDrawPoolData();
+                }
                 serverCardDrawPool.cards = response.data.cards;
                 serverCardDrawPool.cardCount = response.data.cardCount;
             }
@@ -942,6 +949,7 @@ public partial class HomePageUI
             }
 
             ShowServerLotteryState();
+            ShowLotteryRewardConfirm(response.data);
             StartCoroutine(RefreshCardDrawRewardState(response.data));
         }
     }
@@ -1252,68 +1260,66 @@ public partial class HomePageUI
         bool hasResult,
         bool isRolling)
     {
-        string[] cardRoots = { "LotteryLeftPrize", "LotteryCenterPrize", "LotteryRightPrize" };
-        string[] nameFields = { "LotteryLeftName", "LotteryCenterName", "LotteryRightName" };
-        string[] amountFields = { "LotteryLeftAmount", "LotteryCenterAmount", "LotteryRightAmount" };
         CardDrawCardResponse[] cards = serverCardDrawPool != null && serverCardDrawPool.cards != null
             ? serverCardDrawPool.cards
             : new CardDrawCardResponse[0];
-        int pageCount = Mathf.Max(1, Mathf.CeilToInt(cards.Length / 3f));
-        serverLotteryDisplayPage = Mathf.Clamp(serverLotteryDisplayPage, 0, pageCount - 1);
-
-        for (int i = 0; i < 3; i++)
-        {
-            int index = serverLotteryDisplayPage * 3 + i;
-            CardDrawCardResponse card = index < cards.Length ? cards[index] : null;
-            SetSceneText(root, nameFields[i], card == null ? "-" : card.rewardName);
-            SetSceneText(root, amountFields[i], card == null ? string.Empty : $"x{card.rewardAmount}  {card.probability:P1}");
-            Transform cardRoot = FindSceneTransform(root, cardRoots[i]);
-            if (cardRoot != null)
-            {
-                cardRoot.localScale = isRolling && i == 1 && lotterySceneFlipPhase++ % 2 == 0
-                    ? new Vector3(0.72f, 1f, 1f)
-                    : Vector3.one;
-            }
-        }
+        ConfigureLotteryPrizeRail(root, cards);
 
         CardDrawOptionResponse single = FindCardDrawOption("SINGLE");
-        CardDrawOptionResponse five = FindCardDrawOption("FIVE");
+        CardDrawOptionResponse multi = FindCardDrawOption("TEN");
+        if (multi == null)
+        {
+            multi = FindCardDrawOption("FIVE");
+        }
+        string multiLabel = multi != null && string.Equals(multi.optionCode, "TEN", StringComparison.OrdinalIgnoreCase)
+            ? "十连抽"
+            : "五连抽";
         int diamond = PlayerPrefs.GetInt("Crystal", 0);
-        SetSceneText(root, "LotteryChanceText", serverCardDrawPool == null
+        SetSceneText(root, "LotteryDiamondText", $"钻石 {diamond}");
+        SetSceneText(root, "LotteryPrizeHint", serverCardDrawPool == null
             ? "正在同步奖池"
-            : $"钻石 {diamond} · 奖项 {cards.Length} 个");
+            : $"奖项 {cards.Length} 个 · 服务器配置");
         SetSceneText(root, "LotteryStatus", string.IsNullOrEmpty(status) ? serverLotteryStatus : status);
+
+        Transform poolPanel = FindSceneTransform(root, "LotteryPoolPanel");
+        Transform rewardPanel = FindSceneTransform(root, "LotteryRewardConfirmPanel");
+        bool poolVisible = poolPanel != null && poolPanel.gameObject.activeSelf;
+        bool rewardVisible = rewardPanel != null && rewardPanel.gameObject.activeSelf;
 
         Button closeButton = FindSceneComponent<Button>(root, "LotteryCloseButton");
         if (closeButton != null)
         {
-            closeButton.interactable = !serverCardDrawRunning;
+            closeButton.interactable = !serverCardDrawRunning && !poolVisible && !rewardVisible;
         }
-        BindSceneButton(closeButton, serverCardDrawRunning ? null : (Action)HideLotteryPanel);
+        BindSceneButton(closeButton, closeButton != null && closeButton.interactable ? (Action)HideLotteryPanel : null);
 
-        Button startButton = FindSceneComponent<Button>(root, "LotteryStartButton");
-        if (startButton != null)
+        Button singleButton = FindSceneComponent<Button>(root, "LotterySingleButton");
+        if (singleButton != null)
         {
-            startButton.interactable = single != null && !serverCardDrawRunning && !serverCardDrawPoolRunning;
+            singleButton.interactable = single != null && !serverCardDrawRunning && !serverCardDrawPoolRunning && !poolVisible && !rewardVisible;
         }
-        SetSceneButtonText(startButton, serverCardDrawRunning ? "抽取中..." : FormatDrawOption(single, "单抽"));
-        BindSceneButton(startButton, startButton != null && startButton.interactable ? (Action)(() => BeginServerCardDraw("SINGLE")) : null);
+        SetSceneButtonText(singleButton, serverCardDrawRunning ? "抽取中..." : FormatDrawOption(single, "单抽"));
+        BindSceneButton(singleButton, singleButton != null && singleButton.interactable ? (Action)(() => BeginServerCardDraw("SINGLE")) : null);
 
-        Button fiveButton = FindSceneComponent<Button>(root, "LotteryRuleButton");
-        if (fiveButton != null)
+        Button multiButton = FindSceneComponent<Button>(root, "LotteryTenButton");
+        if (multiButton != null)
         {
-            fiveButton.interactable = five != null && !serverCardDrawRunning && !serverCardDrawPoolRunning;
+            multiButton.interactable = multi != null && !serverCardDrawRunning && !serverCardDrawPoolRunning && !poolVisible && !rewardVisible;
         }
-        SetSceneButtonText(fiveButton, FormatDrawOption(five, "五连"));
-        BindSceneButton(fiveButton, fiveButton != null && fiveButton.interactable ? (Action)(() => BeginServerCardDraw("FIVE")) : null);
+        SetSceneButtonText(multiButton, FormatDrawOption(multi, multiLabel));
+        BindSceneButton(
+            multiButton,
+            multiButton != null && multiButton.interactable && multi != null
+                ? (Action)(() => BeginServerCardDraw(multi.optionCode))
+                : null);
 
-        Button poolButton = FindSceneComponent<Button>(root, "LotteryPrizeButton");
+        Button poolButton = FindSceneComponent<Button>(root, "LotteryPoolButton");
         if (poolButton != null)
         {
-            poolButton.interactable = cards.Length > 3 && !serverCardDrawRunning;
+            poolButton.interactable = cards.Length > 0 && !serverCardDrawRunning && !rewardVisible;
         }
-        SetSceneButtonText(poolButton, cards.Length > 3 ? $"奖池 {serverLotteryDisplayPage + 1}/{pageCount}" : "奖池");
-        BindSceneButton(poolButton, poolButton != null && poolButton.interactable ? (Action)ShowNextLotteryCardPage : null);
+        SetSceneButtonText(poolButton, "奖池");
+        BindSceneButton(poolButton, poolButton != null && poolButton.interactable ? (Action)ShowLotteryPool : null);
     }
 
     private static string FormatDrawOption(CardDrawOptionResponse option, string fallback)
@@ -1326,12 +1332,256 @@ public partial class HomePageUI
         return $"{fallback} {option.costAmount}{option.costItemName}";
     }
 
-    private void ShowNextLotteryCardPage()
+    private void ConfigureLotteryPrizeRail(Transform root, CardDrawCardResponse[] cards)
     {
-        int count = serverCardDrawPool != null && serverCardDrawPool.cards != null ? serverCardDrawPool.cards.Length : 0;
-        int pageCount = Mathf.Max(1, Mathf.CeilToInt(count / 3f));
-        serverLotteryDisplayPage = (serverLotteryDisplayPage + 1) % pageCount;
+        Transform content = FindSceneTransform(root, "LotteryPrizeContent");
+        Transform template = FindSceneTransform(root, "LotteryPrizeCardTemplate");
+        if (content == null || template == null)
+        {
+            Debug.LogWarning("LotteryPrizeContent or LotteryPrizeCardTemplate is missing from the scene.");
+            return;
+        }
+
+        for (int i = content.childCount - 1; i >= 0; i--)
+        {
+            Transform child = content.GetChild(i);
+            if (child != template && child.name.StartsWith("RuntimeLotteryPrizeCard_", StringComparison.Ordinal))
+            {
+                Destroy(child.gameObject);
+            }
+        }
+
+        CardDrawCardResponse[] visibleCards = cards ?? new CardDrawCardResponse[0];
+        SetSceneObjectActive(root, "LotteryPrizeEmptyText", visibleCards.Length == 0);
+        for (int i = 0; i < visibleCards.Length; i++)
+        {
+            CardDrawCardResponse cardData = visibleCards[i];
+            if (cardData == null)
+            {
+                continue;
+            }
+
+            GameObject cardObject = Instantiate(template.gameObject, content, false);
+            cardObject.name = "RuntimeLotteryPrizeCard_" + cardData.slotNo;
+            cardObject.SetActive(true);
+            SetSceneText(cardObject.transform, "LotteryPrizeCardName", string.IsNullOrEmpty(cardData.rewardName) ? "奖励" : cardData.rewardName);
+            SetSceneText(cardObject.transform, "LotteryPrizeCardAmount", $"x{Mathf.Max(0, cardData.rewardAmount)}");
+            SetSceneText(cardObject.transform, "LotteryPrizeCardProbability", $"概率 {cardData.probability:P1}");
+            SetSceneText(cardObject.transform, "LotteryPrizeIconText", GetLotteryIconLabel(cardData.rewardName, cardData.rewardType));
+            Image icon = FindSceneComponent<Image>(cardObject.transform, "LotteryPrizeIcon");
+            if (icon != null)
+            {
+                icon.color = GetLotteryRewardColor(cardData.rewardType);
+            }
+        }
+    }
+
+    private void ShowLotteryPool()
+    {
+        HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.Lottery);
+        Transform root = panel != null ? panel.PanelRoot : null;
+        if (root == null || serverCardDrawPool == null)
+        {
+            SetStatus("当前奖池还未同步完成");
+            return;
+        }
+
+        Transform rewardPanel = FindSceneTransform(root, "LotteryRewardConfirmPanel");
+        if (rewardPanel != null)
+        {
+            rewardPanel.gameObject.SetActive(false);
+        }
+
+        Transform poolPanel = FindSceneTransform(root, "LotteryPoolPanel");
+        Transform content = FindSceneTransform(root, "LotteryPoolContent");
+        Transform template = FindSceneTransform(root, "LotteryPoolRowTemplate");
+        if (poolPanel == null || content == null || template == null)
+        {
+            SetStatus("奖池面板节点不完整，请在 Unity 中重新生成抽奖面板");
+            return;
+        }
+
+        for (int i = content.childCount - 1; i >= 0; i--)
+        {
+            Transform child = content.GetChild(i);
+            if (child != template && child.name.StartsWith("RuntimeLotteryPoolRow_", StringComparison.Ordinal))
+            {
+                Destroy(child.gameObject);
+            }
+        }
+
+        CardDrawCardResponse[] cards = serverCardDrawPool.cards ?? new CardDrawCardResponse[0];
+        SetSceneText(poolPanel, "LotteryPoolTitle", string.IsNullOrEmpty(serverCardDrawPool.name) ? "当前奖池" : serverCardDrawPool.name);
+        for (int i = 0; i < cards.Length; i++)
+        {
+            CardDrawCardResponse cardData = cards[i];
+            if (cardData == null)
+            {
+                continue;
+            }
+
+            GameObject rowObject = Instantiate(template.gameObject, content, false);
+            rowObject.name = "RuntimeLotteryPoolRow_" + cardData.slotNo;
+            rowObject.SetActive(true);
+            SetSceneText(rowObject.transform, "LotteryPoolRowSlot", "#" + cardData.slotNo);
+            SetSceneText(rowObject.transform, "LotteryPoolRowName", string.IsNullOrEmpty(cardData.rewardName) ? "奖励" : cardData.rewardName);
+            SetSceneText(rowObject.transform, "LotteryPoolRowAmount", "数量 x" + Mathf.Max(0, cardData.rewardAmount));
+            SetSceneText(rowObject.transform, "LotteryPoolRowProbability", "概率 " + cardData.probability.ToString("P1"));
+        }
+
+        poolPanel.gameObject.SetActive(true);
+        poolPanel.SetAsLastSibling();
+        BindSceneButton(FindSceneComponent<Button>(poolPanel, "LotteryPoolCloseButton"), CloseLotteryPool);
+    }
+
+    private void CloseLotteryPool()
+    {
+        HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.Lottery);
+        Transform root = panel != null ? panel.PanelRoot : null;
+        Transform poolPanel = FindSceneTransform(root, "LotteryPoolPanel");
+        if (poolPanel != null)
+        {
+            poolPanel.gameObject.SetActive(false);
+        }
         ShowServerLotteryState();
+    }
+
+    private void ShowLotteryRewardConfirm(CardDrawData data)
+    {
+        if (data == null || data.results == null || data.results.Length == 0)
+        {
+            return;
+        }
+
+        HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.Lottery);
+        Transform root = panel != null ? panel.PanelRoot : null;
+        Transform rewardPanel = FindSceneTransform(root, "LotteryRewardConfirmPanel");
+        Transform content = FindSceneTransform(root, "LotteryRewardContent");
+        Transform template = FindSceneTransform(root, "LotteryRewardRowTemplate");
+        if (rewardPanel == null || content == null || template == null)
+        {
+            Debug.LogWarning("Lottery reward confirmation nodes are missing from the scene.");
+            return;
+        }
+
+        Transform poolPanel = FindSceneTransform(root, "LotteryPoolPanel");
+        if (poolPanel != null)
+        {
+            poolPanel.gameObject.SetActive(false);
+        }
+
+        for (int i = content.childCount - 1; i >= 0; i--)
+        {
+            Transform child = content.GetChild(i);
+            if (child != template && child.name.StartsWith("RuntimeLotteryRewardRow_", StringComparison.Ordinal))
+            {
+                Destroy(child.gameObject);
+            }
+        }
+
+        CardDrawResultResponse[] results = OrderCardDrawResults(data.results);
+        SetSceneText(rewardPanel, "LotteryRewardConfirmTitle", data.drawCount > 1 ? "连抽结果" : "抽奖结果");
+        SetSceneText(rewardPanel, "LotteryRewardConfirmSummary", "奖励已按服务器抽奖结果发放，确认后关闭此提示");
+        for (int i = 0; i < results.Length; i++)
+        {
+            CardDrawResultResponse result = results[i];
+            if (result == null)
+            {
+                continue;
+            }
+
+            GameObject rowObject = Instantiate(template.gameObject, content, false);
+            rowObject.name = "RuntimeLotteryRewardRow_" + result.drawSequence;
+            rowObject.SetActive(true);
+            SetSceneText(rowObject.transform, "LotteryRewardRowSequence", result.drawSequence.ToString());
+            SetSceneText(rowObject.transform, "LotteryRewardRowName", GetCardDrawResultName(result));
+            SetSceneText(rowObject.transform, "LotteryRewardRowAmount", "x" + Mathf.Max(0, result.grantedRewardAmount));
+            SetSceneText(rowObject.transform, "LotteryRewardRowNote", result.duplicateNpcConverted ? "重复 NPC 已转碎片" : GetRewardCategoryLabel(result.grantedRewardType));
+        }
+
+        rewardPanel.gameObject.SetActive(true);
+        rewardPanel.SetAsLastSibling();
+        Button confirm = FindSceneComponent<Button>(rewardPanel, "LotteryRewardConfirmButton");
+        if (confirm != null)
+        {
+            confirm.interactable = !serverCardDrawRunning;
+        }
+        BindSceneButton(confirm, !serverCardDrawRunning ? (Action)ConfirmLotteryReward : null);
+    }
+
+    private void ConfirmLotteryReward()
+    {
+        HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.Lottery);
+        Transform root = panel != null ? panel.PanelRoot : null;
+        Transform rewardPanel = FindSceneTransform(root, "LotteryRewardConfirmPanel");
+        if (rewardPanel != null)
+        {
+            rewardPanel.gameObject.SetActive(false);
+        }
+        SetStatus("抽奖奖励已确认");
+        ShowServerLotteryState();
+    }
+
+    private void ResetLotteryOverlayPanels()
+    {
+        HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.Lottery);
+        Transform root = panel != null ? panel.PanelRoot : null;
+        Transform poolPanel = FindSceneTransform(root, "LotteryPoolPanel");
+        Transform rewardPanel = FindSceneTransform(root, "LotteryRewardConfirmPanel");
+        if (poolPanel != null)
+        {
+            poolPanel.gameObject.SetActive(false);
+        }
+        if (rewardPanel != null)
+        {
+            rewardPanel.gameObject.SetActive(false);
+        }
+    }
+
+    private static CardDrawResultResponse[] OrderCardDrawResults(CardDrawResultResponse[] source)
+    {
+        CardDrawResultResponse[] ordered = new CardDrawResultResponse[source.Length];
+        for (int i = 0; i < source.Length; i++)
+        {
+            CardDrawResultResponse selected = null;
+            int expectedSequence = i + 1;
+            for (int j = 0; j < source.Length; j++)
+            {
+                if (source[j] != null && source[j].drawSequence == expectedSequence)
+                {
+                    selected = source[j];
+                    break;
+                }
+            }
+            ordered[i] = selected ?? source[i];
+        }
+        return ordered;
+    }
+
+    private static string GetLotteryIconLabel(string rewardName, string rewardType)
+    {
+        if (!string.IsNullOrEmpty(rewardName))
+        {
+            return rewardName.Substring(0, 1);
+        }
+        return string.IsNullOrEmpty(rewardType) ? "奖" : rewardType.Substring(0, 1);
+    }
+
+    private static Color GetLotteryRewardColor(string rewardType)
+    {
+        string normalized = (rewardType ?? string.Empty).Trim().ToUpperInvariant();
+        if (normalized == "NPC") return new Color(0.62f, 0.42f, 0.78f, 1f);
+        if (normalized == "EQUIPMENT") return new Color(0.82f, 0.46f, 0.22f, 1f);
+        return new Color(0.25f, 0.63f, 0.78f, 1f);
+    }
+
+    private static string GetRewardCategoryLabel(string rewardType)
+    {
+        string normalized = (rewardType ?? string.Empty).Trim().ToUpperInvariant();
+        if (normalized == "NPC") return "角色";
+        if (normalized == "EQUIPMENT") return "装备";
+        if (normalized == "ITEM") return "物品";
+        return string.IsNullOrEmpty(rewardType) ? "奖励" : rewardType;
     }
 
     private void ShowServerLotteryState(bool rolling = false)

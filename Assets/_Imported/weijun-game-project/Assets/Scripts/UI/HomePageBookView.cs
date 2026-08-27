@@ -104,7 +104,6 @@ public sealed class HomePageBookView : MonoBehaviour
         avatarExperienceBackground != null &&
         avatarExperienceFill != null &&
         HasAll(metricTexts, 4) &&
-        (metricPlusButtons == null || metricPlusButtons.Length == 0) &&
         activityButton != null &&
         roleButton != null &&
         battleButton != null &&
@@ -210,10 +209,7 @@ public sealed class HomePageBookView : MonoBehaviour
             }
 
             Transform plusTransform = child.Find("MetricPlusButton");
-            if (plusTransform != null && plusTransform.gameObject.activeSelf)
-            {
-                plusButtons.Add(plusTransform.GetComponent<Button>());
-            }
+            plusButtons.Add(plusTransform != null ? plusTransform.GetComponent<Button>() : null);
         }
 
         metricTexts = texts.ToArray();

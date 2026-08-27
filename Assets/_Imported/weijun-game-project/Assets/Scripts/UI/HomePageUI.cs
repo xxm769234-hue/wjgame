@@ -192,6 +192,12 @@ public partial class HomePageUI : MonoBehaviour
         SetBookMetricValue(view.MetricTexts, 2, PlayerPrefs.GetInt("Gold", 1000).ToString());
         SetBookMetricValue(view.MetricTexts, 3, PlayerPrefs.GetInt("Crystal", 427).ToString());
 
+        Button[] metricPlusButtons = view.MetricPlusButtons;
+        if (metricPlusButtons != null && metricPlusButtons.Length > 3)
+        {
+            BindButton(metricPlusButtons[3], ShowRechargeContent);
+        }
+
         BindButton(view.AvatarButton, ShowPersonalInfo);
         BindButton(view.ActivityButton, ShowNewbieSignContent);
         BindButton(view.RoleButton, ShowCharacterContent);
@@ -513,13 +519,12 @@ public partial class HomePageUI : MonoBehaviour
 
         mainPageTransform = page.transform;
         Stretch(page.rectTransform);
-        AddDeskPattern(page.transform);
         AddBookAvatarDisplay(page.transform);
 
         AddBookMetric(page.transform, "\u51c0\u5316\u5242", GetHomePurificationAgent().ToString(), new Vector2(174f, -24f), new Vector2(166f, 48f), new Color(0.62f, 0.39f, 0.20f, 1f), false, null);
         AddBookMetric(page.transform, "\u4f53\u529b", GetHomeStamina().ToString(), new Vector2(360f, -24f), new Vector2(188f, 48f), new Color(0.88f, 0.61f, 0.18f, 1f), false, null);
         AddBookMetric(page.transform, "\u91d1\u5e01", PlayerPrefs.GetInt("Gold", 1000).ToString(), new Vector2(568f, -24f), new Vector2(188f, 48f), new Color(0.28f, 0.64f, 0.86f, 1f), false, null);
-        AddBookMetric(page.transform, "\u94bb\u77f3", PlayerPrefs.GetInt("Crystal", 427).ToString(), new Vector2(776f, -24f), new Vector2(188f, 48f), new Color(0.32f, 0.55f, 0.31f, 1f), false, null);
+        AddBookMetric(page.transform, "\u94bb\u77f3", PlayerPrefs.GetInt("Crystal", 427).ToString(), new Vector2(776f, -24f), new Vector2(188f, 48f), new Color(0.32f, 0.55f, 0.31f, 1f), true, ShowRechargeContent);
 
         Transform leftPage = CreateBookSheet(page.transform, "LeftStoryPage", new Vector2(96f, -128f), new Vector2(846f, 814f), false).transform;
         Transform rightPage = CreateBookSheet(page.transform, "RightTownPage", new Vector2(978f, -128f), new Vector2(846f, 814f), true).transform;
@@ -548,7 +553,7 @@ public partial class HomePageUI : MonoBehaviour
             "\u5bf9\u6218",
             "Sprites/Arts/png/volcano.png",
             new Vector2(56f, -104f),
-            new Vector2(344f, 610f),
+            new Vector2(711.2f, 300f),
             new Color(0.48f, 0.18f, 0.13f, 1f),
             ShowBattleContent);
         CreateModeEntry(
@@ -557,8 +562,8 @@ public partial class HomePageUI : MonoBehaviour
             "ManagementEnterButton",
             "\u6a21\u62df\u7ecf\u8425",
             "Sprites/Arts/png/grass.jpeg",
-            new Vector2(418f, -104f),
-            new Vector2(344f, 610f),
+            new Vector2(56f, -430f),
+            new Vector2(711.2f, 300f),
             new Color(0.30f, 0.48f, 0.28f, 1f),
             EnterSelectedArea);
 
@@ -579,14 +584,6 @@ public partial class HomePageUI : MonoBehaviour
         Text titleText = CreateText("Title", button.transform, title, 18, FontStyle.Bold, InkColor, TextAnchor.MiddleCenter);
         SetRect(titleText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), Vector2.zero, new Vector2(124f, 52f));
         return button;
-    }
-
-    private void AddDeskPattern(Transform parent)
-    {
-        Image topWash = CreateImage("DeskTopWash", parent, new Color(0.81f, 0.89f, 0.88f, 0.34f));
-        topWash.raycastTarget = false;
-        SetRect(topWash.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), Vector2.zero, new Vector2(1920f, 120f));
-
     }
 
     private void AddOpenBookSpread(Transform parent)
@@ -3618,9 +3615,9 @@ public partial class HomePageUI : MonoBehaviour
         if (boundBookView != null)
         {
             Button[] metricPlusButtons = boundBookView.MetricPlusButtons;
-            if (metricPlusButtons != null && metricPlusButtons.Length > 1 && metricPlusButtons[1] != null)
+            if (metricPlusButtons != null && metricPlusButtons.Length > 3 && metricPlusButtons[3] != null)
             {
-                metricPlusButtons[1].gameObject.SetActive(visible);
+                metricPlusButtons[3].gameObject.SetActive(visible);
             }
 
             if (boundBookView.RechargeButton != null)

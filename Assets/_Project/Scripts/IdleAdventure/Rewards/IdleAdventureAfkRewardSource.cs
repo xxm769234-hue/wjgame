@@ -30,6 +30,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     [SerializeField] private TextMeshProUGUI iconText;
     [SerializeField] private TextMeshProUGUI amountText;
     [SerializeField] private TextMeshProUGUI timerText;
+    [SerializeField] private TextMeshProUGUI collectButtonText;
 
     [Header("Grant Target")]
     [SerializeField] private IdleAdventureRewardLedger rewardLedger;
@@ -46,7 +47,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     public int MaxStoredQuantity => Mathf.Max(1, maxStoredQuantity);
     public int HighestClearedStage => highestClearedStage;
     public bool HasServerSnapshot => hasServerSnapshot;
-    public bool HasViewBindings => collectButton != null && iconImage != null && progressFill != null && iconText != null && amountText != null && timerText != null;
+    public bool HasViewBindings => collectButton != null && iconImage != null && progressFill != null && iconText != null && amountText != null && timerText != null && collectButtonText != null;
     public UnityEvent<string, string, int> RewardCollected => rewardCollected;
 
     public void SetRewardLedger(IdleAdventureRewardLedger ledger)
@@ -66,7 +67,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
         RefreshView();
     }
 
-    public void Initialize(IdleAdventureRewardLedger ledger, Button button, Image icon, Image fill, TextMeshProUGUI iconLabel, TextMeshProUGUI amountLabel, TextMeshProUGUI timerLabel)
+    public void Initialize(IdleAdventureRewardLedger ledger, Button button, Image icon, Image fill, TextMeshProUGUI iconLabel, TextMeshProUGUI amountLabel, TextMeshProUGUI timerLabel, TextMeshProUGUI collectLabel)
     {
         rewardLedger = ledger;
         collectButton = button;
@@ -75,6 +76,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
         iconText = iconLabel;
         amountText = amountLabel;
         timerText = timerLabel;
+        collectButtonText = collectLabel;
         EnsureInitialServerSnapshot();
         Bind();
         RefreshView();
@@ -194,24 +196,16 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     {
         if (response == null) return;
 
-        if (response.collectedItem != null && response.collectedItem.quantity > 0)
+        if (response.collectedRewards != null && response.collectedRewards.Length > 0)
         {
-            string collectedKey = string.IsNullOrEmpty(response.collectedItem.itemKey) ? ItemKey : response.collectedItem.itemKey;
-            string collectedName = string.IsNullOrEmpty(response.collectedItem.name) ? DisplayName : response.collectedItem.name;
-            int collectedQuantity = Mathf.Clamp((int)Math.Min(int.MaxValue, response.collectedItem.quantity), 0, int.MaxValue);
-
-            Dictionary<string, int> rewards = new Dictionary<string, int>
+            for (int i = 0; i < response.collectedRewards.Length; i++)
             {
-                { collectedKey, collectedQuantity }
-            };
-
-            Dictionary<string, string> displayNames = new Dictionary<string, string>
-            {
-                { collectedKey, collectedName }
-            };
-
-            if (rewardLedger != null) rewardLedger.GrantRewards(rewards, displayNames, $"{collectedName} x{collectedQuantity}");
-            rewardCollected.Invoke(collectedKey, collectedName, collectedQuantity);
+                ApplyCollectedItem(response.collectedRewards[i]);
+            }
+        }
+        else
+        {
+            ApplyCollectedItem(response.collectedReward != null ? response.collectedReward : response.collectedItem);
         }
 
         if (response.state != null) ApplyBackendState(response.state);
@@ -227,6 +221,28 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
         localSecondsSinceServerSync = 0f;
         hasServerSnapshot = true;
         RefreshView();
+    }
+
+    private void ApplyCollectedItem(IdleAdventureCollectedItemResponse collectedItem)
+    {
+        if (collectedItem == null || collectedItem.quantity <= 0L) return;
+
+        string collectedKey = string.IsNullOrEmpty(collectedItem.itemKey) ? ItemKey : collectedItem.itemKey;
+        string collectedName = string.IsNullOrEmpty(collectedItem.name) ? DisplayName : collectedItem.name;
+        int collectedQuantity = Mathf.Clamp((int)Math.Min(int.MaxValue, collectedItem.quantity), 0, int.MaxValue);
+
+        Dictionary<string, int> rewards = new Dictionary<string, int>
+        {
+            { collectedKey, collectedQuantity }
+        };
+
+        Dictionary<string, string> displayNames = new Dictionary<string, string>
+        {
+            { collectedKey, collectedName }
+        };
+
+        if (rewardLedger != null) rewardLedger.GrantRewards(rewards, displayNames, $"{collectedName} x{collectedQuantity}");
+        rewardCollected.Invoke(collectedKey, collectedName, collectedQuantity);
     }
 
     private void EnsureInitialServerSnapshot()

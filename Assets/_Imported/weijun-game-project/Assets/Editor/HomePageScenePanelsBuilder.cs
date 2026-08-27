@@ -88,6 +88,17 @@ public static class HomePageScenePanelsBuilder
                     EditorSceneManager.SaveScene(scene);
                 }
 
+                string lotteryLayoutKey = "WeiJun.HomeScenePanels.LotteryLayoutCheck.1";
+                if (registry != null
+                    && registry.SchemaVersion >= MinimumComponentizedBookSchemaVersion
+                    && registry.SchemaVersion == ScenePanelsSchemaVersion
+                    && !SessionState.GetBool(lotteryLayoutKey, false)
+                    && !HasLotteryLayout(registry))
+                {
+                    ReplaceLotteryPanelInScene(scene, canvasObject, registry);
+                }
+                SessionState.SetBool(lotteryLayoutKey, true);
+
                 SessionState.SetBool(sessionKey, true);
             }
             finally
@@ -110,6 +121,77 @@ public static class HomePageScenePanelsBuilder
         }
 
         BuildScenePanels(scene, true);
+    }
+
+    [MenuItem("Tools/WeiJun UI/Rebuild Lottery Panel")]
+    public static void RebuildLotteryPanel()
+    {
+        Scene scene = SceneManager.GetActiveScene();
+        if (scene.path != HomeScenePath)
+        {
+            scene = EditorSceneManager.OpenScene(HomeScenePath, OpenSceneMode.Single);
+        }
+
+        GameObject canvasObject = FindRoot(scene, CanvasName);
+        if (canvasObject == null)
+        {
+            Debug.LogError("HomePanelsCanvas was not found. Rebuild the home scene panels first.");
+            return;
+        }
+
+        HomePageScenePanels registry = canvasObject.GetComponent<HomePageScenePanels>();
+        if (registry == null)
+        {
+            Debug.LogError("HomePanelsCanvas is missing HomePageScenePanels.");
+            return;
+        }
+
+        HomePageScenePanel existing = registry.Get(HomePageScenePanelType.Lottery);
+        if (existing != null)
+        {
+            Object.DestroyImmediate(existing.gameObject);
+        }
+
+        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+        HomePageScenePanel panel = BuildLotteryPanel(canvasObject.transform);
+        panel.SetVisible(false);
+        registry.EditorReplacePanel(panel, registry.SchemaVersion);
+        EditorUtility.SetDirty(panel);
+        EditorUtility.SetDirty(registry);
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        Selection.activeGameObject = panel.gameObject;
+        Debug.Log("Lottery panel rebuilt as an editable horizontal Unity UI panel.");
+    }
+
+    private static bool HasLotteryLayout(HomePageScenePanels registry)
+    {
+        HomePageScenePanel lottery = registry != null ? registry.Get(HomePageScenePanelType.Lottery) : null;
+        return lottery != null && lottery.transform.Find("LotteryPoolPanel") != null;
+    }
+
+    private static HomePageScenePanel ReplaceLotteryPanelInScene(Scene scene, GameObject canvasObject, HomePageScenePanels registry)
+    {
+        if (canvasObject == null || registry == null)
+        {
+            return null;
+        }
+
+        HomePageScenePanel existing = registry.Get(HomePageScenePanelType.Lottery);
+        if (existing != null)
+        {
+            Object.DestroyImmediate(existing.gameObject);
+        }
+
+        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+        HomePageScenePanel panel = BuildLotteryPanel(canvasObject.transform);
+        panel.SetVisible(false);
+        registry.EditorReplacePanel(panel, registry.SchemaVersion);
+        EditorUtility.SetDirty(panel);
+        EditorUtility.SetDirty(registry);
+        EditorSceneManager.MarkSceneDirty(scene);
+        EditorSceneManager.SaveScene(scene);
+        return panel;
     }
 
     [MenuItem("Tools/WeiJun UI/Add Role Panel")]
@@ -160,6 +242,7 @@ public static class HomePageScenePanelsBuilder
     {
         fallbackFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
         defaultFont = AssetDatabase.LoadAssetAtPath<Font>(FontPath) ?? fallbackFont;
+        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
         EnsureTestNode(scene);
 
         GameObject existing = FindRoot(scene, CanvasName);
@@ -684,55 +767,200 @@ public static class HomePageScenePanelsBuilder
         Transform root = scenePanel.transform;
         CreateDimmer(root);
 
-        Image panel = CreateImage("LotteryPanel", root, new Color(1f, 0.78f, 0.08f, 1f));
-        SetTopLeft(panel.rectTransform, new Vector2(560f, -72f), new Vector2(780f, 895f));
-        Image inner = CreateImage("LotteryInner", panel.transform, new Color(1f, 0.88f, 0.36f, 1f));
-        SetTopLeft(inner.rectTransform, new Vector2(18f, -18f), new Vector2(744f, 859f));
-        Text title = CreateText("LotteryTitle", panel.transform, "幸运抽奖机", 54, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-        SetTopLeft(title.rectTransform, new Vector2(190f, -34f), new Vector2(400f, 76f));
-        Outline outline = title.gameObject.AddComponent<Outline>();
-        outline.effectColor = new Color(0.10f, 0.10f, 0.10f, 0.92f);
-        outline.effectDistance = new Vector2(2f, -2f);
+        Image panel = CreateImage("LotteryPanel", root, new Color(0.18f, 0.32f, 0.29f, 1f));
+        SetTopLeft(panel.rectTransform, new Vector2(210f, -130f), new Vector2(1500f, 820f));
+        AddSimpleFrame(panel.transform, new Vector2(1500f, 820f), new Color(0.82f, 0.63f, 0.27f, 1f));
 
-        Button close = CreateButton("LotteryCloseButton", panel.transform, "X", new Color(0.91f, 0.39f, 0.16f, 1f), Color.white, 26);
-        SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(702f, -22f), new Vector2(54f, 54f));
+        Image header = CreateImage("LotteryHeader", panel.transform, new Color(0.10f, 0.24f, 0.22f, 1f));
+        SetTopLeft(header.rectTransform, new Vector2(24f, -24f), new Vector2(1452f, 82f));
+        TMP_Text title = CreateTMPText("LotteryTitle", header.transform, "幸运抽奖", 38, Color.white, TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(title.rectTransform, new Vector2(28f, -15f), new Vector2(280f, 50f));
+        TMP_Text subtitle = CreateTMPText("LotterySubtitle", header.transform, "服务器奖池 · 奖励按抽奖响应到账", 17, new Color(0.78f, 0.92f, 0.87f, 0.90f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(subtitle.rectTransform, new Vector2(316f, -22f), new Vector2(420f, 36f));
 
-        Image machine = CreateImage("LotteryMachine", panel.transform, new Color(0.96f, 0.30f, 0.34f, 1f));
-        SetTopLeft(machine.rectTransform, new Vector2(92f, -188f), new Vector2(590f, 456f));
-        Image screen = CreateImage("LotteryScreen", machine.transform, new Color(0.18f, 0.18f, 0.18f, 1f));
-        SetTopLeft(screen.rectTransform, new Vector2(54f, -74f), new Vector2(482f, 184f));
-        BuildLotteryPrize(screen.transform, "LotteryLeftPrize", "LotteryLeftName", "LotteryLeftAmount", new Vector2(12f, -12f), "宝石", "x?");
-        BuildLotteryPrize(screen.transform, "LotteryCenterPrize", "LotteryCenterName", "LotteryCenterAmount", new Vector2(166f, -12f), "折扣券", "10%");
-        BuildLotteryPrize(screen.transform, "LotteryRightPrize", "LotteryRightName", "LotteryRightAmount", new Vector2(320f, -12f), "闹钟", "x1");
+        Image diamondBadge = CreateImage("LotteryDiamondBadge", header.transform, new Color(0.20f, 0.46f, 0.52f, 1f));
+        SetTopLeft(diamondBadge.rectTransform, new Vector2(918f, -14f), new Vector2(226f, 54f));
+        Image diamondIcon = CreateImage("LotteryDiamondIcon", diamondBadge.transform, new Color(0.38f, 0.82f, 1f, 1f));
+        SetTopLeft(diamondIcon.rectTransform, new Vector2(14f, -12f), new Vector2(30f, 30f));
+        TMP_Text diamondText = CreateTMPText("LotteryDiamondText", diamondBadge.transform, "钻石 0", 19, Color.white, TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(diamondText.rectTransform, new Vector2(56f, -8f), new Vector2(156f, 38f));
 
-        Image chance = CreateImage("LotteryChanceBox", machine.transform, Color.white);
-        SetTopLeft(chance.rectTransform, new Vector2(190f, -300f), new Vector2(226f, 42f));
-        Text chanceText = CreateText("LotteryChanceText", chance.transform, "剩余 100 次机会", 21, FontStyle.Bold, new Color(0.28f, 0.18f, 0.12f, 1f), TextAnchor.MiddleCenter);
-        Stretch(chanceText.rectTransform);
+        Button pool = CreateTMPButton("LotteryPoolButton", header.transform, "奖池", new Color(0.83f, 0.58f, 0.24f, 1f), new Color(0.20f, 0.12f, 0.06f, 1f), 18);
+        SetTopLeft(pool.GetComponent<RectTransform>(), new Vector2(1160f, -12f), new Vector2(142f, 56f));
+        Button close = CreateTMPButton("LotteryCloseButton", header.transform, "X", new Color(0.78f, 0.28f, 0.24f, 1f), Color.white, 23);
+        SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(1368f, -12f), new Vector2(58f, 58f));
 
-        Text status = CreateText("LotteryStatus", panel.transform, "点击开始消耗 1 次机会", 22, FontStyle.Bold, new Color(0.34f, 0.14f, 0.07f, 1f), TextAnchor.MiddleCenter);
-        SetTopLeft(status.rectTransform, new Vector2(100f, -660f), new Vector2(580f, 46f));
-        Button prize = CreateButton("LotteryPrizeButton", panel.transform, "奖品", new Color(1f, 0.92f, 0.74f, 1f), new Color(0.38f, 0.18f, 0.08f, 1f), 20);
-        SetTopLeft(prize.GetComponent<RectTransform>(), new Vector2(126f, -724f), new Vector2(120f, 64f));
-        Button start = CreateButton("LotteryStartButton", panel.transform, "点击开始", new Color(0.96f, 0.32f, 0.34f, 1f), Color.white, 28);
-        SetTopLeft(start.GetComponent<RectTransform>(), new Vector2(286f, -724f), new Vector2(210f, 64f));
-        Button rule = CreateButton("LotteryRuleButton", panel.transform, "规则", new Color(1f, 0.96f, 0.80f, 1f), new Color(0.38f, 0.18f, 0.08f, 1f), 20);
-        SetTopLeft(rule.GetComponent<RectTransform>(), new Vector2(536f, -724f), new Vector2(120f, 64f));
+        Image prizeArea = CreateImage("LotteryPrizeArea", panel.transform, new Color(0.93f, 0.85f, 0.65f, 1f));
+        SetTopLeft(prizeArea.rectTransform, new Vector2(36f, -132f), new Vector2(1428f, 490f));
+        TMP_Text prizeTitle = CreateTMPText("LotteryPrizeTitle", prizeArea.transform, "本期奖品", 26, new Color(0.23f, 0.18f, 0.10f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(prizeTitle.rectTransform, new Vector2(24f, -18f), new Vector2(240f, 40f));
+        TMP_Text prizeHint = CreateTMPText("LotteryPrizeHint", prizeArea.transform, "奖项与概率以服务器返回为准", 16, new Color(0.42f, 0.36f, 0.26f, 0.88f), TextAlignmentOptions.MidlineRight);
+        SetTopLeft(prizeHint.rectTransform, new Vector2(900f, -22f), new Vector2(494f, 32f));
+
+        Image prizeViewport = CreateImage("LotteryPrizeViewport", prizeArea.transform, new Color(0.98f, 0.93f, 0.79f, 1f));
+        SetTopLeft(prizeViewport.rectTransform, new Vector2(22f, -72f), new Vector2(1384f, 330f));
+        prizeViewport.gameObject.AddComponent<RectMask2D>();
+        ScrollRect prizeScroll = prizeViewport.gameObject.AddComponent<ScrollRect>();
+        prizeScroll.horizontal = true;
+        prizeScroll.vertical = false;
+        prizeScroll.movementType = ScrollRect.MovementType.Elastic;
+        GameObject prizeContent = CreateRectObject("LotteryPrizeContent", prizeViewport.transform);
+        SetTopLeft(prizeContent.GetComponent<RectTransform>(), new Vector2(18f, -18f), new Vector2(1348f, 292f));
+        HorizontalLayoutGroup prizeLayout = prizeContent.AddComponent<HorizontalLayoutGroup>();
+        prizeLayout.spacing = 16f;
+        prizeLayout.padding = new RectOffset(12, 12, 10, 10);
+        prizeLayout.childAlignment = TextAnchor.UpperLeft;
+        prizeLayout.childControlWidth = false;
+        prizeLayout.childControlHeight = false;
+        prizeLayout.childForceExpandWidth = false;
+        prizeLayout.childForceExpandHeight = false;
+        ContentSizeFitter prizeFitter = prizeContent.AddComponent<ContentSizeFitter>();
+        prizeFitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
+        prizeFitter.verticalFit = ContentSizeFitter.FitMode.Unconstrained;
+        prizeScroll.viewport = prizeViewport.rectTransform;
+        prizeScroll.content = prizeContent.GetComponent<RectTransform>();
+        BuildLotteryPrizeCardTemplate(prizeContent.transform);
+        TMP_Text prizeEmpty = CreateTMPText("LotteryPrizeEmptyText", prizeArea.transform, "正在读取服务器奖池", 22, new Color(0.48f, 0.39f, 0.26f, 0.88f), TextAlignmentOptions.Center);
+        SetTopLeft(prizeEmpty.rectTransform, new Vector2(430f, -198f), new Vector2(550f, 54f));
+
+        TMP_Text status = CreateTMPText("LotteryStatus", panel.transform, "正在读取服务器奖池", 17, new Color(0.82f, 0.94f, 0.89f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(status.rectTransform, new Vector2(50f, -650f), new Vector2(1400f, 42f));
+        Image actionBar = CreateImage("LotteryActionBar", panel.transform, new Color(0.10f, 0.24f, 0.22f, 1f));
+        SetTopLeft(actionBar.rectTransform, new Vector2(36f, -704f), new Vector2(1428f, 88f));
+        Button single = CreateTMPButton("LotterySingleButton", actionBar.transform, "单抽", new Color(0.83f, 0.58f, 0.24f, 1f), new Color(0.20f, 0.12f, 0.06f, 1f), 23);
+        SetTopLeft(single.GetComponent<RectTransform>(), new Vector2(370f, -12f), new Vector2(300f, 64f));
+        Button ten = CreateTMPButton("LotteryTenButton", actionBar.transform, "连抽", new Color(0.35f, 0.70f, 0.53f, 1f), Color.white, 23);
+        SetTopLeft(ten.GetComponent<RectTransform>(), new Vector2(758f, -12f), new Vector2(300f, 64f));
+
+        BuildLotteryPoolOverlay(root);
+        BuildLotteryRewardConfirmOverlay(root);
         return scenePanel;
     }
 
-    private static void BuildLotteryPrize(Transform parent, string rootName, string nameText, string amountText, Vector2 position, string label, string amount)
+    private static void BuildLotteryPrizeCardTemplate(Transform parent)
     {
-        Image card = CreateImage(rootName, parent, rootName == "LotteryCenterPrize" ? new Color(1f, 0.88f, 0.32f, 1f) : new Color(1f, 0.97f, 0.84f, 1f));
-        SetTopLeft(card.rectTransform, position, new Vector2(150f, 160f));
-        Image icon = CreateImage("PrizeIcon", card.transform, new Color(0.24f, 0.64f, 0.94f, 1f));
-        SetTopLeft(icon.rectTransform, new Vector2(43f, -20f), new Vector2(64f, 58f));
-        Text iconText = CreateText("PrizeIconText", icon.transform, "奖", 26, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+        Image card = CreateImage("LotteryPrizeCardTemplate", parent, new Color(1f, 0.97f, 0.84f, 1f));
+        SetTopLeft(card.rectTransform, Vector2.zero, new Vector2(210f, 286f));
+        card.raycastTarget = false;
+        Image icon = CreateImage("LotteryPrizeIcon", card.transform, new Color(0.25f, 0.63f, 0.78f, 1f));
+        SetTopLeft(icon.rectTransform, new Vector2(67f, -20f), new Vector2(76f, 76f));
+        TMP_Text iconText = CreateTMPText("LotteryPrizeIconText", icon.transform, "奖", 26, Color.white, TextAlignmentOptions.Center);
         Stretch(iconText.rectTransform);
-        Text name = CreateText(nameText, card.transform, label, 19, FontStyle.Bold, new Color(0.34f, 0.17f, 0.08f, 1f), TextAnchor.MiddleCenter);
-        SetTopLeft(name.rectTransform, new Vector2(10f, -88f), new Vector2(130f, 30f));
-        Text value = CreateText(amountText, card.transform, amount, 22, FontStyle.Bold, new Color(0.72f, 0.20f, 0.16f, 1f), TextAnchor.MiddleCenter);
-        SetTopLeft(value.rectTransform, new Vector2(10f, -122f), new Vector2(130f, 28f));
+        TMP_Text name = CreateTMPText("LotteryPrizeCardName", card.transform, "奖品名称", 19, new Color(0.26f, 0.16f, 0.08f, 1f), TextAlignmentOptions.Center);
+        SetTopLeft(name.rectTransform, new Vector2(12f, -112f), new Vector2(186f, 34f));
+        TMP_Text amount = CreateTMPText("LotteryPrizeCardAmount", card.transform, "x0", 21, new Color(0.72f, 0.20f, 0.16f, 1f), TextAlignmentOptions.Center);
+        SetTopLeft(amount.rectTransform, new Vector2(12f, -152f), new Vector2(186f, 32f));
+        TMP_Text probability = CreateTMPText("LotteryPrizeCardProbability", card.transform, "概率 0%", 15, new Color(0.43f, 0.35f, 0.24f, 1f), TextAlignmentOptions.Center);
+        SetTopLeft(probability.rectTransform, new Vector2(12f, -204f), new Vector2(186f, 28f));
+        card.gameObject.SetActive(false);
+    }
+
+    private static void BuildLotteryPoolOverlay(Transform root)
+    {
+        Image overlay = CreateImage("LotteryPoolPanel", root, new Color(0.04f, 0.08f, 0.07f, 0.78f));
+        Stretch(overlay.rectTransform);
+        Image panel = CreateImage("LotteryPoolCard", overlay.transform, new Color(0.93f, 0.85f, 0.65f, 1f));
+        SetTopLeft(panel.rectTransform, new Vector2(260f, -80f), new Vector2(980f, 740f));
+        AddSimpleFrame(panel.transform, new Vector2(980f, 740f), new Color(0.50f, 0.35f, 0.16f, 1f));
+        TMP_Text title = CreateTMPText("LotteryPoolTitle", panel.transform, "当前奖池", 30, new Color(0.24f, 0.16f, 0.08f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(title.rectTransform, new Vector2(30f, -24f), new Vector2(300f, 42f));
+        TMP_Text note = CreateTMPText("LotteryPoolNote", panel.transform, "奖品、数量和概率均以服务器返回为准", 16, new Color(0.45f, 0.36f, 0.24f, 0.90f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(note.rectTransform, new Vector2(30f, -68f), new Vector2(560f, 30f));
+        Button close = CreateTMPButton("LotteryPoolCloseButton", panel.transform, "关闭", new Color(0.77f, 0.30f, 0.24f, 1f), Color.white, 17);
+        SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(810f, -20f), new Vector2(128f, 48f));
+        Image viewport = CreateImage("LotteryPoolViewport", panel.transform, new Color(0.98f, 0.93f, 0.79f, 1f));
+        SetTopLeft(viewport.rectTransform, new Vector2(28f, -116f), new Vector2(924f, 570f));
+        viewport.gameObject.AddComponent<RectMask2D>();
+        ScrollRect scroll = viewport.gameObject.AddComponent<ScrollRect>();
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        GameObject content = CreateRectObject("LotteryPoolContent", viewport.transform);
+        SetTopLeft(content.GetComponent<RectTransform>(), new Vector2(16f, -16f), new Vector2(892f, 530f));
+        VerticalLayoutGroup layout = content.AddComponent<VerticalLayoutGroup>();
+        layout.spacing = 8f;
+        layout.padding = new RectOffset(8, 8, 8, 8);
+        layout.childAlignment = TextAnchor.UpperCenter;
+        layout.childControlWidth = false;
+        layout.childControlHeight = false;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+        ContentSizeFitter fitter = content.AddComponent<ContentSizeFitter>();
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        scroll.viewport = viewport.rectTransform;
+        scroll.content = content.GetComponent<RectTransform>();
+        BuildLotteryPoolRowTemplate(content.transform);
+        overlay.gameObject.SetActive(false);
+    }
+
+    private static void BuildLotteryPoolRowTemplate(Transform parent)
+    {
+        Image row = CreateImage("LotteryPoolRowTemplate", parent, new Color(1f, 0.97f, 0.84f, 1f));
+        SetTopLeft(row.rectTransform, Vector2.zero, new Vector2(860f, 68f));
+        row.raycastTarget = false;
+        TMP_Text slot = CreateTMPText("LotteryPoolRowSlot", row.transform, "#1", 16, new Color(0.46f, 0.31f, 0.16f, 1f), TextAlignmentOptions.Center);
+        SetTopLeft(slot.rectTransform, new Vector2(12f, -12f), new Vector2(60f, 42f));
+        TMP_Text name = CreateTMPText("LotteryPoolRowName", row.transform, "奖品名称", 18, new Color(0.25f, 0.16f, 0.08f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(name.rectTransform, new Vector2(92f, -12f), new Vector2(360f, 42f));
+        TMP_Text amount = CreateTMPText("LotteryPoolRowAmount", row.transform, "数量 x0", 16, new Color(0.70f, 0.25f, 0.16f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(amount.rectTransform, new Vector2(482f, -12f), new Vector2(150f, 42f));
+        TMP_Text probability = CreateTMPText("LotteryPoolRowProbability", row.transform, "概率 0%", 16, new Color(0.28f, 0.48f, 0.35f, 1f), TextAlignmentOptions.MidlineRight);
+        SetTopLeft(probability.rectTransform, new Vector2(650f, -12f), new Vector2(190f, 42f));
+        row.gameObject.SetActive(false);
+    }
+
+    private static void BuildLotteryRewardConfirmOverlay(Transform root)
+    {
+        Image overlay = CreateImage("LotteryRewardConfirmPanel", root, new Color(0.04f, 0.08f, 0.07f, 0.82f));
+        Stretch(overlay.rectTransform);
+        Image panel = CreateImage("LotteryRewardConfirmCard", overlay.transform, new Color(0.93f, 0.85f, 0.65f, 1f));
+        SetTopLeft(panel.rectTransform, new Vector2(220f, -100f), new Vector2(1060f, 700f));
+        AddSimpleFrame(panel.transform, new Vector2(1060f, 700f), new Color(0.50f, 0.35f, 0.16f, 1f));
+        TMP_Text title = CreateTMPText("LotteryRewardConfirmTitle", panel.transform, "抽奖结果", 32, new Color(0.24f, 0.16f, 0.08f, 1f), TextAlignmentOptions.Center);
+        SetTopLeft(title.rectTransform, new Vector2(250f, -22f), new Vector2(560f, 46f));
+        TMP_Text summary = CreateTMPText("LotteryRewardConfirmSummary", panel.transform, "奖励已由服务器发放", 17, new Color(0.35f, 0.46f, 0.31f, 1f), TextAlignmentOptions.Center);
+        SetTopLeft(summary.rectTransform, new Vector2(120f, -70f), new Vector2(820f, 30f));
+        Image viewport = CreateImage("LotteryRewardViewport", panel.transform, new Color(0.98f, 0.93f, 0.79f, 1f));
+        SetTopLeft(viewport.rectTransform, new Vector2(50f, -112f), new Vector2(960f, 452f));
+        viewport.gameObject.AddComponent<RectMask2D>();
+        ScrollRect scroll = viewport.gameObject.AddComponent<ScrollRect>();
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        GameObject content = CreateRectObject("LotteryRewardContent", viewport.transform);
+        SetTopLeft(content.GetComponent<RectTransform>(), new Vector2(16f, -16f), new Vector2(928f, 410f));
+        VerticalLayoutGroup layout = content.AddComponent<VerticalLayoutGroup>();
+        layout.spacing = 8f;
+        layout.padding = new RectOffset(8, 8, 8, 8);
+        layout.childAlignment = TextAnchor.UpperCenter;
+        layout.childControlWidth = false;
+        layout.childControlHeight = false;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = false;
+        ContentSizeFitter fitter = content.AddComponent<ContentSizeFitter>();
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        scroll.viewport = viewport.rectTransform;
+        scroll.content = content.GetComponent<RectTransform>();
+        BuildLotteryRewardRowTemplate(content.transform);
+        Button confirm = CreateTMPButton("LotteryRewardConfirmButton", panel.transform, "确认领取", new Color(0.30f, 0.64f, 0.40f, 1f), Color.white, 21);
+        SetTopLeft(confirm.GetComponent<RectTransform>(), new Vector2(390f, -614f), new Vector2(280f, 58f));
+        overlay.gameObject.SetActive(false);
+    }
+
+    private static void BuildLotteryRewardRowTemplate(Transform parent)
+    {
+        Image row = CreateImage("LotteryRewardRowTemplate", parent, new Color(1f, 0.97f, 0.84f, 1f));
+        SetTopLeft(row.rectTransform, Vector2.zero, new Vector2(900f, 76f));
+        row.raycastTarget = false;
+        TMP_Text sequence = CreateTMPText("LotteryRewardRowSequence", row.transform, "1", 16, new Color(0.46f, 0.31f, 0.16f, 1f), TextAlignmentOptions.Center);
+        SetTopLeft(sequence.rectTransform, new Vector2(14f, -14f), new Vector2(54f, 46f));
+        TMP_Text name = CreateTMPText("LotteryRewardRowName", row.transform, "奖励名称", 19, new Color(0.25f, 0.16f, 0.08f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(name.rectTransform, new Vector2(88f, -14f), new Vector2(420f, 46f));
+        TMP_Text amount = CreateTMPText("LotteryRewardRowAmount", row.transform, "x0", 19, new Color(0.70f, 0.25f, 0.16f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(amount.rectTransform, new Vector2(540f, -14f), new Vector2(120f, 46f));
+        TMP_Text note = CreateTMPText("LotteryRewardRowNote", row.transform, string.Empty, 15, new Color(0.28f, 0.48f, 0.35f, 1f), TextAlignmentOptions.MidlineRight);
+        SetTopLeft(note.rectTransform, new Vector2(672f, -14f), new Vector2(210f, 46f));
+        row.gameObject.SetActive(false);
     }
 
     private static HomePageScenePanel BuildDailySignPanel(Transform parent)
@@ -1066,6 +1294,8 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(account.rectTransform, new Vector2(28f, -430f), new Vector2(328f, 30f));
         Text level = CreateText("ProfileLevel", identityCard.transform, "领主等级  Lv.1", 18, FontStyle.Bold, new Color(0.50f, 0.20f, 0.12f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(level.rectTransform, new Vector2(28f, -468f), new Vector2(328f, 32f));
+        TMP_Text cancellationStatus = CreateTMPText("ProfileCancellationStatus", identityCard.transform, "账号注销状态：暂未同步", 15, new Color(0.46f, 0.30f, 0.18f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(cancellationStatus.rectTransform, new Vector2(28f, -510f), new Vector2(328f, 30f));
 
         Text resourceTitle = CreateText("ProfileResourceTitle", panel.transform, "领地资源", 27, FontStyle.Bold, new Color(0.39f, 0.18f, 0.08f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(resourceTitle.rectTransform, new Vector2(454f, -130f), new Vector2(240f, 38f));
@@ -1096,9 +1326,11 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(footerDivider.rectTransform, new Vector2(42f, -694f), new Vector2(1196f, 4f));
         footerDivider.raycastTarget = false;
         Text profileStatus = CreateText("ProfileStatus", panel.transform, "账号资料等待同步", 17, FontStyle.Bold, new Color(0.36f, 0.42f, 0.24f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(profileStatus.rectTransform, new Vector2(50f, -716f), new Vector2(800f, 48f));
+        SetTopLeft(profileStatus.rectTransform, new Vector2(50f, -716f), new Vector2(650f, 48f));
         Button refresh = CreateButton("ProfileRefreshButton", panel.transform, "本地存档", new Color(0.28f, 0.57f, 0.73f, 1f), Color.white, 19);
-        SetTopLeft(refresh.GetComponent<RectTransform>(), new Vector2(900f, -724f), new Vector2(150f, 52f));
+        SetTopLeft(refresh.GetComponent<RectTransform>(), new Vector2(730f, -724f), new Vector2(150f, 52f));
+        Button cancelAccount = CreateTMPButton("ProfileCancelAccountButton", panel.transform, "注销账号", new Color(0.70f, 0.25f, 0.20f, 1f), Color.white, 18);
+        SetTopLeft(cancelAccount.GetComponent<RectTransform>(), new Vector2(900f, -724f), new Vector2(150f, 52f));
         Button switchLogin = CreateButton("ProfileSwitchLoginButton", panel.transform, "切换账号", new Color(0.85f, 0.43f, 0.31f, 1f), Color.white, 19);
         SetTopLeft(switchLogin.GetComponent<RectTransform>(), new Vector2(1070f, -724f), new Vector2(168f, 52f));
         return scenePanel;
@@ -1382,7 +1614,7 @@ public static class HomePageScenePanelsBuilder
         target.layer = LayerMask.NameToLayer("UI");
         target.transform.SetParent(parent, false);
         TextMeshProUGUI label = target.GetComponent<TextMeshProUGUI>();
-        label.font = roleFontAsset;
+        label.font = roleFontAsset != null ? roleFontAsset : TMP_Settings.defaultFontAsset;
         label.text = value;
         label.fontSize = fontSize;
         label.fontStyle = FontStyles.Normal;

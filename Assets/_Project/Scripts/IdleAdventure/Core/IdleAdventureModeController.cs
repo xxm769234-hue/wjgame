@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Reflection;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -22,6 +23,9 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private const string AfkRewardCanvasName = "Idle Adventure AFK Reward Canvas";
     private const long BackendBattleFocusBuffPresetId = 16001L;
     private const long BackendArmorBreakBuffPresetId = 16002L;
+    private const float FormationRealtimeRefreshDelaySeconds = 0.15f;
+    private const float FormationRealtimeHandshakeTimeoutSeconds = 10f;
+    private const float FormationRealtimeFallbackIntervalSeconds = 20f;
 
     [Header("Mode Config")]
     [SerializeField] private IdleAdventureModeConfig modeConfig;
@@ -128,6 +132,21 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private int backendNextStage = 1;
     private IdleAdventurePlayerNpcResponse[] backendAvailableNpcs = new IdleAdventurePlayerNpcResponse[0];
     private Coroutine backendHomeLoadRoutine;
+    private bool backendHomeLoadRunning;
+    private Coroutine formationRealtimeConnectionRoutine;
+    private Coroutine formationRealtimeReconnectRoutine;
+    private Coroutine formationRealtimeHandshakeRoutine;
+    private Coroutine formationRealtimeHeartbeatRoutine;
+    private int formationRealtimeHeartbeatSequence;
+    private Coroutine formationRealtimeRefreshRoutine;
+    private Coroutine formationRealtimeFallbackRoutine;
+    private readonly HashSet<string> formationRealtimeEventIds = new HashSet<string>();
+    private readonly Queue<string> formationRealtimeEventOrder = new Queue<string>();
+    private bool formationRealtimeConnected;
+    private bool formationRealtimeTransportOpen;
+    private bool formationRealtimeClosing;
+    private bool formationRealtimeRefreshQueued;
+    private bool resumeFormationRealtimeAfterPause;
     private Coroutine battleRoutine;
 
     public IReadOnlyDictionary<string, int> GrantedRewards => grantedRewards;
@@ -225,7 +244,9 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         EnsureStageProgress();
         EnsureAfkRewardSource();
         ResetToStartScreen();
+        formationRealtimeClosing = false;
         QueueBackendHomeLoad();
+        QueueFormationRealtimeConnection();
 
         if (battleRoutine != null)
         {
@@ -245,7 +266,595 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             StopCoroutine(battleRoutine);
             battleRoutine = null;
         }
+
+        backendHomeLoadRunning = false;
+        StopFormationRealtimeConnection();
     }
+
+    private void QueueFormationRealtimeConnection()
+    {
+        if (!Application.isPlaying || formationRealtimeClosing || formationRealtimeConnected || formationRealtimeTransportOpen)
+        {
+            return;
+        }
+
+        if (formationRealtimeConnectionRoutine == null)
+        {
+            formationRealtimeConnectionRoutine = StartCoroutine(ConnectFormationRealtimeWhenReady());
+        }
+    }
+
+    private IEnumerator ConnectFormationRealtimeWhenReady()
+    {
+        BackendGameService service = ResolveBackendService();
+        float deadline = Time.unscaledTime + 8f;
+        while (service != null
+            && (!service.IsAuthenticated || service.IsConnecting)
+            && Time.unscaledTime < deadline)
+        {
+            yield return null;
+        }
+
+        formationRealtimeConnectionRoutine = null;
+        if (formationRealtimeClosing || !isActiveAndEnabled || service == null || !service.IsAuthenticated)
+        {
+            BeginFormationRealtimeFallbackPolling();
+            yield break;
+        }
+
+        BeginFormationRealtimeConnection();
+    }
+
+    private void BeginFormationRealtimeConnection()
+    {
+        if (formationRealtimeClosing || !isActiveAndEnabled || !ShouldUseBackendApi())
+        {
+            return;
+        }
+
+        if (!IsFormationRealtimeAvailable())
+        {
+            BeginFormationRealtimeFallbackPolling();
+            return;
+        }
+
+        if (formationRealtimeTransportOpen || formationRealtimeConnected)
+        {
+            return;
+        }
+
+        if (!TryBuildFormationRealtimeUrl(out string url, out string error))
+        {
+            Debug.LogWarning("Idle Adventure formation realtime URL is invalid: " + error, this);
+            BeginFormationRealtimeFallbackPolling();
+            return;
+        }
+
+        formationRealtimeClosing = false;
+        formationRealtimeTransportOpen = true;
+        ConnectFormationRealtime(url, "Bearer " + GetBackendSessionToken());
+    }
+
+    private static Type ResolveImportedRuntimeType(string typeName)
+    {
+        Type resolvedType = Type.GetType(typeName + ", WeijunGameProject");
+        if (resolvedType != null)
+        {
+            return resolvedType;
+        }
+
+        Assembly[] assemblies = AppDomain.CurrentDomain.GetAssemblies();
+        for (int i = 0; i < assemblies.Length; i++)
+        {
+            resolvedType = assemblies[i].GetType(typeName);
+            if (resolvedType != null)
+            {
+                return resolvedType;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool IsFormationRealtimeAvailable()
+    {
+        Type bridgeType = ResolveImportedRuntimeType("RealtimePlatformBridge");
+        PropertyInfo availableProperty = bridgeType == null
+            ? null
+            : bridgeType.GetProperty("IsAvailable", BindingFlags.Public | BindingFlags.Static);
+        if (availableProperty == null)
+        {
+            Debug.LogWarning("Idle Adventure formation realtime bridge is unavailable.");
+            return false;
+        }
+
+        try
+        {
+            return availableProperty.GetValue(null, null) is bool available && available;
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning("Idle Adventure formation realtime availability check failed: " + exception.Message);
+            return false;
+        }
+    }
+
+    private static bool TryBuildFormationRealtimeUrl(out string url, out string error)
+    {
+        url = string.Empty;
+        error = string.Empty;
+        Type configType = ResolveImportedRuntimeType("ApiRuntimeConfig");
+        MethodInfo method = configType == null
+            ? null
+            : configType.GetMethod("TryBuildRealtimeUrl", BindingFlags.Public | BindingFlags.Static);
+        if (method == null)
+        {
+            error = "ApiRuntimeConfig.TryBuildRealtimeUrl is unavailable.";
+            return false;
+        }
+
+        object[] arguments = { string.Empty, string.Empty };
+        try
+        {
+            bool success = method.Invoke(null, arguments) is bool result && result;
+            url = arguments[0] as string ?? string.Empty;
+            error = arguments[1] as string ?? string.Empty;
+            return success;
+        }
+        catch (Exception exception)
+        {
+            error = exception.Message;
+            return false;
+        }
+    }
+
+    private void ConnectFormationRealtime(string url, string authorization)
+    {
+        Type bridgeType = ResolveImportedRuntimeType("RealtimePlatformBridge");
+        MethodInfo method = bridgeType == null
+            ? null
+            : bridgeType.GetMethod("Connect", BindingFlags.Public | BindingFlags.Static);
+        if (method == null)
+        {
+            Debug.LogWarning("Idle Adventure formation realtime Connect method is unavailable.", this);
+            formationRealtimeTransportOpen = false;
+            BeginFormationRealtimeFallbackPolling();
+            return;
+        }
+
+        try
+        {
+            method.Invoke(null, new object[] { this, url, authorization });
+        }
+        catch (Exception exception)
+        {
+            formationRealtimeTransportOpen = false;
+            Debug.LogWarning("Idle Adventure formation realtime connection failed: " + exception.Message, this);
+            BeginFormationRealtimeFallbackPolling();
+        }
+    }
+
+    private static void SendFormationRealtime(string message)
+    {
+        Type bridgeType = ResolveImportedRuntimeType("RealtimePlatformBridge");
+        MethodInfo method = bridgeType == null
+            ? null
+            : bridgeType.GetMethod("Send", BindingFlags.Public | BindingFlags.Static);
+        if (method == null)
+        {
+            return;
+        }
+
+        try
+        {
+            method.Invoke(null, new object[] { message ?? string.Empty });
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning("Idle Adventure formation realtime heartbeat failed: " + exception.Message);
+        }
+    }
+
+    private static void CloseFormationRealtime()
+    {
+        Type bridgeType = ResolveImportedRuntimeType("RealtimePlatformBridge");
+        MethodInfo method = bridgeType == null
+            ? null
+            : bridgeType.GetMethod("Close", BindingFlags.Public | BindingFlags.Static);
+        if (method == null)
+        {
+            return;
+        }
+
+        try
+        {
+            method.Invoke(null, null);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning("Idle Adventure formation realtime close failed: " + exception.Message);
+        }
+    }
+
+    private int GetBackendPlayerId()
+    {
+        BackendGameService service = BackendGameService.Instance;
+        return service == null ? 0 : service.PlayerId;
+    }
+
+    private string GetBackendSessionToken()
+    {
+        BackendGameService service = BackendGameService.Instance;
+        return service == null ? string.Empty : service.Token;
+    }
+
+    public void OnRealtimeOpened(string message)
+    {
+        if (formationRealtimeClosing)
+        {
+            return;
+        }
+
+        formationRealtimeTransportOpen = true;
+        if (!formationRealtimeConnected && formationRealtimeHandshakeRoutine == null)
+        {
+            formationRealtimeHandshakeRoutine = StartCoroutine(WaitForFormationRealtimeHandshake());
+        }
+    }
+
+    public void OnRealtimeMessage(string json)
+    {
+        if (formationRealtimeClosing || !ShouldUseBackendApi())
+        {
+            StopFormationRealtimeConnection();
+            return;
+        }
+
+        FormationRealtimeEvent realtimeEvent;
+        try
+        {
+            realtimeEvent = JsonUtility.FromJson<FormationRealtimeEvent>(json);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning("Idle Adventure realtime message could not be parsed: " + exception.Message, this);
+            return;
+        }
+
+        if (realtimeEvent == null || string.IsNullOrEmpty(realtimeEvent.type))
+        {
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(realtimeEvent.eventId))
+        {
+            if (!formationRealtimeEventIds.Add(realtimeEvent.eventId))
+            {
+                return;
+            }
+
+            formationRealtimeEventOrder.Enqueue(realtimeEvent.eventId);
+            while (formationRealtimeEventOrder.Count > 512)
+            {
+                string oldestEventId = formationRealtimeEventOrder.Dequeue();
+                formationRealtimeEventIds.Remove(oldestEventId);
+            }
+        }
+
+        if (realtimeEvent.type == "CONNECTED")
+        {
+            ConfirmFormationRealtimeHandshake(realtimeEvent);
+            return;
+        }
+
+        if (!formationRealtimeConnected || realtimeEvent.playerId != GetBackendPlayerId())
+        {
+            return;
+        }
+
+        if (realtimeEvent.type == "IDLE_ADVENTURE_FORMATION_CHANGED")
+        {
+            QueueFormationRealtimeRefresh();
+        }
+    }
+
+    private void ConfirmFormationRealtimeHandshake(FormationRealtimeEvent realtimeEvent)
+    {
+        if (realtimeEvent.playerId != GetBackendPlayerId())
+        {
+            Debug.LogWarning("Idle Adventure realtime CONNECTED event belongs to a different player.", this);
+            StopFormationRealtimeConnection();
+            return;
+        }
+
+        if (formationRealtimeConnected)
+        {
+            return;
+        }
+
+        formationRealtimeConnected = true;
+        formationRealtimeTransportOpen = true;
+        formationRealtimeClosing = false;
+        formationRealtimeHeartbeatSequence = 0;
+        StopFormationRealtimeHandshake();
+        if (formationRealtimeReconnectRoutine != null)
+        {
+            StopCoroutine(formationRealtimeReconnectRoutine);
+            formationRealtimeReconnectRoutine = null;
+        }
+
+        StopFormationRealtimeHeartbeat();
+        formationRealtimeHeartbeatRoutine = StartCoroutine(SendFormationRealtimeHeartbeats());
+        StopFormationRealtimeFallbackPolling();
+        QueueFormationRealtimeRefresh();
+    }
+
+    private void QueueFormationRealtimeRefresh()
+    {
+        if (!Application.isPlaying || !ShouldUseBackendApi() || formationRealtimeClosing)
+        {
+            return;
+        }
+
+        formationRealtimeRefreshQueued = true;
+        if (formationRealtimeRefreshRoutine == null)
+        {
+            formationRealtimeRefreshRoutine = StartCoroutine(RefreshFormationAfterRealtimeSignal());
+        }
+    }
+
+    private IEnumerator RefreshFormationAfterRealtimeSignal()
+    {
+        while (backendHomeLoadRunning && isActiveAndEnabled && !formationRealtimeClosing)
+        {
+            yield return null;
+        }
+
+        while (formationRealtimeRefreshQueued
+            && !formationRealtimeClosing
+            && isActiveAndEnabled
+            && ShouldUseBackendApi())
+        {
+            formationRealtimeRefreshQueued = false;
+            yield return new WaitForSecondsRealtime(FormationRealtimeRefreshDelaySeconds);
+            if (formationRealtimeRefreshQueued)
+            {
+                continue;
+            }
+
+            while (backendRequestPending && isActiveAndEnabled && !formationRealtimeClosing)
+            {
+                yield return null;
+            }
+
+            BackendGameService service = ResolveBackendService();
+            if (service == null || !service.IsAuthenticated)
+            {
+                break;
+            }
+
+            int requestRevision = backendFormationRevision;
+            BackendResult<IdleAdventureFormationResponse> result = null;
+            yield return service.LoadIdleAdventureFormation(value => result = value);
+
+            if (result == null || !result.Success || result.Data == null)
+            {
+                AddLog("Backend formation realtime refresh failed: " + BackendResultMessage(result));
+                continue;
+            }
+
+            if (backendFormationDirty || requestRevision != backendFormationRevision)
+            {
+                Debug.Log("Idle Adventure formation refresh kept local edits because a newer local change exists.", this);
+                continue;
+            }
+
+            ApplyBackendFormation(result.Data);
+            if (formationPanelView != null && formationPanelView.HasBindings)
+            {
+                formationPanelView.SetStatus("Formation refreshed from server");
+            }
+        }
+
+        formationRealtimeRefreshRoutine = null;
+    }
+
+    private void BeginFormationRealtimeFallbackPolling()
+    {
+        if (formationRealtimeFallbackRoutine == null
+            && !formationRealtimeClosing
+            && isActiveAndEnabled)
+        {
+            formationRealtimeFallbackRoutine = StartCoroutine(FormationRealtimeFallbackPolling());
+        }
+    }
+
+    private IEnumerator FormationRealtimeFallbackPolling()
+    {
+        while (!formationRealtimeClosing && isActiveAndEnabled && ShouldUseBackendApi())
+        {
+            yield return new WaitForSecondsRealtime(FormationRealtimeFallbackIntervalSeconds);
+            if (!formationRealtimeConnected && !formationRealtimeClosing)
+            {
+                QueueFormationRealtimeRefresh();
+                QueueFormationRealtimeConnection();
+            }
+        }
+
+        formationRealtimeFallbackRoutine = null;
+    }
+
+    private void StopFormationRealtimeConnection()
+    {
+        formationRealtimeClosing = true;
+        formationRealtimeConnected = false;
+        formationRealtimeTransportOpen = false;
+        formationRealtimeRefreshQueued = false;
+
+        if (formationRealtimeConnectionRoutine != null)
+        {
+            StopCoroutine(formationRealtimeConnectionRoutine);
+            formationRealtimeConnectionRoutine = null;
+        }
+
+        if (formationRealtimeReconnectRoutine != null)
+        {
+            StopCoroutine(formationRealtimeReconnectRoutine);
+            formationRealtimeReconnectRoutine = null;
+        }
+
+        StopFormationRealtimeHandshake();
+        if (formationRealtimeRefreshRoutine != null)
+        {
+            StopCoroutine(formationRealtimeRefreshRoutine);
+            formationRealtimeRefreshRoutine = null;
+        }
+
+        StopFormationRealtimeHeartbeat();
+        StopFormationRealtimeFallbackPolling();
+        CloseFormationRealtime();
+    }
+
+    private void StopFormationRealtimeHandshake()
+    {
+        if (formationRealtimeHandshakeRoutine != null)
+        {
+            StopCoroutine(formationRealtimeHandshakeRoutine);
+            formationRealtimeHandshakeRoutine = null;
+        }
+    }
+
+    private IEnumerator SendFormationRealtimeHeartbeats()
+    {
+        while (formationRealtimeConnected && !formationRealtimeClosing && ShouldUseBackendApi())
+        {
+            yield return new WaitForSecondsRealtime(25f);
+            if (formationRealtimeConnected && !formationRealtimeClosing)
+            {
+                formationRealtimeHeartbeatSequence++;
+                SendFormationRealtime("{\"type\":\"PING\",\"requestId\":\"idle-formation-"
+                    + formationRealtimeHeartbeatSequence + "\"}");
+            }
+        }
+
+        formationRealtimeHeartbeatRoutine = null;
+    }
+
+    private void StopFormationRealtimeHeartbeat()
+    {
+        if (formationRealtimeHeartbeatRoutine != null)
+        {
+            StopCoroutine(formationRealtimeHeartbeatRoutine);
+            formationRealtimeHeartbeatRoutine = null;
+        }
+    }
+
+    private IEnumerator WaitForFormationRealtimeHandshake()
+    {
+        yield return new WaitForSecondsRealtime(FormationRealtimeHandshakeTimeoutSeconds);
+        formationRealtimeHandshakeRoutine = null;
+        if (!formationRealtimeClosing && formationRealtimeTransportOpen && !formationRealtimeConnected)
+        {
+            Debug.LogWarning("Idle Adventure formation realtime handshake timed out.", this);
+            formationRealtimeTransportOpen = false;
+            CloseFormationRealtime();
+            ScheduleFormationRealtimeReconnect();
+            BeginFormationRealtimeFallbackPolling();
+        }
+    }
+
+    private void ScheduleFormationRealtimeReconnect()
+    {
+        if (formationRealtimeReconnectRoutine == null
+            && !formationRealtimeClosing
+            && isActiveAndEnabled
+            && ShouldUseBackendApi())
+        {
+            formationRealtimeReconnectRoutine = StartCoroutine(ReconnectFormationRealtime());
+        }
+    }
+
+    private IEnumerator ReconnectFormationRealtime()
+    {
+        yield return new WaitForSecondsRealtime(5f);
+        formationRealtimeReconnectRoutine = null;
+        if (!formationRealtimeClosing && isActiveAndEnabled && ShouldUseBackendApi())
+        {
+            BeginFormationRealtimeConnection();
+        }
+    }
+
+    private void StopFormationRealtimeFallbackPolling()
+    {
+        if (formationRealtimeFallbackRoutine != null)
+        {
+            StopCoroutine(formationRealtimeFallbackRoutine);
+            formationRealtimeFallbackRoutine = null;
+        }
+    }
+
+    public void OnRealtimeClosed(string message)
+    {
+        formationRealtimeConnected = false;
+        formationRealtimeTransportOpen = false;
+        StopFormationRealtimeHandshake();
+        StopFormationRealtimeHeartbeat();
+        QueueFormationRealtimeRefresh();
+        ScheduleFormationRealtimeReconnect();
+        BeginFormationRealtimeFallbackPolling();
+    }
+
+    public void OnRealtimeError(string message)
+    {
+        formationRealtimeConnected = false;
+        formationRealtimeTransportOpen = false;
+        StopFormationRealtimeHandshake();
+        StopFormationRealtimeHeartbeat();
+        if (!string.IsNullOrEmpty(message)
+            && message.IndexOf("cannot send the required Authorization", StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            formationRealtimeClosing = true;
+            Debug.LogWarning("Idle Adventure formation realtime authorization failed: " + message, this);
+            return;
+        }
+
+        if (!formationRealtimeClosing && !string.IsNullOrEmpty(message))
+        {
+            Debug.LogWarning("Idle Adventure formation realtime error: " + message, this);
+        }
+
+        QueueFormationRealtimeRefresh();
+        ScheduleFormationRealtimeReconnect();
+        BeginFormationRealtimeFallbackPolling();
+    }
+
+    private void OnApplicationPause(bool paused)
+    {
+        if (paused)
+        {
+            resumeFormationRealtimeAfterPause = ShouldUseBackendApi();
+            StopFormationRealtimeConnection();
+        }
+        else if (resumeFormationRealtimeAfterPause && isActiveAndEnabled && ShouldUseBackendApi())
+        {
+            resumeFormationRealtimeAfterPause = false;
+            formationRealtimeClosing = false;
+            QueueFormationRealtimeRefresh();
+            QueueFormationRealtimeConnection();
+        }
+    }
+
+    #pragma warning disable 0649
+    [Serializable]
+    private sealed class FormationRealtimeEvent
+    {
+        public string type;
+        public string requestId;
+        public string eventId;
+        public int playerId;
+        public string serverTime;
+    }
+    #pragma warning restore 0649
 
     [System.ComponentModel.EditorBrowsable(System.ComponentModel.EditorBrowsableState.Never)]
     public void SetFriendlyPartySize(int count)
@@ -314,6 +923,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (ShouldUseBackendApi() && !HasBackendNpcDefinitionsReady())
         {
             QueueBackendHomeLoad();
+        }
+
+        if (ShouldUseBackendApi())
+        {
+            QueueFormationRealtimeRefresh();
         }
 
         RefreshFormationView();
@@ -757,10 +1371,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         RectTransform panel = CreatePanel("AFK Reward Widget", root, new Color(0.10f, 0.12f, 0.14f, 0.94f));
         Anchor(panel, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-226f, 28f), new Vector2(-28f, 196f));
 
-        Image iconImage = CreateImage("Reward Icon Button", panel, new Color(0.32f, 0.36f, 0.40f, 1f));
+        Image iconImage = CreateImage("Reward Icon", panel, new Color(0.32f, 0.36f, 0.40f, 1f));
         Anchor(iconImage.rectTransform, new Vector2(0f, 0.22f), new Vector2(0.58f, 1f), new Vector2(12f, -10f), new Vector2(-8f, -12f));
-        Button collectButton = iconImage.gameObject.AddComponent<Button>();
-        collectButton.targetGraphic = iconImage;
 
         Image progressFill = CreateImage("Progress Fill", iconImage.transform, new Color(0.42f, 0.78f, 0.46f, 0.92f));
         progressFill.type = Image.Type.Filled;
@@ -770,14 +1382,18 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         progressFill.raycastTarget = false;
         Anchor(progressFill.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 0.16f), Vector2.zero, Vector2.zero);
 
+        Button collectButton = CreateButton("Collect Reward Button", panel, "领取奖励");
+        Anchor(collectButton.GetComponent<RectTransform>(), new Vector2(0f, 0f), new Vector2(0.58f, 0.22f), new Vector2(12f, 4f), new Vector2(-8f, -2f));
+        TextMeshProUGUI collectButtonText = collectButton.GetComponentInChildren<TextMeshProUGUI>(true);
+
         TextMeshProUGUI iconText = CreateText("Icon Text", iconImage.transform, "G", 34, FontStyles.Bold, TextAlignmentOptions.Center);
         Stretch(iconText.rectTransform);
 
         TextMeshProUGUI amountText = CreateText("Amount Text", panel, "x0", 21, FontStyles.Bold, TextAlignmentOptions.Center);
-        Anchor(amountText.rectTransform, new Vector2(0.58f, 0.50f), new Vector2(1f, 0.88f), new Vector2(0f, 0f), new Vector2(-10f, 0f));
+        Anchor(amountText.rectTransform, new Vector2(0.58f, 0.50f), new Vector2(1f, 0.86f), new Vector2(0f, 0f), new Vector2(-10f, 0f));
 
         TextMeshProUGUI timerText = CreateText("Timer Text", panel, "30s", 16, FontStyles.Bold, TextAlignmentOptions.Center);
-        Anchor(timerText.rectTransform, new Vector2(0.58f, 0.18f), new Vector2(1f, 0.50f), new Vector2(0f, 0f), new Vector2(-10f, 0f));
+        Anchor(timerText.rectTransform, new Vector2(0.58f, 0.34f), new Vector2(1f, 0.50f), new Vector2(0f, 0f), new Vector2(-10f, 0f));
 
         staminaText = CreateText("Stamina Text", panel, "体力 --", 14, FontStyles.Normal, TextAlignmentOptions.Center);
         Anchor(staminaText.rectTransform, new Vector2(0.58f, 0.86f), new Vector2(1f, 1f), new Vector2(0f, 0f), new Vector2(-10f, 0f));
@@ -786,10 +1402,10 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         Anchor(accelerateButton.GetComponent<RectTransform>(), new Vector2(0.58f, 0f), new Vector2(1f, 0.18f), new Vector2(0f, 4f), new Vector2(-10f, -2f));
         accelerateButton.onClick.AddListener(AccelerateAfkReward);
         accelerationText = CreateText("Acceleration Text", panel, string.Empty, 11, FontStyles.Normal, TextAlignmentOptions.Center);
-        Anchor(accelerationText.rectTransform, new Vector2(0f, 0f), new Vector2(0.58f, 0.18f), new Vector2(12f, 4f), new Vector2(-8f, -2f));
+        Anchor(accelerationText.rectTransform, new Vector2(0.58f, 0.18f), new Vector2(1f, 0.34f), new Vector2(0f, 0f), new Vector2(-10f, 0f));
 
         afkRewardSource = panel.gameObject.AddComponent<IdleAdventureAfkRewardSource>();
-        afkRewardSource.Initialize(rewardLedger, collectButton, iconImage, progressFill, iconText, amountText, timerText);
+        afkRewardSource.Initialize(rewardLedger, collectButton, iconImage, progressFill, iconText, amountText, timerText, collectButtonText);
         afkRewardSource.SetHighestClearedStage(HighestClearedStage());
         RefreshStaminaView();
     }
@@ -2633,6 +3249,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     private IEnumerator LoadBackendHomeWhenReady()
     {
+        backendHomeLoadRunning = true;
         BackendGameService service = ResolveBackendService();
         float deadline = Time.unscaledTime + 8f;
         while (service != null && (!service.IsAuthenticated || service.IsConnecting) && Time.unscaledTime < deadline)
@@ -2641,7 +3258,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         }
 
         backendHomeLoadRoutine = null;
-        if (service == null || !service.IsAuthenticated) yield break;
+        if (service == null || !service.IsAuthenticated)
+        {
+            backendHomeLoadRunning = false;
+            yield break;
+        }
 
         yield return RefreshBackendStamina(service);
 
@@ -2655,6 +3276,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             AddLog($"Backend home load failed: {BackendResultMessage(result)}");
         }
+
+        backendHomeLoadRunning = false;
     }
 
     private IEnumerator RefreshBackendStamina(BackendGameService service)

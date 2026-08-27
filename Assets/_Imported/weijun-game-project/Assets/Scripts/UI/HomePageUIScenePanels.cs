@@ -347,25 +347,17 @@ public partial class HomePageUI
             return true;
         }
 
-        string centerName = hasResult ? rewardName : "折扣券";
-        string centerAmount = hasResult ? "x" + rewardValue : "10%";
-
-        SetSceneText(root, "LotteryLeftName", hasResult ? "木材" : "宝石");
-        SetSceneText(root, "LotteryLeftAmount", hasResult ? "x80" : "x?");
-        SetSceneText(root, "LotteryCenterName", centerName);
-        SetSceneText(root, "LotteryCenterAmount", centerAmount);
-        SetSceneText(root, "LotteryRightName", hasResult ? "金币" : "闹钟");
-        SetSceneText(root, "LotteryRightAmount", hasResult ? "x60" : "x1");
-        SetSceneText(root, "LotteryChanceText", $"剩余 {GetLotteryChanceCount()} 次机会");
-        SetSceneText(root, "LotteryStatus", status);
-
-        Transform centerCard = FindSceneTransform(root, "LotteryCenterPrize");
-        if (centerCard != null)
+        CardDrawCardResponse[] localCards =
         {
-            lotterySceneFlipPhase = isRolling ? lotterySceneFlipPhase + 1 : 0;
-            float scaleX = isRolling && lotterySceneFlipPhase % 2 == 0 ? 0.72f : 1f;
-            centerCard.localScale = new Vector3(scaleX, 1f, 1f);
-        }
+            new CardDrawCardResponse { slotNo = 1, rewardType = "ITEM", rewardName = "金币", rewardAmount = 80, probability = 0.35f },
+            new CardDrawCardResponse { slotNo = 2, rewardType = "ITEM", rewardName = "木材", rewardAmount = 150, probability = 0.25f },
+            new CardDrawCardResponse { slotNo = 3, rewardType = "ITEM", rewardName = "石材", rewardAmount = 150, probability = 0.25f },
+            new CardDrawCardResponse { slotNo = 4, rewardType = "ITEM", rewardName = "铁矿", rewardAmount = 120, probability = 0.15f }
+        };
+        ConfigureLotteryPrizeRail(root, localCards);
+        SetSceneText(root, "LotteryDiamondText", $"钻石 {PlayerPrefs.GetInt("Crystal", 0)}");
+        SetSceneText(root, "LotteryPrizeHint", "游客模式使用本地演示奖品");
+        SetSceneText(root, "LotteryStatus", status);
 
         Button closeButton = FindSceneComponent<Button>(root, "LotteryCloseButton");
         if (closeButton != null)
@@ -374,20 +366,29 @@ public partial class HomePageUI
         }
         BindSceneButton(closeButton, isRolling ? null : (Action)HideLotteryPanel);
 
-        Button startButton = FindSceneComponent<Button>(root, "LotteryStartButton");
-        if (startButton != null)
+        Button singleButton = FindSceneComponent<Button>(root, "LotterySingleButton");
+        if (singleButton != null)
         {
-            startButton.interactable = !isRolling;
+            singleButton.interactable = !isRolling;
         }
-        SetSceneButtonText(startButton, isRolling ? "翻动中..." : "点击开始");
-        BindSceneButton(startButton, isRolling ? null : (Action)PerformLotteryDraw);
+        SetSceneButtonText(singleButton, isRolling ? "抽取中..." : "单抽（本地演示）");
+        BindSceneButton(singleButton, isRolling ? null : (Action)PerformLotteryDraw);
 
-        BindSceneButton(
-            FindSceneComponent<Button>(root, "LotteryPrizeButton"),
-            () => ShowLotteryPanel("奖品池：金币、木材、石材、铁矿，后续可接入服务器奖池", rewardName, rewardValue, hasResult));
-        BindSceneButton(
-            FindSceneComponent<Button>(root, "LotteryRuleButton"),
-            () => ShowLotteryPanel("规则：初始 100 次机会，每次抽奖消耗 1 次", rewardName, rewardValue, hasResult));
+        Button multiButton = FindSceneComponent<Button>(root, "LotteryTenButton");
+        if (multiButton != null)
+        {
+            multiButton.interactable = false;
+        }
+        SetSceneButtonText(multiButton, "登录后连抽");
+        BindSceneButton(multiButton, null);
+
+        Button poolButton = FindSceneComponent<Button>(root, "LotteryPoolButton");
+        if (poolButton != null)
+        {
+            poolButton.interactable = false;
+        }
+        SetSceneButtonText(poolButton, "服务器奖池");
+        BindSceneButton(poolButton, null);
 
         SetStatus(status);
         return true;

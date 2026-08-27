@@ -1294,9 +1294,8 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     private IEnumerator CollectIdleAdventureAfkRewardRoutine(Action<BackendResult<IdleAdventureAfkRewardCollectResponse>> onComplete)
     {
-        PlayerIdRequest request = new PlayerIdRequest { playerId = PlayerId };
         BackendResult<IdleAdventureAfkRewardCollectResponse> result = null;
-        yield return BackendApiClient.Post<IdleAdventureAfkRewardCollectResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/afk-reward/collect", request, value => result = value);
+        yield return BackendApiClient.Post<IdleAdventureAfkRewardCollectResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/afk-reward/collect", null, value => result = value);
 
         if (result != null && result.Success && result.Data != null)
         {
