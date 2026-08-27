@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.Scripting;
@@ -16,9 +17,12 @@ public partial class HomePageUI
     private const int MaximumPreparedAvatarDimension = 2048;
     private const int MaximumServerAvatarDimension = 4096;
     private const long MaximumServerAvatarPixels = 16000000L;
+    private const string PresetAvatarResourcesPath = "UI/AvatarPresets";
     private const string AvatarOwnerPlayerIdKey = "PlayerAvatarOwnerId";
     private readonly Dictionary<string, Sprite> avatarSpriteCache = new Dictionary<string, Sprite>();
     private readonly Dictionary<Image, AvatarImageState> avatarImageStates = new Dictionary<Image, AvatarImageState>();
+    private readonly List<Sprite> presetAvatarSprites = new List<Sprite>();
+    private GameObject avatarPresetPickerObject;
     private bool avatarMutationRunning;
 
     private void ConfigureProfileAvatarControls(Transform root, bool isAuthenticated, string nickname)
@@ -65,7 +69,7 @@ public partial class HomePageUI
 
         ApplyAvatarImage(
             avatar,
-            FindSceneComponent<Text>(root, "ProfileAvatarInitial"),
+            FindSceneComponent<TMP_Text>(root, "ProfileAvatarInitial"),
             GameSession.PlayerId,
             GetCurrentAvatarUrl(),
             GetCurrentAvatarVersion());
@@ -84,10 +88,252 @@ public partial class HomePageUI
             return;
         }
 
-        avatarMutationRunning = true;
         Debug.Log("[Avatar] Opening avatar picker for player " + GameSession.PlayerId + ".");
         RefreshProfileAvatarPanel("正在打开头像选择...");
-        WeChatPlatformBridge.RequestAvatarSelection(this);
+        ShowPresetAvatarPicker();
+    }
+
+    private void ShowPresetAvatarPicker()
+    {
+        HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.AccountProfile);
+        if (panel == null || panel.PanelRoot == null)
+        {
+            Debug.LogWarning("[Avatar] Account profile panel is unavailable; cannot show preset avatars.", this);
+            RefreshProfileAvatarPanel("个人信息面板未找到，无法选择头像");
+            return;
+        }
+
+        Sprite[] presets = LoadPresetAvatarSprites();
+        if (presets.Length == 0)
+        {
+            Debug.LogWarning("[Avatar] No preset avatar sprites were found in Resources/" + PresetAvatarResourcesPath + ".", this);
+            RefreshProfileAvatarPanel("未配置预置头像，请将图片放入 Resources/UI/AvatarPresets");
+            return;
+        }
+
+        avatarPresetPickerObject = EnsurePresetAvatarPicker(panel.PanelRoot);
+        if (avatarPresetPickerObject == null)
+        {
+            RefreshProfileAvatarPanel("头像选择面板创建失败");
+            return;
+        }
+
+        BuildPresetAvatarOptions(avatarPresetPickerObject.transform, presets);
+        avatarPresetPickerObject.SetActive(true);
+        avatarPresetPickerObject.transform.SetAsLastSibling();
+        SetStatus("请选择一个预置头像");
+    }
+
+    private Sprite[] LoadPresetAvatarSprites()
+    {
+        presetAvatarSprites.Clear();
+        Sprite[] loadedSprites = Resources.LoadAll<Sprite>(PresetAvatarResourcesPath);
+        for (int i = 0; i < loadedSprites.Length; i++)
+        {
+            if (loadedSprites[i] != null && !presetAvatarSprites.Contains(loadedSprites[i]))
+            {
+                presetAvatarSprites.Add(loadedSprites[i]);
+            }
+        }
+
+        return presetAvatarSprites.ToArray();
+    }
+
+    private GameObject EnsurePresetAvatarPicker(Transform profileRoot)
+    {
+        if (profileRoot == null)
+        {
+            return null;
+        }
+
+        if (avatarPresetPickerObject != null)
+        {
+            return avatarPresetPickerObject;
+        }
+
+        GameObject overlay = new GameObject("ProfileAvatarPickerPanel", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        overlay.transform.SetParent(profileRoot, false);
+        Stretch(overlay.GetComponent<RectTransform>());
+
+        Image overlayImage = overlay.GetComponent<Image>();
+        overlayImage.color = new Color(0.05f, 0.035f, 0.02f, 0.62f);
+        overlayImage.raycastTarget = true;
+
+        Button overlayButton = overlay.AddComponent<Button>();
+        overlayButton.targetGraphic = overlayImage;
+        BindSceneButton(overlayButton, HidePresetAvatarPicker);
+
+        Image card = CreateImage("ProfileAvatarPickerCard", overlay.transform, new Color(1f, 0.94f, 0.76f, 1f));
+        card.raycastTarget = true;
+        SetRect(card.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(560f, 410f));
+
+        TMP_Text title = CreatePresetAvatarText("ProfileAvatarPickerTitle", card.transform, "选择预置头像", 26f, new Color(0.30f, 0.16f, 0.08f, 1f), TextAlignmentOptions.Center);
+        SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(-100f, 42f));
+
+        Image closeImage = CreateImage("ProfileAvatarPickerCloseButton", card.transform, new Color(0.78f, 0.30f, 0.22f, 1f));
+        closeImage.raycastTarget = true;
+        SetRect(closeImage.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-18f, -18f), new Vector2(42f, 42f));
+        Button closeButton = closeImage.gameObject.AddComponent<Button>();
+        closeButton.targetGraphic = closeImage;
+        BindSceneButton(closeButton, HidePresetAvatarPicker);
+        TMP_Text closeText = CreatePresetAvatarText("Text", closeImage.transform, "X", 22f, Color.white, TextAlignmentOptions.Center);
+        Stretch(closeText.rectTransform);
+
+        GameObject gridObject = new GameObject("ProfileAvatarPickerGrid", typeof(RectTransform));
+        gridObject.transform.SetParent(card.transform, false);
+        SetRect(gridObject.GetComponent<RectTransform>(), Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(0f, -16f), new Vector2(-56f, -98f));
+        GridLayoutGroup grid = gridObject.AddComponent<GridLayoutGroup>();
+        grid.cellSize = new Vector2(100f, 100f);
+        grid.spacing = new Vector2(18f, 18f);
+        grid.padding = new RectOffset(10, 10, 10, 10);
+        grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        grid.constraintCount = 4;
+        grid.childAlignment = TextAnchor.UpperCenter;
+
+        return overlay;
+    }
+
+    private void BuildPresetAvatarOptions(Transform pickerRoot, Sprite[] presets)
+    {
+        Transform grid = FindSceneTransform(pickerRoot, "ProfileAvatarPickerGrid");
+        if (grid == null)
+        {
+            Debug.LogWarning("[Avatar] Preset avatar grid is missing.", pickerRoot);
+            return;
+        }
+
+        for (int i = grid.childCount - 1; i >= 0; i--)
+        {
+            Destroy(grid.GetChild(i).gameObject);
+        }
+
+        for (int i = 0; i < presets.Length; i++)
+        {
+            Sprite preset = presets[i];
+            if (preset == null)
+            {
+                continue;
+            }
+
+            Image option = CreateImage("ProfileAvatarPreset" + i, grid, Color.white);
+            option.sprite = preset;
+            option.preserveAspect = true;
+            option.raycastTarget = true;
+            Button optionButton = option.gameObject.AddComponent<Button>();
+            optionButton.targetGraphic = option;
+            int selectedIndex = i;
+            BindSceneButton(optionButton, () => SelectPresetAvatar(preset, selectedIndex));
+        }
+    }
+
+    private TMP_Text CreatePresetAvatarText(string name, Transform parent, string value, float fontSize, Color color, TextAlignmentOptions alignment)
+    {
+        GameObject textObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(parent, false);
+        TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+        TMP_FontAsset resolvedFont = RuntimeFontAssetProvider.Resolve();
+        text.font = resolvedFont != null ? resolvedFont : TMP_Settings.defaultFontAsset;
+        text.text = value;
+        text.fontSize = fontSize;
+        text.fontStyle = FontStyles.Normal;
+        text.color = color;
+        text.alignment = alignment;
+        text.raycastTarget = false;
+        return text;
+    }
+
+    private void HidePresetAvatarPicker()
+    {
+        if (avatarPresetPickerObject != null)
+        {
+            avatarPresetPickerObject.SetActive(false);
+        }
+    }
+
+    private void SelectPresetAvatar(Sprite preset, int presetIndex)
+    {
+        if (avatarMutationRunning || preset == null)
+        {
+            return;
+        }
+        if (!HasAuthSession())
+        {
+            Debug.LogWarning("[Avatar] Preset avatar selection rejected because there is no authenticated session.", this);
+            HidePresetAvatarPicker();
+            RefreshProfileAvatarPanel("请先登录账号后上传头像");
+            return;
+        }
+
+        if (!TryEncodePresetAvatar(preset, out byte[] imageBytes, out string encodeError))
+        {
+            Debug.LogWarning("[Avatar] Preset avatar could not be encoded: " + encodeError, preset);
+            RefreshProfileAvatarPanel(encodeError);
+            return;
+        }
+
+        if (!TryPrepareAvatarUpload(imageBytes, out byte[] uploadBytes, out string fileName, out string mimeType, out string prepareError))
+        {
+            Debug.LogWarning("[Avatar] Preset avatar could not be prepared: " + prepareError, preset);
+            RefreshProfileAvatarPanel(prepareError);
+            return;
+        }
+
+        avatarMutationRunning = true;
+        HidePresetAvatarPicker();
+        RefreshProfileAvatarPanel("正在上传预置头像...");
+        Debug.Log("[Avatar] Uploading preset avatar " + presetIndex + ".");
+        StartCoroutine(UploadCurrentAvatar(uploadBytes, fileName, mimeType));
+    }
+
+    private static bool TryEncodePresetAvatar(Sprite preset, out byte[] imageBytes, out string error)
+    {
+        imageBytes = null;
+        error = "预置头像读取失败，请重新选择";
+        if (preset == null || preset.texture == null)
+        {
+            return false;
+        }
+
+        Texture source = preset.texture;
+        Rect sourceRect = preset.textureRect;
+        int width = Mathf.Max(1, Mathf.RoundToInt(sourceRect.width));
+        int height = Mathf.Max(1, Mathf.RoundToInt(sourceRect.height));
+        RenderTexture previous = RenderTexture.active;
+        RenderTexture target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32);
+        Texture2D cropped = null;
+        try
+        {
+            Graphics.Blit(
+                source,
+                target,
+                new Vector2(sourceRect.width / source.width, sourceRect.height / source.height),
+                new Vector2(sourceRect.x / source.width, sourceRect.y / source.height));
+            RenderTexture.active = target;
+            cropped = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            cropped.ReadPixels(new Rect(0f, 0f, width, height), 0, 0);
+            cropped.Apply(false, false);
+            imageBytes = cropped.EncodeToPNG();
+            if (imageBytes == null || imageBytes.Length == 0)
+            {
+                imageBytes = null;
+                return false;
+            }
+            return true;
+        }
+        catch (Exception exception)
+        {
+            error = "预置头像处理失败：" + exception.Message;
+            return false;
+        }
+        finally
+        {
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            if (cropped != null)
+            {
+                UnityEngine.Object.Destroy(cropped);
+            }
+        }
     }
 
     [Preserve]
@@ -591,7 +837,7 @@ public partial class HomePageUI
         }
     }
 
-    private void ApplyAvatarImage(Image image, Text fallbackText, int playerId, string avatarUrl, long avatarVersion)
+    private void ApplyAvatarImage(Image image, Component fallbackText, int playerId, string avatarUrl, long avatarVersion)
     {
         if (image == null)
         {
@@ -624,7 +870,7 @@ public partial class HomePageUI
         StartCoroutine(DownloadAvatarSprite(image, fallbackText, key, resolvedUrl));
     }
 
-    private IEnumerator DownloadAvatarSprite(Image image, Text fallbackText, string requestKey, string url)
+    private IEnumerator DownloadAvatarSprite(Image image, Component fallbackText, string requestKey, string url)
     {
         using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(url, true))
         {
@@ -682,7 +928,7 @@ public partial class HomePageUI
         return state;
     }
 
-    private static void SetLoadedAvatar(Image image, Text fallbackText, Sprite sprite)
+    private static void SetLoadedAvatar(Image image, Component fallbackText, Sprite sprite)
     {
         image.sprite = sprite;
         image.color = Color.white;

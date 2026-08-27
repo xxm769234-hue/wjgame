@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -21,6 +22,8 @@ public partial class HomePageUI
     private bool profileCancellationRequestRunning;
     private bool profileCancellationConfirmation;
     private bool profileCancellationStatusLoaded;
+    private bool profileComplianceStatusLoading;
+    private bool profileComplianceStatusLoaded;
     private bool friendDeleteConfirmation;
     private bool friendsOnlineOnly;
     private int friendsPageIndex;
@@ -32,6 +35,9 @@ public partial class HomePageUI
     private NicknamePolicyData profileNicknamePolicy;
     private string profileNicknamePolicyStatus = string.Empty;
     private ProfileCancellationData profileCancellationStatus;
+    private string profileCancellationStatusMessage = string.Empty;
+    private ProfileComplianceData profileComplianceStatus;
+    private string profileComplianceStatusMessage = string.Empty;
     private string profileCancellationRequestId = string.Empty;
     private string profileCancellationRecoveryRequestId = string.Empty;
 
@@ -54,11 +60,15 @@ public partial class HomePageUI
         profileCancellationRequestRunning = false;
         profileCancellationStatusLoaded = false;
         profileCancellationStatus = null;
+        profileCancellationStatusMessage = string.Empty;
+        profileComplianceStatusLoading = false;
+        profileComplianceStatusLoaded = false;
+        profileComplianceStatus = null;
+        profileComplianceStatusMessage = string.Empty;
         RefreshAccountProfileScenePanel(panel.PanelRoot, "账号资料来自当前登录存档");
         if (HasAuthSession())
         {
-            StartCoroutine(RefreshProfileNicknamePolicy(panel.PanelRoot));
-            StartCoroutine(RefreshProfileCancellationStatus(panel.PanelRoot, "正在读取账号注销状态..."));
+            StartCoroutine(RefreshCurrentUserProfile(panel.PanelRoot));
         }
         SetStatus("已打开个人档案");
     }
@@ -70,6 +80,9 @@ public partial class HomePageUI
             return;
         }
 
+        EnsureAccountProfileTextMeshPro(root);
+        EnsureAccountProfileDetailControls(root);
+
         string nickname = PlayerPrefs.GetString("PlayerNickname", "玩家");
         string identifier = GetCurrentProfileIdentifier();
         string username = PlayerPrefs.GetString("LoginUsername", string.Empty);
@@ -78,21 +91,19 @@ public partial class HomePageUI
         SetSceneText(root, "ProfileTitle", "个人信息");
         SetSceneText(root, "ProfileModeBadge", "账号登录");
         SetSceneText(root, "ProfileAvatarInitial", GetNicknameInitial(nickname));
-        SetSceneText(root, "ProfileDisplayName", nickname);
-        SetSceneText(root, "ProfileIdentifier", $"玩家编号  {identifier}");
+        SetSceneText(root, "ProfileIdentifier", $"玩家ID  {identifier}");
         SetSceneText(root, "ProfileAccount", $"登录账号  {(string.IsNullOrEmpty(username) ? "未设置" : username)}");
         SetSceneText(root, "ProfileLevel", $"领主等级  Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}");
-        SetSceneText(root, "ProfileGold", PlayerPrefs.GetInt("Gold", 1000).ToString());
-        SetSceneText(root, "ProfileWood", PlayerPrefs.GetInt("Wood", 500).ToString());
-        SetSceneText(root, "ProfileStone", PlayerPrefs.GetInt("Stone", 500).ToString());
-        SetSceneText(root, "ProfileIron", PlayerPrefs.GetInt("Iron", 300).ToString());
         SetSceneText(root, "ProfileVital", $"生命  {PlayerPrefs.GetInt("PlayerHp", 1000)}    体力  {GetHomeStamina()}");
         SetSceneText(root, "ProfileSignStat", $"签到天数\n{PlayerPrefs.GetInt("DailySignDays", 0)} 天");
         SetSceneText(root, "ProfileFriendStat", $"好友数量\n{v37Friends.Count} 人");
-        SetSceneText(root, "ProfileExploreStat", $"领地探索\n{PlayerPrefs.GetInt("TaskMapEntered", 0)} 次");
         SetSceneText(root, "ProfileSyncText", GetProfileSyncText(isAuthenticated));
         SetSceneText(root, "ProfileStatus", status);
         SetSceneText(root, "ProfileCancellationStatus", BuildProfileCancellationStatus(isAuthenticated));
+        SetSceneText(root, "ProfileExperienceText", BuildProfileExperienceText(isAuthenticated));
+        SetSceneText(root, "ProfileAccountStatusText", BuildProfileAccountStatusText(isAuthenticated));
+        SetSceneText(root, "ProfileCancellationDetailsText", BuildProfileCancellationDetailsText(isAuthenticated));
+        SetSceneText(root, "ProfileComplianceText", BuildProfileComplianceText(isAuthenticated));
         SetSceneText(root, "ProfileNicknameHint", BuildProfileNicknameHint());
         ConfigureProfileAvatarControls(root, true, nickname);
 
@@ -142,7 +153,9 @@ public partial class HomePageUI
                 && (HasCancellableProfileCancellation() || CanApplyProfileCancellation());
         }
         BindSceneButton(cancellationButton, () => HandleProfileCancellation(root));
-        BindSceneButton(FindSceneComponent<Button>(root, "ProfileCopyIdButton"), () => CopyProfileIdentifier(root));
+        Button copyButton = FindSceneComponent<Button>(root, "ProfileCopyIdButton");
+        SetSceneButtonText(copyButton, "复制玩家ID");
+        BindSceneButton(copyButton, () => CopyProfileIdentifier(root));
         BindSceneButton(FindSceneComponent<Button>(root, "ProfileCloseButton"), HideAccountProfilePanel);
     }
 
@@ -150,7 +163,176 @@ public partial class HomePageUI
     {
         GUIUtility.systemCopyBuffer = GetCurrentProfileIdentifier();
         profileSwitchLoginConfirmation = false;
-        RefreshAccountProfileScenePanel(root, "玩家编号已复制");
+        RefreshAccountProfileScenePanel(root, "玩家ID已复制");
+    }
+
+    private void EnsureAccountProfileTextMeshPro(Transform root)
+    {
+        Transform nicknameInput = FindSceneTransform(root, "ProfileNicknameInput");
+        TMP_FontAsset fontAsset = null;
+        TMP_Text[] existingTmpLabels = root.GetComponentsInChildren<TMP_Text>(true);
+        for (int i = 0; i < existingTmpLabels.Length; i++)
+        {
+            if (existingTmpLabels[i] != null && existingTmpLabels[i].font != null)
+            {
+                fontAsset = existingTmpLabels[i].font;
+                break;
+            }
+        }
+
+        Text[] legacyLabels = root.GetComponentsInChildren<Text>(true);
+        for (int i = 0; i < legacyLabels.Length; i++)
+        {
+            Text legacy = legacyLabels[i];
+            if (legacy == null || (nicknameInput != null && (legacy.transform == nicknameInput || legacy.transform.IsChildOf(nicknameInput))))
+            {
+                continue;
+            }
+
+            GameObject target = legacy.gameObject;
+            string value = legacy.text ?? string.Empty;
+            int fontSize = legacy.fontSize;
+            Color color = legacy.color;
+            TextAnchor alignment = legacy.alignment;
+            bool bestFit = legacy.resizeTextForBestFit;
+            int minSize = legacy.resizeTextMinSize;
+            int maxSize = legacy.resizeTextMaxSize;
+            bool wrap = legacy.horizontalOverflow == HorizontalWrapMode.Wrap;
+            bool overflow = legacy.verticalOverflow == VerticalWrapMode.Overflow;
+            bool richText = legacy.supportRichText;
+            bool raycastTarget = legacy.raycastTarget;
+            FontStyle fontStyle = legacy.fontStyle;
+            bool enabled = legacy.enabled;
+            TextMeshProUGUI replacement = target.GetComponent<TextMeshProUGUI>();
+            if (replacement == null)
+            {
+                UnityEngine.Object.DestroyImmediate(legacy);
+                replacement = target.AddComponent<TextMeshProUGUI>();
+            }
+            else
+            {
+                UnityEngine.Object.DestroyImmediate(legacy);
+            }
+
+            if (replacement == null)
+            {
+                Debug.LogWarning("Unable to create TMP label for account profile text: " + target.name, target);
+                continue;
+            }
+
+            TMP_FontAsset fallbackFontAsset = fontAsset != null ? fontAsset : TMP_Settings.GetFontAsset();
+            if (fallbackFontAsset != null)
+            {
+                replacement.font = fallbackFontAsset;
+            }
+            replacement.text = value;
+            replacement.fontSize = Mathf.Max(1, fontSize);
+            replacement.color = color;
+            replacement.alignment = ConvertProfileTextAlignment(alignment);
+            replacement.enableAutoSizing = bestFit;
+            replacement.fontSizeMin = Mathf.Max(1, minSize);
+            replacement.fontSizeMax = Mathf.Max(replacement.fontSizeMin, maxSize);
+            replacement.enableWordWrapping = wrap;
+            replacement.overflowMode = overflow
+                ? TextOverflowModes.Overflow
+                : TextOverflowModes.Truncate;
+            replacement.richText = richText;
+            replacement.raycastTarget = raycastTarget;
+            replacement.fontStyle = ConvertProfileFontStyle(fontStyle);
+            replacement.enabled = enabled;
+        }
+    }
+
+    private static TextAlignmentOptions ConvertProfileTextAlignment(TextAnchor alignment)
+    {
+        switch (alignment)
+        {
+            case TextAnchor.UpperLeft:
+                return TextAlignmentOptions.TopLeft;
+            case TextAnchor.UpperCenter:
+                return TextAlignmentOptions.Top;
+            case TextAnchor.UpperRight:
+                return TextAlignmentOptions.TopRight;
+            case TextAnchor.MiddleLeft:
+                return TextAlignmentOptions.MidlineLeft;
+            case TextAnchor.MiddleCenter:
+                return TextAlignmentOptions.Center;
+            case TextAnchor.MiddleRight:
+                return TextAlignmentOptions.MidlineRight;
+            case TextAnchor.LowerLeft:
+                return TextAlignmentOptions.BottomLeft;
+            case TextAnchor.LowerCenter:
+                return TextAlignmentOptions.Bottom;
+            case TextAnchor.LowerRight:
+                return TextAlignmentOptions.BottomRight;
+            default:
+                return TextAlignmentOptions.TopLeft;
+        }
+    }
+
+    private static FontStyles ConvertProfileFontStyle(FontStyle style)
+    {
+        switch (style)
+        {
+            case FontStyle.Bold:
+                return FontStyles.Bold;
+            case FontStyle.Italic:
+                return FontStyles.Italic;
+            case FontStyle.BoldAndItalic:
+                return FontStyles.Bold | FontStyles.Italic;
+            default:
+                return FontStyles.Normal;
+        }
+    }
+
+    private void EnsureAccountProfileDetailControls(Transform root)
+    {
+        if (FindSceneTransform(root, "ProfileDetailsCard") != null)
+        {
+            return;
+        }
+
+        Transform panel = FindSceneTransform(root, "ProfilePanel");
+        if (panel == null)
+        {
+            Debug.LogWarning("ProfilePanel was not found while creating account profile details.", this);
+            return;
+        }
+
+        Image card = CreateImage("ProfileDetailsCard", panel, new Color(1f, 0.90f, 0.69f, 1f));
+        SetRect(card.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(454f, -126f), new Vector2(746f, 160f));
+
+        TMP_Text title = CreateProfileRuntimeText(card.transform, "ProfileDetailsTitle", "账号与成长详情", 18, new Color(0.42f, 0.20f, 0.10f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetRect(title.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(20f, -10f), new Vector2(700f, 26f));
+
+        TMP_Text experience = CreateProfileRuntimeText(card.transform, "ProfileExperienceText", "经验详情\n总经验：0\n本级经验：0/0", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
+        SetRect(experience.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(20f, -40f), new Vector2(342f, 48f));
+
+        TMP_Text accountStatus = CreateProfileRuntimeText(card.transform, "ProfileAccountStatusText", "账号状态\n状态：ACTIVE\n可正常进入游戏", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
+        SetRect(accountStatus.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(382f, -40f), new Vector2(342f, 48f));
+
+        TMP_Text cancellation = CreateProfileRuntimeText(card.transform, "ProfileCancellationDetailsText", "注销详情\n状态：未申请\n冷静期截止：未设置", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
+        SetRect(cancellation.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(20f, -92f), new Vector2(342f, 58f));
+
+        TMP_Text compliance = CreateProfileRuntimeText(card.transform, "ProfileComplianceText", "实名/防沉迷\n实名：UNKNOWN\n防沉迷：等待服务器状态", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
+        SetRect(compliance.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(382f, -92f), new Vector2(342f, 58f));
+    }
+
+    private static TMP_Text CreateProfileRuntimeText(Transform parent, string name, string value, int fontSize, Color color, TextAlignmentOptions alignment)
+    {
+        GameObject textObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+        textObject.transform.SetParent(parent, false);
+        TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
+        text.font = RuntimeFontAssetProvider.Resolve();
+        text.text = value ?? string.Empty;
+        text.fontSize = fontSize;
+        text.fontStyle = FontStyles.Normal;
+        text.color = color;
+        text.alignment = alignment;
+        text.enableWordWrapping = true;
+        text.overflowMode = TextOverflowModes.Ellipsis;
+        text.raycastTarget = false;
+        return text;
     }
 
     private void HandleProfileSwitchLogin(Transform root)
@@ -180,6 +362,7 @@ public partial class HomePageUI
         if (request == null)
         {
             profileCancellationStatusLoading = false;
+            profileCancellationStatusMessage = requestCreationError;
             RefreshAccountProfileScenePanel(root, requestCreationError);
             yield break;
         }
@@ -191,6 +374,7 @@ public partial class HomePageUI
             if (HandleUnauthorizedResponse(request))
             {
                 profileCancellationStatusLoading = false;
+                profileCancellationStatusMessage = "登录状态已失效，请重新登录";
                 yield break;
             }
 
@@ -203,9 +387,10 @@ public partial class HomePageUI
             if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
                 profileCancellationStatusLoading = false;
-                RefreshAccountProfileScenePanel(root, response == null
+                profileCancellationStatusMessage = response == null
                     ? ApiRequestUtility.GetErrorMessage(request, "注销状态读取失败")
-                    : GetApiError(response));
+                    : GetApiError(response);
+                RefreshAccountProfileScenePanel(root, profileCancellationStatusMessage);
                 yield break;
             }
 
@@ -213,6 +398,61 @@ public partial class HomePageUI
             profileCancellationStatusLoaded = true;
             profileCancellationStatusLoading = false;
             profileCancellationConfirmation = false;
+            profileCancellationStatusMessage = string.Empty;
+            SaveProfileAccountStatus(response.data.accountStatus);
+            RefreshAccountProfileScenePanel(root, status);
+        }
+    }
+
+    private IEnumerator RefreshProfileComplianceStatus(Transform root, string status)
+    {
+        if (root == null || !HasAuthSession() || profileComplianceStatusLoading)
+        {
+            yield break;
+        }
+
+        profileComplianceStatusLoading = true;
+        profileComplianceStatusLoaded = false;
+        profileComplianceStatus = null;
+        profileComplianceStatusMessage = string.Empty;
+        RefreshAccountProfileScenePanel(root, status);
+
+        UnityWebRequest request = CreateAuthorizedGet("/anti-addiction/status");
+        if (request == null)
+        {
+            profileComplianceStatusLoading = false;
+            profileComplianceStatusMessage = requestCreationError;
+            RefreshAccountProfileScenePanel(root, status);
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+
+            if (HandleUnauthorizedResponse(request))
+            {
+                profileComplianceStatusLoading = false;
+                profileComplianceStatusMessage = "登录状态已失效，请重新登录";
+                yield break;
+            }
+
+            ProfileComplianceApiResponse response = ParseJson<ProfileComplianceApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+            {
+                profileComplianceStatusLoading = false;
+                profileComplianceStatusLoaded = false;
+                profileComplianceStatusMessage = response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "实名及防沉迷状态读取失败")
+                    : GetApiError(response);
+                RefreshAccountProfileScenePanel(root, status);
+                yield break;
+            }
+
+            profileComplianceStatus = response.data;
+            profileComplianceStatusLoaded = true;
+            profileComplianceStatusLoading = false;
+            profileComplianceStatusMessage = string.Empty;
             RefreshAccountProfileScenePanel(root, status);
         }
     }
@@ -288,6 +528,7 @@ public partial class HomePageUI
                 out string error))
         {
             profileCancellationRequestRunning = false;
+            profileCancellationStatusMessage = error;
             RefreshAccountProfileScenePanel(root, error);
             yield break;
         }
@@ -299,6 +540,7 @@ public partial class HomePageUI
             if (HandleUnauthorizedResponse(request))
             {
                 profileCancellationRequestRunning = false;
+                profileCancellationStatusMessage = "登录状态已失效，请重新登录";
                 yield break;
             }
 
@@ -313,6 +555,8 @@ public partial class HomePageUI
                 profileCancellationStatus = response.data;
                 profileCancellationStatusLoaded = true;
                 profileCancellationRequestRunning = false;
+                profileCancellationStatusMessage = string.Empty;
+                SaveProfileAccountStatus(response.data.accountStatus);
                 RefreshAccountProfileScenePanel(root, string.IsNullOrEmpty(response.message)
                     ? "注销申请已提交，账号进入冷静期"
                     : response.message);
@@ -325,6 +569,7 @@ public partial class HomePageUI
             string message = response == null
                 ? ApiRequestUtility.GetErrorMessage(request, "申请账号注销失败")
                 : GetApiError(response);
+            profileCancellationStatusMessage = message;
             RefreshAccountProfileScenePanel(root, message);
             yield return RefreshProfileCancellationStatus(root, message);
         }
@@ -352,6 +597,7 @@ public partial class HomePageUI
                 out string error))
         {
             profileCancellationRequestRunning = false;
+            profileCancellationStatusMessage = error;
             RefreshAccountProfileScenePanel(root, error);
             yield break;
         }
@@ -363,6 +609,7 @@ public partial class HomePageUI
             if (HandleUnauthorizedResponse(request))
             {
                 profileCancellationRequestRunning = false;
+                profileCancellationStatusMessage = "登录状态已失效，请重新登录";
                 yield break;
             }
 
@@ -379,6 +626,8 @@ public partial class HomePageUI
                 profileCancellationRequestRunning = false;
                 profileCancellationRequestId = string.Empty;
                 profileCancellationRecoveryRequestId = string.Empty;
+                profileCancellationStatusMessage = string.Empty;
+                SaveProfileAccountStatus(response.data.accountStatus);
                 RefreshAccountProfileScenePanel(root, string.IsNullOrEmpty(response.message)
                     ? "注销申请已撤销，账号已恢复"
                     : response.message);
@@ -391,6 +640,7 @@ public partial class HomePageUI
             string message = response == null
                 ? ApiRequestUtility.GetErrorMessage(request, "撤销账号注销失败")
                 : GetApiError(response);
+            profileCancellationStatusMessage = message;
             RefreshAccountProfileScenePanel(root, message);
             yield return RefreshProfileCancellationStatus(root, message);
         }
@@ -445,6 +695,10 @@ public partial class HomePageUI
             "PlayerAvatarSource",
             "PlayerAvatarVersion",
             "PlayerAvatarUpdatedTime",
+            "AccountStatus",
+            "AccountManagementOnly",
+            "PrivacyConsentRequired",
+            "PrivacyPolicyVersion",
             "PlayerTotalExperience",
             "PlayerLevelCurveRevision",
             "PlayerCurrentLevelExperience",
@@ -556,6 +810,172 @@ public partial class HomePageUI
         return "账号注销状态：" + state;
     }
 
+    private string BuildProfileExperienceText(bool isAuthenticated)
+    {
+        if (!isAuthenticated)
+        {
+            return "经验详情\n请登录账号后查看";
+        }
+
+        long totalExperience = 0;
+        long.TryParse(
+            PlayerPrefs.GetString("PlayerTotalExperience", "0"),
+            NumberStyles.Integer,
+            CultureInfo.InvariantCulture,
+            out totalExperience);
+
+        int currentExperience = Mathf.Max(0, PlayerPrefs.GetInt("PlayerCurrentLevelExperience", 0));
+        int requiredExperience = Mathf.Max(0, PlayerPrefs.GetInt("PlayerRequiredExperience", 0));
+        bool maxLevel = PlayerPrefs.GetInt("PlayerMaxLevel", 0) == 1;
+        if (maxLevel)
+        {
+            return "经验详情\n总经验：" + totalExperience.ToString("N0", CultureInfo.InvariantCulture) + "\n当前等级已达上限";
+        }
+
+        if (requiredExperience > 0)
+        {
+            int progressBps = Mathf.Clamp(PlayerPrefs.GetInt("PlayerExperienceProgressBps", 0), 0, 10000);
+            int remainingExperience = Mathf.Max(0, requiredExperience - currentExperience);
+            return "经验详情\n总经验：" + totalExperience.ToString("N0", CultureInfo.InvariantCulture)
+                + "\n本级经验：" + currentExperience + "/" + requiredExperience
+                + "  " + (progressBps / 100f).ToString("0.0", CultureInfo.InvariantCulture) + "%"
+                + "，升级还需：" + remainingExperience;
+        }
+
+        return "经验详情\n总经验：" + totalExperience.ToString("N0", CultureInfo.InvariantCulture)
+            + "\n本级经验：" + currentExperience;
+    }
+
+    private string BuildProfileAccountStatusText(bool isAuthenticated)
+    {
+        if (!isAuthenticated)
+        {
+            return "账号状态\n未登录";
+        }
+
+        string accountStatus = profileCancellationStatus != null
+            && !string.IsNullOrEmpty(profileCancellationStatus.accountStatus)
+            ? profileCancellationStatus.accountStatus
+            : PlayerPrefs.GetString("AccountStatus", "ACTIVE");
+        bool managementOnly = PlayerPrefs.GetInt("AccountManagementOnly", 0) == 1;
+        bool economyFrozen = PlayerPrefs.GetInt("PlayerEconomyFrozen", 0) == 1;
+        string mode = managementOnly ? "仅可进行账号管理" : "可正常进入游戏";
+        string economy = economyFrozen ? "经济状态：冻结" : "经济状态：正常";
+        return "账号状态\n状态：" + (string.IsNullOrEmpty(accountStatus) ? "UNKNOWN" : accountStatus)
+            + "\n" + mode + "  " + economy;
+    }
+
+    private string BuildProfileCancellationDetailsText(bool isAuthenticated)
+    {
+        if (!isAuthenticated)
+        {
+            return "注销详情\n仅适用于已登录账号";
+        }
+
+        if (profileCancellationStatusLoading)
+        {
+            return "注销详情\n正在读取服务器状态...";
+        }
+
+        if (!profileCancellationStatusLoaded || profileCancellationStatus == null)
+        {
+            return "注销详情\n" + (string.IsNullOrEmpty(profileCancellationStatusMessage)
+                ? "等待服务器状态"
+                : profileCancellationStatusMessage);
+        }
+
+        string cancellationState = string.IsNullOrEmpty(profileCancellationStatus.cancellationStatus)
+            ? "未申请"
+            : profileCancellationStatus.cancellationStatus;
+        string requestedTime = string.IsNullOrEmpty(profileCancellationStatus.requestedTime)
+            ? "未记录"
+            : profileCancellationStatus.requestedTime;
+        string scheduledTime = string.IsNullOrEmpty(profileCancellationStatus.scheduledTime)
+            ? "未设置"
+            : profileCancellationStatus.scheduledTime;
+        return "注销详情\n状态：" + cancellationState
+            + "  可撤销：" + (profileCancellationStatus.cancellable ? "是" : "否")
+            + "\n申请时间：" + requestedTime + "\n冷静期截止：" + scheduledTime;
+    }
+
+    private string BuildProfileComplianceText(bool isAuthenticated)
+    {
+        if (!isAuthenticated)
+        {
+            return "实名/防沉迷\n仅适用于已登录账号";
+        }
+
+        if (profileComplianceStatusLoading)
+        {
+            return "实名/防沉迷\n正在读取服务器状态...";
+        }
+
+        if (!profileComplianceStatusLoaded || profileComplianceStatus == null)
+        {
+            return "实名/防沉迷\n" + (string.IsNullOrEmpty(profileComplianceStatusMessage)
+                ? "等待服务器状态"
+                : profileComplianceStatusMessage);
+        }
+
+        string verificationStatus = string.IsNullOrEmpty(profileComplianceStatus.verificationStatus)
+            ? "UNKNOWN"
+            : profileComplianceStatus.verificationStatus;
+        string ageGroup = string.IsNullOrEmpty(profileComplianceStatus.ageGroup)
+            ? "UNKNOWN"
+            : profileComplianceStatus.ageGroup;
+        string access = profileComplianceStatus.gameAccessAllowed ? "允许进入" : "暂不允许进入";
+        string remaining = profileComplianceStatus.remainingSeconds < 0
+            ? "不限时"
+            : FormatProfileRemainingSeconds(profileComplianceStatus.remainingSeconds);
+        string reason = string.IsNullOrEmpty(profileComplianceStatus.blockReason)
+            ? "无"
+            : profileComplianceStatus.blockReason;
+        string nextAllowed = string.IsNullOrEmpty(profileComplianceStatus.nextAllowedTime)
+            ? string.Empty
+            : "，下次可进入：" + profileComplianceStatus.nextAllowedTime;
+        string message = string.IsNullOrEmpty(profileComplianceStatus.message)
+            ? string.Empty
+            : "\n提示：" + profileComplianceStatus.message;
+        return "实名：" + verificationStatus + "  年龄：" + ageGroup
+            + "\n防沉迷：" + (profileComplianceStatus.enforcementEnabled ? access : "未启用")
+            + "  剩余：" + remaining
+            + "\n限制原因：" + reason + nextAllowed + message;
+    }
+
+    private static string FormatProfileRemainingSeconds(int seconds)
+    {
+        if (seconds <= 0)
+        {
+            return "0秒";
+        }
+
+        int hours = seconds / 3600;
+        int minutes = (seconds % 3600) / 60;
+        int remainder = seconds % 60;
+        if (hours > 0)
+        {
+            return hours + "小时" + minutes + "分";
+        }
+
+        if (minutes > 0)
+        {
+            return minutes + "分" + remainder + "秒";
+        }
+
+        return remainder + "秒";
+    }
+
+    private void SaveProfileAccountStatus(string accountStatus)
+    {
+        if (string.IsNullOrEmpty(accountStatus))
+        {
+            return;
+        }
+
+        PlayerPrefs.SetString("AccountStatus", accountStatus);
+        PlayerPrefs.Save();
+    }
+
     private IEnumerator RefreshCurrentUserProfile(Transform root)
     {
         if (profileRefreshRunning || !HasAuthSession())
@@ -614,6 +1034,7 @@ public partial class HomePageUI
             SaveUserProfile(response.data);
             yield return RefreshProfileNicknamePolicy(root);
             yield return RefreshProfileCancellationStatus(root, "正在同步账号注销状态...");
+            yield return RefreshProfileComplianceStatus(root, "正在同步实名及防沉迷状态...");
             profileRefreshRunning = false;
             RefreshAccountProfileScenePanel(root, "服务器资料同步完成");
             SetStatus("个人资料已刷新");
@@ -1090,6 +1511,29 @@ public partial class HomePageUI
         public string cancelledTime;
         public string completedTime;
         public bool cancellable;
+    }
+
+    [Serializable]
+    private class ProfileComplianceApiResponse : BasicApiResponse
+    {
+        public ProfileComplianceData data;
+    }
+
+    [Serializable]
+    private class ProfileComplianceData
+    {
+        public bool enforcementEnabled;
+        public string verificationStatus;
+        public string ageGroup;
+        public bool gameAccessAllowed;
+        public bool restrictedToken;
+        public string blockReason;
+        public string message;
+        public int usedSeconds;
+        public int remainingSeconds;
+        public string nextAllowedTime;
+        public string profileValidUntil;
+        public string serverTime;
     }
 
     [Serializable]

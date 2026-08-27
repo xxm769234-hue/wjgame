@@ -14,9 +14,10 @@ public static class HomePageScenePanelsBuilder
     private const string HomeBackgroundPath = "Assets/_Imported/weijun-game-project/Assets/UI/背景.png";
     private const string TestNodeName = "测试节点";
     private const int MinimumComponentizedBookSchemaVersion = 8;
-    private const int ScenePanelsSchemaVersion = 11;
+    private const int ScenePanelsSchemaVersion = 12;
     private const int EquipmentRows = 6;
     private const string RoleFontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy) SDF.asset";
+    private const string ProfileFontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
     private const int RoleListRows = 20;
     private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy)_爱给网_aigei_com.ttf";
 
@@ -50,6 +51,7 @@ public static class HomePageScenePanelsBuilder
             try
             {
                 bool addedTestNode = EnsureTestNode(scene);
+                bool addedAccountProfileDetails = false;
                 GameObject canvasObject = FindRoot(scene, CanvasName);
                 HomePageScenePanels registry = canvasObject != null
                     ? canvasObject.GetComponent<HomePageScenePanels>()
@@ -83,6 +85,20 @@ public static class HomePageScenePanelsBuilder
                     BuildScenePanels(scene, true);
                 }
                 else if (addedTestNode)
+                {
+                    EditorSceneManager.MarkSceneDirty(scene);
+                    EditorSceneManager.SaveScene(scene);
+                }
+
+                if (registry != null && registry.SchemaVersion == ScenePanelsSchemaVersion)
+                {
+                    Transform profileRoot = canvasObject == null
+                        ? null
+                        : FindTransformByName(canvasObject.transform, "AccountProfileScenePanel");
+                    addedAccountProfileDetails = EnsureAccountProfileDetails(profileRoot);
+                }
+
+                if (addedAccountProfileDetails)
                 {
                     EditorSceneManager.MarkSceneDirty(scene);
                     EditorSceneManager.SaveScene(scene);
@@ -236,6 +252,263 @@ public static class HomePageScenePanelsBuilder
     {
         Scene scene = EditorSceneManager.OpenScene(HomeScenePath, OpenSceneMode.Single);
         BuildScenePanels(scene, true);
+    }
+
+    [MenuItem("Tools/WeiJun UI/Update Account Profile Panel")]
+    public static void UpdateAccountProfilePanel()
+    {
+        Scene scene = SceneManager.GetSceneByPath(HomeScenePath);
+        bool openedForUpdate = !scene.IsValid() || !scene.isLoaded;
+        if (openedForUpdate)
+        {
+            scene = EditorSceneManager.OpenScene(HomeScenePath, OpenSceneMode.Additive);
+        }
+
+        try
+        {
+            GameObject canvasObject = FindRoot(scene, CanvasName);
+            Transform profileRoot = canvasObject == null
+                ? null
+                : FindTransformByName(canvasObject.transform, "AccountProfileScenePanel");
+            if (profileRoot == null)
+            {
+                Debug.LogError("AccountProfileScenePanel was not found in HomeScene.");
+                return;
+            }
+
+            string[] removedObjects =
+            {
+                "ProfileDisplayName",
+                "ProfileResourceTitle",
+                "ProfileGoldCard",
+                "ProfileWoodCard",
+                "ProfileStoneCard",
+                "ProfileIronCard",
+                "ProfileExploreStatCard"
+            };
+            for (int i = 0; i < removedObjects.Length; i++)
+            {
+                Transform target = FindTransformByName(profileRoot, removedObjects[i]);
+                if (target != null)
+                {
+                    Object.DestroyImmediate(target.gameObject);
+                }
+            }
+
+            Transform identifier = FindTransformByName(profileRoot, "ProfileIdentifier");
+            if (identifier != null)
+            {
+                TMP_Text identifierText = identifier.GetComponent<TMP_Text>();
+                if (identifierText != null)
+                {
+                    identifierText.text = "玩家ID  WJ-00000000";
+                }
+                else
+                {
+                    Text legacyIdentifier = identifier.GetComponent<Text>();
+                    if (legacyIdentifier != null)
+                    {
+                        legacyIdentifier.text = "玩家ID  WJ-00000000";
+                    }
+                }
+
+                RectTransform identifierRect = identifier.GetComponent<RectTransform>();
+                if (identifierRect != null)
+                {
+                    identifierRect.sizeDelta = new Vector2(170f, identifierRect.sizeDelta.y);
+                }
+            }
+
+            Transform copyButton = FindTransformByName(profileRoot, "ProfileCopyIdButton");
+            if (copyButton != null)
+            {
+                SetProfileButtonText(copyButton, "复制玩家ID");
+                RectTransform copyRect = copyButton.GetComponent<RectTransform>();
+                if (copyRect != null)
+                {
+                    copyRect.anchoredPosition = new Vector2(204f, -386f);
+                    copyRect.sizeDelta = new Vector2(156f, 38f);
+                }
+            }
+
+            Transform nicknameInput = FindTransformByName(profileRoot, "ProfileNicknameInput");
+            TMP_FontAsset profileFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(
+                "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset");
+            ConvertProfileTextComponents(profileRoot, nicknameInput, profileFont);
+            EnsureAccountProfileDetails(profileRoot);
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            Debug.Log("Updated the account profile panel in HomeScene.");
+        }
+        finally
+        {
+            if (openedForUpdate && scene.IsValid() && scene.isLoaded)
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
+        }
+    }
+
+    [MenuItem("Tools/WeiJun UI/Add Account Profile Details")]
+    public static void AddAccountProfileDetails()
+    {
+        Scene scene = SceneManager.GetSceneByPath(HomeScenePath);
+        bool openedForUpdate = !scene.IsValid() || !scene.isLoaded;
+        if (openedForUpdate)
+        {
+            scene = EditorSceneManager.OpenScene(HomeScenePath, OpenSceneMode.Additive);
+        }
+
+        try
+        {
+            GameObject canvasObject = FindRoot(scene, CanvasName);
+            Transform profileRoot = canvasObject == null
+                ? null
+                : FindTransformByName(canvasObject.transform, "AccountProfileScenePanel");
+            if (profileRoot == null)
+            {
+                Debug.LogWarning("AccountProfileScenePanel was not found in HomeScene.");
+                return;
+            }
+
+            if (EnsureAccountProfileDetails(profileRoot))
+            {
+                EditorSceneManager.MarkSceneDirty(scene);
+                EditorSceneManager.SaveScene(scene);
+            }
+        }
+        finally
+        {
+            if (openedForUpdate && scene.IsValid() && scene.isLoaded)
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
+        }
+    }
+
+    private static bool EnsureAccountProfileDetails(Transform profileRoot)
+    {
+        if (profileRoot == null || FindTransformByName(profileRoot, "ProfileDetailsCard") != null)
+        {
+            return false;
+        }
+
+        Transform panel = FindTransformByName(profileRoot, "ProfilePanel");
+        if (panel == null)
+        {
+            Debug.LogWarning("ProfilePanel was not found while adding account profile details.");
+            return false;
+        }
+
+        BuildProfileDetailsCard(panel);
+        return true;
+    }
+
+    private static void ConvertProfileTextComponents(Transform profileRoot, Transform excludedRoot, TMP_FontAsset fontAsset)
+    {
+        Text[] legacyTexts = profileRoot.GetComponentsInChildren<Text>(true);
+        for (int i = 0; i < legacyTexts.Length; i++)
+        {
+            Text legacy = legacyTexts[i];
+            if (legacy == null || (excludedRoot != null && (legacy.transform == excludedRoot || legacy.transform.IsChildOf(excludedRoot))))
+            {
+                continue;
+            }
+
+            GameObject target = legacy.gameObject;
+            string value = legacy.text;
+            int fontSize = legacy.fontSize;
+            FontStyle fontStyle = legacy.fontStyle;
+            Color color = legacy.color;
+            TextAnchor alignment = legacy.alignment;
+            bool enabled = legacy.enabled;
+            bool raycastTarget = legacy.raycastTarget;
+            bool bestFit = legacy.resizeTextForBestFit;
+            int minSize = legacy.resizeTextMinSize;
+            int maxSize = legacy.resizeTextMaxSize;
+            bool richText = legacy.supportRichText;
+            HorizontalWrapMode horizontalOverflow = legacy.horizontalOverflow;
+            VerticalWrapMode verticalOverflow = legacy.verticalOverflow;
+
+            Object.DestroyImmediate(legacy);
+            TextMeshProUGUI replacement = target.AddComponent<TextMeshProUGUI>();
+            replacement.font = fontAsset != null ? fontAsset : TMP_Settings.defaultFontAsset;
+            replacement.text = value ?? string.Empty;
+            replacement.fontSize = Mathf.Max(1, fontSize);
+            replacement.fontStyle = ConvertFontStyle(fontStyle);
+            replacement.color = color;
+            replacement.alignment = ConvertTextAlignment(alignment);
+            replacement.enableAutoSizing = bestFit;
+            replacement.fontSizeMin = Mathf.Max(1, minSize);
+            replacement.fontSizeMax = Mathf.Max(replacement.fontSizeMin, maxSize);
+            replacement.enableWordWrapping = horizontalOverflow == HorizontalWrapMode.Wrap;
+            replacement.overflowMode = verticalOverflow == VerticalWrapMode.Overflow
+                ? TextOverflowModes.Overflow
+                : TextOverflowModes.Truncate;
+            replacement.richText = richText;
+            replacement.raycastTarget = raycastTarget;
+            replacement.enabled = enabled;
+            EditorUtility.SetDirty(replacement);
+        }
+    }
+
+    private static void SetProfileButtonText(Transform buttonRoot, string value)
+    {
+        TMP_Text tmp = buttonRoot.GetComponentInChildren<TMP_Text>(true);
+        if (tmp != null)
+        {
+            tmp.text = value;
+            return;
+        }
+
+        Text legacy = buttonRoot.GetComponentInChildren<Text>(true);
+        if (legacy != null)
+        {
+            legacy.text = value;
+        }
+    }
+
+    private static FontStyles ConvertFontStyle(FontStyle style)
+    {
+        switch (style)
+        {
+            case FontStyle.Bold:
+                return FontStyles.Bold;
+            case FontStyle.Italic:
+                return FontStyles.Italic;
+            case FontStyle.BoldAndItalic:
+                return FontStyles.Bold | FontStyles.Italic;
+            default:
+                return FontStyles.Normal;
+        }
+    }
+
+    private static TextAlignmentOptions ConvertTextAlignment(TextAnchor alignment)
+    {
+        switch (alignment)
+        {
+            case TextAnchor.UpperLeft:
+                return TextAlignmentOptions.TopLeft;
+            case TextAnchor.UpperCenter:
+                return TextAlignmentOptions.Top;
+            case TextAnchor.UpperRight:
+                return TextAlignmentOptions.TopRight;
+            case TextAnchor.MiddleLeft:
+                return TextAlignmentOptions.MidlineLeft;
+            case TextAnchor.MiddleCenter:
+                return TextAlignmentOptions.Center;
+            case TextAnchor.MiddleRight:
+                return TextAlignmentOptions.MidlineRight;
+            case TextAnchor.LowerLeft:
+                return TextAlignmentOptions.BottomLeft;
+            case TextAnchor.LowerCenter:
+                return TextAlignmentOptions.Bottom;
+            case TextAnchor.LowerRight:
+                return TextAlignmentOptions.BottomRight;
+            default:
+                return TextAlignmentOptions.TopLeft;
+        }
     }
 
     private static void BuildScenePanels(Scene scene, bool saveScene)
@@ -1258,96 +1531,107 @@ public static class HomePageScenePanelsBuilder
 
         Image header = CreateImage("ProfileHeader", panel.transform, new Color(0.52f, 0.22f, 0.16f, 1f));
         SetTopLeft(header.rectTransform, new Vector2(24f, -24f), new Vector2(1232f, 76f));
-        Text title = CreateText("ProfileTitle", panel.transform, "个人信息", 38, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
+        TMP_Text title = CreateTMPText("ProfileTitle", panel.transform, "个人信息", 38, Color.white, TextAlignmentOptions.MidlineLeft);
         SetTopLeft(title.rectTransform, new Vector2(58f, -34f), new Vector2(240f, 54f));
         Image modeBadge = CreateImage("ProfileModeBadgeBackground", panel.transform, new Color(0.28f, 0.67f, 0.40f, 1f));
         SetTopLeft(modeBadge.rectTransform, new Vector2(302f, -41f), new Vector2(156f, 42f));
-        Text modeText = CreateText("ProfileModeBadge", modeBadge.transform, "账号登录", 19, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+        TMP_Text modeText = CreateTMPText("ProfileModeBadge", modeBadge.transform, "账号登录", 19, Color.white, TextAlignmentOptions.Center);
         Stretch(modeText.rectTransform);
-        Button close = CreateButton("ProfileCloseButton", panel.transform, "X", new Color(0.90f, 0.30f, 0.25f, 1f), Color.white, 24);
+        Button close = CreateTMPButton("ProfileCloseButton", panel.transform, "X", new Color(0.90f, 0.30f, 0.25f, 1f), Color.white, 24);
         SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(1188f, -36f), new Vector2(50f, 50f));
 
         Image identityCard = CreateImage("ProfileIdentityCard", panel.transform, new Color(1f, 0.84f, 0.58f, 1f));
         SetTopLeft(identityCard.rectTransform, new Vector2(42f, -126f), new Vector2(384f, 548f));
         Image avatar = CreateImage("ProfileAvatarBackground", identityCard.transform, new Color(0.28f, 0.62f, 0.76f, 1f));
         SetTopLeft(avatar.rectTransform, new Vector2(132f, -24f), new Vector2(120f, 120f));
-        Text avatarInitial = CreateText("ProfileAvatarInitial", avatar.transform, "游", 58, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+        TMP_Text avatarInitial = CreateTMPText("ProfileAvatarInitial", avatar.transform, "游", 58, Color.white, TextAlignmentOptions.Center);
         Stretch(avatarInitial.rectTransform);
-        Text displayName = CreateText("ProfileDisplayName", identityCard.transform, "玩家", 29, FontStyle.Bold, new Color(0.34f, 0.16f, 0.08f, 1f), TextAnchor.MiddleCenter);
-        SetTopLeft(displayName.rectTransform, new Vector2(28f, -152f), new Vector2(328f, 38f));
 
-        Text nicknameLabel = CreateText("ProfileNicknameLabel", identityCard.transform, "账号昵称", 20, FontStyle.Bold, new Color(0.40f, 0.23f, 0.11f, 1f), TextAnchor.MiddleLeft);
+        TMP_Text nicknameLabel = CreateTMPText("ProfileNicknameLabel", identityCard.transform, "账号昵称", 20, new Color(0.40f, 0.23f, 0.11f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(nicknameLabel.rectTransform, new Vector2(24f, -202f), new Vector2(180f, 30f));
         InputField nicknameInput = CreateSceneInputField("ProfileNicknameInput", identityCard.transform, "账号昵称由服务器管理", 18);
         SetTopLeft(nicknameInput.GetComponent<RectTransform>(), new Vector2(24f, -236f), new Vector2(336f, 48f));
-        Text nicknameHint = CreateText("ProfileNicknameHint", identityCard.transform, "昵称长度为 2-12 个字符", 15, FontStyle.Normal, new Color(0.46f, 0.39f, 0.30f, 1f), TextAnchor.MiddleLeft);
+        TMP_Text nicknameHint = CreateTMPText("ProfileNicknameHint", identityCard.transform, "昵称长度为 2-12 个字符", 15, new Color(0.46f, 0.39f, 0.30f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(nicknameHint.rectTransform, new Vector2(28f, -287f), new Vector2(328f, 26f));
 
-        Button saveNickname = CreateButton("ProfileSaveNicknameButton", identityCard.transform, "保存昵称", new Color(0.28f, 0.64f, 0.38f, 1f), Color.white, 19);
+        Button saveNickname = CreateTMPButton("ProfileSaveNicknameButton", identityCard.transform, "保存昵称", new Color(0.28f, 0.64f, 0.38f, 1f), Color.white, 19);
         SetTopLeft(saveNickname.GetComponent<RectTransform>(), new Vector2(24f, -326f), new Vector2(156f, 46f));
-        Button copyId = CreateButton("ProfileCopyIdButton", identityCard.transform, "复制编号", new Color(0.28f, 0.55f, 0.76f, 1f), Color.white, 19);
-        SetTopLeft(copyId.GetComponent<RectTransform>(), new Vector2(204f, -326f), new Vector2(156f, 46f));
+        Button copyId = CreateTMPButton("ProfileCopyIdButton", identityCard.transform, "复制玩家ID", new Color(0.28f, 0.55f, 0.76f, 1f), Color.white, 19);
+        SetTopLeft(copyId.GetComponent<RectTransform>(), new Vector2(204f, -386f), new Vector2(156f, 38f));
 
-        Text identifier = CreateText("ProfileIdentifier", identityCard.transform, "玩家编号  WJ-00000000", 17, FontStyle.Bold, new Color(0.32f, 0.20f, 0.11f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(identifier.rectTransform, new Vector2(28f, -392f), new Vector2(328f, 30f));
-        Text account = CreateText("ProfileAccount", identityCard.transform, "登录账号", 17, FontStyle.Normal, new Color(0.42f, 0.32f, 0.22f, 1f), TextAnchor.MiddleLeft);
+        TMP_Text identifier = CreateTMPText("ProfileIdentifier", identityCard.transform, "玩家ID  WJ-00000000", 17, new Color(0.32f, 0.20f, 0.11f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(identifier.rectTransform, new Vector2(28f, -392f), new Vector2(170f, 30f));
+        TMP_Text account = CreateTMPText("ProfileAccount", identityCard.transform, "登录账号", 17, new Color(0.42f, 0.32f, 0.22f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(account.rectTransform, new Vector2(28f, -430f), new Vector2(328f, 30f));
-        Text level = CreateText("ProfileLevel", identityCard.transform, "领主等级  Lv.1", 18, FontStyle.Bold, new Color(0.50f, 0.20f, 0.12f, 1f), TextAnchor.MiddleLeft);
+        TMP_Text level = CreateTMPText("ProfileLevel", identityCard.transform, "领主等级  Lv.1", 18, new Color(0.50f, 0.20f, 0.12f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(level.rectTransform, new Vector2(28f, -468f), new Vector2(328f, 32f));
         TMP_Text cancellationStatus = CreateTMPText("ProfileCancellationStatus", identityCard.transform, "账号注销状态：暂未同步", 15, new Color(0.46f, 0.30f, 0.18f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(cancellationStatus.rectTransform, new Vector2(28f, -510f), new Vector2(328f, 30f));
 
-        Text resourceTitle = CreateText("ProfileResourceTitle", panel.transform, "领地资源", 27, FontStyle.Bold, new Color(0.39f, 0.18f, 0.08f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(resourceTitle.rectTransform, new Vector2(454f, -130f), new Vector2(240f, 38f));
-        BuildProfileResourceCard(panel.transform, "ProfileGold", "金币", new Vector2(454f, -180f), new Color(0.90f, 0.64f, 0.20f, 1f));
-        BuildProfileResourceCard(panel.transform, "ProfileWood", "木材", new Vector2(644f, -180f), new Color(0.38f, 0.66f, 0.34f, 1f));
-        BuildProfileResourceCard(panel.transform, "ProfileStone", "石材", new Vector2(834f, -180f), new Color(0.46f, 0.53f, 0.58f, 1f));
-        BuildProfileResourceCard(panel.transform, "ProfileIron", "铁矿", new Vector2(1024f, -180f), new Color(0.62f, 0.43f, 0.68f, 1f));
-
         Image vitalBar = CreateImage("ProfileVitalBar", panel.transform, new Color(0.98f, 0.78f, 0.52f, 1f));
         SetTopLeft(vitalBar.rectTransform, new Vector2(454f, -306f), new Vector2(746f, 50f));
-        Text vital = CreateText("ProfileVital", vitalBar.transform, "生命  1000    体力  100", 20, FontStyle.Bold, new Color(0.42f, 0.19f, 0.09f, 1f), TextAnchor.MiddleCenter);
+        TMP_Text vital = CreateTMPText("ProfileVital", vitalBar.transform, "生命  1000    体力  100", 20, new Color(0.42f, 0.19f, 0.09f, 1f), TextAlignmentOptions.Center);
         Stretch(vital.rectTransform);
 
-        Text growthTitle = CreateText("ProfileGrowthTitle", panel.transform, "成长记录", 27, FontStyle.Bold, new Color(0.39f, 0.18f, 0.08f, 1f), TextAnchor.MiddleLeft);
+        TMP_Text growthTitle = CreateTMPText("ProfileGrowthTitle", panel.transform, "成长记录", 27, new Color(0.39f, 0.18f, 0.08f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(growthTitle.rectTransform, new Vector2(454f, -370f), new Vector2(240f, 38f));
         BuildProfileStatCard(panel.transform, "ProfileSignStat", new Vector2(454f, -416f), new Color(0.92f, 0.45f, 0.30f, 1f));
         BuildProfileStatCard(panel.transform, "ProfileFriendStat", new Vector2(711f, -416f), new Color(0.25f, 0.59f, 0.73f, 1f));
-        BuildProfileStatCard(panel.transform, "ProfileExploreStat", new Vector2(968f, -416f), new Color(0.36f, 0.66f, 0.38f, 1f));
 
         Image syncCard = CreateImage("ProfileSyncCard", panel.transform, new Color(1f, 0.88f, 0.66f, 1f));
         SetTopLeft(syncCard.rectTransform, new Vector2(454f, -560f), new Vector2(746f, 92f));
-        Text syncTitle = CreateText("ProfileSyncTitle", syncCard.transform, "档案状态", 19, FontStyle.Bold, new Color(0.42f, 0.20f, 0.10f, 1f), TextAnchor.MiddleLeft);
+        TMP_Text syncTitle = CreateTMPText("ProfileSyncTitle", syncCard.transform, "档案状态", 19, new Color(0.42f, 0.20f, 0.10f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(syncTitle.rectTransform, new Vector2(22f, -12f), new Vector2(150f, 30f));
-        Text syncText = CreateText("ProfileSyncText", syncCard.transform, "资料来源  当前登录账号", 17, FontStyle.Normal, new Color(0.44f, 0.36f, 0.27f, 1f), TextAnchor.MiddleLeft);
+        TMP_Text syncText = CreateTMPText("ProfileSyncText", syncCard.transform, "资料来源  当前登录账号", 17, new Color(0.44f, 0.36f, 0.27f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(syncText.rectTransform, new Vector2(22f, -46f), new Vector2(690f, 28f));
+
+        BuildProfileDetailsCard(panel.transform);
 
         Image footerDivider = CreateImage("ProfileFooterDivider", panel.transform, new Color(0.48f, 0.27f, 0.13f, 0.48f));
         SetTopLeft(footerDivider.rectTransform, new Vector2(42f, -694f), new Vector2(1196f, 4f));
         footerDivider.raycastTarget = false;
-        Text profileStatus = CreateText("ProfileStatus", panel.transform, "账号资料等待同步", 17, FontStyle.Bold, new Color(0.36f, 0.42f, 0.24f, 1f), TextAnchor.MiddleLeft);
+        TMP_Text profileStatus = CreateTMPText("ProfileStatus", panel.transform, "账号资料等待同步", 17, new Color(0.36f, 0.42f, 0.24f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(profileStatus.rectTransform, new Vector2(50f, -716f), new Vector2(650f, 48f));
-        Button refresh = CreateButton("ProfileRefreshButton", panel.transform, "本地存档", new Color(0.28f, 0.57f, 0.73f, 1f), Color.white, 19);
+        Button refresh = CreateTMPButton("ProfileRefreshButton", panel.transform, "本地存档", new Color(0.28f, 0.57f, 0.73f, 1f), Color.white, 19);
         SetTopLeft(refresh.GetComponent<RectTransform>(), new Vector2(730f, -724f), new Vector2(150f, 52f));
         Button cancelAccount = CreateTMPButton("ProfileCancelAccountButton", panel.transform, "注销账号", new Color(0.70f, 0.25f, 0.20f, 1f), Color.white, 18);
         SetTopLeft(cancelAccount.GetComponent<RectTransform>(), new Vector2(900f, -724f), new Vector2(150f, 52f));
-        Button switchLogin = CreateButton("ProfileSwitchLoginButton", panel.transform, "切换账号", new Color(0.85f, 0.43f, 0.31f, 1f), Color.white, 19);
+        Button switchLogin = CreateTMPButton("ProfileSwitchLoginButton", panel.transform, "切换账号", new Color(0.85f, 0.43f, 0.31f, 1f), Color.white, 19);
         SetTopLeft(switchLogin.GetComponent<RectTransform>(), new Vector2(1070f, -724f), new Vector2(168f, 52f));
         return scenePanel;
     }
 
-    private static void BuildProfileResourceCard(Transform parent, string valueName, string label, Vector2 position, Color color)
+    private static void BuildProfileDetailsCard(Transform parent)
     {
-        Image card = CreateImage(valueName + "Card", parent, new Color(1f, 0.89f, 0.65f, 1f));
-        SetTopLeft(card.rectTransform, position, new Vector2(176f, 108f));
-        Image swatch = CreateImage(valueName + "Swatch", card.transform, color);
-        SetTopLeft(swatch.rectTransform, new Vector2(14f, -16f), new Vector2(48f, 48f));
-        Text icon = CreateText(valueName + "Icon", swatch.transform, label.Substring(0, 1), 23, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-        Stretch(icon.rectTransform);
-        Text labelText = CreateText(valueName + "Label", card.transform, label, 17, FontStyle.Bold, new Color(0.42f, 0.24f, 0.11f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(labelText.rectTransform, new Vector2(72f, -16f), new Vector2(88f, 28f));
-        Text value = CreateText(valueName, card.transform, "0", 27, FontStyle.Bold, new Color(0.34f, 0.16f, 0.08f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(value.rectTransform, new Vector2(72f, -50f), new Vector2(88f, 38f));
+        Image card = CreateImage("ProfileDetailsCard", parent, new Color(1f, 0.90f, 0.69f, 1f));
+        SetTopLeft(card.rectTransform, new Vector2(454f, -126f), new Vector2(746f, 160f));
+
+        TMP_Text title = CreateProfileTMPText("ProfileDetailsTitle", card.transform, "账号与成长详情", 18, new Color(0.42f, 0.20f, 0.10f, 1f), TextAlignmentOptions.MidlineLeft);
+        SetTopLeft(title.rectTransform, new Vector2(20f, -10f), new Vector2(700f, 26f));
+
+        TMP_Text experience = CreateProfileTMPText("ProfileExperienceText", card.transform, "经验详情\n总经验：0\n本级经验：0/0", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
+        SetTopLeft(experience.rectTransform, new Vector2(20f, -40f), new Vector2(342f, 48f));
+
+        TMP_Text accountStatus = CreateProfileTMPText("ProfileAccountStatusText", card.transform, "账号状态\n状态：ACTIVE\n可正常进入游戏", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
+        SetTopLeft(accountStatus.rectTransform, new Vector2(382f, -40f), new Vector2(342f, 48f));
+
+        TMP_Text cancellation = CreateProfileTMPText("ProfileCancellationDetailsText", card.transform, "注销详情\n状态：未申请\n冷静期截止：未设置", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
+        SetTopLeft(cancellation.rectTransform, new Vector2(20f, -92f), new Vector2(342f, 58f));
+
+        TMP_Text compliance = CreateProfileTMPText("ProfileComplianceText", card.transform, "实名/防沉迷\n实名：UNKNOWN\n防沉迷：等待服务器状态", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
+        SetTopLeft(compliance.rectTransform, new Vector2(382f, -92f), new Vector2(342f, 58f));
+    }
+
+    private static TMP_Text CreateProfileTMPText(string name, Transform parent, string value, int fontSize, Color color, TextAlignmentOptions alignment)
+    {
+        TMP_Text text = CreateTMPText(name, parent, value, fontSize, color, alignment);
+        text.font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ProfileFontPath)
+            ?? roleFontAsset
+            ?? TMP_Settings.defaultFontAsset;
+        text.fontStyle = FontStyles.Normal;
+        text.enableWordWrapping = true;
+        text.overflowMode = TextOverflowModes.Ellipsis;
+        return text;
     }
 
     private static void BuildProfileStatCard(Transform parent, string valueName, Vector2 position, Color color)
@@ -1356,7 +1640,7 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(card.rectTransform, position, new Vector2(235f, 126f));
         Image stripe = CreateImage(valueName + "Stripe", card.transform, color);
         SetTopLeft(stripe.rectTransform, Vector2.zero, new Vector2(12f, 126f));
-        Text value = CreateText(valueName, card.transform, "成长记录\n0", 21, FontStyle.Bold, new Color(0.37f, 0.19f, 0.09f, 1f), TextAnchor.MiddleCenter);
+        TMP_Text value = CreateTMPText(valueName, card.transform, "成长记录\n0", 21, new Color(0.37f, 0.19f, 0.09f, 1f), TextAlignmentOptions.Center);
         SetTopLeft(value.rectTransform, new Vector2(22f, -10f), new Vector2(200f, 106f));
     }
 
@@ -2007,6 +2291,25 @@ public static class HomePageScenePanelsBuilder
             Image bottom = CreateImage("AirmailBottom" + i, parent, i % 2 == 0 ? red : blue);
             SetTopLeft(bottom.rectTransform, new Vector2(18f + i * 50f, -size.y + 26f), new Vector2(32f, 12f));
         }
+    }
+
+    private static Transform FindTransformByName(Transform root, string name)
+    {
+        if (root == null)
+        {
+            return null;
+        }
+
+        Transform[] transforms = root.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < transforms.Length; i++)
+        {
+            if (transforms[i].name == name)
+            {
+                return transforms[i];
+            }
+        }
+
+        return null;
     }
 
     private static GameObject FindRoot(Scene scene, string name)

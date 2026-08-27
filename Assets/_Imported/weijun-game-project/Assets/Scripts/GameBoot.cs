@@ -918,6 +918,10 @@ public partial class GameBoot : MonoBehaviour
         PlayerPrefs.SetString("PlayerNicknameUpdatedTime", user.nicknameUpdatedTime ?? string.Empty);
         PlayerPrefs.SetInt("PlayerNicknameChangeCount", Math.Max(0, user.nicknameChangeCount));
         PlayerPrefs.SetInt("PlayerNicknameChangeRequired", user.nicknameChangeRequired ? 1 : 0);
+        PlayerPrefs.SetString("AccountStatus", string.IsNullOrEmpty(data.accountStatus) ? "ACTIVE" : data.accountStatus);
+        PlayerPrefs.SetInt("AccountManagementOnly", data.accountManagementOnly ? 1 : 0);
+        PlayerPrefs.SetInt("PrivacyConsentRequired", data.privacyConsentRequired ? 1 : 0);
+        PlayerPrefs.SetString("PrivacyPolicyVersion", data.privacyPolicyVersion ?? string.Empty);
         PlayerPrefs.Save();
     }
 
