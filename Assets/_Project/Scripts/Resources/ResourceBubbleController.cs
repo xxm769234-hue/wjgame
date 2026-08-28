@@ -71,6 +71,7 @@ public sealed class ResourceBubbleController : MonoBehaviour
 
     private void OnMouseDown()
     {
+        if (PlayerOnboardingInputLock.IsLocked) return;
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
         if (owner != null) owner.CollectReadyResource();
     }

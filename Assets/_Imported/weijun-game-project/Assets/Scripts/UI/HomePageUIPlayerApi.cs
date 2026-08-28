@@ -1263,6 +1263,8 @@ public partial class HomePageUI
         CardDrawCardResponse[] cards = serverCardDrawPool != null && serverCardDrawPool.cards != null
             ? serverCardDrawPool.cards
             : new CardDrawCardResponse[0];
+        EnsureRareCardDrawBroadcastView(root);
+        StartRareCardDrawBroadcast();
         ConfigureLotteryPrizeRail(root, cards);
 
         CardDrawOptionResponse single = FindCardDrawOption("SINGLE");
@@ -1623,9 +1625,19 @@ public partial class HomePageUI
             AnnouncementResponse[] announcements = response.data.items ?? new AnnouncementResponse[0];
             if (announcements.Length == 0)
             {
+                if (announcementPanelView == null || !announcementPanelView.gameObject.activeInHierarchy)
+                {
+                    yield break;
+                }
+
                 announcementPanelView.SetAnnouncement("游戏公告", "当前没有有效公告", string.Empty, "暂无公告内容");
                 announcementPanelView.BindClose(HideAnnouncementPanel);
                 SetStatus("当前没有有效公告");
+                yield break;
+            }
+
+            if (announcementPanelView == null || !announcementPanelView.gameObject.activeInHierarchy)
+            {
                 yield break;
             }
 
@@ -1708,7 +1720,7 @@ public partial class HomePageUI
 
     private void ShowAnnouncementFailure(string error)
     {
-        if (announcementPanelView != null)
+        if (announcementPanelView != null && announcementPanelView.gameObject.activeInHierarchy)
         {
             announcementPanelView.SetAnnouncement("游戏公告", "同步失败", string.Empty, error);
             announcementPanelView.BindClose(HideAnnouncementPanel);

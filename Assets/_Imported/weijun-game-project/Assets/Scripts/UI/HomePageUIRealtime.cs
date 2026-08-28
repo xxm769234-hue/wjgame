@@ -1,9 +1,12 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Reflection;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.UI;
 
 public partial class HomePageUI
 {
@@ -26,6 +29,14 @@ public partial class HomePageUI
     private string realtimeLandRefreshStatus = string.Empty;
     private bool resumeRealtimeAfterPause;
     private int realtimeHeartbeatSequence;
+    private readonly Queue<RareCardDrawBroadcastMessage> rareCardDrawBroadcastQueue = new Queue<RareCardDrawBroadcastMessage>();
+    private Coroutine rareCardDrawBroadcastCoroutine;
+    private GameObject rareCardDrawBroadcastObject;
+    private RectTransform rareCardDrawBroadcastViewport;
+    private TextMeshProUGUI rareCardDrawBroadcastText;
+
+    private const int MaxRareCardDrawBroadcastQueueSize = 16;
+    private const float RareCardDrawBroadcastSpeed = 82f;
 
     private void BeginRealtimeConnection()
     {
@@ -161,21 +172,21 @@ public partial class HomePageUI
         {
             RareCardDrawRealtimeEvent rareEvent = ParseJson<RareCardDrawRealtimeEvent>(json);
             RareCardDrawData rareData = rareEvent == null ? null : rareEvent.data;
-            string reward = rareData == null ? string.Empty : rareData.rewardName;
-            if (string.IsNullOrEmpty(reward) && rareData != null)
+            if (rareData == null || string.IsNullOrWhiteSpace(rareData.content))
             {
-                reward = rareData.rewardKey;
+                Debug.LogWarning("Rare card draw broadcast did not contain data.content.");
+                return;
             }
 
-            string content = rareData == null ? string.Empty : rareData.content;
-            if (string.IsNullOrEmpty(content))
+            string content = rareData.content.Trim();
+            if (IsRareCardDrawBroadcastExpired(rareData.expiresAt))
             {
-                content = string.IsNullOrEmpty(reward) ? "抽奖稀有奖品" : reward;
+                return;
             }
 
-            string expiresAt = rareData == null ? string.Empty : rareData.expiresAt;
+            EnqueueRareCardDrawBroadcast(content, rareData.expiresAt);
             SetStatus("抽奖稀有奖品广播：" + content
-                + (string.IsNullOrEmpty(expiresAt) ? string.Empty : "（有效期至 " + expiresAt + "）"));
+                + (string.IsNullOrEmpty(rareData.expiresAt) ? string.Empty : "（有效期至 " + rareData.expiresAt + "）"));
             return;
         }
 
@@ -199,6 +210,10 @@ public partial class HomePageUI
 
         if (realtimeEvent.type == "PLAYER_ONBOARDING_UPDATED")
         {
+            if (PlayerOnboardingManager.Instance != null)
+            {
+                PlayerOnboardingManager.Instance.RefreshCurrent();
+            }
             SetStatus("新手引导状态已更新，请按当前提示继续");
             return;
         }
@@ -262,6 +277,10 @@ public partial class HomePageUI
             StopCoroutine(realtimeHeartbeatCoroutine);
         }
         realtimeHeartbeatCoroutine = StartCoroutine(SendRealtimeHeartbeats());
+        if (PlayerOnboardingManager.Instance != null)
+        {
+            PlayerOnboardingManager.Instance.RefreshCurrent();
+        }
         RefreshV38FriendPresenceAfterRealtimeConnected();
 
         if (!realtimeBackfillRunning)
@@ -273,6 +292,218 @@ public partial class HomePageUI
     private static bool IsCurrentPlayerRealtimeEvent(RealtimeEvent realtimeEvent)
     {
         return realtimeEvent != null && realtimeEvent.playerId == GameSession.PlayerId;
+    }
+
+    private void EnqueueRareCardDrawBroadcast(string content, string expiresAt)
+    {
+        if (string.IsNullOrWhiteSpace(content) || IsRareCardDrawBroadcastExpired(expiresAt))
+        {
+            return;
+        }
+
+        while (rareCardDrawBroadcastQueue.Count >= MaxRareCardDrawBroadcastQueueSize)
+        {
+            rareCardDrawBroadcastQueue.Dequeue();
+        }
+
+        rareCardDrawBroadcastQueue.Enqueue(new RareCardDrawBroadcastMessage
+        {
+            content = content,
+            expiresAt = expiresAt
+        });
+        StartRareCardDrawBroadcast();
+    }
+
+    private void StartRareCardDrawBroadcast()
+    {
+        if (rareCardDrawBroadcastCoroutine == null
+            && IsLotteryScenePanelVisible()
+            && rareCardDrawBroadcastQueue.Count > 0)
+        {
+            rareCardDrawBroadcastCoroutine = StartCoroutine(PlayRareCardDrawBroadcasts());
+        }
+    }
+
+    private IEnumerator PlayRareCardDrawBroadcasts()
+    {
+        while (rareCardDrawBroadcastQueue.Count > 0)
+        {
+            RareCardDrawBroadcastMessage message = rareCardDrawBroadcastQueue.Dequeue();
+            if (message == null || IsRareCardDrawBroadcastExpired(message.expiresAt))
+            {
+                continue;
+            }
+
+            if (!IsLotteryScenePanelVisible())
+            {
+                rareCardDrawBroadcastQueue.Enqueue(message);
+                HideRareCardDrawBroadcast();
+                rareCardDrawBroadcastCoroutine = null;
+                yield break;
+            }
+
+            if (rareCardDrawBroadcastText == null || rareCardDrawBroadcastViewport == null)
+            {
+                Debug.LogWarning("Lottery rare broadcast view is unavailable.");
+                rareCardDrawBroadcastCoroutine = null;
+                yield break;
+            }
+
+            rareCardDrawBroadcastObject.SetActive(true);
+            rareCardDrawBroadcastText.text = message.content;
+            rareCardDrawBroadcastText.ForceMeshUpdate();
+
+            float viewportWidth = Mathf.Max(1f, rareCardDrawBroadcastViewport.rect.width);
+            float textWidth = Mathf.Max(viewportWidth, rareCardDrawBroadcastText.preferredWidth);
+            RectTransform textRect = rareCardDrawBroadcastText.rectTransform;
+            textRect.sizeDelta = new Vector2(textWidth, rareCardDrawBroadcastViewport.rect.height);
+            textRect.anchoredPosition = new Vector2(viewportWidth * 0.5f, 0f);
+
+            float targetX = -viewportWidth * 0.5f - textWidth;
+            while (IsLotteryScenePanelVisible()
+                && !IsRareCardDrawBroadcastExpired(message.expiresAt)
+                && textRect.anchoredPosition.x > targetX)
+            {
+                textRect.anchoredPosition += Vector2.left * RareCardDrawBroadcastSpeed * Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            if (!IsLotteryScenePanelVisible())
+            {
+                rareCardDrawBroadcastQueue.Enqueue(message);
+                HideRareCardDrawBroadcast();
+                rareCardDrawBroadcastCoroutine = null;
+                yield break;
+            }
+
+            yield return new WaitForSecondsRealtime(0.35f);
+        }
+
+        HideRareCardDrawBroadcast();
+        rareCardDrawBroadcastCoroutine = null;
+    }
+
+    private void EnsureRareCardDrawBroadcastView(Transform lotteryRoot)
+    {
+        if (lotteryRoot == null)
+        {
+            Debug.LogWarning("Cannot create lottery rare broadcast without a lottery root.");
+            return;
+        }
+
+        Transform viewportTransform = FindSceneTransform(lotteryRoot, "LotteryRareBroadcast");
+        if (viewportTransform == null)
+        {
+            Transform parent = FindSceneTransform(lotteryRoot, "LotteryHeader");
+            if (parent == null)
+            {
+                parent = lotteryRoot;
+            }
+
+            GameObject viewportObject = new GameObject(
+                "LotteryRareBroadcast",
+                typeof(RectTransform),
+                typeof(RectMask2D));
+            viewportTransform = viewportObject.transform;
+            viewportTransform.SetParent(parent, false);
+            viewportTransform.SetAsLastSibling();
+
+            RectTransform viewportRect = viewportTransform as RectTransform;
+            RectTransform subtitleRect = FindSceneTransform(lotteryRoot, "LotterySubtitle") as RectTransform;
+            if (subtitleRect != null)
+            {
+                viewportRect.anchorMin = subtitleRect.anchorMin;
+                viewportRect.anchorMax = subtitleRect.anchorMax;
+                viewportRect.pivot = subtitleRect.pivot;
+                viewportRect.anchoredPosition = subtitleRect.anchoredPosition
+                    - new Vector2(0f, Mathf.Max(1f, subtitleRect.rect.height));
+                viewportRect.sizeDelta = new Vector2(
+                    subtitleRect.sizeDelta.x,
+                    Mathf.Max(24f, subtitleRect.sizeDelta.y * 0.67f));
+            }
+            else
+            {
+                viewportRect.anchorMin = new Vector2(0.5f, 0.5f);
+                viewportRect.anchorMax = new Vector2(0.5f, 0.5f);
+                viewportRect.pivot = new Vector2(0.5f, 0.5f);
+                viewportRect.anchoredPosition = Vector2.zero;
+                viewportRect.sizeDelta = new Vector2(420f, 24f);
+            }
+        }
+
+        rareCardDrawBroadcastObject = viewportTransform.gameObject;
+        rareCardDrawBroadcastViewport = viewportTransform as RectTransform;
+        if (rareCardDrawBroadcastCoroutine == null)
+        {
+            rareCardDrawBroadcastObject.SetActive(false);
+        }
+
+        Transform textTransform = FindSceneTransform(viewportTransform, "LotteryRareBroadcastText");
+        if (textTransform == null)
+        {
+            GameObject textObject = new GameObject(
+                "LotteryRareBroadcastText",
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(TextMeshProUGUI));
+            textTransform = textObject.transform;
+            textTransform.SetParent(viewportTransform, false);
+        }
+
+        rareCardDrawBroadcastText = textTransform.GetComponent<TextMeshProUGUI>();
+        if (rareCardDrawBroadcastText == null)
+        {
+            Debug.LogWarning("LotteryRareBroadcastText is missing TextMeshProUGUI.");
+            return;
+        }
+
+        rareCardDrawBroadcastText.font = RuntimeFontAssetProvider.Resolve();
+        rareCardDrawBroadcastText.fontStyle = FontStyles.Normal;
+        rareCardDrawBroadcastText.fontSize = 16f;
+        rareCardDrawBroadcastText.alignment = TextAlignmentOptions.MidlineLeft;
+        rareCardDrawBroadcastText.enableWordWrapping = false;
+        rareCardDrawBroadcastText.overflowMode = TextOverflowModes.Overflow;
+        rareCardDrawBroadcastText.raycastTarget = false;
+        rareCardDrawBroadcastText.color = new Color(1f, 0.91f, 0.63f, 1f);
+
+        RectTransform textRect = rareCardDrawBroadcastText.rectTransform;
+        textRect.anchorMin = new Vector2(0.5f, 0.5f);
+        textRect.anchorMax = new Vector2(0.5f, 0.5f);
+        textRect.pivot = new Vector2(0f, 0.5f);
+        textRect.anchoredPosition = Vector2.zero;
+        textRect.sizeDelta = new Vector2(1f, rareCardDrawBroadcastViewport.rect.height);
+    }
+
+    private void HideRareCardDrawBroadcast()
+    {
+        if (rareCardDrawBroadcastObject != null)
+        {
+            rareCardDrawBroadcastObject.SetActive(false);
+        }
+    }
+
+    private bool IsLotteryScenePanelVisible()
+    {
+        return lotteryPanelObject != null && lotteryPanelObject.activeInHierarchy;
+    }
+
+    private static bool IsRareCardDrawBroadcastExpired(string expiresAt)
+    {
+        if (string.IsNullOrWhiteSpace(expiresAt))
+        {
+            return false;
+        }
+
+        if (!DateTimeOffset.TryParse(
+                expiresAt,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out DateTimeOffset parsed))
+        {
+            return false;
+        }
+
+        return parsed <= DateTimeOffset.UtcNow;
     }
 
     private void QueueRealtimeLandRefresh(bool reloadScenes, bool refreshInventory, string status)
@@ -734,6 +965,13 @@ public partial class HomePageUI
         public int playerId;
         public CoinShopPurchaseResult data;
         public string serverTime;
+    }
+
+    [Serializable]
+    private sealed class RareCardDrawBroadcastMessage
+    {
+        public string content;
+        public string expiresAt;
     }
 
     [Serializable]

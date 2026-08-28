@@ -3205,7 +3205,12 @@ public partial class HomePageUI : MonoBehaviour
             return;
         }
 
-        announcementPanelView.gameObject.SetActive(true);
+        if (!EnsureAnnouncementPanelHierarchyActive())
+        {
+            SetLeftContent("游戏公告", BuildAnnouncementBody(), "公告面板无法显示，请检查场景层级");
+            return;
+        }
+
         announcementPanelView.transform.SetAsLastSibling();
         if (HasAuthSession())
         {
@@ -4613,6 +4618,27 @@ public partial class HomePageUI : MonoBehaviour
         }
 
         return announcementPanelView;
+    }
+
+    private bool EnsureAnnouncementPanelHierarchyActive()
+    {
+        if (announcementPanelView == null)
+        {
+            return false;
+        }
+
+        Transform current = announcementPanelView.transform;
+        while (current != null)
+        {
+            if (!current.gameObject.activeSelf)
+            {
+                current.gameObject.SetActive(true);
+            }
+
+            current = current.parent;
+        }
+
+        return announcementPanelView.isActiveAndEnabled;
     }
 
     private void SetLeftContent(string title, string body, string status)

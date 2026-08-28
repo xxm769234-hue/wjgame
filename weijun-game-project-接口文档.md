@@ -1,8 +1,9 @@
 # Weijun Game Project 后端接口文档
 
-重新生成时间：2026-08-26
-更新日期：2026-08-26
-同步说明：已按当前玩家端、微信公共回调和 `/api/ops/**` 管理端路由复核并同步至 Flyway V96。V94 将公告、系统邮件和系统奖励的展示业务编号与创建幂等键分离；V95 新增微信小游戏官方客服联系人、工单、消息和可靠发送 Outbox，并接入管理端客服工作台、统一异常中心、指标和审计；V96 以前向迁移放宽临时会话工单时间列并加固 Outbox 节点租约大小写语义。本次新增单 JAR 的 `all/api/worker` 运行角色、调度职责隔离、Worker HTTP 防护、优雅停机、角色健康检查及双进程部署模板，并补充挂机冒险编队运营查询、本人实时刷新、局部保存原子合并和既有安全边界；没有新增或修改 Flyway SQL。V1-V96 执行成功后均禁止修改，后续数据库变化从 V97 开始。
+重新生成时间：2026-08-27
+更新日期：2026-08-27
+同步说明：已按当前玩家端、微信公共回调和 `/api/ops/**` 管理端路由复核并同步至 Flyway V98。V97 新增开发者固定头像编号与选择接口，V98 放宽并加固头像来源一致性约束；V1-V98 执行成功后均禁止修改，后续数据库变化从 V99 开始。
+版本提示：文档中标注 V93、V96 或更早版本的段落是对应功能的历史交付记录，不代表当前最高版本；上线迁移、校验和与结构核对统一以 V98 和仓库 `src/main/resources/db/migration` 实际文件为准。
 Unity 本次需要修改：保留既有 NPC 获取渠道改造，并新增 `GET /api/customer-service/entry` 预取；玩家点击客服按钮的 touch/click 回调中调用微信官方 `wx.openCustomerServiceConversation`，支持 `sessionFrom` 过期重拉、最低基础库 `2.0.3`、关闭状态和 SDK 失败提示。管理端工单、微信回调和 Outbox 不需要 Unity 实现。
 本次运行角色部署改造的客户端影响：Unity 与管理端接口路径、请求参数、响应 JSON、鉴权方式和错误码全部保持不变，不需要为了 API/Worker 分进程修改客户端代码。
 本次挂机冒险编队改造的客户端影响：既有 HTTP 路径和请求结构不变；Unity 可新增监听 `IDLE_ADVENTURE_FORMATION_CHANGED`，但必须把消息作为刷新提示并重新查询服务端编队，不能直接用可能乱序的事件快照覆盖本地状态。本次关卡敌人预览只新增响应字段，旧 Unity 忽略未知字段即可继续运行；若要显示等级、图标、模型或槽位布局，需要同步扩展 Unity DTO/UI。
@@ -2445,13 +2446,13 @@ Authorization: Bearer <token>
 [
   {
     "templateType": "RESOURCE_READY",
-    "templateId": "资源可收取模板ID",
+    "templateId": "微信资源可领取订阅消息模板ID",
     "page": "pages/index/index",
     "enabled": true
   },
   {
     "templateType": "OPERATION_NOTICE",
-    "templateId": "运营提醒模板ID",
+    "templateId": "微信运营订阅消息模板ID",
     "page": "pages/index/index",
     "enabled": false
   }
@@ -2459,6 +2460,8 @@ Authorization: Bearer <token>
 ```
 
 前端拿到 `templateId` 后调用微信 `wx.requestSubscribeMessage({ tmplIds: [templateId] })`。
+
+`RESOURCE_READY` 的 `templateId` 对应管理端“微信资源可领取订阅消息模板 ID”，`OPERATION_NOTICE` 对应“微信运营订阅消息模板 ID”。两者都需要从微信公众平台对应小程序的“功能 → 订阅消息 → 我的模板”中复制，系统不能自行生成。模板关键词默认要求标题、内容和时间分别对应 `thing1`、`thing2`、`time3`；若服务器修改过关键词映射，以部署配置为准。暂不发送对应微信提醒时可以留空，站内提醒不受影响；模板 ID 与 `X-Notification-Admin-Key` 内部接口密钥无关。
 
 ### 8.5 保存订阅授权结果
 
@@ -3045,7 +3048,7 @@ V1 至 V80 数据库迁移已补充外键约束、安全清理、令牌摘要、
 
 ### 11.2 Flyway 版本迁移和测试数据边界
 
-先创建空数据库，应用启动时 Flyway 自动执行 `src/main/resources/db/migration` 下的版本脚本。当前新库依次执行 V1 至 V93（其中包含 V81.1）。`FLYWAY_BASELINE_ON_MIGRATE` 默认是 `false`。
+先创建空数据库，应用启动时 Flyway 自动执行 `src/main/resources/db/migration` 下的版本脚本。当前新库依次执行 V1 至 V98（其中包含 V81.1）。`FLYWAY_BASELINE_ON_MIGRATE` 默认是 `false`。
 
 只有“已有业务表但没有 `flyway_schema_history`”的旧库首次接入时，才在完整备份后临时设置 `FLYWAY_BASELINE_ON_MIGRATE=true`。当前 `baseline-version=0`，会先记录版本 0，再执行 V1 到最新版本。迁移成功并核对记录后必须立即恢复为 `false`，防止误连其他非空数据库时被自动基线化。已经由 Flyway 管理的环境升级时始终保持 `false`。
 
@@ -4822,7 +4825,7 @@ LIMIT 100;
 
 上线规则：
 
-1. 完整备份数据库，停写或进入维护窗口；若当前停在 V83，先执行仓库 `docs/database-script-guide.md` 的 V84 只读预检，结果符合要求后只启动一个应用实例执行 Flyway 至 V93。
+1. 完整备份数据库，停写或进入维护窗口；若当前停在 V83，先执行仓库 `docs/database-script-guide.md` 的 V84 只读预检，结果符合要求后只启动一个应用实例执行 Flyway 至 V98。
 2. V25 自带等级范围断言；存在 1 至 100 之外的历史等级时迁移直接失败，不静默降级。
 3. V25 先为每名历史玩家写入一条 `SYSTEM_BACKFILL / V25_PLAYER_LEVEL_BACKFILL` 流水，再把累计经验回填为其原等级最低门槛。
 4. BI 的“正常经验产出”必须过滤 `SYSTEM_BACKFILL`，避免把迁移创建的基准经验计入运营产出。
@@ -7005,9 +7008,9 @@ PRESENCE_EVENT_PUBLISH_FIXED_DELAY_MS=100
 仓库中的独立维护文档：`docs/friend-presence-api.md`。
 
 
-## 28. 玩家微信选择头像（V39）
+## 28. 玩家头像（V39/V97/V98）
 
-本文档对应 Flyway `V39__add_player_avatar_system.sql`。第一版只开放玩家主动选择的微信头像文件，不接收网络 URL，也不开放未经内容审核的自定义头像。
+本文档对应 Flyway `V39__add_player_avatar_system.sql`、`V97__add_preset_avatar_code.sql` 和 `V98__harden_preset_avatar_contract.sql`。系统支持微信选择头像和开发者固定头像两种正式来源，不接收网络 URL，也不开放未经内容审核的自定义头像。
 
 基础地址：`http://localhost:8080/api`
 
@@ -7020,7 +7023,13 @@ PRESENCE_EVENT_PUBLISH_FIXED_DELAY_MS=100
 5. `avatarVersion` 在头像状态实际变化时单调递增，Unity 可用它丢弃乱序响应并管理本地缓存。
 6. 更换与删除旧头像采用可靠 Outbox 清理，存储服务短暂异常不会让数据库重新指向旧对象。
 
-### 28.2 第一版边界
+### 28.2 首次登录头像引导（最小方案）
+
+首次登录或当前头像为默认头像时，Unity 可以在登录成功后显示一次游戏内引导，邀请玩家选择微信头像。玩家点击“同意并设置”后，按本节上传接口提交；上传成功后立即使用返回的 `avatarUrl`。玩家点击“暂不设置”、取消授权或上传失败时，不阻塞进入游戏，直接显示 Unity 包内默认头像。
+
+引导仅由 Unity 控制显示频率（建议首次登录提示一次，之后可从头像设置页主动重试），微信授权界面必须由玩家主动点击触发，服务端不能静默获取或强制授权。拒绝不会写入永久禁止状态，玩家以后仍可在头像设置页再次尝试。
+
+### 28.3 第一版边界
 
 - 允许上传真实 JPEG 或 PNG，服务端最终只保存 JPEG。
 - 单文件最大 2 MB，宽高均不得超过 4096，像素总数不得超过 1600 万。
@@ -7029,13 +7038,17 @@ PRESENCE_EVENT_PUBLISH_FIXED_DELAY_MS=100
 - 不接收微信头像 URL、任意远程 URL、Base64 JSON 或对象存储键，避免 SSRF 和越权引用。
 - `CUSTOM` 仅为后续内容审核状态机预留，第一版没有对外上传入口。
 - 服务端只能验证图片安全性，不能从 multipart 字节证明图片一定来自微信。客户端必须只在微信授权选择流程后调用上传接口。
+- 玩家拒绝或取消微信头像授权时，客户端使用包内默认头像；服务端保持 `avatarSource=DEFAULT`、`avatarUrl=null`。
+- 固定头像目录由后端代码登记，图片随 Unity 客户端发布；管理端只能调整头像业务策略，不能上传、删除或排序固定头像。
+- `avatarSource=PRESET` 时必须有非空 `avatarCode`；客户端找不到编号时必须回退包内默认头像，不得尝试下载 `avatarUrl`。
 
-### 28.3 头像字段统一约定
+### 28.4 头像字段统一约定
 
 | 字段 | 类型 | 可空 | 说明 |
 | --- | --- | --- | --- |
 | `avatarUrl` | string | 是 | 当前头像访问地址；为 `null` 时展示 Unity 内置默认头像 |
-| `avatarSource` | string | 否 | `DEFAULT` 或 `WECHAT_SELECTED`；`CUSTOM` 为后续版本预留 |
+| `avatarSource` | string | 否 | `DEFAULT`、`WECHAT_SELECTED` 或 `PRESET`；`CUSTOM` 为后续版本预留 |
+| `avatarCode` | string | 是 | 固定头像编号；仅 `PRESET` 来源有值 |
 | `avatarVersion` | long | 否 | 头像状态单调版本，默认从 0 开始 |
 | `avatarUpdatedTime` | datetime | 是 | 最近一次头像状态变化的北京时间 |
 
@@ -7053,7 +7066,7 @@ https://cdn.example.com/game-media/avatars/10001/550e8400-e29b-41d4-a716-4466554
 
 数据库只保存稳定的对象键，不保存 CDN 域名。客户端不得自行拼对象键，也不得依赖 URL 的目录结构。
 
-### 28.4 更新当前玩家头像
+### 28.5 更新当前玩家头像
 
 ```http
 PUT /api/user/avatar
@@ -7086,7 +7099,7 @@ multipart 字段：
 
 只有 `code = 200` 才能替换本地头像。HTTP 状态非 2xx 时仍应尝试解析统一 JSON 响应，以便显示具体业务错误。
 
-### 28.5 恢复默认头像
+### 28.6 恢复默认头像
 
 ```http
 DELETE /api/user/avatar
@@ -7110,22 +7123,22 @@ Authorization: Bearer <player-token>
 
 已经是默认头像时重复调用仍返回成功，版本不会无意义递增。Unity 收到 `avatarUrl = null` 后应立即释放或取消当前远程头像引用并展示内置默认头像。
 
-### 28.6 好友头像读取
+### 28.7 好友头像读取
 
-### 6.1 推荐：直接使用好友相关接口字段
+#### 28.7.1 推荐：直接使用好友相关接口字段
 
 以下现有响应已经直接包含头像，不需要再逐个请求：
 
 | 接口 | 头像字段 |
 | --- | --- |
-| 登录和 `GET /api/user/me` | `avatarUrl/avatarSource/avatarVersion/avatarUpdatedTime` |
-| `GET /api/friends` | `avatarUrl/avatarVersion` |
-| `GET /api/friends/search` | `avatarUrl/avatarVersion` |
-| 好友申请创建、列表和处理响应 | `requesterAvatarUrl/requesterAvatarVersion`、`recipientAvatarUrl/recipientAvatarVersion` |
+| 登录和 `GET /api/user/me` | `avatarUrl/avatarSource/avatarCode/avatarVersion/avatarUpdatedTime` |
+| `GET /api/friends` | `avatarUrl/avatarCode/avatarVersion` |
+| `GET /api/friends/search` | `avatarUrl/avatarCode/avatarVersion` |
+| 好友申请创建、列表和处理响应 | `requesterAvatarUrl/requesterAvatarCode/requesterAvatarVersion`、`recipientAvatarUrl/recipientAvatarCode/recipientAvatarVersion` |
 
 好友列表头像和公开资料通过同一页 SQL 联表返回，不存在按好友逐条查询数据库的 N+1 问题。
 
-### 6.2 可选：按当前好友页批量刷新
+#### 28.7.2 可选：按当前好友页批量刷新
 
 仅当页面停留期间需要主动刷新头像时调用：
 
@@ -7306,6 +7319,7 @@ Unity 接入规则：
 4. 远程纹理缓存至少按 `playerId + avatarVersion` 隔离，并同时保存当时的 `avatarUrl`；版本或 URL 任意一个变化都必须重新下载。切换 CDN 域名不会批量增加玩家头像版本。
 5. `avatarUrl = null` 时禁止发起图片下载，直接显示包内默认头像。
 6. 好友页面优先使用列表内已有头像；只有页面内批量刷新才调用 `/friends/avatars/batch`。
+7. 登录后仅当 `avatarUrl` 为空时展示头像引导；用户拒绝、取消或上传失败时加载包内默认头像，不要把失败响应覆盖成空头像。
 
 ### 28.8 错误码与 HTTP 状态
 
@@ -7353,14 +7367,17 @@ OBJECT_STORAGE_CHUNKED_ENCODING_ENABLED=true
 
 存储桶不要开放公共列举权限。生产 CDN 域名必须使用 HTTPS，并在微信后台加入合法下载域名。
 
+固定头像-only 模式不代表可以删除对象存储配置：当前版本仍保留微信头像兼容上传接口，生产 profile 会创建并校验 S3 存储 Bean。若确定永久移除微信头像能力，必须另行发布代码和前向迁移，不能只关闭管理端开关后删除 S3 参数。
+
 ### 28.10 数据库与可靠性
 
-V39 新增：
+V39、V97、V98 新增或扩展：
 
 | 表或字段 | 用途 |
 | --- | --- |
 | `users.avatar_object_key` | 当前头像对象键；默认头像为空 |
-| `users.avatar_source` | `DEFAULT/WECHAT_SELECTED/CUSTOM` |
+| `users.avatar_source` | `DEFAULT/WECHAT_SELECTED/PRESET/CUSTOM` |
+| `users.avatar_code` | 固定头像编号；PRESET 来源时有值 |
 | `users.avatar_version` | 乐观更新和客户端乱序保护版本 |
 | `users.avatar_updated_time` | 最近头像状态变化时间 |
 | `player_avatar_daily_usage` | 北京时间每日成功更换次数，主键为 `(player_id, usage_date)` |
@@ -7370,7 +7387,7 @@ V39 新增：
 
 ### 28.11 上线验收
 
-1. 单节点执行 Flyway 至 V39，确认头像字段、每日次数表和清理 Outbox 已创建。
+1. 单节点执行 Flyway 至 V98，确认头像字段、固定头像编号、PRESET 一致性约束、每日次数表和清理 Outbox 已创建。
 2. 开发环境验证相对 URL 能经 `/api/media/**` 下载；生产环境验证私有桶不能匿名访问且 CDN 可正常回源。
 3. 验证伪造扩展名、伪造 Content-Type、非图片、超大文件、超大尺寸均被拒绝。
 4. 验证透明 PNG 会生成白色背景的 256×256 JPEG，输出不保留 EXIF。
@@ -7378,6 +7395,8 @@ V39 新增：
 6. 验证登录、本人资料、好友列表、搜索和申请响应均携带一致版本的头像字段。
 7. 验证替换与恢复默认后旧对象最终删除，临时存储故障会重试且不影响当前数据库头像。
 8. 验证 Unity 对 `null`、相对 URL、绝对 CDN URL和乱序版本都能正确处理。
+9. 验证 `GET /api/user/avatar/presets` 返回的编号均能映射到当前 Unity 包资源；未知编号回退默认头像。
+10. 验证 `PUT /api/user/avatar/preset` 在头像业务关闭时拒绝请求，同编号重复选择幂等，切换微信头像时旧对象进入 Outbox。
 
 验证命令：
 
@@ -13251,3 +13270,46 @@ Authorization: Bearer <player-token>
 管理端路径为“配置中心 -> 挂机冒险 -> 关卡配置”。展开关卡后，敌方阵容编辑表下方显示“阵容属性预览”，固定展示六槽位、前后排、等级、战斗属性、技能、图标、模型以及生命/攻击/防御合计和速度总和（仅用于配置核对）。该预览只读计算，不写回配置；正式发布仍由后端严格校验。
 
 当前敌人配置没有品质字段，项目也没有统一战斗力公式，因此接口和管理端不返回推测的 `quality` 或 `combat_power`。本次没有新增 Flyway 迁移，也不需要修改数据库结构。
+
+## 固定头像库（V97/V98，详见第28节）
+
+固定头像图片随 Unity 客户端发布，后端只保存 `avatarCode`，不使用对象存储；当前目录由后端代码登记，管理端显示只读目录并可控制头像业务开关，不能上传、删除或排序固定头像。V98 加固 `users` 表的 `PRESET` 来源一致性约束。目录变更需要同步后端和 Unity 客户端并重新发布。
+
+### 获取头像目录
+
+```http
+GET /api/user/avatar/presets
+Authorization: Bearer <player-token>
+```
+
+成功响应示例：
+
+```json
+{
+  "code": 200,
+  "message": "操作成功",
+  "data": [
+    {"avatarCode": "AVATAR_001", "displayName": "默认头像一", "enabled": true},
+    {"avatarCode": "AVATAR_002", "displayName": "默认头像二", "enabled": true},
+    {"avatarCode": "AVATAR_003", "displayName": "默认头像三", "enabled": true}
+  ]
+}
+```
+
+Unity 必须使用显式、大小写敏感的映射表：`AVATAR_001` → `Resources/Avatars/avatar_001`、`AVATAR_002` → `Resources/Avatars/avatar_002`、`AVATAR_003` → `Resources/Avatars/avatar_003`（路径不含扩展名）。加载失败或编号未知时回退包内默认头像，不得尝试下载 `avatarUrl`；`enabled=false` 的项不得展示为可选项。
+
+### 选择固定头像
+
+```http
+PUT /api/user/avatar/preset
+Authorization: Bearer <player-token>
+Content-Type: application/json
+```
+
+```json
+{"avatarCode":"AVATAR_001"}
+```
+
+成功后返回 `avatarSource=PRESET`、`avatarCode` 和递增的 `avatarVersion`，`avatarUrl=null`。同一玩家重复选择当前编号幂等，不增加版本或每日次数；无效编号返回 400，头像业务关闭返回 `7308`，次数耗尽返回 `7306`。固定头像选择只受头像业务总开关控制，不依赖“允许微信头像同步”开关。若管理端关闭头像业务，Unity 应隐藏选择入口并保留默认头像展示。
+
+管理端路径：配置中心 → 社交与玩家 → 头像业务策略。固定目录为只读基线；图片资源、编号或启用状态变更必须同步修改后端登记表和 Unity 包并重新发布。固定头像模式建议开启头像业务、关闭微信头像同步、默认头像地址留空。

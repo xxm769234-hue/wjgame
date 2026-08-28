@@ -41,6 +41,12 @@ public sealed class BuildManager : MonoBehaviour
     /// <summary>Called by a UI drag item. Replaces an unfinished preview safely.</summary>
     public LandPreview BeginDrag(LandConfig config)
     {
+        if (PlayerOnboardingInputLock.IsLocked)
+        {
+            Debug.LogWarning("Onboarding currently locks build input.", this);
+            return null;
+        }
+
         if (config == null || landPreviewPrefab == null)
         {
             Debug.LogError("LandConfig or LandPreview prefab is not assigned.", this);

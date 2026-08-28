@@ -216,6 +216,7 @@ public sealed class BuildPanelController : MonoBehaviour
 
     private void Update()
     {
+        if (PlayerOnboardingInputLock.IsLocked) return;
         if (!closeWhenClickOutside || !IsOpen || Time.frameCount == openedFrame) return;
 
         if (TryGetPointerDownPosition(out Vector2 screenPosition) && !IsPointerInsideBuildPanel(screenPosition))

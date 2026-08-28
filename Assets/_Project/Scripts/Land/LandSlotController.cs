@@ -442,6 +442,7 @@ public sealed class LandSlotController : MonoBehaviour
 
     private void OnMouseDown()
     {
+        if (PlayerOnboardingInputLock.IsLocked) return;
         if (TryOpenPurificationPanel()) return;
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
         if (currentLand == null)
@@ -458,6 +459,7 @@ public sealed class LandSlotController : MonoBehaviour
 
     private void HandlePurificationPointerDown()
     {
+        if (PlayerOnboardingInputLock.IsLocked) return;
         if (!Input.GetMouseButtonDown(0) || !IsPurificationAvailable || IsBuilt) return;
         if (LandSlotPurchasePanel.Instance != null
             && LandSlotPurchasePanel.Instance.gameObject.activeInHierarchy)

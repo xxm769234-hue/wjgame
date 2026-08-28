@@ -1184,8 +1184,16 @@ public sealed class OnboardingStepResponse
     public string completionType;
     public string title;
     public string content;
-    public string presentationParams;
+    public OnboardingPresentationParamsResponse presentationParams;
     public OnboardingBusinessContextResponse businessContext;
+}
+
+[Serializable]
+public sealed class OnboardingPresentationParamsResponse
+{
+    public string highlightColor;
+    public string arrowDirection;
+    public string animation;
 }
 
 [Serializable]

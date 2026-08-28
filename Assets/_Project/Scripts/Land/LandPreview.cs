@@ -46,7 +46,7 @@ public sealed class LandPreview : MonoBehaviour
 
     public void FollowPointer()
     {
-        if (completed || worldCamera == null) return;
+        if (completed || worldCamera == null || PlayerOnboardingInputLock.IsLocked) return;
         Vector3 screen = Input.mousePosition;
         screen.z = Mathf.Abs(worldCamera.transform.position.z);
         Vector3 world = worldCamera.ScreenToWorldPoint(screen);
@@ -55,7 +55,7 @@ public sealed class LandPreview : MonoBehaviour
 
     public void RequestPlacement()
     {
-        if (completed) return;
+        if (completed || PlayerOnboardingInputLock.IsLocked) return;
         completed = true;
         if (currentSlot != null && config != null) PlacementRequested?.Invoke(currentSlot, config);
         else Cancelled?.Invoke();

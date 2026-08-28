@@ -73,6 +73,12 @@ public sealed class ResourceCollectionManager : MonoBehaviour
 
     public void OnClickCollectAll()
     {
+        if (PlayerOnboardingInputLock.IsLocked)
+        {
+            Debug.LogWarning("Onboarding currently locks resource collection input.", this);
+            return;
+        }
+
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated)
         {

@@ -17,8 +17,10 @@ public partial class HomePageUI
     private const int MaximumPreparedAvatarDimension = 2048;
     private const int MaximumServerAvatarDimension = 4096;
     private const long MaximumServerAvatarPixels = 16000000L;
-    private const string PresetAvatarResourcesPath = "UI/AvatarPresets";
+    private const string PresetAvatarResourcesPath = "Avatars";
+    private const string DefaultAvatarResourcePath = "Avatars/avatar_001";
     private const string AvatarOwnerPlayerIdKey = "PlayerAvatarOwnerId";
+    private const string LocalAvatarResourcePathKey = "PlayerAvatarResourcePath";
     private readonly Dictionary<string, Sprite> avatarSpriteCache = new Dictionary<string, Sprite>();
     private readonly Dictionary<Image, AvatarImageState> avatarImageStates = new Dictionary<Image, AvatarImageState>();
     private readonly List<Sprite> presetAvatarSprites = new List<Sprite>();
@@ -107,7 +109,7 @@ public partial class HomePageUI
         if (presets.Length == 0)
         {
             Debug.LogWarning("[Avatar] No preset avatar sprites were found in Resources/" + PresetAvatarResourcesPath + ".", this);
-            RefreshProfileAvatarPanel("未配置预置头像，请将图片放入 Resources/UI/AvatarPresets");
+            RefreshProfileAvatarPanel("未配置预置头像，请将图片放入 Resources/Avatars");
             return;
         }
 
@@ -134,6 +136,12 @@ public partial class HomePageUI
             {
                 presetAvatarSprites.Add(loadedSprites[i]);
             }
+        }
+
+        Sprite defaultSprite = Resources.Load<Sprite>(DefaultAvatarResourcePath);
+        if (defaultSprite != null && !presetAvatarSprites.Contains(defaultSprite))
+        {
+            presetAvatarSprites.Insert(0, defaultSprite);
         }
 
         return presetAvatarSprites.ToArray();
@@ -263,6 +271,9 @@ public partial class HomePageUI
             RefreshProfileAvatarPanel("请先登录账号后上传头像");
             return;
         }
+
+        SaveLocalPresetAvatar(preset);
+        RefreshCurrentAvatarVisuals();
 
         if (!TryEncodePresetAvatar(preset, out byte[] imageBytes, out string encodeError))
         {
@@ -708,6 +719,7 @@ public partial class HomePageUI
             SaveCurrentAvatarState(response.data.avatarUrl, response.data.avatarSource, response.data.avatarVersion, response.data.avatarUpdatedTime);
         }
 
+        ClearLocalPresetAvatar();
         avatarMutationRunning = false;
         RefreshCurrentAvatarVisuals();
         RefreshProfileAvatarPanel("已恢复默认头像");
@@ -740,8 +752,42 @@ public partial class HomePageUI
         PlayerPrefs.SetString("PlayerAvatarSource", string.IsNullOrWhiteSpace(avatarSource) ? "DEFAULT" : avatarSource);
         PlayerPrefs.SetString("PlayerAvatarVersion", Math.Max(0L, avatarVersion).ToString(CultureInfo.InvariantCulture));
         PlayerPrefs.SetString("PlayerAvatarUpdatedTime", avatarUpdatedTime ?? string.Empty);
+        if (!string.IsNullOrWhiteSpace(avatarUrl))
+        {
+            PlayerPrefs.DeleteKey(LocalAvatarResourcePathKey);
+        }
         PlayerPrefs.Save();
         RefreshCurrentAvatarVisuals();
+    }
+
+    private void SaveLocalPresetAvatar(Sprite preset)
+    {
+        if (preset == null || GameSession.PlayerId <= 0)
+        {
+            return;
+        }
+
+        PlayerPrefs.SetInt(AvatarOwnerPlayerIdKey, GameSession.PlayerId);
+        PlayerPrefs.SetString(LocalAvatarResourcePathKey, PresetAvatarResourcesPath + "/" + preset.name);
+        PlayerPrefs.SetString("PlayerAvatarUrl", string.Empty);
+        PlayerPrefs.SetString("PlayerAvatarSource", "LOCAL_PRESET");
+        PlayerPrefs.Save();
+    }
+
+    private void ClearLocalPresetAvatar()
+    {
+        PlayerPrefs.DeleteKey(LocalAvatarResourcePathKey);
+        PlayerPrefs.Save();
+    }
+
+    private string GetCurrentAvatarResourcePath()
+    {
+        if (PlayerPrefs.GetInt(AvatarOwnerPlayerIdKey, 0) != GameSession.PlayerId)
+        {
+            return string.Empty;
+        }
+
+        return PlayerPrefs.GetString(LocalAvatarResourcePathKey, string.Empty);
     }
 
     private string GetCurrentAvatarUrl()
@@ -768,10 +814,18 @@ public partial class HomePageUI
     {
         if (mainPageTransform != null)
         {
-            Image head = FindSceneComponent<Image>(mainPageTransform, "BookAvatarPortrait/BookAvatarHead");
+            Transform headTransform = mainPageTransform.Find(
+                "BookAvatarFrame/BookAvatarPortrait/BookAvatarHead");
+            Image head = headTransform != null ? headTransform.GetComponent<Image>() : null;
             if (head != null)
             {
                 ApplyAvatarImage(head, null, GameSession.PlayerId, GetCurrentAvatarUrl(), GetCurrentAvatarVersion());
+            }
+            else
+            {
+                Debug.LogWarning(
+                    "[Avatar] Home avatar target BookAvatarFrame/BookAvatarPortrait/BookAvatarHead was not found.",
+                    this);
             }
         }
 
@@ -845,6 +899,22 @@ public partial class HomePageUI
         }
 
         AvatarImageState state = GetAvatarImageState(image);
+        string localResourcePath = playerId == GameSession.PlayerId
+            ? GetCurrentAvatarResourcePath()
+            : string.Empty;
+        if (!string.IsNullOrEmpty(localResourcePath))
+        {
+            Sprite localSprite = Resources.Load<Sprite>(localResourcePath);
+            if (localSprite != null)
+            {
+                state.requestKey = "local:" + localResourcePath;
+                SetLoadedAvatar(image, fallbackText, localSprite);
+                return;
+            }
+
+            Debug.LogWarning("[Avatar] Local avatar resource was not found: Resources/" + localResourcePath + ".", this);
+        }
+
         string resolvedUrl = ResolveAvatarUrl(avatarUrl);
         if (string.IsNullOrEmpty(resolvedUrl))
         {
