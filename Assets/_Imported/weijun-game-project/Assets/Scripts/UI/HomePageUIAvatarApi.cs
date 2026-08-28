@@ -815,7 +815,7 @@ public partial class HomePageUI
         if (mainPageTransform != null)
         {
             Transform headTransform = mainPageTransform.Find(
-                "BookAvatarFrame/BookAvatarPortrait/BookAvatarHead");
+                "BookAvatarFrame/BookAvatarPortrait/Image/BookAvatarHead");
             Image head = headTransform != null ? headTransform.GetComponent<Image>() : null;
             if (head != null)
             {
@@ -824,7 +824,7 @@ public partial class HomePageUI
             else
             {
                 Debug.LogWarning(
-                    "[Avatar] Home avatar target BookAvatarFrame/BookAvatarPortrait/BookAvatarHead was not found.",
+                    "[Avatar] Home avatar target BookAvatarFrame/BookAvatarPortrait/Image/BookAvatarHead was not found.",
                     this);
             }
         }

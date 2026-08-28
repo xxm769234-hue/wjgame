@@ -1,12 +1,10 @@
 # Weijun Game Project 后端接口文档
 
-重新生成时间：2026-08-27
-更新日期：2026-08-27
-同步说明：已按当前玩家端、微信公共回调和 `/api/ops/**` 管理端路由复核并同步至 Flyway V98。V97 新增开发者固定头像编号与选择接口，V98 放宽并加固头像来源一致性约束；V1-V98 执行成功后均禁止修改，后续数据库变化从 V99 开始。
-版本提示：文档中标注 V93、V96 或更早版本的段落是对应功能的历史交付记录，不代表当前最高版本；上线迁移、校验和与结构核对统一以 V98 和仓库 `src/main/resources/db/migration` 实际文件为准。
+重新生成时间：2026-08-28
+更新日期：2026-08-28
+同步说明：已按当前玩家端、微信公共回调和 `/api/ops/**` 管理端路由复核并同步至 Flyway V100。V97 新增 Unity 固定头像编号与选择接口，V98 建立过渡约束，V99 下线远程头像并归一历史数据（固定 CRC32 `67421201`），V100 补齐注销清理原因并收紧系统头像合同（固定 CRC32 `-880935665`）；V1-V100 执行成功后均禁止修改，后续数据库变化从 V101 开始。文中明确标注为历史交付边界的旧版本说明保留原始事实；当前部署和校验以本同步说明及第 11.2 节为准。
 Unity 本次需要修改：保留既有 NPC 获取渠道改造，并新增 `GET /api/customer-service/entry` 预取；玩家点击客服按钮的 touch/click 回调中调用微信官方 `wx.openCustomerServiceConversation`，支持 `sessionFrom` 过期重拉、最低基础库 `2.0.3`、关闭状态和 SDK 失败提示。管理端工单、微信回调和 Outbox 不需要 Unity 实现。
-本次运行角色部署改造的客户端影响：Unity 与管理端接口路径、请求参数、响应 JSON、鉴权方式和错误码全部保持不变，不需要为了 API/Worker 分进程修改客户端代码。
-本次挂机冒险编队改造的客户端影响：既有 HTTP 路径和请求结构不变；Unity 可新增监听 `IDLE_ADVENTURE_FORMATION_CHANGED`，但必须把消息作为刷新提示并重新查询服务端编队，不能直接用可能乱序的事件快照覆盖本地状态。本次关卡敌人预览只新增响应字段，旧 Unity 忽略未知字段即可继续运行；若要显示等级、图标、模型或槽位布局，需要同步扩展 Unity DTO/UI。
+本次头像改造：Unity 删除微信头像授权、临时文件读取、上传和远程下载逻辑，改为按 `avatarCode` 从包内 `Resources/Avatars/` 显式映射加载；服务端仅保存编号，`avatarUrl` 始终为 `null`。
 客户端：Unity / 微信小游戏前端
 后端基础地址：`http://localhost:8080/api`
 统一 Content-Type：`application/json; charset=UTF-8`
@@ -3048,7 +3046,7 @@ V1 至 V80 数据库迁移已补充外键约束、安全清理、令牌摘要、
 
 ### 11.2 Flyway 版本迁移和测试数据边界
 
-先创建空数据库，应用启动时 Flyway 自动执行 `src/main/resources/db/migration` 下的版本脚本。当前新库依次执行 V1 至 V98（其中包含 V81.1）。`FLYWAY_BASELINE_ON_MIGRATE` 默认是 `false`。
+先创建空数据库，应用启动时 Flyway 自动执行 `src/main/resources/db/migration` 下的版本脚本。当前新库依次执行 V1 至 V100（其中包含 V81.1）。`FLYWAY_BASELINE_ON_MIGRATE` 默认是 `false`。
 
 只有“已有业务表但没有 `flyway_schema_history`”的旧库首次接入时，才在完整备份后临时设置 `FLYWAY_BASELINE_ON_MIGRATE=true`。当前 `baseline-version=0`，会先记录版本 0，再执行 V1 到最新版本。迁移成功并核对记录后必须立即恢复为 `false`，防止误连其他非空数据库时被自动基线化。已经由 Flyway 管理的环境升级时始终保持 `false`。
 
@@ -3149,12 +3147,19 @@ V1 至 V80 数据库迁移已补充外键约束、安全清理、令牌摘要、
 - `V91__cap_lifetime_task_progress.sql`：封顶历史永久累计进度并收紧永久累计进度范围约束，固定 CRC32 为 `-613092297`。
 - `V92__add_npc_acquisition_channels.sql`：增加空配置起步的 NPC 获取渠道、独立发布版本状态、路由参数约束和运行时查询索引，原始固定 CRC32 为 `1615105684`，执行后不可改写。
 - `V93__harden_npc_acquisition_channel_contract.sql`：不改写 V92，前向收紧按钮长度、优先级和配置版本，并补齐非空白、渠道类型/路由一致和启用值约束；列变窄期间临时强制 `STRICT_ALL_TABLES`，脏数据会阻断而不会静默截断，成功后恢复原会话模式；固定 CRC32 为 `-2034435388`。
+- `V94__separate_operator_business_numbers_and_idempotency.sql`：分离运营展示编号与创建幂等键，固定 CRC32 为 `-246164165`。
+- `V95__add_wechat_customer_service_workbench.sql`：增加微信小游戏官方客服联系人、工单、消息和可靠发送 Outbox，固定 CRC32 为 `-1236124090`。
+- `V96__harden_wechat_customer_service_runtime_columns.sql`：以前向迁移完善客服临时会话与多节点租约字段，固定 CRC32 为 `292469054`。
+- `V97__add_preset_avatar_code.sql`：增加固定头像编号字段及查询索引，固定 CRC32 为 `151659432`。
+- `V98__harden_preset_avatar_contract.sql`：建立固定头像来源与编号的一致性约束，固定 CRC32 为 `-2063702854`。
+- `V99__disable_remote_avatar_sources.sql`：下线远程头像来源、归一历史数据并保留可选清理 Outbox，固定 CRC32 为 `67421201`。
+- `V100__harden_system_avatar_contract.sql`：补齐注销清理原因、规范历史固定头像编号并以二进制精确 CHECK 收紧系统头像合同，固定 CRC32 为 `-880935665`。
 
 ```bash
 mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS game_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
 ```
 
-V1 至 V80 一旦成功执行均禁止修改；V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 发布后同样禁止修改。下一次数据库变化必须新增 V94。以下脚本仅作为无法启动 Spring Boot 时的 V1 手工恢复兼容入口：
+V1 至 V80 一旦成功执行均禁止修改；V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93、V94、V95、V96、V97、V98、V99、V100 发布后同样禁止修改。下一次数据库变化必须新增 V101。以下脚本仅作为无法启动 Spring Boot 时的 V1 手工恢复兼容入口：
 
 ```bash
 mysql -u root -p < src/main/resources/db/init.sql
@@ -3168,7 +3173,7 @@ mysql -u root -p < src/main/resources/db/dev-seed.sql
 
 `dev-seed.sql` 会创建使用 BCrypt 密码散列的测试账号，以及对应背包、NPC、地图、地块和建筑数据。生产环境禁止执行该文件。
 
-已有数据库升级时不要手工执行任何版本迁移；保持 `FLYWAY_ENABLED=true`，只启动一个新版本实例完成迁移到 V93 后再启动其他实例。已经执行 V83 的环境必须保持其校验和为 `1070104245`，由 Flyway 正常执行 V84、V85、V86、V87、V88、V89、V90、V91、V92、V93，不需要也不得执行 `repair`；V85、V86、V87、V88、V89、V90、V91、V92、V93 校验和必须分别为 `-1472509603`、`-179532443`、`-1481082424`、`-892889675`、`-1964148448`、`-319452238`、`-613092297`、`1615105684`、`-2034435388`。已应用 V92 的数据库会先校验其原始脚本，再自动执行 V93；如果 V92 渠道脏数据不符合新约束，V93 会明确失败而不会截断数据。手工执行 `init.sql` 后数据库已经非空，首次启动也必须临时开启一次 baseline，成功后再关闭。V1 至 V80 成功执行后禁止修改；V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 执行成功后同样冻结，后续正式变化从 V94 开始新增迁移。旧迁移中的 MySQL `VALUES()` 弃用警告不能通过修改历史文件消除，新迁移必须使用别名语法。
+已有数据库升级时不要手工执行任何版本迁移；保持 `FLYWAY_ENABLED=true`，只启动一个新版本实例完成迁移到 V100 后再启动其他实例。已经执行 V83 的环境必须保持其校验和为 `1070104245`，由 Flyway 正常执行 V84 至 V100，不需要也不得执行 `repair`；V85 至 V100 校验和必须与仓库 `src/main/resources/db/migration` 和 `docs/database-script-guide.md` 中记录的固定值一致。已应用 V92 的数据库会先校验其原始脚本，再自动执行 V93 至 V100；如果 V92 渠道脏数据不符合新约束，V93 会明确失败而不会截断数据。手工执行 `init.sql` 后数据库已经非空，首次启动也必须临时开启一次 baseline，成功后再关闭。V1 至 V100 执行成功后同样冻结，后续正式变化从 V101 开始新增迁移。旧迁移中的 MySQL `VALUES()` 弃用警告不能通过修改历史文件消除，新迁移必须使用别名语法。
 
 ## 12. 当前实现注意事项
 
@@ -4147,7 +4152,7 @@ Authorization: Bearer <operator-token>
 
 审计列表支持 `moduleCode/configKey/action/operatorId/beforeId/limit`，其中 `action` 为 `CREATE_DRAFT/SAVE_DRAFT/PUBLISH/DISCARD/ROLLBACK`。审计记录只读，不提供更新或删除接口。运营接口统一返回 `Cache-Control: no-store`、`X-Frame-Options: DENY` 和 `X-Content-Type-Options: nosniff` 等安全头。
 
-当前实现是真实本地运营账号安全链路，没有伪造 SSO、WebAuthn 或 TOTP 按钮。生产环境必须通过 HTTPS、可信反向代理和网络访问控制暴露管理端；`OPERATOR_TRUSTED_PROXY_ADDRESSES` 只填写真实直接代理地址。
+当前实现是真实本地运营账号安全链路，不包含伪造的 SSO 或 WebAuthn 入口；TOTP 多因素认证已通过“账号安全与多因素认证”弹窗提供。运营人员先调用 `POST /api/ops/auth/mfa/setup` 生成一次性设置密钥，管理端在浏览器本地将返回的 `provisioningUri` 渲染为二维码，也保留手动密钥和导入地址；再使用认证器生成的 6 位验证码调用 `POST /api/ops/auth/mfa/confirm` 完成启用。二维码和明文密钥只保留在当前页面内存，弹窗关闭后清理；二维码生成失败时可使用手动方式。生产环境必须通过 HTTPS、可信反向代理和网络访问控制暴露管理端；`OPERATOR_TRUSTED_PROXY_ADDRESSES` 只填写真实直接代理地址。
 
 ## 18. Idle Adventure 接口文档
 
@@ -4825,14 +4830,14 @@ LIMIT 100;
 
 上线规则：
 
-1. 完整备份数据库，停写或进入维护窗口；若当前停在 V83，先执行仓库 `docs/database-script-guide.md` 的 V84 只读预检，结果符合要求后只启动一个应用实例执行 Flyway 至 V98。
+1. 完整备份数据库，停写或进入维护窗口；若当前停在 V83，先执行仓库 `docs/database-script-guide.md` 的 V84 只读预检，结果符合要求后只启动一个应用实例执行 Flyway 至 V100。
 2. V25 自带等级范围断言；存在 1 至 100 之外的历史等级时迁移直接失败，不静默降级。
 3. V25 先为每名历史玩家写入一条 `SYSTEM_BACKFILL / V25_PLAYER_LEVEL_BACKFILL` 流水，再把累计经验回填为其原等级最低门槛。
 4. BI 的“正常经验产出”必须过滤 `SYSTEM_BACKFILL`，避免把迁移创建的基准经验计入运营产出。
 5. V26 的 `building_task.experience_reward` 默认值为 0；历史进行中和已完成任务不补发。
-6. V81 创建任务与失败明细表；V81.1 回填请求键和触发来源、允许系统任务不绑定运营员并增加公平失败重试索引；V82 在改结构前检查所有玩家快照能否由当前只追加曲线解释，并拒绝超过 JavaScript 安全整数上限的玩家经验、曲线门槛、经验流水及奖励来源；V83 创建默认关闭的冻结 v1；V84 保留 v1、归一化终态、加固约束并切换未来分配到兼容 v2；V85 增加 NPC/装备一键升级批次、逐级流水关联和初始装备材料约束；V86 前向把整批同款材料上限放宽到 5000；V87 增加指定资源收获次数任务；V88 前向加固其历史快照、约束和依赖查询索引；V89 增加按场景开辟指定格数的永久宝箱里程碑；V90 增加永久累计成就；V91 加固永久累计进度上限；V92 增加 NPC 获取渠道和独立发布版本状态；V93 不改写 V92，前向加固渠道数据库契约并防止列变窄时静默截断。
-7. 迁移完成后确认 `flyway_schema_history` 中 V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 均为 `success=1`，其中 V85-V93 校验和依次为 `-1472509603`、`-179532443`、`-1481082424`、`-892889675`、`-1964148448`、`-319452238`、`-613092297`、`1615105684`、`-2034435388`；再核对任务/失败表、成长 CHECK、新手引导 v1/v2、批量升级表、材料索引、整批上限 5000、资源任务目标快照与 NULL 安全约束、场景成就三元唯一键及 1～32 边界、永久累计统计表与唯一身份索引、`player_task_lifetime_stat.progress_amount` 的 `0..9000000000000000` 约束，以及 V93 后 NPC 获取渠道的最终列定义和 CHECK，依次启动其他节点并观察曲线 revision 与自动任务状态。
-8. V1-V80 已冻结；V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 发布后同样禁止修改或用 `repair` 掩盖漂移，下一次正式数据库变化从 V94 新增。
+6. V81 创建任务与失败明细表；V81.1 回填请求键和触发来源、允许系统任务不绑定运营员并增加公平失败重试索引；V82 在改结构前检查所有玩家快照能否由当前只追加曲线解释，并拒绝超过 JavaScript 安全整数上限的玩家经验、曲线门槛、经验流水及奖励来源；V83 创建默认关闭的冻结 v1；V84 保留 v1、归一化终态、加固约束并切换未来分配到兼容 v2；V85 增加 NPC/装备一键升级批次、逐级流水关联和初始装备材料约束；V86 前向把整批同款材料上限放宽到 5000；V87 增加指定资源收获次数任务；V88 前向加固其历史快照、约束和依赖查询索引；V89 增加按场景开辟指定格数的永久宝箱里程碑；V90 增加永久累计成就；V91 加固永久累计进度上限；V92 增加 NPC 获取渠道和独立发布版本状态；V93 不改写 V92，前向加固渠道数据库契约并防止列变窄时静默截断；V94 分离运营编号与幂等键；V95/V96 完善微信客服工作台；V97/V98 建立固定头像编号与来源约束；V99 归一历史远程头像并下线远程来源；V100 补齐清理原因并收紧系统头像合同。
+7. 迁移完成后确认 `flyway_schema_history` 中 V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93、V94、V95、V96、V97、V98、V99、V100 均为 `success=1`，其中 V85-V100 校验和必须分别为 `-1472509603`、`-179532443`、`-1481082424`、`-892889675`、`-1964148448`、`-319452238`、`-613092297`、`1615105684`、`-2034435388`、`-246164165`、`-1236124090`、`292469054`、`151659432`、`-2063702854`、`67421201`、`-880935665`；再核对任务/失败表、成长 CHECK、新手引导 v1/v2、批量升级表、材料索引、整批上限 5000、资源任务目标快照与 NULL 安全约束、场景成就三元唯一键及 1～32 边界、永久累计统计表与唯一身份索引、`player_task_lifetime_stat.progress_amount` 的 `0..9000000000000000` 约束，以及 V93 后 NPC 获取渠道、V100 后头像约束，依次启动其他节点并观察曲线 revision 与自动任务状态。
+8. V1-V100 已冻结，发布后禁止修改或用 `repair` 掩盖漂移，下一次正式数据库变化从 V101 新增。
 
 ### 19.10 新增业务错误码
 
@@ -7008,139 +7013,98 @@ PRESENCE_EVENT_PUBLISH_FIXED_DELAY_MS=100
 仓库中的独立维护文档：`docs/friend-presence-api.md`。
 
 
-## 28. 玩家头像（V39/V97/V98）
+## 28. 玩家系统资源头像（V39/V97/V98/V99/V100）
 
-本文档对应 Flyway `V39__add_player_avatar_system.sql`、`V97__add_preset_avatar_code.sql` 和 `V98__harden_preset_avatar_contract.sql`。系统支持微信选择头像和开发者固定头像两种正式来源，不接收网络 URL，也不开放未经内容审核的自定义头像。
+本章是当前头像功能的唯一生效协议。头像图片随 Unity 客户端发布，服务端只保存固定编号；不提供微信头像授权、头像同步、图片上传或远程头像下载。
 
-基础地址：`http://localhost:8080/api`
+基础地址：`http://localhost:8080/api`（生产环境使用实际 HTTPS 域名）。
 
-### 28.1 最终业务效果
+### 28.1 当前业务效果
 
-1. 玩家在微信客户端主动选择头像后，客户端读取临时文件字节并上传到服务端。
-2. 服务端不信任原文件名和 `Content-Type`，会按真实图片内容解码、居中裁剪，并统一重编码为 256×256 JPEG。
-3. 更新成功后，登录响应、`GET /api/user/me`、好友列表、玩家搜索和好友申请都会返回最新头像。
-4. 玩家恢复默认头像后，接口返回 `avatarUrl = null`，Unity 使用包内默认头像资源。
-5. `avatarVersion` 在头像状态实际变化时单调递增，Unity 可用它丢弃乱序响应并管理本地缓存。
-6. 更换与删除旧头像采用可靠 Outbox 清理，存储服务短暂异常不会让数据库重新指向旧对象。
+1. Unity 登录后调用 `GET /api/user/avatar/presets` 获取固定头像目录；响应包含 `enabled` 状态，客户端只把启用项作为可选项。头像业务总开关关闭时目录仍返回，但所有项的 `enabled=false`；已停用或已拥有的头像仍可按编号在本地展示。
+2. 玩家选择编号后调用 `PUT /api/user/avatar/preset`，服务端在事务内校验并保存 `avatarSource=PRESET`、`avatarCode`。
+3. 登录、个人资料、好友列表、玩家搜索和好友申请响应返回头像编号与版本。
+4. `avatarUrl` 是协议兼容字段，当前始终为 `null`；Unity 只能从包内资源加载。
+5. `DELETE /api/user/avatar` 恢复 Unity 包内默认头像。
+6. 同编号重复选择幂等，不增加版本和每日次数；实际切换才消耗一次每日额度。
+7. V99 将历史旧来源归一为默认头像；V100 再规范固定头像编号、补齐注销清理原因并收紧精确 CHECK；历史对象只进入一次性清理 Outbox。
 
-### 28.2 首次登录头像引导（最小方案）
+> 旧版客户端调用 `PUT /api/user/avatar` 上传接口会收到 404/405。该接口已下线，不能继续实现或调用。
 
-首次登录或当前头像为默认头像时，Unity 可以在登录成功后显示一次游戏内引导，邀请玩家选择微信头像。玩家点击“同意并设置”后，按本节上传接口提交；上传成功后立即使用返回的 `avatarUrl`。玩家点击“暂不设置”、取消授权或上传失败时，不阻塞进入游戏，直接显示 Unity 包内默认头像。
-
-引导仅由 Unity 控制显示频率（建议首次登录提示一次，之后可从头像设置页主动重试），微信授权界面必须由玩家主动点击触发，服务端不能静默获取或强制授权。拒绝不会写入永久禁止状态，玩家以后仍可在头像设置页再次尝试。
-
-### 28.3 第一版边界
-
-- 允许上传真实 JPEG 或 PNG，服务端最终只保存 JPEG。
-- 单文件最大 2 MB，宽高均不得超过 4096，像素总数不得超过 1600 万。
-- 每名玩家北京时间自然日最多成功更换 5 次，`00:00:00` 重置。
-- 恢复默认头像不占用每日更换次数；已经是默认头像时重复删除保持幂等。
-- 不接收微信头像 URL、任意远程 URL、Base64 JSON 或对象存储键，避免 SSRF 和越权引用。
-- `CUSTOM` 仅为后续内容审核状态机预留，第一版没有对外上传入口。
-- 服务端只能验证图片安全性，不能从 multipart 字节证明图片一定来自微信。客户端必须只在微信授权选择流程后调用上传接口。
-- 玩家拒绝或取消微信头像授权时，客户端使用包内默认头像；服务端保持 `avatarSource=DEFAULT`、`avatarUrl=null`。
-- 固定头像目录由后端代码登记，图片随 Unity 客户端发布；管理端只能调整头像业务策略，不能上传、删除或排序固定头像。
-- `avatarSource=PRESET` 时必须有非空 `avatarCode`；客户端找不到编号时必须回退包内默认头像，不得尝试下载 `avatarUrl`。
-
-### 28.4 头像字段统一约定
-
-| 字段 | 类型 | 可空 | 说明 |
-| --- | --- | --- | --- |
-| `avatarUrl` | string | 是 | 当前头像访问地址；为 `null` 时展示 Unity 内置默认头像 |
-| `avatarSource` | string | 否 | `DEFAULT`、`WECHAT_SELECTED` 或 `PRESET`；`CUSTOM` 为后续版本预留 |
-| `avatarCode` | string | 是 | 固定头像编号；仅 `PRESET` 来源有值 |
-| `avatarVersion` | long | 否 | 头像状态单调版本，默认从 0 开始 |
-| `avatarUpdatedTime` | datetime | 是 | 最近一次头像状态变化的北京时间 |
-
-开发环境默认返回相对地址，例如：
-
-```text
-/api/media/avatars/10001/550e8400-e29b-41d4-a716-446655440000.jpg
-```
-
-Unity 需要把相对地址拼到服务器源站 `http://localhost:8080`。生产环境应通过 `OBJECT_STORAGE_PUBLIC_BASE_URL` 返回完整 CDN HTTPS 地址，例如：
-
-```text
-https://cdn.example.com/game-media/avatars/10001/550e8400-e29b-41d4-a716-446655440000.jpg
-```
-
-数据库只保存稳定的对象键，不保存 CDN 域名。客户端不得自行拼对象键，也不得依赖 URL 的目录结构。
-
-### 28.5 更新当前玩家头像
+### 28.2 头像目录
 
 ```http
-PUT /api/user/avatar
+GET /api/user/avatar/presets
 Authorization: Bearer <player-token>
-Content-Type: multipart/form-data; boundary=<boundary>
 ```
-
-multipart 字段：
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| `file` | binary | 是 | 微信选择后读取出的 JPEG 或 PNG 字节，最大 2 MB |
-
-不要把请求发送成 JSON，也不要只发送临时文件路径。微信临时路径只在客户端本地有效，必须先读取为字节。
-
-成功响应：
 
 ```json
 {
   "code": 200,
-  "message": "头像更新成功",
+  "message": "操作成功",
+  "data": [
+    {"avatarCode": "AVATAR_001", "displayName": "默认头像一", "enabled": true},
+    {"avatarCode": "AVATAR_002", "displayName": "默认头像二", "enabled": true},
+    {"avatarCode": "AVATAR_003", "displayName": "默认头像三", "enabled": true}
+  ]
+}
+```
+
+固定映射（路径不含扩展名）：
+
+| avatarCode | Unity Resources 路径 |
+| --- | --- |
+| `AVATAR_001` | `Resources/Avatars/avatar_001` |
+| `AVATAR_002` | `Resources/Avatars/avatar_002` |
+| `AVATAR_003` | `Resources/Avatars/avatar_003` |
+`DEFAULT` 不携带 `avatarCode`；Unity 使用客户端内置的默认 Sprite 常量（默认资源路径由 Unity 项目维护，服务端不下发、不拼接）。
+
+编号大小写敏感。Unity 使用显式字典映射，不要直接拼接路径。目录由后端代码登记，新增、下架、改名或换图必须同步后端和 Unity 并重新发布。
+
+### 28.3 选择固定头像
+
+```http
+PUT /api/user/avatar/preset
+Authorization: Bearer <player-token>
+Content-Type: application/json
+```
+
+```json
+{"avatarCode":"AVATAR_002"}
+```
+
+成功响应中的 `avatarUrl` 始终为 `null`：
+
+```json
+{
+  "code": 200,
+  "message": "头像设置成功",
   "data": {
-    "avatarUrl": "https://cdn.example.com/game-media/avatars/10001/550e8400-e29b-41d4-a716-446655440000.jpg",
-    "avatarSource": "WECHAT_SELECTED",
-    "avatarVersion": 6,
-    "avatarUpdatedTime": "2026-07-29 14:30:00"
+    "avatarUrl": null,
+    "avatarSource": "PRESET",
+    "avatarCode": "AVATAR_002",
+    "avatarVersion": 9,
+    "avatarUpdatedTime": "2026-08-27 14:30:00"
   }
 }
 ```
 
-只有 `code = 200` 才能替换本地头像。HTTP 状态非 2xx 时仍应尝试解析统一 JSON 响应，以便显示具体业务错误。
+服务端只接受目录中的启用编号。默认每名玩家每天（北京时间）最多切换 5 次，管理端可配置为 1～100 次；恢复默认不占额度。已停用编号不会再被新选择，但已拥有玩家仍可按编号展示本地资源。
 
-### 28.6 恢复默认头像
+### 28.4 恢复默认头像
 
 ```http
 DELETE /api/user/avatar
 Authorization: Bearer <player-token>
 ```
 
-不需要请求体。成功响应：
+成功状态为 `avatarSource=DEFAULT`、`avatarCode=null`、`avatarUrl=null`；如果头像状态确实发生变化，`avatarVersion` 在当前值基础上递增 1。重复恢复默认头像仍成功且不无意义递增版本。
 
-```json
-{
-  "code": 200,
-  "message": "已恢复默认头像",
-  "data": {
-    "avatarUrl": null,
-    "avatarSource": "DEFAULT",
-    "avatarVersion": 7,
-    "avatarUpdatedTime": "2026-07-29 14:35:00"
-  }
-}
-```
+### 28.5 好友及公开资料
 
-已经是默认头像时重复调用仍返回成功，版本不会无意义递增。Unity 收到 `avatarUrl = null` 后应立即释放或取消当前远程头像引用并展示内置默认头像。
+登录、`GET /api/user/me`、`GET /api/friends`、`GET /api/friends/search` 和好友申请响应直接携带头像编号与版本；`avatarUrl` 始终为 `null`。
 
-### 28.7 好友头像读取
-
-#### 28.7.1 推荐：直接使用好友相关接口字段
-
-以下现有响应已经直接包含头像，不需要再逐个请求：
-
-| 接口 | 头像字段 |
-| --- | --- |
-| 登录和 `GET /api/user/me` | `avatarUrl/avatarSource/avatarCode/avatarVersion/avatarUpdatedTime` |
-| `GET /api/friends` | `avatarUrl/avatarCode/avatarVersion` |
-| `GET /api/friends/search` | `avatarUrl/avatarCode/avatarVersion` |
-| 好友申请创建、列表和处理响应 | `requesterAvatarUrl/requesterAvatarCode/requesterAvatarVersion`、`recipientAvatarUrl/recipientAvatarCode/recipientAvatarVersion` |
-
-好友列表头像和公开资料通过同一页 SQL 联表返回，不存在按好友逐条查询数据库的 N+1 问题。
-
-#### 28.7.2 可选：按当前好友页批量刷新
-
-仅当页面停留期间需要主动刷新头像时调用：
+需要主动刷新当前好友页时，可批量调用：
 
 ```http
 POST /api/friends/avatars/batch
@@ -7148,273 +7112,63 @@ Authorization: Bearer <player-token>
 Content-Type: application/json
 ```
 
-```json
-{
-  "playerIds": [20002, 20003, 20004]
-}
-```
+`playerIds` 必须包含 1～100 名正式好友；重复 ID 去重并保持首次顺序，禁止按好友逐个请求。
 
-规则：
+### 28.6 Unity 接入要求
 
-- 单次 1 至 100 个正整数玩家 ID。
-- 所有目标都必须是当前玩家的正式游戏好友；任意一个不是好友时整次请求返回 `6702`。
-- 重复 ID 会去重，结果保持每个 ID 第一次出现的顺序。
-- 目标账号不存在时返回 `2001`。
-- 禁止 Unity 为每名好友分别调用该接口。
+1. 登录后读取目录；请求失败不阻塞进入游戏，使用包内默认图片。
+2. 用大小写敏感的固定字典映射 `avatarCode`，传给 `Resources.Load<Sprite>` 时去掉 `Resources/` 前缀和扩展名。
+3. 只有 HTTP 2xx 且业务 `code=200` 才更新本地状态；收到更小的 `avatarVersion` 时丢弃。
+4. `PRESET` 按编号加载固定资源，`DEFAULT` 或编号为空加载默认资源。
+5. 编号不存在、资源加载失败、头像业务关闭或目录请求失败时回退默认图片。
+6. 不实现微信授权按钮、临时文件读取、multipart 上传、远程 URL 下载和对象存储逻辑。
+7. 头像设置页可从个人中心再次打开；首次选择引导由 Unity 控制显示频率。
 
-成功响应：
+### 28.7 错误码
 
-```json
-{
-  "code": 200,
-  "message": "操作成功",
-  "data": [
-    {
-      "playerId": 20002,
-      "avatarUrl": "https://cdn.example.com/game-media/avatars/20002/a.jpg",
-      "avatarVersion": 9
-    },
-    {
-      "playerId": 20003,
-      "avatarUrl": null,
-      "avatarVersion": 2
-    }
-  ]
-}
-```
-
-### 28.7 Unity 调用示例
-
-下面示例使用 Unity 自带 `UnityWebRequest`，无需额外网络库。`apiBaseUrl` 应为包含 `/api` 的地址，`serverOrigin` 只包含协议、域名和端口。
-
-```csharp
-using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Text;
-using UnityEngine;
-using UnityEngine.Networking;
-
-[Serializable]
-public sealed class AvatarDto
-{
-    public string avatarUrl;
-    public string avatarSource;
-    public long avatarVersion;
-    public string avatarUpdatedTime;
-}
-
-[Serializable]
-public sealed class AvatarApiResult
-{
-    public int code;
-    public string message;
-    public AvatarDto data;
-}
-
-public sealed class AvatarApiClient : MonoBehaviour
-{
-    [SerializeField] private string apiBaseUrl = "http://localhost:8080/api";
-    [SerializeField] private string serverOrigin = "http://localhost:8080";
-
-    public IEnumerator UploadWechatAvatar(
-        byte[] imageBytes,
-        string token,
-        Action<AvatarDto> onSuccess,
-        Action<int, string> onFailure)
-    {
-        var sections = new List<IMultipartFormSection>
-        {
-            new MultipartFormFileSection(
-                "file", imageBytes, "avatar.jpg", "image/jpeg")
-        };
-        byte[] boundary = UnityWebRequest.GenerateBoundary();
-        byte[] body = UnityWebRequest.SerializeFormSections(sections, boundary);
-
-        using (var request = new UnityWebRequest(apiBaseUrl + "/user/avatar", "PUT"))
-        {
-            request.uploadHandler = new UploadHandlerRaw(body);
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.timeout = 20;
-            request.SetRequestHeader("Authorization", "Bearer " + token);
-            request.SetRequestHeader(
-                "Content-Type",
-                "multipart/form-data; boundary=" + Encoding.UTF8.GetString(boundary));
-
-            yield return request.SendWebRequest();
-            HandleAvatarResponse(request, onSuccess, onFailure);
-        }
-    }
-
-    public IEnumerator ResetAvatar(
-        string token,
-        Action<AvatarDto> onSuccess,
-        Action<int, string> onFailure)
-    {
-        using (var request = new UnityWebRequest(apiBaseUrl + "/user/avatar", "DELETE"))
-        {
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.timeout = 15;
-            request.SetRequestHeader("Authorization", "Bearer " + token);
-
-            yield return request.SendWebRequest();
-            HandleAvatarResponse(request, onSuccess, onFailure);
-        }
-    }
-
-    public string ResolveAvatarUrl(string avatarUrl)
-    {
-        if (string.IsNullOrEmpty(avatarUrl))
-        {
-            return null;
-        }
-        if (Uri.TryCreate(avatarUrl, UriKind.Absolute, out Uri absolute))
-        {
-            return absolute.ToString();
-        }
-        return new Uri(new Uri(serverOrigin), avatarUrl).ToString();
-    }
-
-    private static void HandleAvatarResponse(
-        UnityWebRequest request,
-        Action<AvatarDto> onSuccess,
-        Action<int, string> onFailure)
-    {
-        AvatarApiResult response = null;
-        string json = request.downloadHandler == null
-            ? string.Empty
-            : request.downloadHandler.text;
-        if (!string.IsNullOrEmpty(json))
-        {
-            try
-            {
-                response = JsonUtility.FromJson<AvatarApiResult>(json);
-            }
-            catch (ArgumentException)
-            {
-                response = null;
-            }
-        }
-
-        if (response != null && response.code == 200 && response.data != null)
-        {
-            onSuccess?.Invoke(response.data);
-            return;
-        }
-
-        int code = response == null ? (int)request.responseCode : response.code;
-        string message = response == null
-            ? request.error ?? "头像请求失败"
-            : response.message;
-        onFailure?.Invoke(code, message);
-    }
-}
-```
-
-Unity 接入规则：
-
-1. 微信选择组件返回临时路径后，通过微信小游戏桥接层读取字节，再调用 `UploadWechatAvatar`。
-2. 上传前可在客户端压缩以改善体验，但服务端仍会独立验证和重编码。
-3. 本地保存每名玩家最近的 `avatarVersion`；收到更小版本时丢弃，避免慢请求覆盖新头像。
-4. 远程纹理缓存至少按 `playerId + avatarVersion` 隔离，并同时保存当时的 `avatarUrl`；版本或 URL 任意一个变化都必须重新下载。切换 CDN 域名不会批量增加玩家头像版本。
-5. `avatarUrl = null` 时禁止发起图片下载，直接显示包内默认头像。
-6. 好友页面优先使用列表内已有头像；只有页面内批量刷新才调用 `/friends/avatars/batch`。
-7. 登录后仅当 `avatarUrl` 为空时展示头像引导；用户拒绝、取消或上传失败时加载包内默认头像，不要把失败响应覆盖成空头像。
-
-### 28.8 错误码与 HTTP 状态
-
-| HTTP | code | message | Unity 处理 |
+| HTTP | code | 含义 | 客户端处理 |
 | ---: | ---: | --- | --- |
-| 400 | `7301` | 请选择要上传的头像图片 | 检查 multipart 字段名必须为 `file` |
-| 413 | `7302` | 头像文件大小超过限制 | 压缩到 2 MB 以下后重试 |
-| 400 | `7303` | 仅支持真实的JPEG或PNG图片 | 重新选择或正确编码图片 |
-| 400 | `7304` | 头像图片尺寸或像素数量超过限制 | 缩小图片后重试 |
-| 503 | `7305` | 头像存储服务暂时不可用，请稍后重试 | 保留旧头像并延迟重试 |
-| 429 | `7306` | 今日头像更换次数已达上限 | 等待北京时间次日重置 |
-| 409 | `7307` | 头像状态已变化，请重试 | 先刷新 `/user/me` 再重试 |
-| 401 | `401` | 未登录或登录已过期 | 重新登录，不要继续上传 |
+| 400 | `400` | 编号为空、格式错误或不存在 | 刷新目录并保留当前头像 |
+| 429 | `7306` | 今日切换次数已达上限 | 提示北京时间次日再试 |
+| 409 | `7307` | 头像状态并发变化 | 刷新 `/user/me` 后重试 |
+| 503 | `7308` | 头像业务已关闭 | 隐藏选择入口并显示默认头像 |
+| 401 | `401` | 未登录或令牌过期 | 重新登录 |
 
-错误响应的 `data` 为 `null`。`7305` 表示存储故障，不代表头像对象不存在，客户端不得自动改为默认头像。
+当前不再提供旧上传接口对应的 `7301`～`7305` 业务路径。
 
-### 28.9 存储部署与供应商切换
+### 28.8 管理端配置
 
-开发环境默认写入 `./data/media`，并通过 `/api/media/**` 访问。生产环境使用 AWS SDK v2 `S3Client` 和私有桶，公开读取地址由带回源鉴权或防盗链的 CDN 提供。
+管理端模块：`AVATAR_POLICY / BUSINESS`，仅 `CONFIG_ADMIN` 可发布。
 
-生产环境核心变量：
-
-```text
-OBJECT_STORAGE_TYPE=s3
-OBJECT_STORAGE_PUBLIC_BASE_URL=https://cdn.example.com/game-media
-OBJECT_STORAGE_ENDPOINT=
-OBJECT_STORAGE_REGION=ap-southeast-1
-OBJECT_STORAGE_BUCKET=game-avatar-production
-OBJECT_STORAGE_CREDENTIALS_MODE=STATIC
-OBJECT_STORAGE_ACCESS_KEY=...
-OBJECT_STORAGE_SECRET_KEY=...
-OBJECT_STORAGE_PATH_STYLE_ACCESS_ENABLED=false
-OBJECT_STORAGE_CHUNKED_ENCODING_ENABLED=true
-```
-
-切换规则：
-
-- 同一供应商仅轮换访问密钥，且 endpoint、region、bucket、CDN 都不变时，只需要更换密钥或云主机角色。
-- 更换供应商通常还必须调整 endpoint、region、bucket、路径风格、分块编码和 CDN 地址，不能只改密钥。
-- 切换前要把旧桶中的 `avatars/**` 对象按原对象键完整迁移到新桶；对象键保持不变时无需更新 `users` 表。
-- 切换前先等待 `player_avatar_cleanup_outbox` 中旧供应商清理任务处理完成，避免新配置去错误供应商删除旧对象。
-- 切换后接口会按新的 `OBJECT_STORAGE_PUBLIC_BASE_URL` 立即组装新 URL，但 `avatarVersion` 不会因此变化；Unity 必须同时比较 URL，旧 CDN 也建议保留一个客户端过渡周期。
-- 各厂商 S3 兼容行为不同，MinIO 等服务通常需要路径风格并关闭分块编码；最终值必须以供应商当前官方文档和测试环境验证为准。
-- 业务层只依赖 `ObjectStorageService`，正确完成配置和对象迁移后不需要修改头像业务代码。
-
-存储桶不要开放公共列举权限。生产 CDN 域名必须使用 HTTPS，并在微信后台加入合法下载域名。
-
-固定头像-only 模式不代表可以删除对象存储配置：当前版本仍保留微信头像兼容上传接口，生产 profile 会创建并校验 S3 存储 Bean。若确定永久移除微信头像能力，必须另行发布代码和前向迁移，不能只关闭管理端开关后删除 S3 参数。
-
-### 28.10 数据库与可靠性
-
-V39、V97、V98 新增或扩展：
-
-| 表或字段 | 用途 |
+| 字段 | 说明 |
 | --- | --- |
-| `users.avatar_object_key` | 当前头像对象键；默认头像为空 |
-| `users.avatar_source` | `DEFAULT/WECHAT_SELECTED/PRESET/CUSTOM` |
-| `users.avatar_code` | 固定头像编号；PRESET 来源时有值 |
-| `users.avatar_version` | 乐观更新和客户端乱序保护版本 |
-| `users.avatar_updated_time` | 最近头像状态变化时间 |
-| `player_avatar_daily_usage` | 北京时间每日成功更换次数，主键为 `(player_id, usage_date)` |
-| `player_avatar_cleanup_outbox` | 替换、重置或事务补偿后的可靠对象删除任务 |
+| `enabled` | 头像业务总开关；关闭后不能选择固定头像，但仍可读取目录和恢复默认 |
+| `dailyUpdateLimit` | 北京时间每日成功切换次数，范围 1～100 |
+| `configVersion` | 系统维护的乐观锁版本，不允许手工修改 |
 
-更新顺序为：安全处理图片、上传新对象、锁定玩家并切换数据库、事务内登记旧对象 Outbox、提交后异步删除旧对象。数据库事务失败时会立即补偿删除新对象；补偿失败时同样进入 Outbox 重试。
+固定头像目录只读展示编号、显示名、Unity 资源路径和发布方式，不提供微信同步开关、默认远程地址或图片上传控件。
+策略发布成功后由各 API 节点定时刷新本地快照，通常在 30 秒内生效；确认新开关或每日额度生效前不要重复发布同一配置。
 
-### 28.11 上线验收
+### 28.9 数据库迁移与部署
 
-1. 单节点执行 Flyway 至 V98，确认头像字段、固定头像编号、PRESET 一致性约束、每日次数表和清理 Outbox 已创建。
-2. 开发环境验证相对 URL 能经 `/api/media/**` 下载；生产环境验证私有桶不能匿名访问且 CDN 可正常回源。
-3. 验证伪造扩展名、伪造 Content-Type、非图片、超大文件、超大尺寸均被拒绝。
-4. 验证透明 PNG 会生成白色背景的 256×256 JPEG，输出不保留 EXIF。
-5. 验证每日第 6 次更换返回 `7306`，恢复默认不计次数，次日北京时间重置。
-6. 验证登录、本人资料、好友列表、搜索和申请响应均携带一致版本的头像字段。
-7. 验证替换与恢复默认后旧对象最终删除，临时存储故障会重试且不影响当前数据库头像。
-8. 验证 Unity 对 `null`、相对 URL、绝对 CDN URL和乱序版本都能正确处理。
-9. 验证 `GET /api/user/avatar/presets` 返回的编号均能映射到当前 Unity 包资源；未知编号回退默认头像。
-10. 验证 `PUT /api/user/avatar/preset` 在头像业务关闭时拒绝请求，同编号重复选择幂等，切换微信头像时旧对象进入 Outbox。
+- V97 新增 `users.avatar_code` 和索引。
+- V98 建立 `PRESET + avatarCode` 的过渡一致性约束。
+- V99 将历史旧来源归一为 `DEFAULT`，清空旧对象键和远程策略字段，并把 `users` 约束收紧为只允许 `DEFAULT/PRESET`；固定 CRC32 为 `67421201`。V100 补齐 `ACCOUNT_CLOSURE` 清理原因、规范固定头像编号并以二进制精确 CHECK 收紧来源/编号合同；固定 CRC32 为 `-880935665`。
+- `users.avatar_object_key`、策略表旧字段和清理 Outbox 仅为历史数据兼容保留，当前业务不读取、不写入。
 
-验证命令：
+正常固定头像业务完全不需要对象存储、S3 或 CDN。历史对象如需删除，可临时设置 `AVATAR_CLEANUP_ENABLED=true` 并启动清理 Worker；清理完成后恢复 `false`。API 进程默认不加载对象存储。
 
-```powershell
-mvn -q test
-$env:RUN_MYSQL_INTEGRATION_TESTS='true'; mvn -q test
-git diff --check
-```
+### 28.10 上线验收
 
-本次验证结果（2026-07-29，Asia/Shanghai）：
+- [ ] Flyway 顺序执行到 V100，V97～V100 在 `flyway_schema_history` 中均为 `success=1`。
+- [ ] 目录中的每个启用编号都能在当前 Unity 包中加载。
+- [ ] 选择固定头像返回正确 `avatarCode`、递增版本和 `avatarUrl=null`。
+- [ ] 同编号重试幂等，超过每日额度返回 `7306`，关闭业务返回 `7308`。
+- [ ] 登录、好友、搜索和申请响应均不返回远程头像地址或对象键。
+- [ ] Unity 找不到编号或资源加载失败时显示默认图片且不发起网络下载。
+- [ ] 若存在历史对象，清理完成后关闭 `AVATAR_CLEANUP_ENABLED`。
 
-| 验证项 | 结果 |
-| --- | --- |
-| 头像专项测试 | 图片处理、事务、批量好友头像、本地/S3存储和 Outbox 测试全部通过 |
-| 后端全量测试 | 487 项，0 failure，0 error；59 项外部环境用例按条件跳过 |
-| 真实 MySQL 8 | 39 个版本校验通过，V17 至 V39 执行 23 个迁移，重复执行为 0 |
-| 真实 MySQL 业务 | 42 项全部通过；头像 6 路并发严格得到 2 次成功和 4 次限额拒绝 |
-| 补丁格式 | `git diff --check` 通过 |
+详细字段、测试命令和后端实现见仓库 `docs/avatar-api.md`。
 
 ## 29. 金币商城（V40）
 
@@ -8601,7 +8355,7 @@ V48 完成七项运营能力，V49 补强客户端版本上报和阻断语义：
 | 客户端版本与维护 | Unity/微信小游戏启动查询版本策略，登录入口再次强制校验 |
 | 通知提醒策略 | 管理站内通知、微信订阅消息、资源提醒和建筑完成提醒业务参数 |
 | 经济安全阈值 | 限制系统奖励单次数量、活动人数和每日金币/钻石投放 |
-| 头像业务策略 | 管理头像启停、微信同步、每日次数和默认头像 |
+| 头像业务策略 | 管理固定头像启停、每日切换次数和配置版本（目录只读） |
 | 公告/邮件模板 | 公告、普通邮件和奖励邮件可选择模板填充表单 |
 | 统一活动日历 | 汇总正式配置，展示生效状态、即将到期和时间冲突 |
 
@@ -8720,7 +8474,7 @@ Unity 推荐流程：
 | `CLIENT_RUNTIME` | `POLICIES` | `platform/channelCode/versionReportMode/minimumVersionCode/latestVersionCode/forceUpdate/updateUrl/maintenance*` |
 | `NOTIFICATION_POLICY` | `BUSINESS` | 通知开关、离线分钟数、冷却、模板 ID、跳转页面 |
 | `ECONOMY_SAFETY` | `LIMITS` | 单次奖励、活动人数、每日金币/钻石阈值和阻断方式 |
-| `AVATAR_POLICY` | `BUSINESS` | `enabled/wechatSyncEnabled/dailyUpdateLimit/defaultAvatarUrl` |
+| `AVATAR_POLICY` | `BUSINESS` | `enabled/dailyUpdateLimit/configVersion`（固定头像目录只读） |
 | `MESSAGE_TEMPLATE` | `TEMPLATES` | 模板编码、类型、标题、正文、发件人和默认有效期 |
 
 客户端策略中的 `OPTIONAL` 表示缺少版本号仍兼容登录，`REQUIRED` 表示缺少版本号立即按 HTTP 426 阻断。Unity 启用版本更新、强更或强制上报时必须先配置完整 HTTPS 更新地址；微信小游戏可使用微信原生更新能力。维护开启且起止时间都为空表示立即进入无限期维护，管理端会在发布前明确提示。
@@ -8764,9 +8518,9 @@ V48 迁移写入的默认业务配置会立即生效，但不会伪造运营发�
 
 头像策略：
 
-- 默认头像只能是 HTTPS 地址或以 `/` 开头的站内地址。
-- 图片字节、像素和解码限制、JPEG 重编码参数、对象存储密钥仍在服务端。
-- 恢复默认头像始终允许；上传和微信同步受业务开关控制。
+- 默认头像来自 Unity 包内资源，不配置 HTTPS 地址、站内 URL 或对象存储路径。
+- 头像图片随 Unity 客户端发布，服务端不接收图片、微信头像或远程地址；固定头像目录只读展示。
+- 恢复默认头像始终允许；固定头像选择受头像业务总开关控制。
 - 发布后各节点最多 30 秒刷新完整不可变快照。
 
 内容模板：
@@ -8851,7 +8605,7 @@ V49 新增或补强：
 - 内部公告/邮件后台密钥。
 - 调度线程、扫描批次、租约和清理任务基础设施参数。
 
-该段记录 V64 发布时的迁移边界；当前 V1 至 V80 以及 V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 已发布迁移禁止修改，下一次数据库变化必须新增 V94。
+该段记录 V64 发布时的迁移边界；相关迁移属于历史验收记录并已冻结。当前 V1 至 V100 已发布迁移均禁止修改，下一次数据库变化必须新增 V101。
 
 ### 35.10 本次验收
 
@@ -8888,7 +8642,7 @@ V50 只删除两项经过完整证据链确认的普通重复索引：
 
 验收结果：本地 `game_db` 已应用 V50，Flyway 校验和为 `-659852229`；数据库仍为 128 张表；后端全量测试 562 项，0 failure、0 error，63 项条件用例跳过；MySQL 8 临时库 V1 至 V50 迁移及重复执行检查通过。
 
-V50 不改变任何 HTTP/WebSocket 字段、路径或业务语义，Unity、微信小游戏和管理端无需调整。该段记录的是 V50 当时的验收事实；当前 V51 至 V80 以及 V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 已执行且同样禁止修改，下一次数据库变化从 V94 开始。详细证据见仓库 `docs/database-index-audit.md`。
+V50 不改变任何 HTTP/WebSocket 字段、路径或业务语义，Unity、微信小游戏和管理端无需调整。该段记录的是 V50 当时的验收事实；当前 V51 至 V100 已执行且同样禁止修改，下一次数据库变化从 V101 开始。详细证据见仓库 `docs/database-index-audit.md`。
 
 ## 37. V51/V52 挂机冒险体力与随机奖励
 
@@ -9318,7 +9072,7 @@ Authorization: Bearer <operator-token>
 | V62 | 创建多场景进度、逐场景价格及生产收取幂等快照 | `-1155339352` |
 | V63 | 回填单建筑收取场景快照并严格约束收取范围与场景字段 | `-2076174813` |
 
-V1-V80 以及 V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 禁止修改，下一次数据库变化使用 V94。V59 是玩家昵称管理迁移，接口见 [`nickname-api.md`](nickname-api.md)。
+V1-V100 禁止修改，下一次数据库变化使用 V101。V59 是玩家昵称管理迁移，接口见 [`nickname-api.md`](nickname-api.md)。
 
 ### 七、验证记录
 
@@ -9517,7 +9271,7 @@ GROUP BY LOWER(TRIM(nickname))
 HAVING COUNT(*) > 1;
 ```
 
-结果必须为空。生产发布时停止旧版本写流量、备份数据库、启动一个当前版本节点并由 Flyway 迁移至仓库当前最高版本 V96，验证注册、微信登录、policy、改名和玩家任务接口后再恢复全部节点。V1-V96 已发布迁移禁止修改，下一次数据库变化使用 V97。
+结果必须为空。生产发布时停止旧版本写流量、备份数据库、启动一个当前版本节点并由 Flyway 迁移至仓库当前最高版本 V100，验证注册、微信登录、policy、改名和玩家任务接口后再恢复全部节点。V1-V100 已发布迁移禁止修改，下一次数据库变化使用 V101。
 
 验证记录：真实 MySQL 8 已从 V1 完整迁移到 V61；后端全量测试、昵称定向测试、管理端 TypeScript 检查和生产构建均通过。
 
@@ -10053,7 +9807,7 @@ NPC 品质可在宝箱正式版本发布前通过 `NPC_CATALOG` 修改。正式�
 
 ### 42.6 数据库边界
 
-V64 新增正式固定奖励、正式随机 NPC 池、玩家权益快照和实际发放流水四张表，并扩展任务配置/实例为永久成就。V89 不修改 V64/V87/V88，而是新增 `SCENE_SLOT_UNLOCK_COUNT`，把场景成就唯一键扩展为 `(objective_type, target_scene_id, target_amount)`，并同步加固配置、实例和进度事件的 CHECK；固定 CRC32 为 `-1964148448`。V64 固定 CRC32 为 `51817526`；当前 V1-V80 以及 V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 已冻结，下一份数据库迁移必须从 V94 开始，禁止执行 `flyway repair` 掩盖漂移。
+V64 新增正式固定奖励、正式随机 NPC 池、玩家权益快照和实际发放流水四张表，并扩展任务配置/实例为永久成就。V89 不修改 V64/V87/V88，而是新增 `SCENE_SLOT_UNLOCK_COUNT`，把场景成就唯一键扩展为 `(objective_type, target_scene_id, target_amount)`，并同步加固配置、实例和进度事件的 CHECK；固定 CRC32 为 `-1964148448`。V64 固定 CRC32 为 `51817526`；当前 V1-V100 已冻结，下一份数据库迁移必须从 V101 开始，禁止执行 `flyway repair` 掩盖漂移。
 
 ### 42.7 实施验收
 
@@ -10095,7 +9849,7 @@ V64 新增正式固定奖励、正式随机 NPC 池、玩家权益快照和实�
 
 V65 不内置虚假的默认政策。首次部署必须先在管理端发布正式政策，否则政策查询和登录返回 `7701`。
 
-V65 只建立基础状态与表结构，固定校验和为 `-1144973114`；V66 在不修改 V65 的前提下回填注销请求指纹，并增加 HTTPS、UUID 和头像注销清理约束，固定校验和为 `-1142994506`。V66 不改变任何 Unity 请求或响应字段。V67-V80、V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 已分别交付后续功能且均已冻结；下一次数据库变化必须从 V94 新建迁移。
+V65 只建立基础状态与表结构，固定校验和为 `-1144973114`；V66 在不修改 V65 的前提下回填注销请求指纹，并增加 HTTPS、UUID 和头像注销清理约束，固定校验和为 `-1142994506`。V66 不改变任何 Unity 请求或响应字段。V67-V100 已分别交付后续功能且均已冻结；下一次数据库变化必须从 V101 新建迁移。
 
 ### 二、公开政策接口
 
@@ -10576,7 +10330,7 @@ EnterGame(loginData.user);
 
 首次上线操作顺序：
 
-1. 备份数据库，只启动一个当前版本后端节点并让 Flyway 从数据库现有版本迁移至当前最高版本 V93；已有 V92 数据库会先校验原始 CRC32 `1615105684`，再自动执行 V93，禁止使用 `repair`。
+1. 备份数据库，只启动一个当前版本后端节点并让 Flyway 从数据库现有版本迁移至当前最高版本 V100；已有 V92 数据库会先校验原始 CRC32 `1615105684`，再自动执行 V93 至 V100，禁止使用 `repair`。
 2. 登录管理端，进入“客户端与通知 > 隐私与账号注销”。
 3. 填写经过审核的真实主体、邮箱和正文，保存草稿并校验。
 4. 发布后验证两个公开政策接口均返回 200，SHA-256 一致。
@@ -10827,10 +10581,6 @@ Content-Type: application/json
 
 入口为“配置中心 -> 挂机冒险”，模块和配置键均为 `IDLE_ADVENTURE`。仍按“编辑 -> 校验 -> 保存草稿 -> 发布”执行，草稿不影响线上版本。
 
-管理端基础规则页会明确区分两个可变开关和一个只读状态：`staminaEnabled`（闯关体力扣除）控制开始、继续和失败重试是否扣体力；`afkAccelerationEnabled`（挂机加速按钮）控制是否允许消耗体力领取完整挂机上限奖励，普通挂机自然产出不受影响；`enabled/status/active_marker`（玩法版本状态）由服务端要求正式版本必须启用，页面显示“必须启用”，不能用它停运玩法。启用挂机加速前必须先启用体力规则，关闭开关前页面会二次确认。
-
-误操作恢复顺序：未保存时点击“撤销页面修改”；已保存但未发布时点击“丢弃”并确认；已发布时从“版本历史”选择目标版本执行“回滚”，系统先生成回滚草稿，核对发布预览后再发布。`CLIENT_RUNTIME` 是全局客户端登录/维护策略，不是挂机冒险专用停运开关，不能用来替代本玩法停运。
-
 | 字段 | 规则 |
 | --- | --- |
 | `afkAccelerationEnabled` | 是否开放加速，默认关闭 |
@@ -10889,7 +10639,7 @@ Unity 需要给奖励类型枚举增加 `STAMINA` 分支。购买仍按 `rewardQ
 
 ### 46.3 Flyway 防错
 
-V70 文件为 `V70__add_diamond_shop_stamina_reward.sql`，固定 CRC32 为 `1183825380`。该文件已经由校验和测试冻结，不得继续编辑；V71-V93 已由后续独立迁移交付，下一次数据库变化新建 V94。
+V70 文件为 `V70__add_diamond_shop_stamina_reward.sql`，固定 CRC32 为 `1183825380`。该文件已经由校验和测试冻结，不得继续编辑；V71-V100 已由后续独立迁移交付，下一次数据库变化新建 V101。
 
 上线顺序：备份数据库，停止旧版本写流量，只启动一个新版本节点执行 Flyway；确认 `flyway_schema_history` 中 `version=70`、`success=1`、`checksum=1183825380` 后，再启动其他节点。不要提前手工执行 V70 SQL，也不要用 `repair` 掩盖历史文件不一致。完整预检 SQL 见仓库 `docs/database-script-guide.md`。
 
@@ -11139,7 +10889,7 @@ configKey  = GLOBAL
 - 当前后端没有向 Unity 主动推送 `BUILDING_PRODUCTION_CONFIG_UPDATED` WebSocket 事件。页面长时间保持打开时可每 30 至 60 秒刷新一次；未来增加推送时也只发送版本失效通知，完整配置仍通过上述 GET 接口获取。
 - 工作策略和补充物品发布后影响后续查询与消耗，但不会截断玩家已有剩余工作时间；默认配方发布后不追溯覆盖已有建筑快照。
 
-V71 新增 9 张表，并为建筑等级、玩家建筑、建造任务和生产行增加配方或逻辑工作时钟快照。迁移文件为 `V71__add_building_fuel_clock_and_recipes.sql`，固定 CRC32 为 `1008907161`。V71 已冻结，禁止修改或使用 Flyway `repair` 掩盖差异；V72-V93 已由后续独立迁移交付，下一次数据库变化必须新建 V94。
+V71 新增 9 张表，并为建筑等级、玩家建筑、建造任务和生产行增加配方或逻辑工作时钟快照。迁移文件为 `V71__add_building_fuel_clock_and_recipes.sql`，固定 CRC32 为 `1008907161`。V71 已冻结，禁止修改或使用 Flyway `repair` 掩盖差异；V72-V100 已由后续独立迁移交付，下一次数据库变化必须新建 V101。
 
 ### 47.10 最终验收
 
@@ -11603,7 +11353,7 @@ Authorization: Bearer <operator-token>
 - `anti_addiction_provider_outbox`
 - `anti_addiction_audit_log`
 
-V72 还为 `auth_token` 增加 `access_scope`，并为 `operator_account.role` 增加 `COMPLIANCE_ADMIN`。V73 为 `anti_addiction_game_session` 增加 `session_generation`，并增加日历发布事务锁；当前 V1 至 V96 已发布迁移全部冻结。已有数据库启动当前应用时由 Flyway 迁移至仓库当前最高版本 V96，下一次数据库变化从 V97 新建迁移；禁止用 `repair` 掩盖已执行脚本漂移。
+V72 还为 `auth_token` 增加 `access_scope`，并为 `operator_account.role` 增加 `COMPLIANCE_ADMIN`。V73 为 `anti_addiction_game_session` 增加 `session_generation`，并增加日历发布事务锁；当前 V1 至 V100 已发布迁移全部冻结。已有数据库启动当前应用时由 Flyway 迁移至仓库当前最高版本 V100，下一次数据库变化从 V101 新建迁移；禁止用 `repair` 掩盖已执行脚本漂移。
 
 ## 十、生产配置与启用顺序
 
@@ -11893,7 +11643,7 @@ OPERATOR_MFA_ENCRYPTION_KEY_BASE64=32字节随机密钥的Base64文本
 OPERATOR_MFA_ALLOWED_CLOCK_SKEW_WINDOWS=1
 ```
 
-V77-V78 是该工作台首次交付时的历史迁移边界。当前上线应先备份数据库，只启动一个当前版本实例并由 Flyway 迁移至仓库当前最高版本 V96，再启动其余实例；后续数据库变化从 V97 开始。Redis 用于实时在线人数和 DAU；生产必须正确配置 `OPERATOR_TRUSTED_PROXY_ADDRESSES`。MFA 加密密钥上线后不得随意更换。
+V77-V78 是该工作台首次交付时的历史迁移边界。当前上线应先备份数据库，只启动一个当前版本实例并由 Flyway 迁移至仓库当前最高版本 V100，再启动其余实例；后续数据库变化从 V101 开始。Redis 用于实时在线人数和 DAU；生产必须正确配置 `OPERATOR_TRUSTED_PROXY_ADDRESSES`。MFA 加密密钥上线后不得随意更换。
 
 本节全部是 `/api/ops/**`、后台指标任务和 `admin-web` 管理端能力。Unity 使用的玩家接口路径、请求体和成功响应没有变化，Unity 不需要修改。
 
@@ -12006,7 +11756,7 @@ REDIS_HEALTH_ENABLED=true
 
 V79 文件为 `V79__add_unique_special_buildings_and_purification_agent.sql`，固定 CRC32 为 `1556615827`。迁移增加单例组配置与建造快照、`(player_id, singleton_group_snapshot)` 唯一索引、净化策略与历史消耗快照、`purification_agent` 物品、两座建筑及默认配方、地块准入和钻石产出审计表。
 
-以下是 V79 首次交付时的历史验收边界：确认 `version=79`、`success=1`、`checksum=1556615827`，并核对两座建筑、净化剂、唯一索引、净化策略字段和审计表。当前上线应先备份数据库，只启动一个当前版本节点由 Flyway 迁移至仓库当前最高版本 V96，再启动其余节点；V1-V96 已发布迁移禁止修改，下一次数据库变化从 V97 开始。
+以下是 V79 首次交付时的历史验收边界：确认 `version=79`、`success=1`、`checksum=1556615827`，并核对两座建筑、净化剂、唯一索引、净化策略字段和审计表。当前上线应先备份数据库，只启动一个当前版本节点由 Flyway 迁移至仓库当前最高版本 V100，再启动其余节点；V1-V100 已发布迁移禁止修改，下一次数据库变化从 V101 开始。
 
 ### 54.5 验证结果
 
@@ -12143,7 +11893,7 @@ V80 新增 `card_draw_pool.broadcast_enabled`、`card_draw_pool.broadcast_templa
 
 还应监控订阅节点与会话侧健康度；不能仅凭 Outbox 终态判断端到端送达。
 
-上线前保持全部卡池 `broadcastEnabled=false`。先备份数据库，只启动一个节点执行 Flyway 至 V93，核对 V80、V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 均为 `success=1`、抽卡 Outbox 索引、成长对账任务/失败表、V82 成长约束、V85 批量升级表和材料索引、V86 最终材料约束、V87 资源收获任务基础结构、V88 前向加固、V89 场景里程碑约束、V90 永久累计统计与唯一身份约束、V91 永久累计进度封顶约束、V92 NPC 获取渠道首发结构与独立发布版本状态、V93 最终渠道约束，以及 V83/V84 默认关闭且 v1/v2 兼容的新手引导；随后把包含公共 payload、Redis `BROADCAST`、成长持久任务、批量升级和逐会话鉴权逻辑的应用版本滚动升级到全部实时节点。确认所有节点版本一致、Redis 订阅及 Worker 指标正常后，才可由管理端开启 `broadcastEnabled`。只要仍有旧节点就不得提前开启。V1-V80 禁止修改，V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 发布后同样冻结，下一次数据库变化从 V94 开始。
+上线前保持全部卡池 `broadcastEnabled=false`。先备份数据库，只启动一个节点执行 Flyway 至 V100，核对 V80、V81、V81.1、V82、V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93、V94、V95、V96、V97、V98、V99、V100 均为 `success=1`、抽卡 Outbox 索引、成长对账任务/失败表、V82 成长约束、V85 批量升级表和材料索引、V86 最终材料约束、V87 资源收获任务基础结构、V88 前向加固、V89 场景里程碑约束、V90 永久累计统计与唯一身份约束、V91 永久累计进度封顶约束、V92 NPC 获取渠道首发结构与独立发布版本状态、V93 最终渠道约束、V94 运营编号与幂等键、V95/V96 客服结构、V97/V98 固定头像约束、V99 历史远程头像归一，以及 V83/V84 默认关闭且 v1/v2 兼容的新手引导；随后把包含公共 payload、Redis `BROADCAST`、成长持久任务、批量升级、固定头像和逐会话鉴权逻辑的应用版本滚动升级到全部实时节点。确认所有节点版本一致、Redis 订阅及 Worker 指标正常后，才可由管理端开启 `broadcastEnabled`。只要仍有旧节点就不得提前开启。V1-V100 发布后均冻结，下一次数据库变化从 V101 开始。
 
 ### 55.6 验收清单
 
@@ -12338,7 +12088,7 @@ HTTP 状态为 409。其他同配置地块或建筑不能代替绑定实例推�
 
 `LAND_BUILDING / PLAYER_BOOTSTRAP / LAND_SCENE_CATALOG / ITEM_CATALOG` 的即时与定时发布统一执行反向依赖保护。接受新分配期间，候选配置必须保持完整流程、HOME 首场景、1级首格和开局资源可达；存在在途玩家时，只保护各冻结版本最早未完成步骤及之后的依赖，禁止停用、提级、涨价或破坏兼容性，名称、图标、降价及已全部通过的历史步骤仍可正常调整。关闭“接受新分配”可以解除未来开局资源约束，但不会绕过在途玩家剩余地块、建筑和场景保护；总开关关闭也只是暂停展示。已绑定版本和历史步骤不得删除。
 
-V83 创建 `onboarding_policy`、`onboarding_plan_version`、`onboarding_step_config`、`player_onboarding_progress`、`player_onboarding_step_record`、`player_onboarding_request` 六张表，预置默认关闭的七步冻结 v1，固定 CRC32 为 `1070104245`。V84 不改写 V83：它保留已绑定玩家的 v1，归一化终态暂停标记，增加稳定锚点/动作、`ARROW`、同地块/同建筑实例引用和更严格约束，最后才把未来分配切换到兼容 v2；固定 CRC32 为 `1114405186`。V85 创建 NPC/装备一键升级完成态批次、逐级流水关联和初始材料约束，固定 CRC32 为 `-1472509603`；V86 不改写 V85，前向把整批同款材料上限放宽到 5000，固定 CRC32 为 `-179532443`；V87 增加资源收获次数任务，固定 CRC32 为 `-1481082424`；V88 不改写 V87，前向修复历史空快照、重建显式 NULL 安全约束并增加当前资源任务依赖索引，固定 CRC32 为 `-892889675`；V89 增加场景开辟里程碑并扩展三元唯一键，固定 CRC32 为 `-1964148448`；V90 增加三种事件驱动永久累计成就、永久累计统计表和统一成就唯一身份，固定 CRC32 为 `-319452238`；V91 不改写 V90，先封顶历史永久累计进度，再将 `player_task_lifetime_stat.progress_amount` 约束收紧为 `0..9000000000000000`，固定 CRC32 为 `-613092297`。仍停在 V83 的环境必须在启动前独立执行只读预检，再由 Flyway 顺序升级至 V93。V83、V84、V85、V86、V87、V88、V89、V90、V91、V92、V93 一旦执行成功都不得修改，后续数据库变化从 V94 开始，禁止用 Flyway `repair` 掩盖校验和漂移。
+V83 创建 `onboarding_policy`、`onboarding_plan_version`、`onboarding_step_config`、`player_onboarding_progress`、`player_onboarding_step_record`、`player_onboarding_request` 六张表，预置默认关闭的七步冻结 v1，固定 CRC32 为 `1070104245`。V84 不改写 V83：它保留已绑定玩家的 v1，归一化终态暂停标记，增加稳定锚点/动作、`ARROW`、同地块/同建筑实例引用和更严格约束，最后才把未来分配切换到兼容 v2；固定 CRC32 为 `1114405186`。V85 创建 NPC/装备一键升级完成态批次、逐级流水关联和初始材料约束，固定 CRC32 为 `-1472509603`；V86 不改写 V85，前向把整批同款材料上限放宽到 5000，固定 CRC32 为 `-179532443`；V87 增加资源收获次数任务，固定 CRC32 为 `-1481082424`；V88 不改写 V87，前向修复历史空快照、重建显式 NULL 安全约束并增加当前资源任务依赖索引，固定 CRC32 为 `-892889675`；V89 增加场景开辟里程碑并扩展三元唯一键，固定 CRC32 为 `-1964148448`；V90 增加三种事件驱动永久累计成就、永久累计统计表和统一成就唯一身份，固定 CRC32 为 `-319452238`；V91 不改写 V90，先封顶历史永久累计进度，再将 `player_task_lifetime_stat.progress_amount` 约束收紧为 `0..9000000000000000`，固定 CRC32 为 `-613092297`。仍停在 V83 的环境必须在启动前独立执行只读预检，再由 Flyway 顺序升级至 V100。V83 至 V100 一旦执行成功都不得修改，后续数据库变化从 V101 开始，禁止用 Flyway `repair` 掩盖校验和漂移。
 
 完整 Unity 锚点白名单、管理端发布细则和联调验收见仓库 `docs/player-onboarding-api.md`。
 
@@ -12490,7 +12240,7 @@ FLYWAY_ENABLED=true
 FLYWAY_BASELINE_ON_MIGRATE=false
 ```
 
-应用会自动从数据库当前版本顺序升级到 V93；已经应用 V87 的数据库顺序执行 V88、V89、V90、V91、V92、V93，已经应用 V88 的数据库顺序执行 V89、V90、V91、V92、V93，已经应用 V89 的数据库顺序执行 V90、V91、V92、V93，已经应用 V90 的数据库顺序执行 V91、V92、V93，已经应用 V91 的数据库顺序执行 V92、V93，已经应用 V92 的数据库只执行 V93。不要提前手工执行迁移，也不要使用 `flyway repair` 掩盖校验和问题。多节点环境先启动一个新版本节点，确认 `flyway_schema_history` 中 V87/V88/V89/V90/V91/V92/V93 均为 `success=1`，且校验和分别为 `-1481082424`、`-892889675`、`-1964148448`、`-319452238`、`-613092297`、`1615105684`、`-2034435388`，再滚动启动其余节点。
+应用会自动从数据库当前版本顺序升级到 V100；已经应用 V87 的数据库顺序执行 V88 至 V100，已经应用 V88 的数据库顺序执行 V89 至 V100，已经应用 V89 的数据库顺序执行 V90 至 V100，已经应用 V90 的数据库顺序执行 V91 至 V100，已经应用 V91 的数据库顺序执行 V92 至 V100，已经应用 V92 的数据库顺序执行 V93 至 V100。不要提前手工执行迁移，也不要使用 `flyway repair` 掩盖校验和问题。多节点环境先启动一个新版本节点，确认 `flyway_schema_history` 中 V87/V88/V89/V90/V91/V92/V93/V94/V95/V96/V97/V98/V99/V100 均为 `success=1`，且校验和分别为 `-1481082424`、`-892889675`、`-1964148448`、`-319452238`、`-613092297`、`1615105684`、`-2034435388`、`-246164165`、`-1236124090`、`292469054`、`151659432`、`-2063702854`、`67421201`、`-880935665`，再滚动启动其余节点。
 
 本次实现已覆盖并验证：
 
@@ -12499,11 +12249,11 @@ FLYWAY_BASELINE_ON_MIGRATE=false
 - 权威目标快照、非生产产物拒绝、玩家实例冻结与 Unity 返回字段。
 - 管理端 `productionItems` 包含木材、铁矿、钻石、净化剂，并排除 NPC 碎片。
 - V86 旧库可连续迁移到 V92；已应用正确 V87 且存在历史 NULL 场景/资源快照的测试库会先由 V88 前向修复，再由 V89 增加场景里程碑、V90 增加永久累计统计与唯一身份约束、V91 封顶并约束永久累计进度，最后由 V92 增加 NPC 获取渠道结构；错误 CHECK/FK/唯一键及超限进度写入会被拒绝。
-- V87 校验和保持数据库已应用值 `-1481082424`；用户手动启动当前后端时由 Flyway 按现有数据库版本顺序执行尚未应用的 V88、V89、V90、V91、V92、V93，无需也不得执行 `repair`。
+- V87 校验和保持数据库已应用值 `-1481082424`；用户手动启动当前后端时由 Flyway 按现有数据库版本顺序执行尚未应用的 V88 至 V100，无需也不得执行 `repair`。
 - 真实 MySQL 双事务并发测试确认：物化事务持有配置 `FOR SHARE` 时运营停用更新会等待；运营停用先提交时，后续锁定当前读不会返回已停用配置。
 - 管理端 TypeScript/Vite 生产构建、专项单测、真实 MySQL Flyway 顺序迁移和非法写入测试均通过；最终发布仍以本次全量测试和差异检查退出码 0 为准。
 
-仓库详细说明见 `docs/player-task-achievement-api.md`、`docs/building-production-api.md`、`docs/operator-config-center.md` 和 `docs/database-script-guide.md`。当前最高迁移文件为 V93；V87/V88/V89/V90/V91/V92/V93 固定 CRC32 分别为 `-1481082424`、`-892889675`、`-1964148448`、`-319452238`、`-613092297`、`1615105684`、`-2034435388`，执行成功后均禁止修改，下一次数据库结构变化使用 V94。
+仓库详细说明见 `docs/player-task-achievement-api.md`、`docs/building-production-api.md`、`docs/operator-config-center.md` 和 `docs/database-script-guide.md`。当前最高迁移文件为 V100；V87/V88/V89/V90/V91/V92/V93/V94/V95/V96/V97/V98/V99/V100 固定 CRC32 分别为 `-1481082424`、`-892889675`、`-1964148448`、`-319452238`、`-613092297`、`1615105684`、`-2034435388`、`-246164165`、`-1236124090`、`292469054`、`151659432`、`-2063702854`、`67421201`、`-880935665`，执行成功后均禁止修改，下一次数据库结构变化使用 V101。
 
 ## 58. V89 按场景开辟格数宝箱
 
@@ -12549,7 +12299,7 @@ Unity 继续调用 `GET /api/tasks` 查询，继续调用 `POST /api/tasks/{play
 - 两种场景成就都必须冻结完整场景快照，且不能夹带资源收获目标物品快照。
 - 进度事件目标枚举同步识别新类型；客户端仍不能直接写入进度。
 
-V89 固定 CRC32 为 `-1964148448`。用户手动启动后端前保持 `FLYWAY_ENABLED=true`、`FLYWAY_BASELINE_ON_MIGRATE=false`；正常启动会由 Flyway 自动顺序升级，不得手工执行脚本，也不得使用 `flyway repair`。V89 的历史能力和校验和保持不变；当前最高迁移为 V93，下一次数据库变化必须新增 V94。
+V89 固定 CRC32 为 `-1964148448`。用户手动启动后端前保持 `FLYWAY_ENABLED=true`、`FLYWAY_BASELINE_ON_MIGRATE=false`；正常启动会由 Flyway 自动顺序升级，不得手工执行脚本，也不得使用 `flyway repair`。V89 的历史能力和校验和保持不变；当前仓库最高迁移为 V100，下一次数据库变化必须新增 V101。
 
 ## 59. V90 三类永久累计成就
 
@@ -12620,7 +12370,7 @@ V90 只迁移可审计的历史证据，不猜测玩家真实历史总次数：
 - `player_task_lifetime_stat` 永久保存玩家按目标维度累计的可信总量；`uk_player_task_lifetime_stat_dimension` 保证同一玩家、目标类型和维度只有一行累计值，`idx_player_task_lifetime_stat_objective` 支持目标查询。
 - 可信事件账本、永久累计统计和日常/周常/永久任务实例在同一业务事务内更新，任何一步失败均整体回滚。
 - V90 固定 CRC32 为 `-319452238`，已发布迁移禁止修改，也不得用 `flyway repair` 掩盖校验和漂移。
-- V90 是本节能力首次交付时的历史迁移边界；当前最高迁移为 V93，下一次数据库变化必须新增 V94。
+- V90 是本节能力首次交付时的历史迁移边界；当前仓库最高迁移为 V100，下一次数据库变化必须新增 V101。
 
 ## 60. V91 永久累计进度上限加固
 
@@ -12629,7 +12379,7 @@ V91 不修改 V90 已发布脚本，也不改变任何 HTTP/WebSocket 路径、�
 - 先将 `player_task_lifetime_stat.progress_amount > 9000000000000000` 的历史值封顶为 `9000000000000000`，确保后续约束可以在已有数据库安全建立。
 - 重建 `chk_player_task_lifetime_stat_progress`，要求 `progress_amount` 始终位于 `0..9000000000000000`，与 JavaScript 安全整数上限及运行时封顶累加保持一致。
 - V91 固定 CRC32 为 `-613092297`；V90 固定 CRC32 保持 `-319452238`，两份迁移执行成功后均禁止修改，也不得使用 `flyway repair` 掩盖漂移。
-- 用户手动启动后端前保持 `FLYWAY_ENABLED=true`、`FLYWAY_BASELINE_ON_MIGRATE=false`；已应用 V90 的数据库由 Flyway 顺序执行 V91、V92、V93。当前最高迁移为 V93，下一次数据库变化必须新增 V94。
+- 用户手动启动后端前保持 `FLYWAY_ENABLED=true`、`FLYWAY_BASELINE_ON_MIGRATE=false`；已应用 V90 的数据库由 Flyway 顺序执行 V91 至 V100。当前仓库最高迁移为 V100，下一次数据库变化必须新增 V101。
 
 ## 61. V92 NPC 图鉴与服务端获取指引
 
@@ -12892,7 +12642,7 @@ Authorization: Bearer <operator-token>
 
 `V92__add_npc_acquisition_channels.sql` 空配置起步，只创建 NPC 获取渠道表和独立发布版本状态，不预置任何业务渠道。原始固定 CRC32 为 `1615105684`，执行成功后禁止修改，也不得使用 Flyway `repair` 掩盖漂移。
 
-`V93__harden_npc_acquisition_channel_contract.sql` 不改写 V92，只以前向迁移将按钮文案收紧为 32 字符、移除渠道 `config_version` 默认值、限定优先级与发布版本范围，并补齐文本非空白、渠道类型/路由一致和启用值 CHECK。迁移保存当前会话 `sql_mode`，在列变窄期间临时强制 `STRICT_ALL_TABLES`，因此不合规历史数据会阻断迁移而不会被静默截断；成功后恢复原会话模式。V93 固定 CRC32 为 `-2034435388`，当前最高迁移为 V93，下一次数据库变化必须新增 V94。
+`V93__harden_npc_acquisition_channel_contract.sql` 不改写 V92，只以前向迁移将按钮文案收紧为 32 字符、移除渠道 `config_version` 默认值、限定优先级与发布版本范围，并补齐文本非空白、渠道类型/路由一致和启用值 CHECK。迁移保存当前会话 `sql_mode`，在列变窄期间临时强制 `STRICT_ALL_TABLES`，因此不合规历史数据会阻断迁移而不会被静默截断；成功后恢复原会话模式。V93 固定 CRC32 为 `-2034435388`；这是 NPC 渠道章节的历史边界，当前仓库最高迁移为 V100，下一次数据库变化必须新增 V101。
 
 用户手动启动后端前保持：
 
@@ -12901,7 +12651,7 @@ FLYWAY_ENABLED=true
 FLYWAY_BASELINE_ON_MIGRATE=false
 ```
 
-已有 `flyway_schema_history` 的数据库直接启动当前版本，由 Flyway 先验证历史脚本再按顺序执行到仓库当前最高版本 V96；不要手工执行 V92-V96。迁移完成后确认版本 `92` 的 `success=1`、脚本名为 `V92__add_npc_acquisition_channels.sql`、校验和为 `1615105684`，并确认版本 `93` 的 `success=1`、脚本名为 `V93__harden_npc_acquisition_channel_contract.sql`、校验和为 `-2034435388`。V92 初次迁移后渠道表为空、发布版本为 `0` 属于正常状态，运营发布第一份正式配置后玩家图鉴才会出现静态获取入口。已执行 V92 的旧库无需 `repair`，正常启动会自动继续执行 V93-V96；V94-V96 的具体校验值和客服结构核对见后续微信客服章节。
+已有 `flyway_schema_history` 的数据库直接启动当前版本，由 Flyway 先验证历史脚本再按顺序执行到仓库当前最高版本 V100；不要手工执行 V92-V100。迁移完成后确认版本 `92` 的 `success=1`、脚本名为 `V92__add_npc_acquisition_channels.sql`、校验和为 `1615105684`，并确认版本 `93` 的 `success=1`、脚本名为 `V93__harden_npc_acquisition_channel_contract.sql`、校验和为 `-2034435388`。V92 初次迁移后渠道表为空、发布版本为 `0` 属于正常状态，运营发布第一份正式配置后玩家图鉴才会出现静态获取入口。已执行 V92 的旧库无需 `repair`，正常启动会自动继续执行 V93-V100；V94-V100 的具体校验值和客服、固定头像结构核对见后续章节。
 
 完整字段与异常边界见仓库 `docs/npc-acquisition-api.md`；数据库核对 SQL 见 `docs/database-script-guide.md`。
 
@@ -13034,11 +12784,12 @@ WECHAT_MINI_GAME_APP_SECRET=<AppSecret>
 WECHAT_CUSTOMER_SERVICE_ENABLED=true
 ```
 
-V95 新增 `wechat_customer_service_contact`、`wechat_customer_service_ticket`、`wechat_customer_service_message`、`wechat_customer_service_send_outbox`，原始固定 CRC32 为 `-1236124090`。V96 不修改接口契约，只以前向迁移将 `wechat_customer_service_ticket.last_player_message_time` 放宽为可空，并将 `wechat_customer_service_send_outbox.claimed_by` 固定为区分大小写的 `utf8mb4_bin`；V96 固定 CRC32 为 `292469054`。当前最高迁移为 V96，下一次数据库变化必须新增 V97。
+V95 新增 `wechat_customer_service_contact`、`wechat_customer_service_ticket`、`wechat_customer_service_message`、`wechat_customer_service_send_outbox`，原始固定 CRC32 为 `-1236124090`。V96 不修改接口契约，只以前向迁移将 `wechat_customer_service_ticket.last_player_message_time` 放宽为可空，并将 `wechat_customer_service_send_outbox.claimed_by` 固定为区分大小写的 `utf8mb4_bin`；V96 固定 CRC32 为 `292469054`。V97 新增 `users.avatar_code` 及查询索引，固定 CRC32 为 `151659432`；V98 重新建立头像来源与 `PRESET` 编号一致性约束，固定 CRC32 为 `-2063702854`；V99 归一历史远程头像并收紧为 `DEFAULT/PRESET`，固定 CRC32 为 `67421201`；V100 补齐注销清理原因并收紧系统头像合同，固定 CRC32 为 `-880935665`。当前最高迁移为 V100，后续数据库变化必须新增 V101，不得修改已执行迁移。
 
-保持 `FLYWAY_ENABLED=true`、`FLYWAY_BASELINE_ON_MIGRATE=false`，用户手动启动后由 Flyway 自动升级到 V96；已经执行 V95 的数据库只会继续执行 V96，无需且不得 `flyway repair`。不要手工执行迁移，也不要修改 V95/V96。客服开启且明文关闭时，启动会校验 EncodingAESKey 恰好 43 字符且 Base64 解码为 32 字节。多节点环境先启动一个新节点，确认 V95、V96 均为 `success=1` 且校验和分别为 `-1236124090`、`292469054`，再完成 AES 回调验收；确认服务器 NTP 正常、明文开关为 `false` 后，才滚动启动其他节点。
+保持 `FLYWAY_ENABLED=true`、`FLYWAY_BASELINE_ON_MIGRATE=false`，用户手动启动后由 Flyway 自动升级到 V100；已经执行 V95/V96 的数据库只会继续执行后续版本，无需且不得 `flyway repair`。不要手工执行迁移，也不要修改已执行的 V95～V100。客服开启且明文关闭时，启动会校验 EncodingAESKey 恰好 43 字符且 Base64 解码为 32 字节。多节点环境先启动一个新节点，确认 V95～V100 均为 `success=1` 且 V97/V98 校验和分别为 `151659432`、`-2063702854`、`67421201`、`-880935665`，再完成 AES 回调验收；确认服务器 NTP 正常、明文开关为 `false` 后，才滚动启动其他节点。
 
 完整官方约束、字段、错误处理、环境变量和验收清单见仓库 `docs/wechat-customer-service-api.md`。
+头像协议已统一收录在第 28 章“玩家系统资源头像（V39/V97/V98/V99/V100）”，本处不再重复维护旧版头像示例。
 
 ## 63. 单 JAR API / Worker 运行角色部署
 
@@ -13056,7 +12807,7 @@ Unity / 微信小游戏 / 管理端 / 微信回调
                     |
              MySQL + Redis
                     |
-           APP_ROLE=worker
+             APP_ROLE=worker
    异步消费、定时扫描、重试、对账和清理
 ```
 
@@ -13108,7 +12859,7 @@ Unity 和管理端不需要知道请求由哪个 API 进程处理，也不能直
 
 `MANAGEMENT_SERVER_ADDRESS=127.0.0.1` 是监听网卡地址，不是 HTTPS 域名，不要改成证书域名。HTTPS 仍只在 Nginx 终止。
 
-每个进程必须使用不同的 `APP_INSTANCE_ID` 和 `LOG_INSTANCE_ID`。API 与 Worker 必须连接同一 MySQL、Redis、对象存储和实时频道，并使用同一版本化 JAR；不能让两个进程长期混跑不同代码版本。
+每个进程必须使用不同的 `APP_INSTANCE_ID` 和 `LOG_INSTANCE_ID`。API 与 Worker 必须连接同一 MySQL、Redis 和实时频道，并使用同一版本化 JAR；若部署历史头像清理或其他上传业务，相关 Worker 还需访问同一对象存储。固定头像正常链路不要求对象存储。不能让两个进程长期混跑不同代码版本。
 
 ### 63.5 健康检查与优雅停机
 
@@ -13138,7 +12889,7 @@ GET http://127.0.0.1:18082/actuator/health/readiness
 
 ### 63.6 Flyway 与版本化 JAR
 
-本次运行角色改造没有新增 Flyway 文件，数据库最高版本仍为 V96，V1-V96 的历史 SQL 和校验和均未修改。
+本次运行角色改造没有新增 Flyway 文件，数据库最高版本为 V100，V1-V100 的历史 SQL 和校验和均未修改；后续数据库变化从 V101 开始。
 
 正式发布必须：
 
@@ -13149,13 +12900,13 @@ GET http://127.0.0.1:18082/actuator/health/readiness
 5. 只让一个指定 API 或独立迁移节点执行 Flyway；确认迁移成功和 API readiness 后再启动 Worker。
 6. 禁止覆盖 Windows 正在运行的 JAR，禁止修改已执行迁移或使用 `flyway repair` 掩盖漂移。
 
-标准发布顺序：构建与测试 → 复制版本化 JAR并校验 → 备份数据库 → 停 Worker → API 摘流并停止 → 切换两个角色的 JAR 路径 → 启动唯一 API 迁移节点 → 恢复 Nginx → 启动 Worker → 核对角色、实例 ID、JAR SHA 和任务积压。
+标准发布顺序：构建与测试 → 复制版本化 JAR 并校验 → 备份数据库 → 停 Worker → API 摘流并停止 → 切换两个角色的 JAR 路径 → 启动唯一 API 迁移节点 → 恢复 Nginx → 启动 Worker → 核对角色、实例 ID、JAR SHA 和任务积压。
 
 ### 63.7 异步消息和恢复边界
 
 支付 Redis Stream 新消息携带 `contractVersion=1`，历史未携带版本的消息按 V1 读取。Worker 遇到无法识别的显式版本或事件类型时会记录错误并保留 pending，不会直接 ACK 丢弃；部署支持该契约的新 Worker 后再接管。
 
-数据库状态机、事务、唯一键、幂等键、租约和重试共同降低重复副作用风险，但不能把 MySQL、Redis 和微信外部接口组合成一个跨系统原子事务。Worker 异常退出后，先确认旧进程已结束，再使用与 API 相同 SHA 的 JAR恢复；长时间积压应逐步观察和消化，不要直接放大连接池与批次。
+数据库状态机、事务、唯一键、幂等键、租约和重试共同降低重复副作用风险，但不能把 MySQL、Redis 和微信外部接口组合成一个跨系统原子事务。Worker 异常退出后，先确认旧进程已结束，再使用与 API 相同 SHA 的 JAR 恢复；长时间积压应逐步观察和消化，不要直接放大连接池与批次。
 
 仓库完整部署说明：`docs/runtime-role-deployment.md`。systemd 模板位于 `deploy/systemd`，Windows 启停脚本位于 `deploy/windows`。
 
@@ -13244,7 +12995,7 @@ POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/buffs/apply
 
 ### 64.6 数据库与兼容性
 
-本次没有新增 Flyway 迁移，数据库最高版本仍为 V96，也没有修改任何已执行 SQL 或校验和。既有 Unity 挂机冒险 HTTP 路径、请求字段和主要响应结构保持不变；新增内容仅包括运营只读接口、本人 WebSocket 刷新事件，以及服务端并发与失效数据防护。
+本次没有新增 Flyway 迁移，数据库最高版本为 V100，也没有修改任何已执行 SQL 或校验和；后续数据库变化从 V101 开始。既有 Unity 挂机冒险 HTTP 路径、请求字段和主要响应结构保持不变；新增内容仅包括运营只读接口、本人 WebSocket 刷新事件，以及服务端并发与失效数据防护。
 
 完整的 28 条玩家端接口、字段示例、错误码、体力、奖励和战斗规则见仓库 `docs/idle-adventure-api.md`，桌面专项文档 `IdleAdventure模式接口文档.md` 已同步同一版本。
 
@@ -13270,46 +13021,3 @@ Authorization: Bearer <player-token>
 管理端路径为“配置中心 -> 挂机冒险 -> 关卡配置”。展开关卡后，敌方阵容编辑表下方显示“阵容属性预览”，固定展示六槽位、前后排、等级、战斗属性、技能、图标、模型以及生命/攻击/防御合计和速度总和（仅用于配置核对）。该预览只读计算，不写回配置；正式发布仍由后端严格校验。
 
 当前敌人配置没有品质字段，项目也没有统一战斗力公式，因此接口和管理端不返回推测的 `quality` 或 `combat_power`。本次没有新增 Flyway 迁移，也不需要修改数据库结构。
-
-## 固定头像库（V97/V98，详见第28节）
-
-固定头像图片随 Unity 客户端发布，后端只保存 `avatarCode`，不使用对象存储；当前目录由后端代码登记，管理端显示只读目录并可控制头像业务开关，不能上传、删除或排序固定头像。V98 加固 `users` 表的 `PRESET` 来源一致性约束。目录变更需要同步后端和 Unity 客户端并重新发布。
-
-### 获取头像目录
-
-```http
-GET /api/user/avatar/presets
-Authorization: Bearer <player-token>
-```
-
-成功响应示例：
-
-```json
-{
-  "code": 200,
-  "message": "操作成功",
-  "data": [
-    {"avatarCode": "AVATAR_001", "displayName": "默认头像一", "enabled": true},
-    {"avatarCode": "AVATAR_002", "displayName": "默认头像二", "enabled": true},
-    {"avatarCode": "AVATAR_003", "displayName": "默认头像三", "enabled": true}
-  ]
-}
-```
-
-Unity 必须使用显式、大小写敏感的映射表：`AVATAR_001` → `Resources/Avatars/avatar_001`、`AVATAR_002` → `Resources/Avatars/avatar_002`、`AVATAR_003` → `Resources/Avatars/avatar_003`（路径不含扩展名）。加载失败或编号未知时回退包内默认头像，不得尝试下载 `avatarUrl`；`enabled=false` 的项不得展示为可选项。
-
-### 选择固定头像
-
-```http
-PUT /api/user/avatar/preset
-Authorization: Bearer <player-token>
-Content-Type: application/json
-```
-
-```json
-{"avatarCode":"AVATAR_001"}
-```
-
-成功后返回 `avatarSource=PRESET`、`avatarCode` 和递增的 `avatarVersion`，`avatarUrl=null`。同一玩家重复选择当前编号幂等，不增加版本或每日次数；无效编号返回 400，头像业务关闭返回 `7308`，次数耗尽返回 `7306`。固定头像选择只受头像业务总开关控制，不依赖“允许微信头像同步”开关。若管理端关闭头像业务，Unity 应隐藏选择入口并保留默认头像展示。
-
-管理端路径：配置中心 → 社交与玩家 → 头像业务策略。固定目录为只读基线；图片资源、编号或启用状态变更必须同步修改后端登记表和 Unity 包并重新发布。固定头像模式建议开启头像业务、关闭微信头像同步、默认头像地址留空。
