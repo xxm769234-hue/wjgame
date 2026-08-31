@@ -175,34 +175,21 @@ public sealed class MapManager : MonoBehaviour
             reason = "No land slot under pointer.";
             return false;
         }
-        if (!slot.IsUnlocked)
-        {
-            reason = $"This land unit unlocks at player level {slot.RequiredPlayerLevel}.";
-            return false;
-        }
-        if (slot.RequiresPurification && !slot.IsPurified)
-        {
-            reason = "Purify this land slot before unlocking it with gold or placing land.";
-            return false;
-        }
-        if (slot.RequiresGoldPurchase && !slot.IsPurchased)
-        {
-            reason = $"Purchase this land slot for {slot.PurchaseGoldCost:N0} gold before placing land.";
-            return false;
-        }
         if (!slot.IsPlacementUnlocked)
         {
-            reason = "Complete this land slot's unlock requirements before placing land.";
-            return false;
-        }
-        if (runtimePlacedLandCount >= UnlockedLandSlotCount)
-        {
-            reason = $"Player level {runtimePlayerLevel} allows {UnlockedLandSlotCount} placed lands.";
+            reason = "The backend has not unlocked placement on this land slot.";
             return false;
         }
         if (config == null)
         {
             reason = "Land config is missing.";
+            return false;
+        }
+        if (!config.canPlace)
+        {
+            reason = string.IsNullOrEmpty(config.disabledReason)
+                ? "The backend currently rejects this land configuration."
+                : config.disabledReason;
             return false;
         }
 
@@ -238,8 +225,8 @@ public sealed class MapManager : MonoBehaviour
     {
         if (mapData == null) return;
 
-        int resolvedWidth = mapData.width > 0 ? mapData.width : mapData.landGridWidth;
-        int resolvedHeight = mapData.height > 0 ? mapData.height : mapData.landGridHeight;
+        int resolvedWidth = mapData.landGridWidth > 0 ? mapData.landGridWidth : mapData.width;
+        int resolvedHeight = mapData.landGridHeight > 0 ? mapData.landGridHeight : mapData.height;
         mapSize = new Vector2Int(Mathf.Max(1, resolvedWidth), Mathf.Max(1, resolvedHeight));
         RebuildSlotCache();
         ClearRemoteSlotState();
@@ -362,6 +349,49 @@ public sealed class MapManager : MonoBehaviour
             LandSlotController slot = FindSlotByPlayerBuildingId(production.playerBuildingId);
             if (slot != null) slot.ApplyRemoteProduction(production);
         }
+    }
+
+    public void ApplyRemoteProductionSnapshotForScene(ProductionResponse[] productions, int sceneId)
+    {
+        LandSlotController[] slots = FindObjectsByType<LandSlotController>(FindObjectsSortMode.None);
+        for (int slotIndex = 0; slotIndex < slots.Length; slotIndex++)
+        {
+            LandSlotController slot = slots[slotIndex];
+            if (slot == null || !slot.HasBuilding) continue;
+
+            List<ProductionResponse> buildingProductions = new List<ProductionResponse>();
+            if (productions != null)
+            {
+                for (int productionIndex = 0; productionIndex < productions.Length; productionIndex++)
+                {
+                    ProductionResponse production = productions[productionIndex];
+                    if (production == null || production.playerBuildingId != slot.PlayerBuildingId) continue;
+                    if (sceneId > 0 && production.sceneId > 0 && production.sceneId != sceneId) continue;
+                    buildingProductions.Add(production);
+                }
+            }
+            slot.ReplaceRemoteProductions(buildingProductions.ToArray());
+        }
+    }
+
+    public void ApplyRemoteProductionSnapshotForBuilding(long playerBuildingId, ProductionResponse[] productions)
+    {
+        LandSlotController slot = FindSlotByPlayerBuildingId(playerBuildingId);
+        if (slot == null) return;
+
+        List<ProductionResponse> buildingProductions = new List<ProductionResponse>();
+        if (productions != null)
+        {
+            for (int index = 0; index < productions.Length; index++)
+            {
+                ProductionResponse production = productions[index];
+                if (production != null && production.playerBuildingId == playerBuildingId)
+                {
+                    buildingProductions.Add(production);
+                }
+            }
+        }
+        slot.ReplaceRemoteProductions(buildingProductions.ToArray());
     }
 
     public void ClearReadyRemoteProductions()
@@ -515,7 +545,7 @@ public sealed class MapManager : MonoBehaviour
         return null;
     }
 
-    private LandSlotController FindSlotByPlayerBuildingId(int playerBuildingId)
+    private LandSlotController FindSlotByPlayerBuildingId(long playerBuildingId)
     {
         LandSlotController[] slots = FindObjectsByType<LandSlotController>(FindObjectsSortMode.None);
         for (int i = 0; i < slots.Length; i++)

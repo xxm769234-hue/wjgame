@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -8,6 +9,16 @@ using UnityEngine.UI;
 
 public partial class HomePageUI
 {
+    public static void RegisterOnboardingTarget(string targetKey, RectTransform target)
+    {
+        PlayerOnboardingManager.RegisterTarget(targetKey, target);
+    }
+
+    public static void UnregisterOnboardingTarget(string targetKey, RectTransform target)
+    {
+        PlayerOnboardingManager.UnregisterTarget(targetKey, target);
+    }
+
     private void LoadServerOnboarding()
     {
         if (!HasAuthSession())
@@ -20,8 +31,7 @@ public partial class HomePageUI
 }
 
 /// <summary>
-/// Shares the server onboarding input state with gameplay assemblies that are
-/// loaded separately from the imported UI assembly.
+/// Owns the shared onboarding input state for the imported UI assembly.
 /// </summary>
 public static class PlayerOnboardingInputLock
 {
@@ -61,13 +71,24 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private const int SupportedContractVersion = 1;
     private const float BusinessRefreshIntervalSeconds = 2f;
     private const float QueryRetryDelaySeconds = 5f;
+    private const float TargetRefreshDelaySeconds = 0.75f;
+    private const float TargetResolveIntervalSeconds = 0.25f;
+    private const float TargetPadding = 12f;
     private const int MaxMutationRetries = 2;
+    private static readonly Color ShadeColor = new Color(0.03f, 0.04f, 0.05f, 0.62f);
+    private static readonly Dictionary<string, RectTransform> RegisteredTargets =
+        new Dictionary<string, RectTransform>(StringComparer.OrdinalIgnoreCase);
 
     private static PlayerOnboardingManager instance;
 
     private OnboardingCurrentData currentSnapshot;
     private GameObject overlayObject;
     private Image overlayImage;
+    private RectTransform panelRect;
+    private readonly Image[] inputBlockers = new Image[4];
+    private Image targetHighlight;
+    private RectTransform resolvedTarget;
+    private Button boundTargetButton;
     private TMP_Text titleText;
     private TMP_Text stepText;
     private TMP_Text contentText;
@@ -88,9 +109,37 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private OnboardingMutationRequest pendingMutationRequest;
     private Coroutine businessPollingCoroutine;
     private Coroutine queryRetryCoroutine;
+    private Coroutine presentationTrackingCoroutine;
+    private Coroutine targetActivationRefreshCoroutine;
+    private float nextTargetResolveTime;
+    private string missingTargetWarningSignature = string.Empty;
 
     /// <summary>Returns the persistent onboarding manager instance.</summary>
     public static PlayerOnboardingManager Instance => instance;
+
+    internal static void RegisterTarget(string targetKey, RectTransform target)
+    {
+        string normalizedKey = NormalizeKey(targetKey);
+        if (string.IsNullOrEmpty(normalizedKey) || target == null)
+        {
+            return;
+        }
+
+        RegisteredTargets[normalizedKey] = target;
+    }
+
+    internal static void UnregisterTarget(string targetKey, RectTransform target)
+    {
+        string normalizedKey = NormalizeKey(targetKey);
+        if (string.IsNullOrEmpty(normalizedKey)
+            || !RegisteredTargets.TryGetValue(normalizedKey, out RectTransform registeredTarget)
+            || registeredTarget != target)
+        {
+            return;
+        }
+
+        RegisteredTargets.Remove(normalizedKey);
+    }
 
     /// <summary>Creates or returns the persistent onboarding manager.</summary>
     public static PlayerOnboardingManager EnsureInstance()
@@ -131,6 +180,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         SceneManager.sceneLoaded -= HandleSceneLoaded;
         if (instance == this)
         {
+            ResetTargetPresentation();
             instance = null;
             PlayerOnboardingInputLock.SetState(false, false, string.Empty);
         }
@@ -178,6 +228,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
     private void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
     {
+        ResetTargetPresentation();
         RefreshCurrent();
     }
 
@@ -193,6 +244,9 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
                 break;
             }
 
+            int requestPlayerId = GameSession.PlayerId;
+            string requestToken = GameSession.Token;
+
             UnityWebRequest request;
             string requestError;
             if (!ApiRequestUtility.TryCreateGet("/onboarding/current", true, out request, out requestError))
@@ -204,6 +258,12 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
             using (request)
             {
                 yield return request.SendWebRequest();
+                if (!IsSessionCurrent(requestPlayerId, requestToken))
+                {
+                    queryQueued = GameSession.IsAuthenticated;
+                    continue;
+                }
+
                 if (ApiRequestUtility.IsUnauthorized(request))
                 {
                     HandleUnauthorized();
@@ -258,8 +318,10 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         }
 
         if (currentSnapshot != null
-            && snapshot.guideVersion == currentSnapshot.guideVersion
-            && snapshot.stateVersion < currentSnapshot.stateVersion)
+            && string.Equals(snapshot.guideCode, currentSnapshot.guideCode, StringComparison.Ordinal)
+            && (snapshot.guideVersion < currentSnapshot.guideVersion
+                || (snapshot.guideVersion == currentSnapshot.guideVersion
+                    && snapshot.stateVersion < currentSnapshot.stateVersion)))
         {
             Debug.LogWarning(
                 "丢弃较旧的新手引导快照：localStateVersion=" + currentSnapshot.stateVersion
@@ -328,13 +390,9 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         skipButton.interactable = !mutationRunning;
         skipButtonText.text = "跳过引导";
 
-        overlayImage.raycastTarget = blocksAllInput;
-        overlayImage.color = blocksAllInput
-            ? new Color(0.03f, 0.04f, 0.05f, 0.64f)
-            : new Color(0.03f, 0.04f, 0.05f, 0f);
-        PlayerOnboardingInputLock.SetState(blocksAllInput, targetOnly, step.actionKey);
         overlayObject.SetActive(true);
         transform.SetAsLastSibling();
+        ConfigureTargetPresentation(step, blocksAllInput, targetOnly);
         EnsureBusinessPollingState();
     }
 
@@ -397,12 +455,40 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         overlayImage.raycastTarget = true;
         SetStretch(overlayObject.GetComponent<RectTransform>());
 
+        for (int index = 0; index < inputBlockers.Length; index++)
+        {
+            GameObject blockerObject = new GameObject(
+                "InputBlocker" + (index + 1),
+                typeof(RectTransform),
+                typeof(Image));
+            blockerObject.transform.SetParent(overlayObject.transform, false);
+            Image blocker = blockerObject.GetComponent<Image>();
+            blocker.color = ShadeColor;
+            blocker.raycastTarget = true;
+            blockerObject.SetActive(false);
+            inputBlockers[index] = blocker;
+        }
+
+        GameObject highlightObject = new GameObject(
+            "TargetHighlight",
+            typeof(RectTransform),
+            typeof(Image),
+            typeof(Outline));
+        highlightObject.transform.SetParent(overlayObject.transform, false);
+        targetHighlight = highlightObject.GetComponent<Image>();
+        targetHighlight.color = new Color(1f, 0.77f, 0.18f, 0.10f);
+        targetHighlight.raycastTarget = false;
+        Outline highlightOutline = highlightObject.GetComponent<Outline>();
+        highlightOutline.effectColor = new Color(1f, 0.78f, 0.20f, 0.95f);
+        highlightOutline.effectDistance = new Vector2(4f, -4f);
+        highlightObject.SetActive(false);
+
         GameObject panelObject = new GameObject("Panel", typeof(RectTransform), typeof(Image));
         panelObject.transform.SetParent(overlayObject.transform, false);
         Image panelImage = panelObject.GetComponent<Image>();
         panelImage.color = new Color(0.97f, 0.92f, 0.81f, 1f);
         panelImage.raycastTarget = false;
-        RectTransform panelRect = panelObject.GetComponent<RectTransform>();
+        panelRect = panelObject.GetComponent<RectTransform>();
         panelRect.anchorMin = new Vector2(0.5f, 0.5f);
         panelRect.anchorMax = new Vector2(0.5f, 0.5f);
         panelRect.pivot = new Vector2(0.5f, 0.5f);
@@ -484,6 +570,452 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         return button;
     }
 
+    private void ConfigureTargetPresentation(OnboardingStepData step, bool blocksAllInput, bool targetOnly)
+    {
+        ResetTargetPresentation();
+        nextTargetResolveTime = 0f;
+        PlayerOnboardingInputLock.SetState(blocksAllInput, targetOnly, step == null ? string.Empty : step.actionKey);
+        ApplyInputPolicy(step, blocksAllInput, targetOnly);
+        if (presentationTrackingCoroutine == null)
+        {
+            presentationTrackingCoroutine = StartCoroutine(TrackTargetPresentation());
+        }
+    }
+
+    private IEnumerator TrackTargetPresentation()
+    {
+        while (overlayObject != null
+            && overlayObject.activeInHierarchy
+            && !messageMode
+            && currentSnapshot != null
+            && currentSnapshot.currentStep != null)
+        {
+            OnboardingStepData step = currentSnapshot.currentStep;
+            bool isClientAck = string.Equals(step.completionType, "CLIENT_ACK", StringComparison.OrdinalIgnoreCase);
+            bool isBusinessEvent = string.Equals(step.completionType, "BUSINESS_EVENT", StringComparison.OrdinalIgnoreCase);
+            bool blocksAllInput = isClientAck
+                || string.Equals(step.inputMode, "BLOCK_ALL", StringComparison.OrdinalIgnoreCase);
+            bool targetOnly = isBusinessEvent
+                && string.Equals(step.inputMode, "ALLOW_TARGET_ONLY", StringComparison.OrdinalIgnoreCase);
+            ApplyInputPolicy(step, blocksAllInput, targetOnly);
+            yield return null;
+        }
+
+        presentationTrackingCoroutine = null;
+    }
+
+    private void ApplyInputPolicy(OnboardingStepData step, bool blocksAllInput, bool targetOnly)
+    {
+        if (overlayImage == null || overlayObject == null || step == null)
+        {
+            return;
+        }
+
+        bool needsTarget = targetOnly || IsTargetPresentation(step.presentationType);
+        if (needsTarget && (resolvedTarget == null || !resolvedTarget.gameObject.activeInHierarchy))
+        {
+            if (Time.unscaledTime >= nextTargetResolveTime)
+            {
+                nextTargetResolveTime = Time.unscaledTime + TargetResolveIntervalSeconds;
+                resolvedTarget = ResolveTarget(step);
+                BindTargetButton(step, resolvedTarget);
+            }
+        }
+
+        if (targetOnly)
+        {
+            if (ApplyTargetPresentation(step, true))
+            {
+                SetBackdrop(false, Color.clear);
+                return;
+            }
+
+            SetBackdrop(false, new Color(ShadeColor.r, ShadeColor.g, ShadeColor.b, 0.18f));
+            DisableInputBlockers();
+            ApplyTargetPresentation(step, false);
+            WarnMissingTarget(step);
+            return;
+        }
+
+        SetBackdrop(
+            blocksAllInput,
+            blocksAllInput
+                ? ShadeColor
+                : new Color(ShadeColor.r, ShadeColor.g, ShadeColor.b, 0.18f));
+        DisableInputBlockers();
+        ApplyTargetPresentation(step, false);
+    }
+
+    private bool ApplyTargetPresentation(OnboardingStepData step, bool restrictToTarget)
+    {
+        if (resolvedTarget == null
+            || !resolvedTarget.gameObject.activeInHierarchy
+            || !TryGetTargetRect(resolvedTarget, out Rect targetRect))
+        {
+            if (targetHighlight != null)
+            {
+                targetHighlight.gameObject.SetActive(false);
+            }
+
+            if (restrictToTarget)
+            {
+                DisableInputBlockers();
+            }
+
+            ResetPanelPosition();
+            return false;
+        }
+
+        if (restrictToTarget)
+        {
+            SetInputBlockerRects(targetRect);
+        }
+        else
+        {
+            DisableInputBlockers();
+        }
+
+        bool showHighlight = restrictToTarget || IsTargetPresentation(step == null ? null : step.presentationType);
+        if (targetHighlight != null)
+        {
+            targetHighlight.gameObject.SetActive(showHighlight);
+            if (showHighlight)
+            {
+                SetRect(targetHighlight.rectTransform, targetRect);
+            }
+        }
+
+        PositionPanelAwayFrom(targetRect);
+        return true;
+    }
+
+    private RectTransform ResolveTarget(OnboardingStepData step)
+    {
+        if (step == null)
+        {
+            return null;
+        }
+
+        RectTransform registeredTarget = ResolveRegisteredTarget(step.uiTargetKey);
+        if (registeredTarget == null)
+        {
+            registeredTarget = ResolveRegisteredTarget(step.actionKey);
+        }
+
+        if (registeredTarget != null)
+        {
+            return PromoteTargetToButton(registeredTarget);
+        }
+
+        RectTransform actionTarget = ResolveBuiltInActionTarget(step.actionKey);
+        if (actionTarget != null)
+        {
+            return PromoteTargetToButton(actionTarget);
+        }
+
+        string normalizedTargetKey = NormalizeKey(step.uiTargetKey);
+        if (string.IsNullOrEmpty(normalizedTargetKey))
+        {
+            return null;
+        }
+
+        RectTransform[] candidates = FindObjectsOfType<RectTransform>(true);
+        for (int index = 0; index < candidates.Length; index++)
+        {
+            RectTransform candidate = candidates[index];
+            if (candidate == null
+                || !candidate.gameObject.activeInHierarchy
+                || (overlayObject != null && candidate.IsChildOf(overlayObject.transform)))
+            {
+                continue;
+            }
+
+            if (NormalizeKey(candidate.name) == normalizedTargetKey)
+            {
+                return PromoteTargetToButton(candidate);
+            }
+        }
+
+        return null;
+    }
+
+    private static RectTransform ResolveRegisteredTarget(string targetKey)
+    {
+        string normalizedKey = NormalizeKey(targetKey);
+        if (string.IsNullOrEmpty(normalizedKey)
+            || !RegisteredTargets.TryGetValue(normalizedKey, out RectTransform target))
+        {
+            return null;
+        }
+
+        if (target != null && target.gameObject.activeInHierarchy)
+        {
+            return target;
+        }
+
+        RegisteredTargets.Remove(normalizedKey);
+        return null;
+    }
+
+    private RectTransform ResolveBuiltInActionTarget(string actionKey)
+    {
+        string normalizedAction = NormalizeKey(actionKey);
+        if (string.IsNullOrEmpty(normalizedAction))
+        {
+            return null;
+        }
+
+        string expectedButtonName = normalizedAction == "OPEN_HOME_MAP"
+            ? "ENTERMAPBUTTON"
+            : normalizedAction;
+        Button[] buttons = FindObjectsOfType<Button>(true);
+        for (int index = 0; index < buttons.Length; index++)
+        {
+            Button button = buttons[index];
+            if (button == null
+                || !button.gameObject.activeInHierarchy
+                || (overlayObject != null && button.transform.IsChildOf(overlayObject.transform)))
+            {
+                continue;
+            }
+
+            string buttonName = NormalizeKey(button.name);
+            if (buttonName == expectedButtonName || buttonName == normalizedAction)
+            {
+                return button.GetComponent<RectTransform>();
+            }
+        }
+
+        return null;
+    }
+
+    private static RectTransform PromoteTargetToButton(RectTransform target)
+    {
+        if (target == null)
+        {
+            return null;
+        }
+
+        Button button = target.GetComponent<Button>();
+        if (button == null)
+        {
+            button = target.GetComponentInParent<Button>();
+        }
+
+        return button == null ? target : button.GetComponent<RectTransform>();
+    }
+
+    private void BindTargetButton(OnboardingStepData step, RectTransform target)
+    {
+        UnbindTargetButton();
+        if (target == null || step == null || string.IsNullOrEmpty(step.actionKey))
+        {
+            return;
+        }
+
+        boundTargetButton = target.GetComponent<Button>();
+        if (boundTargetButton != null)
+        {
+            boundTargetButton.onClick.AddListener(HandleTargetActivated);
+        }
+    }
+
+    private void UnbindTargetButton()
+    {
+        if (boundTargetButton == null)
+        {
+            return;
+        }
+
+        boundTargetButton.onClick.RemoveListener(HandleTargetActivated);
+        boundTargetButton = null;
+    }
+
+    private void HandleTargetActivated()
+    {
+        if (targetActivationRefreshCoroutine != null)
+        {
+            StopCoroutine(targetActivationRefreshCoroutine);
+        }
+
+        targetActivationRefreshCoroutine = StartCoroutine(RefreshAfterTargetActivation());
+    }
+
+    private IEnumerator RefreshAfterTargetActivation()
+    {
+        yield return new WaitForSecondsRealtime(TargetRefreshDelaySeconds);
+        targetActivationRefreshCoroutine = null;
+        RefreshCurrent();
+    }
+
+    private bool TryGetTargetRect(RectTransform target, out Rect targetRect)
+    {
+        targetRect = default;
+        RectTransform overlayRect = overlayObject == null
+            ? null
+            : overlayObject.GetComponent<RectTransform>();
+        if (target == null
+            || overlayRect == null
+            || overlayRect.rect.width <= 0f
+            || overlayRect.rect.height <= 0f)
+        {
+            return false;
+        }
+
+        Vector3[] worldCorners = new Vector3[4];
+        target.GetWorldCorners(worldCorners);
+        Vector2 minimum = new Vector2(float.PositiveInfinity, float.PositiveInfinity);
+        Vector2 maximum = new Vector2(float.NegativeInfinity, float.NegativeInfinity);
+        for (int index = 0; index < worldCorners.Length; index++)
+        {
+            Vector3 localCorner = overlayRect.InverseTransformPoint(worldCorners[index]);
+            minimum = Vector2.Min(minimum, localCorner);
+            maximum = Vector2.Max(maximum, localCorner);
+        }
+
+        Rect overlayBounds = overlayRect.rect;
+        minimum.x = Mathf.Clamp(minimum.x - TargetPadding, overlayBounds.xMin, overlayBounds.xMax);
+        minimum.y = Mathf.Clamp(minimum.y - TargetPadding, overlayBounds.yMin, overlayBounds.yMax);
+        maximum.x = Mathf.Clamp(maximum.x + TargetPadding, overlayBounds.xMin, overlayBounds.xMax);
+        maximum.y = Mathf.Clamp(maximum.y + TargetPadding, overlayBounds.yMin, overlayBounds.yMax);
+        if (maximum.x <= minimum.x || maximum.y <= minimum.y)
+        {
+            return false;
+        }
+
+        targetRect = Rect.MinMaxRect(minimum.x, minimum.y, maximum.x, maximum.y);
+        return true;
+    }
+
+    private void SetInputBlockerRects(Rect targetRect)
+    {
+        RectTransform overlayRect = overlayObject.GetComponent<RectTransform>();
+        Rect bounds = overlayRect.rect;
+        SetInputBlocker(0, Rect.MinMaxRect(bounds.xMin, bounds.yMin, targetRect.xMin, bounds.yMax));
+        SetInputBlocker(1, Rect.MinMaxRect(targetRect.xMax, bounds.yMin, bounds.xMax, bounds.yMax));
+        SetInputBlocker(2, Rect.MinMaxRect(targetRect.xMin, bounds.yMin, targetRect.xMax, targetRect.yMin));
+        SetInputBlocker(3, Rect.MinMaxRect(targetRect.xMin, targetRect.yMax, targetRect.xMax, bounds.yMax));
+    }
+
+    private void SetInputBlocker(int index, Rect rect)
+    {
+        Image blocker = inputBlockers[index];
+        if (blocker == null)
+        {
+            return;
+        }
+
+        bool active = rect.width > 0f && rect.height > 0f;
+        blocker.gameObject.SetActive(active);
+        if (!active)
+        {
+            return;
+        }
+
+        blocker.color = ShadeColor;
+        blocker.raycastTarget = true;
+        SetRect(blocker.rectTransform, rect);
+    }
+
+    private static void SetRect(RectTransform rectTransform, Rect rect)
+    {
+        rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+        rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+        rectTransform.pivot = new Vector2(0.5f, 0.5f);
+        rectTransform.anchoredPosition = rect.center;
+        rectTransform.sizeDelta = rect.size;
+    }
+
+    private void DisableInputBlockers()
+    {
+        for (int index = 0; index < inputBlockers.Length; index++)
+        {
+            if (inputBlockers[index] != null)
+            {
+                inputBlockers[index].gameObject.SetActive(false);
+            }
+        }
+    }
+
+    private void SetBackdrop(bool blocksInput, Color color)
+    {
+        if (overlayImage == null)
+        {
+            return;
+        }
+
+        overlayImage.raycastTarget = blocksInput;
+        overlayImage.color = color;
+    }
+
+    private void PositionPanelAwayFrom(Rect targetRect)
+    {
+        if (panelRect == null || overlayObject == null)
+        {
+            return;
+        }
+
+        Rect bounds = overlayObject.GetComponent<RectTransform>().rect;
+        float halfHeight = panelRect.rect.height * 0.5f;
+        float margin = 24f;
+        float upperY = bounds.yMax - halfHeight - margin;
+        float lowerY = bounds.yMin + halfHeight + margin;
+        bool targetBelowCenter = targetRect.center.y <= bounds.center.y;
+        panelRect.anchoredPosition = new Vector2(0f, targetBelowCenter ? upperY : lowerY);
+    }
+
+    private void ResetPanelPosition()
+    {
+        if (panelRect != null)
+        {
+            panelRect.anchoredPosition = Vector2.zero;
+        }
+
+        if (targetHighlight != null)
+        {
+            targetHighlight.gameObject.SetActive(false);
+        }
+    }
+
+    private void ResetTargetPresentation()
+    {
+        UnbindTargetButton();
+        resolvedTarget = null;
+        nextTargetResolveTime = 0f;
+        missingTargetWarningSignature = string.Empty;
+        DisableInputBlockers();
+        ResetPanelPosition();
+    }
+
+    private void WarnMissingTarget(OnboardingStepData step)
+    {
+        string signature = (step.stepCode ?? string.Empty) + "|" + (step.uiTargetKey ?? string.Empty);
+        if (missingTargetWarningSignature == signature)
+        {
+            return;
+        }
+
+        missingTargetWarningSignature = signature;
+        Debug.LogWarning(
+            "引导步骤 " + step.stepCode
+            + " 要求仅允许目标输入，但未找到 UI 目标 " + step.uiTargetKey
+            + "；已临时放行页面输入，避免业务事件步骤被遮罩卡死。",
+            this);
+    }
+
+    private static bool IsTargetPresentation(string presentationType)
+    {
+        string normalizedType = NormalizeKey(presentationType);
+        return normalizedType == "SPOTLIGHT" || normalizedType == "ARROW";
+    }
+
+    private static string NormalizeKey(string value)
+    {
+        return string.IsNullOrWhiteSpace(value)
+            ? string.Empty
+            : value.Trim().Replace('-', '_').Replace(' ', '_').ToUpperInvariant();
+    }
+
     private void AcknowledgeCurrentStep()
     {
         if (currentSnapshot == null
@@ -545,10 +1077,12 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private IEnumerator MutateRoutine(bool skip)
     {
         mutationRunning = true;
+        int requestPlayerId = GameSession.PlayerId;
+        string requestToken = GameSession.Token;
         int retryCount = 0;
         bool complete = false;
 
-        while (!complete && GameSession.IsAuthenticated)
+        while (!complete && IsSessionCurrent(requestPlayerId, requestToken))
         {
             string path = skip
                 ? "/onboarding/skip"
@@ -572,6 +1106,18 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
             using (request)
             {
                 yield return request.SendWebRequest();
+                if (!IsSessionCurrent(requestPlayerId, requestToken))
+                {
+                    hasPendingMutation = false;
+                    pendingMutationKey = string.Empty;
+                    pendingMutationStepCode = string.Empty;
+                    pendingMutationRequest = null;
+                    mutationRunning = false;
+                    ClearSnapshot();
+                    RefreshCurrent();
+                    yield break;
+                }
+
                 if (ApiRequestUtility.IsUnauthorized(request))
                 {
                     HandleUnauthorized();
@@ -613,6 +1159,18 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
                 HandleMutationFailure(code, request);
                 complete = true;
             }
+        }
+
+        if (!IsSessionCurrent(requestPlayerId, requestToken))
+        {
+            hasPendingMutation = false;
+            pendingMutationKey = string.Empty;
+            pendingMutationStepCode = string.Empty;
+            pendingMutationRequest = null;
+            mutationRunning = false;
+            ClearSnapshot();
+            RefreshCurrent();
+            yield break;
         }
 
         mutationRunning = false;
@@ -670,7 +1228,12 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private void HandleMutationFailure(int code, UnityWebRequest request)
     {
         string message = ApiRequestUtility.GetErrorMessage(request, "新手引导操作失败");
-        if (code == 8002 || code == 8003 || code == 8004 || code == 8006)
+        if (code == 409
+            || (code >= 4090 && code < 4100)
+            || code == 8002
+            || code == 8003
+            || code == 8004
+            || code == 8006)
         {
             hasPendingMutation = false;
             pendingMutationKey = string.Empty;
@@ -706,6 +1269,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         }
 
         messageMode = true;
+        ResetTargetPresentation();
         titleText.text = title;
         stepText.text = string.Empty;
         contentText.text = message;
@@ -716,9 +1280,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         skipButton.gameObject.SetActive(showSkip);
         bool shouldBlockInput = blockInput && (showAcknowledge || showSkip);
         overlayImage.raycastTarget = shouldBlockInput;
-        overlayImage.color = shouldBlockInput
-            ? new Color(0.03f, 0.04f, 0.05f, 0.64f)
-            : new Color(0.03f, 0.04f, 0.05f, 0f);
+        overlayImage.color = shouldBlockInput ? ShadeColor : Color.clear;
         PlayerOnboardingInputLock.SetState(shouldBlockInput, false, string.Empty);
         overlayObject.SetActive(true);
     }
@@ -726,6 +1288,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private void HideOverlay()
     {
         messageMode = false;
+        ResetTargetPresentation();
         if (overlayObject != null)
         {
             overlayObject.SetActive(false);
@@ -788,7 +1351,15 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         }
 
         return request.result == UnityWebRequest.Result.ConnectionError
+            || request.result == UnityWebRequest.Result.DataProcessingError
             || request.responseCode >= 500;
+    }
+
+    private static bool IsSessionCurrent(int playerId, string token)
+    {
+        return GameSession.IsAuthenticated
+            && GameSession.PlayerId == playerId
+            && string.Equals(GameSession.Token, token, StringComparison.Ordinal);
     }
 
     private static bool IsTerminalStatus(string status)
@@ -882,7 +1453,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         public int contractVersion;
         public long minimumClientVersionCode;
         public string guideCode;
-        public int guideVersion;
+        public long guideVersion;
         public long instanceId;
         public long stateVersion;
         public string status;
@@ -895,7 +1466,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private sealed class OnboardingMutationData
     {
         public bool available;
-        public int guideVersion;
+        public long guideVersion;
         public long stateVersion;
         public string status;
         public OnboardingStepData currentStep;
@@ -931,10 +1502,10 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private sealed class OnboardingBusinessContextData
     {
         public string eventType;
-        public int landConfigId;
-        public int buildingConfigId;
-        public int playerLandId;
-        public int playerBuildingId;
+        public long landConfigId;
+        public long buildingConfigId;
+        public long playerLandId;
+        public long playerBuildingId;
     }
 
     [Serializable]

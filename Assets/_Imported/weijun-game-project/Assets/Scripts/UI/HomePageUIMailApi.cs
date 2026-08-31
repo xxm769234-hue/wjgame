@@ -9,12 +9,18 @@ public partial class HomePageUI
 {
     private MailResponse[] currentServerMails = new MailResponse[0];
     private long selectedMailId;
+    private long pendingMailRouteId;
     private long mailDetailLoadingId;
     private bool mailMutationRunning;
 
     private void CaptureMailList(MailResponse[] mails)
     {
         currentServerMails = mails ?? new MailResponse[0];
+        if (pendingMailRouteId > 0L)
+        {
+            selectedMailId = pendingMailRouteId;
+            return;
+        }
         if (FindCurrentMail(selectedMailId) == null)
         {
             selectedMailId = currentServerMails.Length > 0 && currentServerMails[0] != null
@@ -208,8 +214,24 @@ public partial class HomePageUI
 
             if (response.data != null)
             {
-                SyncInventoryResourceValues(response.data.items);
-                yield return RefreshMailRewardState(response.data.attachments, null, response.data.items != null);
+                if (response.data.mail != null)
+                {
+                    ReplaceCurrentMail(response.data.mail);
+                }
+
+                ApplyMailInventorySnapshot(response.data.items);
+                MailAttachmentResponse[] claimedAttachments = response.data.claimedAttachments;
+                if ((claimedAttachments == null || claimedAttachments.Length == 0)
+                    && response.data.attachments != null)
+                {
+                    claimedAttachments = response.data.attachments;
+                }
+                if ((claimedAttachments == null || claimedAttachments.Length == 0)
+                    && response.data.mail != null)
+                {
+                    claimedAttachments = response.data.mail.attachments;
+                }
+                yield return RefreshMailRewardState(claimedAttachments, null, response.data.items != null);
             }
         }
 
@@ -262,7 +284,7 @@ public partial class HomePageUI
             if (response.data != null)
             {
                 claimedCount = response.data.claimedCount;
-                SyncInventoryResourceValues(response.data.items);
+                ApplyMailInventorySnapshot(response.data.items);
                 yield return RefreshMailRewardState(null, response.data.mails, response.data.items != null);
             }
         }
@@ -426,6 +448,18 @@ public partial class HomePageUI
         }
     }
 
+    private void ApplyMailInventorySnapshot(InventoryItemResponse[] items)
+    {
+        if (items == null)
+        {
+            return;
+        }
+
+        currentInventoryItems = items;
+        inventoryServerBacked = true;
+        SyncInventoryResourceValues(items);
+    }
+
     private static void AccumulateMailRewardRefreshFlags(
         MailAttachmentResponse[] attachments,
         ref bool needsInventoryRefresh,
@@ -482,9 +516,14 @@ public partial class HomePageUI
 
     private void ReplaceCurrentMail(MailResponse updated)
     {
-        if (updated == null || currentServerMails == null)
+        if (updated == null)
         {
             return;
+        }
+
+        if (currentServerMails == null)
+        {
+            currentServerMails = new MailResponse[0];
         }
 
         for (int i = 0; i < currentServerMails.Length; i++)
@@ -495,6 +534,29 @@ public partial class HomePageUI
                 return;
             }
         }
+
+        Array.Resize(ref currentServerMails, currentServerMails.Length + 1);
+        currentServerMails[currentServerMails.Length - 1] = updated;
+    }
+
+    private bool TryConsumePendingMailRoute()
+    {
+        if (pendingMailRouteId <= 0L)
+        {
+            return false;
+        }
+
+        long targetMailId = pendingMailRouteId;
+        if (FindCurrentMail(targetMailId) != null)
+        {
+            selectedMailId = targetMailId;
+            pendingMailRouteId = 0L;
+            return false;
+        }
+
+        pendingMailRouteId = 0L;
+        StartCoroutine(GetMailDetailAndMarkRead(targetMailId));
+        return true;
     }
 
 #pragma warning disable 0649
@@ -527,6 +589,8 @@ public partial class HomePageUI
     [Serializable]
     private class MailClaimData
     {
+        public MailResponse mail;
+        public MailAttachmentResponse[] claimedAttachments;
         public MailAttachmentResponse[] attachments;
         public InventoryItemResponse[] items;
     }

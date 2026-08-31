@@ -15,9 +15,79 @@ public partial class HomePageUI
     private bool logoutRunning;
     private bool paymentRequestRunning;
     private bool paymentPolling;
+    private bool paymentRecoveryRunning;
+    private bool paymentAccountRefreshRunning;
+    private bool paymentDeliveryRefreshPending;
     private string pendingPaymentOrderNo = string.Empty;
     private string pendingPaymentClientOrderId = string.Empty;
     private string pendingPaymentProductCode = string.Empty;
+    private bool paymentStateLoaded;
+    private int paymentStatePlayerId;
+    private float nextPaymentRecoveryCheckTime;
+
+    private const string PendingPaymentKeyPrefix = "Payment.Pending.Player.";
+    private const string PendingPaymentOrderSuffix = ".OrderNo";
+    private const string PendingPaymentClientOrderSuffix = ".ClientOrderId";
+    private const string PendingPaymentProductSuffix = ".ProductCode";
+    private const string PendingPaymentStatusSuffix = ".Status";
+    private const string LegacyPendingPaymentPlayerKey = "Payment.Pending.PlayerId";
+    private const string LegacyPendingPaymentOrderKey = "Payment.Pending.OrderNo";
+    private const string LegacyPendingPaymentClientOrderKey = "Payment.Pending.ClientOrderId";
+    private const string LegacyPendingPaymentProductKey = "Payment.Pending.ProductCode";
+    private const string LegacyPendingPaymentStatusKey = "Payment.Pending.Status";
+    private const float PaymentBackgroundRecoveryIntervalSeconds = 15f;
+
+    private void Start()
+    {
+        LoadPendingPaymentState();
+        if (HasAuthSession())
+        {
+            StartPendingPaymentRecovery("正在恢复未完成的支付订单...", 2f);
+        }
+    }
+
+    private void Update()
+    {
+        if (!HasAuthSession())
+        {
+            paymentStateLoaded = false;
+            paymentStatePlayerId = 0;
+            return;
+        }
+
+        if (!paymentStateLoaded || paymentStatePlayerId != GameSession.PlayerId)
+        {
+            LoadPendingPaymentState();
+            if (!paymentPolling && !paymentRequestRunning && !paymentAccountRefreshRunning)
+            {
+                StartCoroutine(RecoverPendingPaymentOrder("正在恢复未完成的支付订单..."));
+            }
+        }
+
+        bool rechargeVisible = rechargePanelObject != null && rechargePanelObject.activeInHierarchy;
+        if (!string.IsNullOrEmpty(pendingPaymentOrderNo)
+            && Time.unscaledTime >= nextPaymentRecoveryCheckTime
+            && !paymentPolling
+            && !paymentRecoveryRunning
+            && !paymentRequestRunning
+            && !paymentAccountRefreshRunning)
+        {
+            StartPendingPaymentRecovery(
+                rechargeVisible ? "充值页面已打开，正在补查支付订单..." : string.Empty,
+                rechargeVisible ? 2f : PaymentBackgroundRecoveryIntervalSeconds);
+        }
+    }
+
+    private void OnApplicationFocus(bool focused)
+    {
+        if (!focused || !HasAuthSession())
+        {
+            return;
+        }
+
+        LoadPendingPaymentState();
+        StartPendingPaymentRecovery("应用恢复前台，正在补查支付订单...", 2f);
+    }
 
     private void BuildHomeMapSelector(Transform parent)
     {
@@ -199,6 +269,7 @@ public partial class HomePageUI
     {
         logoutRunning = true;
         StopRealtimeConnection();
+        ClearRareBroadcastState();
         bool shouldNotifyServer = GameSession.IsAuthenticated;
         if (shouldNotifyServer)
         {
@@ -239,6 +310,24 @@ public partial class HomePageUI
             return;
         }
 
+        LoadPendingPaymentState();
+        if (!string.IsNullOrEmpty(pendingPaymentOrderNo))
+        {
+            SetStatus("已有未完成支付订单，正在先查询该订单状态；请勿重复下单。");
+            if (!paymentPolling)
+            {
+                StartCoroutine(RecoverPendingPaymentOrder(string.Empty));
+            }
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(pendingPaymentClientOrderId)
+            && !string.Equals(pendingPaymentProductCode, product.productCode, StringComparison.Ordinal))
+        {
+            SetStatus("上一笔支付订单创建结果尚未确定，只能重试同一商品；请先不要切换充值档位。");
+            return;
+        }
+
         StartCoroutine(CreatePaymentOrder(product, productName));
     }
 
@@ -246,6 +335,7 @@ public partial class HomePageUI
     {
         paymentRequestRunning = true;
         string clientOrderId = GetOrCreatePaymentClientOrderId(product.productCode);
+        SavePendingPaymentState(string.Empty, clientOrderId, product.productCode, string.Empty);
         PaymentOrderCreateRequest payload = new PaymentOrderCreateRequest
         {
             playerId = GameSession.PlayerId,
@@ -281,7 +371,7 @@ public partial class HomePageUI
                     || request.responseCode >= 500;
                 if (!outcomeUncertain)
                 {
-                    ClearPendingPaymentCreateAttempt();
+                    ClearPendingPaymentCreateAttempt(true);
                 }
 
                 SetStatus(outcomeUncertain
@@ -297,18 +387,28 @@ public partial class HomePageUI
                 yield break;
             }
 
-            if (response.code != 200 || response.data == null || response.data.order == null)
+            if (response.code != 200)
             {
-                ClearPendingPaymentCreateAttempt();
+                ClearPendingPaymentCreateAttempt(true);
                 SetStatus("创建订单失败：" + GetApiError(response));
                 yield break;
             }
 
+            if (response.data == null || response.data.order == null)
+            {
+                SetStatus("创建订单结果未知：响应缺少订单数据；重新点击同一商品会复用本次客户端订单号。");
+                yield break;
+            }
+
             pendingPaymentOrderNo = response.data.order.orderNo ?? string.Empty;
-            ClearPendingPaymentCreateAttempt();
+            SavePendingPaymentState(
+                pendingPaymentOrderNo,
+                response.data.order.clientOrderId ?? clientOrderId,
+                response.data.order.productCode ?? product.productCode,
+                response.data.order.status);
             if (string.IsNullOrEmpty(pendingPaymentOrderNo))
             {
-                SetStatus("订单创建失败：后端未返回订单号。");
+                SetStatus("创建订单结果未知：后端未返回订单号；重新点击同一商品会复用本次客户端订单号。");
                 yield break;
             }
 
@@ -331,7 +431,17 @@ public partial class HomePageUI
 
     public void OnWeChatPaymentSucceeded(string message)
     {
+        LoadPendingPaymentState();
         if (paymentPolling || string.IsNullOrEmpty(pendingPaymentOrderNo))
+        {
+            if (string.IsNullOrEmpty(pendingPaymentOrderNo))
+            {
+                SetStatus("支付回调已收到，但没有可查询的订单号；请重新打开充值页面查看订单。");
+            }
+            return;
+        }
+
+        if (paymentAccountRefreshRunning || paymentDeliveryRefreshPending || paymentRecoveryRunning)
         {
             return;
         }
@@ -342,14 +452,33 @@ public partial class HomePageUI
     public void OnWeChatPaymentFailed(string message)
     {
         paymentRequestRunning = false;
-        paymentPolling = false;
+        LoadPendingPaymentState();
         ClearPendingPaymentCreateAttempt();
+        if (!string.IsNullOrEmpty(pendingPaymentOrderNo))
+        {
+            SetStatus("支付回调未完成，正在保留订单并补查服务端状态：" + (string.IsNullOrEmpty(message) ? "用户取消或支付失败" : message));
+            if (!paymentPolling)
+            {
+                StartCoroutine(RecoverPendingPaymentOrder(string.Empty));
+            }
+            return;
+        }
         SetStatus("微信支付未完成：" + (string.IsNullOrEmpty(message) ? "用户取消或支付失败" : message));
     }
 
     private IEnumerator PollPaymentOrder(string orderNo)
     {
+        if (string.IsNullOrWhiteSpace(orderNo)
+            || !HasAuthSession()
+            || paymentPolling
+            || paymentAccountRefreshRunning
+            || paymentDeliveryRefreshPending)
+        {
+            yield break;
+        }
+
         paymentPolling = true;
+        orderNo = orderNo.Trim();
         int playerId = GameSession.PlayerId;
         for (int attempt = 0; attempt < 15; attempt++)
         {
@@ -374,29 +503,105 @@ public partial class HomePageUI
                     PaymentOrderApiResponse response = ParseJson<PaymentOrderApiResponse>(request.downloadHandler.text);
                     if (response != null && response.code == 200 && response.data != null)
                     {
-                        string status = response.data.status ?? string.Empty;
+                        string status = (response.data.status ?? string.Empty).Trim().ToUpperInvariant();
+                        SavePendingPaymentState(orderNo, response.data.clientOrderId, response.data.productCode, status);
                         SetStatus(BuildPaymentOrderStatusMessage(orderNo, status));
                         if (status == "DELIVERED")
                         {
                             paymentPolling = false;
-                            StartCoroutine(RefreshAccountSnapshot("支付已到账，资源已从服务器刷新。"));
+                            BeginPaymentDeliveryRefresh();
                             yield break;
                         }
 
                         if (IsPaymentOrderTerminalStatus(status))
                         {
                             paymentPolling = false;
+                            ClearPendingPaymentState();
+                            yield break;
+                        }
+
+                        if (status == "MANUAL_REVIEW")
+                        {
+                            paymentPolling = false;
+                            nextPaymentRecoveryCheckTime = Time.unscaledTime
+                                + PaymentBackgroundRecoveryIntervalSeconds;
                             yield break;
                         }
                     }
                 }
             }
 
-            yield return new WaitForSecondsRealtime(2f);
+            yield return new WaitForSecondsRealtime(GetPaymentPollIntervalSeconds());
         }
 
         paymentPolling = false;
+        nextPaymentRecoveryCheckTime = Time.unscaledTime + PaymentBackgroundRecoveryIntervalSeconds;
         SetStatus("支付结果仍在处理中，请稍后重新打开充值面板刷新状态。");
+    }
+
+    private void StartPendingPaymentRecovery(string statusMessage, float retryIntervalSeconds)
+    {
+        if (string.IsNullOrEmpty(pendingPaymentOrderNo)
+            || !HasAuthSession()
+            || paymentPolling
+            || paymentRecoveryRunning
+            || paymentRequestRunning
+            || paymentAccountRefreshRunning)
+        {
+            return;
+        }
+
+        nextPaymentRecoveryCheckTime = Time.unscaledTime + Mathf.Max(0.1f, retryIntervalSeconds);
+        StartCoroutine(RecoverPendingPaymentOrder(statusMessage));
+    }
+
+    private IEnumerator RecoverPendingPaymentOrder(string statusMessage)
+    {
+        if (!HasAuthSession()
+            || paymentPolling
+            || paymentRecoveryRunning
+            || paymentRequestRunning
+            || paymentAccountRefreshRunning)
+        {
+            yield break;
+        }
+
+        paymentRecoveryRunning = true;
+        try
+        {
+            LoadPendingPaymentState();
+            if (string.IsNullOrWhiteSpace(pendingPaymentOrderNo))
+            {
+                yield break;
+            }
+
+            if (!string.IsNullOrEmpty(statusMessage))
+            {
+                SetStatus(statusMessage);
+            }
+
+            yield return PollPaymentOrder(pendingPaymentOrderNo);
+        }
+        finally
+        {
+            paymentRecoveryRunning = false;
+        }
+    }
+
+    private static float GetPaymentPollIntervalSeconds()
+    {
+        return 3f;
+    }
+
+    private void SetPendingPaymentOrderFromNotification(string orderNo)
+    {
+        if (string.IsNullOrWhiteSpace(orderNo) || !HasAuthSession())
+        {
+            return;
+        }
+
+        LoadPendingPaymentState();
+        SavePendingPaymentState(orderNo.Trim(), pendingPaymentClientOrderId, pendingPaymentProductCode, "");
     }
 
     private string GetOrCreatePaymentClientOrderId(string productCode)
@@ -417,10 +622,146 @@ public partial class HomePageUI
         return pendingPaymentClientOrderId;
     }
 
-    private void ClearPendingPaymentCreateAttempt()
+    private void ClearPendingPaymentCreateAttempt(bool clearOrder = false)
     {
         pendingPaymentClientOrderId = string.Empty;
         pendingPaymentProductCode = string.Empty;
+        if (clearOrder)
+        {
+            ClearPendingPaymentState();
+        }
+        else if (paymentStateLoaded)
+        {
+            SavePendingPaymentState(
+                pendingPaymentOrderNo,
+                string.Empty,
+                string.Empty,
+                GetPendingPaymentStatus(GameSession.PlayerId));
+        }
+    }
+
+    private void LoadPendingPaymentState()
+    {
+        int currentPlayerId = GameSession.PlayerId;
+        if (currentPlayerId <= 0)
+        {
+            paymentStateLoaded = false;
+            return;
+        }
+
+        MigrateLegacyPendingPaymentState();
+        pendingPaymentOrderNo = PlayerPrefs.GetString(
+            BuildPendingPaymentKey(currentPlayerId, PendingPaymentOrderSuffix),
+            string.Empty);
+        pendingPaymentClientOrderId = PlayerPrefs.GetString(
+            BuildPendingPaymentKey(currentPlayerId, PendingPaymentClientOrderSuffix),
+            string.Empty);
+        pendingPaymentProductCode = PlayerPrefs.GetString(
+            BuildPendingPaymentKey(currentPlayerId, PendingPaymentProductSuffix),
+            string.Empty);
+
+        paymentStateLoaded = true;
+        paymentStatePlayerId = currentPlayerId;
+    }
+
+    private void SavePendingPaymentState(string orderNo, string clientOrderId, string productCode, string status)
+    {
+        int playerId = GameSession.PlayerId;
+        if (playerId <= 0)
+        {
+            return;
+        }
+
+        pendingPaymentOrderNo = orderNo ?? string.Empty;
+        if (!string.IsNullOrEmpty(clientOrderId)) pendingPaymentClientOrderId = clientOrderId;
+        if (!string.IsNullOrEmpty(productCode)) pendingPaymentProductCode = productCode;
+        PlayerPrefs.SetString(
+            BuildPendingPaymentKey(playerId, PendingPaymentOrderSuffix),
+            pendingPaymentOrderNo);
+        PlayerPrefs.SetString(
+            BuildPendingPaymentKey(playerId, PendingPaymentClientOrderSuffix),
+            pendingPaymentClientOrderId ?? string.Empty);
+        PlayerPrefs.SetString(
+            BuildPendingPaymentKey(playerId, PendingPaymentProductSuffix),
+            pendingPaymentProductCode ?? string.Empty);
+        PlayerPrefs.SetString(
+            BuildPendingPaymentKey(playerId, PendingPaymentStatusSuffix),
+            status ?? string.Empty);
+        PlayerPrefs.Save();
+        paymentStateLoaded = true;
+        paymentStatePlayerId = playerId;
+    }
+
+    private void ClearPendingPaymentState()
+    {
+        if (paymentDeliveryRefreshPending)
+        {
+            return;
+        }
+
+        pendingPaymentOrderNo = string.Empty;
+        pendingPaymentClientOrderId = string.Empty;
+        pendingPaymentProductCode = string.Empty;
+        int playerId = paymentStatePlayerId > 0 ? paymentStatePlayerId : GameSession.PlayerId;
+        if (playerId > 0)
+        {
+            PlayerPrefs.DeleteKey(BuildPendingPaymentKey(playerId, PendingPaymentOrderSuffix));
+            PlayerPrefs.DeleteKey(BuildPendingPaymentKey(playerId, PendingPaymentClientOrderSuffix));
+            PlayerPrefs.DeleteKey(BuildPendingPaymentKey(playerId, PendingPaymentProductSuffix));
+            PlayerPrefs.DeleteKey(BuildPendingPaymentKey(playerId, PendingPaymentStatusSuffix));
+        }
+        PlayerPrefs.Save();
+        paymentStateLoaded = true;
+    }
+
+    private static string BuildPendingPaymentKey(int playerId, string suffix)
+    {
+        return PendingPaymentKeyPrefix + playerId + suffix;
+    }
+
+    private static string GetPendingPaymentStatus(int playerId)
+    {
+        return playerId > 0
+            ? PlayerPrefs.GetString(
+                BuildPendingPaymentKey(playerId, PendingPaymentStatusSuffix),
+                string.Empty)
+            : string.Empty;
+    }
+
+    private static void MigrateLegacyPendingPaymentState()
+    {
+        int legacyPlayerId = PlayerPrefs.GetInt(LegacyPendingPaymentPlayerKey, 0);
+        if (legacyPlayerId <= 0)
+        {
+            return;
+        }
+
+        MigrateLegacyPendingPaymentValue(
+            LegacyPendingPaymentOrderKey,
+            BuildPendingPaymentKey(legacyPlayerId, PendingPaymentOrderSuffix));
+        MigrateLegacyPendingPaymentValue(
+            LegacyPendingPaymentClientOrderKey,
+            BuildPendingPaymentKey(legacyPlayerId, PendingPaymentClientOrderSuffix));
+        MigrateLegacyPendingPaymentValue(
+            LegacyPendingPaymentProductKey,
+            BuildPendingPaymentKey(legacyPlayerId, PendingPaymentProductSuffix));
+        MigrateLegacyPendingPaymentValue(
+            LegacyPendingPaymentStatusKey,
+            BuildPendingPaymentKey(legacyPlayerId, PendingPaymentStatusSuffix));
+        PlayerPrefs.DeleteKey(LegacyPendingPaymentPlayerKey);
+        PlayerPrefs.DeleteKey(LegacyPendingPaymentOrderKey);
+        PlayerPrefs.DeleteKey(LegacyPendingPaymentClientOrderKey);
+        PlayerPrefs.DeleteKey(LegacyPendingPaymentProductKey);
+        PlayerPrefs.DeleteKey(LegacyPendingPaymentStatusKey);
+        PlayerPrefs.Save();
+    }
+
+    private static void MigrateLegacyPendingPaymentValue(string legacyKey, string scopedKey)
+    {
+        if (!PlayerPrefs.HasKey(scopedKey) && PlayerPrefs.HasKey(legacyKey))
+        {
+            PlayerPrefs.SetString(scopedKey, PlayerPrefs.GetString(legacyKey, string.Empty));
+        }
     }
 
     private static bool HasCompletePaymentParameters(PaymentParameters parameters)
@@ -438,8 +779,7 @@ public partial class HomePageUI
         return status == "CLOSED"
             || status == "FAILED"
             || status == "CANCELLED"
-            || status == "REFUNDED"
-            || status == "MANUAL_REVIEW";
+            || status == "REFUNDED";
     }
 
     private static string BuildPaymentOrderStatusMessage(string orderNo, string status)
@@ -470,10 +810,20 @@ public partial class HomePageUI
 
     private IEnumerator RefreshAccountSnapshot(string successMessage)
     {
+        return RefreshAccountSnapshot(successMessage, false);
+    }
+
+    private IEnumerator RefreshAccountSnapshot(string successMessage, bool isPaymentDeliveryRefresh)
+    {
+        bool accountRefreshSucceeded = false;
         UnityWebRequest request = CreateAuthorizedGet("/user/me");
         if (request == null)
         {
             SetStatus(requestCreationError);
+            if (isPaymentDeliveryRefresh)
+            {
+                FinishPaymentDeliveryRefresh(false);
+            }
             yield break;
         }
 
@@ -482,6 +832,10 @@ public partial class HomePageUI
             yield return request.SendWebRequest();
             if (HandleUnauthorizedResponse(request))
             {
+                if (isPaymentDeliveryRefresh)
+                {
+                    FinishPaymentDeliveryRefresh(false);
+                }
                 yield break;
             }
 
@@ -489,6 +843,8 @@ public partial class HomePageUI
             if (request.result == UnityWebRequest.Result.Success && response != null && response.code == 200 && response.data != null)
             {
                 SaveUserProfile(response.data);
+                QueueBackendSnapshotRefresh(true, true);
+                accountRefreshSucceeded = true;
                 yield return RefreshServerStamina();
                 if (!string.IsNullOrEmpty(successMessage))
                 {
@@ -500,6 +856,60 @@ public partial class HomePageUI
                 SetStatus("订单已完成，但资源刷新失败：" + ApiRequestUtility.GetErrorMessage(request, "请重新登录后查看"));
             }
         }
+        if (isPaymentDeliveryRefresh)
+        {
+            FinishPaymentDeliveryRefresh(accountRefreshSucceeded);
+        }
+    }
+
+    private void BeginPaymentDeliveryRefresh()
+    {
+        if (paymentDeliveryRefreshPending || paymentAccountRefreshRunning)
+        {
+            return;
+        }
+
+        paymentAccountRefreshRunning = true;
+        paymentDeliveryRefreshPending = true;
+        StartCoroutine(RefreshAccountSnapshot("支付已到账，资源已从服务器刷新。", true));
+    }
+
+    private void HandlePaymentDeliveredRealtimeNotification(string payload)
+    {
+        NotificationPayload notificationPayload = ParseNotificationPayload(payload);
+        string orderNo = notificationPayload == null
+            ? string.Empty
+            : notificationPayload.ResolvedOrderNo;
+        if (!string.IsNullOrWhiteSpace(orderNo))
+        {
+            SetPendingPaymentOrderFromNotification(orderNo);
+            StartPendingPaymentRecovery("正在查询支付到账通知中的订单...", 2f);
+            return;
+        }
+
+        if (!paymentAccountRefreshRunning && !paymentDeliveryRefreshPending)
+        {
+            StartCoroutine(RefreshAccountSnapshot("支付奖励已到账，资源已刷新。"));
+        }
+    }
+
+    private void FinishPaymentDeliveryRefresh(bool refreshed)
+    {
+        if (!paymentDeliveryRefreshPending)
+        {
+            return;
+        }
+
+        paymentDeliveryRefreshPending = false;
+        paymentAccountRefreshRunning = false;
+        if (refreshed)
+        {
+            ClearPendingPaymentState();
+            return;
+        }
+
+        nextPaymentRecoveryCheckTime = 0f;
+        SetStatus("Payment delivered, but the account refresh failed; the order will be retried.");
     }
 
     private bool TryCreateAuthorizedPost(string path, string json, out UnityWebRequest request, out string error)
@@ -522,6 +932,7 @@ public partial class HomePageUI
             return false;
         }
 
+        ClearRareBroadcastState();
         GameSession.Clear();
         SceneManager.LoadScene(LaunchSceneName);
         return true;

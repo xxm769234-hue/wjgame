@@ -894,26 +894,29 @@ public partial class GameBoot : MonoBehaviour
         GameSession.SaveAuthenticated(
             data.token,
             data.expiresIn,
-            user.id,
+            ClampLongToInt(user.id, 0),
             user.username,
             user.nickname,
-            user.level,
-            user.gold,
-            user.wood,
-            user.stone,
-            user.iron,
-            user.diamond,
+            Mathf.Max(1, user.level),
+            ClampLongToInt(user.gold, 0),
+            ClampLongToInt(user.wood, 0),
+            ClampLongToInt(user.stone, 0),
+            ClampLongToInt(user.iron, 0),
+            ClampLongToInt(user.diamond, 0),
             user.totalExperience,
-            user.levelCurveRevision,
-            user.currentLevelExperience,
-            user.requiredExperienceForNextLevel,
-            user.experienceProgressBps,
+            ClampLongToInt(user.levelCurveRevision, 0),
+            ClampLongToInt(user.currentLevelExperience, 0),
+            ClampLongToInt(user.requiredExperienceForNextLevel, 0),
+            Mathf.Clamp(user.experienceProgressBps, 0, 10000),
             user.maxLevel,
             user.economyFrozen);
         PlayerPrefs.SetString("PlayerAvatarUrl", user.avatarUrl ?? string.Empty);
         PlayerPrefs.SetString("PlayerAvatarSource", user.avatarSource ?? "DEFAULT");
+        PlayerPrefs.SetString("PlayerAvatarCode", user.avatarCode ?? string.Empty);
         PlayerPrefs.SetString("PlayerAvatarVersion", Math.Max(0L, user.avatarVersion).ToString(CultureInfo.InvariantCulture));
         PlayerPrefs.SetString("PlayerAvatarUpdatedTime", user.avatarUpdatedTime ?? string.Empty);
+        PlayerPrefs.SetInt("PlayerAvatarOwnerId", ClampLongToInt(user.id, 0));
+        PlayerPrefs.DeleteKey("PlayerAvatarResourcePath");
         PlayerPrefs.SetString("PlayerNicknameVersion", Math.Max(0L, user.nicknameVersion).ToString(CultureInfo.InvariantCulture));
         PlayerPrefs.SetString("PlayerNicknameUpdatedTime", user.nicknameUpdatedTime ?? string.Empty);
         PlayerPrefs.SetInt("PlayerNicknameChangeCount", Math.Max(0, user.nicknameChangeCount));
@@ -940,6 +943,12 @@ public partial class GameBoot : MonoBehaviour
         if (privacyPolicyButton != null) privacyPolicyButton.interactable = !busy;
 
         SetStatus(message, busy ? MutedTextColor : ErrorColor);
+    }
+
+    private static int ClampLongToInt(long value, int minimum)
+    {
+        long clamped = Math.Max((long)minimum, value);
+        return clamped > int.MaxValue ? int.MaxValue : (int)clamped;
     }
 
     private void ShowError(string message)
@@ -1188,7 +1197,7 @@ public partial class GameBoot : MonoBehaviour
     [Serializable]
     private class UserData
     {
-        public int id;
+        public long id;
         public string username;
         public string nickname;
         public long nicknameVersion;
@@ -1197,19 +1206,20 @@ public partial class GameBoot : MonoBehaviour
         public bool nicknameChangeRequired;
         public int level;
         public long totalExperience;
-        public int levelCurveRevision;
-        public int currentLevelExperience;
-        public int requiredExperienceForNextLevel;
+        public long levelCurveRevision;
+        public long currentLevelExperience;
+        public long requiredExperienceForNextLevel;
         public int experienceProgressBps;
         public bool maxLevel;
         public bool economyFrozen;
-        public int gold;
-        public int wood;
-        public int stone;
-        public int iron;
-        public int diamond;
+        public long gold;
+        public long wood;
+        public long stone;
+        public long iron;
+        public long diamond;
         public string avatarUrl;
         public string avatarSource;
+        public string avatarCode;
         public long avatarVersion;
         public string avatarUpdatedTime;
         public ItemData[] items;
@@ -1248,12 +1258,12 @@ public partial class GameBoot : MonoBehaviour
     [Serializable]
     private class ItemData
     {
-        public int itemId;
+        public long itemId;
         public string itemKey;
         public string name;
         public string itemType;
         public string icon;
-        public int quantity;
+        public long quantity;
     }
 
     [Serializable]

@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
@@ -39,6 +40,18 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     [SerializeField] private UnityEvent<string, string, int> rewardCollected = new UnityEvent<string, string, int>();
 
     private float localSecondsSinceServerSync;
+    private bool serverStateRequestRunning;
+    private int serverStateRequestGeneration;
+    private int serverStateRetryAttempt;
+    private Coroutine serverStateRetryCoroutine;
+    private bool localClockInitialized;
+    private bool wasBackendAuthoritative;
+    private long rewardSnapshotServerUnixSeconds;
+    private int rewardSnapshotRemainderSeconds;
+    private bool rewardSnapshotUsesClaimableQuantity;
+
+    private const int MaxServerStateRetryAttempts = 3;
+    private const float ServerStateRetryBaseSeconds = 2f;
 
     public string ItemKey => string.IsNullOrEmpty(itemKey) ? "reward" : itemKey;
     public string DisplayName => string.IsNullOrEmpty(displayName) ? ItemKey : displayName;
@@ -84,11 +97,32 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
 
     public void ApplyServerSnapshot(long serverUnixSeconds, long lastSettledUnixSeconds, int storedQuantityFromServer, int highestClearedStageFromServer)
     {
+        ApplyServerSnapshot(
+            serverUnixSeconds,
+            lastSettledUnixSeconds,
+            storedQuantityFromServer,
+            highestClearedStageFromServer,
+            0L,
+            false);
+    }
+
+    private void ApplyServerSnapshot(
+        long serverUnixSeconds,
+        long lastSettledUnixSeconds,
+        int storedQuantityFromServer,
+        int highestClearedStageFromServer,
+        long nextSettlementSeconds,
+        bool usesClaimableQuantity)
+    {
         syncedServerUnixSeconds = Math.Max(0L, serverUnixSeconds);
         lastSettledServerUnixSeconds = Math.Max(0L, lastSettledUnixSeconds);
         serverStoredQuantity = Mathf.Clamp(storedQuantityFromServer, 0, MaxStoredQuantity);
         highestClearedStage = Mathf.Max(0, highestClearedStageFromServer);
         localSecondsSinceServerSync = 0f;
+        rewardSnapshotServerUnixSeconds = syncedServerUnixSeconds;
+        rewardSnapshotUsesClaimableQuantity = usesClaimableQuantity && rewardSnapshotServerUnixSeconds > 0L;
+        rewardSnapshotRemainderSeconds = ResolveSnapshotRemainder(nextSettlementSeconds);
+        localClockInitialized = true;
         hasServerSnapshot = true;
         RefreshView();
     }
@@ -99,8 +133,17 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
         lastSettledServerUnixSeconds = Math.Max(0L, nextLastSettledUnixSeconds);
         serverStoredQuantity = Mathf.Clamp(nextStoredQuantityFromServer, 0, MaxStoredQuantity);
         localSecondsSinceServerSync = 0f;
+        rewardSnapshotServerUnixSeconds = syncedServerUnixSeconds;
+        rewardSnapshotRemainderSeconds = 0;
+        rewardSnapshotUsesClaimableQuantity = rewardSnapshotServerUnixSeconds > 0L;
+        localClockInitialized = true;
         hasServerSnapshot = true;
         RefreshView();
+    }
+
+    public void ApplyBackendStateFromService(IdleAdventureAfkRewardStateResponse state)
+    {
+        TryApplyBackendState(state);
     }
 
     private void Awake()
@@ -112,7 +155,43 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
 
     private void OnEnable()
     {
-        if (Application.isPlaying) TryLoadServerState();
+        if (!Application.isPlaying)
+        {
+            return;
+        }
+
+        serverStateRetryAttempt = 0;
+        wasBackendAuthoritative = false;
+        if (IsBackendAuthoritative())
+        {
+            ResetLocalPreviewForBackendSync();
+        }
+        TryLoadServerState();
+    }
+
+    private void OnApplicationFocus(bool focused)
+    {
+        if (!focused || !Application.isPlaying)
+        {
+            return;
+        }
+
+        serverStateRetryAttempt = 0;
+        if (IsBackendAuthoritative())
+        {
+            ResetLocalPreviewForBackendSync();
+        }
+        TryLoadServerState();
+    }
+
+    private void OnDisable()
+    {
+        if (serverStateRetryCoroutine != null)
+        {
+            StopCoroutine(serverStateRetryCoroutine);
+            serverStateRetryCoroutine = null;
+        }
+        serverStateRequestRunning = false;
     }
 
     private void OnValidate()
@@ -129,6 +208,15 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     private void Update()
     {
         if (!Application.isPlaying) return;
+
+        bool backendAuthoritative = IsBackendAuthoritative();
+        if (backendAuthoritative && !wasBackendAuthoritative)
+        {
+            ResetLocalPreviewForBackendSync();
+            serverStateRetryAttempt = 0;
+            TryLoadServerState();
+        }
+        wasBackendAuthoritative = backendAuthoritative;
 
         localSecondsSinceServerSync += Time.unscaledDeltaTime;
         RefreshView();
@@ -147,12 +235,71 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
         if (!useBackendWhenAuthenticated) return;
 
         BackendGameService service = BackendGameService.Instance;
-        if (service == null || !service.IsAuthenticated) return;
+        if (service == null || !service.IsAuthenticated || serverStateRequestRunning) return;
 
+        serverStateRequestRunning = true;
+        int requestGeneration = serverStateRequestGeneration;
         service.LoadIdleAdventureAfkReward(result =>
         {
-            if (result != null && result.Success && result.Data != null) ApplyBackendState(result.Data);
+            if (requestGeneration != serverStateRequestGeneration) return;
+
+            serverStateRequestRunning = false;
+            if (result != null && result.Success && TryApplyBackendState(result.Data))
+            {
+                serverStateRetryAttempt = 0;
+                return;
+            }
+
+            ScheduleServerStateRetry();
+            RefreshView();
         });
+    }
+
+    public void ClearServerStateForAccountChange()
+    {
+        serverStateRequestGeneration++;
+        serverStateRequestRunning = false;
+        serverStateRetryAttempt = 0;
+        wasBackendAuthoritative = false;
+        if (serverStateRetryCoroutine != null)
+        {
+            StopCoroutine(serverStateRetryCoroutine);
+            serverStateRetryCoroutine = null;
+        }
+
+        highestClearedStage = 0;
+        localClockInitialized = false;
+        syncedServerUnixSeconds = 0L;
+        lastSettledServerUnixSeconds = 0L;
+        serverStoredQuantity = 0;
+        localSecondsSinceServerSync = 0f;
+        rewardSnapshotServerUnixSeconds = 0L;
+        rewardSnapshotRemainderSeconds = 0;
+        rewardSnapshotUsesClaimableQuantity = false;
+        hasServerSnapshot = false;
+        RefreshView();
+    }
+
+    private void ScheduleServerStateRetry()
+    {
+        if (!isActiveAndEnabled
+            || !Application.isPlaying
+            || serverStateRetryCoroutine != null
+            || serverStateRetryAttempt >= MaxServerStateRetryAttempts)
+        {
+            return;
+        }
+
+        float delay = ServerStateRetryBaseSeconds * Mathf.Pow(2f, serverStateRetryAttempt);
+        serverStateRetryAttempt++;
+        serverStateRetryCoroutine = StartCoroutine(RetryServerStateAfter(delay));
+    }
+
+    private IEnumerator RetryServerStateAfter(float delay)
+    {
+        yield return new WaitForSecondsRealtime(Mathf.Max(0.1f, delay));
+        serverStateRetryCoroutine = null;
+        TryLoadServerState();
     }
 
     private bool TryCollectFromBackend()
@@ -161,10 +308,18 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
 
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated) return false;
+        if (!hasServerSnapshot)
+        {
+            RefreshView();
+            return true;
+        }
 
         if (collectButton != null) collectButton.interactable = false;
+        int requestGeneration = serverStateRequestGeneration;
         service.CollectIdleAdventureAfkReward(result =>
         {
+            if (requestGeneration != serverStateRequestGeneration) return;
+
             if (result != null && result.Success && result.Data != null)
             {
                 ApplyBackendCollection(result.Data);
@@ -178,38 +333,139 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
         return true;
     }
 
-    private void ApplyBackendState(IdleAdventureAfkRewardStateResponse state)
+    private bool TryApplyBackendState(IdleAdventureAfkRewardStateResponse state)
     {
-        if (state == null) return;
+        if (!IsUsableBackendState(state))
+        {
+            if (IsBackendAuthoritative())
+            {
+                ResetLocalPreviewForBackendSync();
+                ScheduleServerStateRetry();
+            }
+            return false;
+        }
 
-        if (!string.IsNullOrEmpty(state.itemKey)) itemKey = state.itemKey;
-        if (!string.IsNullOrEmpty(state.displayName)) displayName = state.displayName;
-        if (state.baseQuantityPerCycle > 0) baseQuantityPerCycle = state.baseQuantityPerCycle;
-        if (state.quantityPerHighestStage >= 0) quantityPerHighestStage = state.quantityPerHighestStage;
-        if (state.productionIntervalSeconds > 0) productionIntervalSeconds = state.productionIntervalSeconds;
-        if (state.maxStoredQuantity > 0) maxStoredQuantity = state.maxStoredQuantity;
+        string resolvedItemKey = state.ResolvedItemKey;
+        string resolvedDisplayName = state.ResolvedDisplayName;
+        int resolvedBaseQuantityPerCycle = state.ResolvedBaseQuantityPerCycle;
+        int resolvedQuantityPerHighestStage = state.ResolvedQuantityPerHighestStage;
+        int resolvedQuantityPerCycle = state.ResolvedQuantityPerCycle;
+        int resolvedProductionIntervalSeconds = state.ResolvedProductionIntervalSeconds;
+        int resolvedMaxStoredQuantity = state.ResolvedMaxStoredQuantity;
+        int resolvedStoredQuantity = state.ResolvedStoredQuantity;
+        int resolvedHighestClearedStage = state.ResolvedHighestClearedStage;
+        long resolvedServerUnixSeconds = state.ResolvedServerUnixSeconds;
+        long resolvedLastSettledServerUnixSeconds = state.ResolvedLastSettledServerUnixSeconds;
+        long resolvedNextSettlementSeconds = state.ResolvedNextSettlementSeconds;
 
-        ApplyServerSnapshot(state.serverUnixSeconds, state.lastSettledServerUnixSeconds, state.storedQuantity, state.highestClearedStage);
+        if (!string.IsNullOrEmpty(resolvedItemKey)) itemKey = resolvedItemKey;
+        if (!string.IsNullOrEmpty(resolvedDisplayName)) displayName = resolvedDisplayName;
+        if (resolvedBaseQuantityPerCycle > 0) baseQuantityPerCycle = resolvedBaseQuantityPerCycle;
+        if (resolvedQuantityPerHighestStage >= 0) quantityPerHighestStage = resolvedQuantityPerHighestStage;
+        if (resolvedProductionIntervalSeconds > 0) productionIntervalSeconds = resolvedProductionIntervalSeconds;
+        if (resolvedMaxStoredQuantity > 0) maxStoredQuantity = resolvedMaxStoredQuantity;
+
+        if (resolvedQuantityPerCycle > 0 && resolvedBaseQuantityPerCycle <= 0)
+        {
+            baseQuantityPerCycle = resolvedQuantityPerCycle;
+            quantityPerHighestStage = 0;
+        }
+
+        ApplyServerSnapshot(
+            resolvedServerUnixSeconds,
+            resolvedLastSettledServerUnixSeconds,
+            resolvedStoredQuantity,
+            resolvedHighestClearedStage,
+            resolvedNextSettlementSeconds,
+            true);
+        serverStateRetryAttempt = 0;
+        if (serverStateRetryCoroutine != null)
+        {
+            StopCoroutine(serverStateRetryCoroutine);
+            serverStateRetryCoroutine = null;
+        }
+        return true;
+    }
+
+    public static bool IsUsableBackendStateResponse(IdleAdventureAfkRewardStateResponse state)
+    {
+        if (state == null) return false;
+
+        string resolvedItemKey = state.ResolvedItemKey;
+        int resolvedBaseQuantityPerCycle = state.ResolvedBaseQuantityPerCycle;
+        int resolvedQuantityPerCycle = state.ResolvedQuantityPerCycle;
+        int resolvedProductionIntervalSeconds = state.ResolvedProductionIntervalSeconds;
+        int resolvedMaxStoredQuantity = state.ResolvedMaxStoredQuantity;
+        int resolvedStoredQuantity = state.ResolvedStoredQuantity;
+        long resolvedServerUnixSeconds = state.ResolvedServerUnixSeconds;
+
+        if (string.IsNullOrWhiteSpace(resolvedItemKey)
+            || resolvedServerUnixSeconds <= 0L
+            || resolvedProductionIntervalSeconds <= 0
+            || resolvedMaxStoredQuantity <= 0
+            || (resolvedBaseQuantityPerCycle <= 0 && resolvedQuantityPerCycle <= 0)
+            || resolvedStoredQuantity < 0
+            || resolvedStoredQuantity > resolvedMaxStoredQuantity
+            || state.base_quantity_per_cycle < 0
+            || state.baseQuantityPerCycle < 0L
+            || state.quantity_per_highest_stage < 0
+            || state.quantityPerHighestStage < 0L
+            || state.quantity_per_cycle < 0
+            || state.quantityPerCycle < 0L
+            || state.production_interval_seconds < 0
+            || state.intervalSeconds < 0
+            || state.max_stored_quantity < 0
+            || state.maxStoredQuantity < 0L
+            || state.stored_quantity < 0
+            || state.claimableQuantity < 0L
+            || state.highest_stage < 0
+            || state.highestStage < 0
+            || state.server_unix_seconds < 0L
+            || state.serverUnixSeconds < 0L
+            || state.last_settled_server_unix_seconds < 0L
+            || state.nextSettlementSeconds < 0L
+            || state.next_settlement_seconds < 0L)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool IsUsableBackendState(IdleAdventureAfkRewardStateResponse state)
+    {
+        return IsUsableBackendStateResponse(state);
     }
 
     private void ApplyBackendCollection(IdleAdventureAfkRewardCollectResponse response)
     {
         if (response == null) return;
 
-        if (response.collectedRewards != null && response.collectedRewards.Length > 0)
+        if (!response.ResolvedIdempotentReplay)
         {
-            for (int i = 0; i < response.collectedRewards.Length; i++)
+            IdleAdventureCollectedItemResponse[] collectedRewards = response.ResolvedCollectedRewards;
+            if (collectedRewards != null && collectedRewards.Length > 0)
             {
-                ApplyCollectedItem(response.collectedRewards[i]);
+                for (int i = 0; i < collectedRewards.Length; i++)
+                {
+                    ApplyCollectedItem(collectedRewards[i]);
+                }
             }
+            else
+            {
+                ApplyCollectedItem(response.ResolvedCollectedReward ?? response.ResolvedCollectedItem);
+            }
+        }
+
+        if (response.state != null)
+        {
+            TryApplyBackendState(response.state);
         }
         else
         {
-            ApplyCollectedItem(response.collectedReward != null ? response.collectedReward : response.collectedItem);
+            serverStateRetryAttempt = 0;
+            TryLoadServerState();
         }
-
-        if (response.state != null) ApplyBackendState(response.state);
-        else ClearStoredReward();
     }
 
     public void ClearStoredReward()
@@ -219,6 +475,10 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
         lastSettledServerUnixSeconds = serverNow;
         serverStoredQuantity = 0;
         localSecondsSinceServerSync = 0f;
+        rewardSnapshotServerUnixSeconds = serverNow;
+        rewardSnapshotRemainderSeconds = 0;
+        rewardSnapshotUsesClaimableQuantity = false;
+        localClockInitialized = true;
         hasServerSnapshot = true;
         RefreshView();
     }
@@ -227,8 +487,8 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     {
         if (collectedItem == null || collectedItem.quantity <= 0L) return;
 
-        string collectedKey = string.IsNullOrEmpty(collectedItem.itemKey) ? ItemKey : collectedItem.itemKey;
-        string collectedName = string.IsNullOrEmpty(collectedItem.name) ? DisplayName : collectedItem.name;
+        string collectedKey = string.IsNullOrEmpty(collectedItem.ResolvedItemKey) ? ItemKey : collectedItem.ResolvedItemKey;
+        string collectedName = string.IsNullOrEmpty(collectedItem.ResolvedName) ? DisplayName : collectedItem.ResolvedName;
         int collectedQuantity = Mathf.Clamp((int)Math.Min(int.MaxValue, collectedItem.quantity), 0, int.MaxValue);
 
         Dictionary<string, int> rewards = new Dictionary<string, int>
@@ -247,13 +507,13 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
 
     private void EnsureInitialServerSnapshot()
     {
-        if (hasServerSnapshot) return;
+        if (hasServerSnapshot || localClockInitialized || IsBackendAuthoritative()) return;
 
         long serverNow = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         syncedServerUnixSeconds = serverNow;
         lastSettledServerUnixSeconds = serverNow;
         localSecondsSinceServerSync = 0f;
-        hasServerSnapshot = true;
+        localClockInitialized = true;
     }
 
     private long GetEstimatedServerUnixSeconds()
@@ -265,6 +525,22 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     private int CalculateStoredQuantity(long serverUnixSeconds)
     {
         int baseStored = Mathf.Clamp(serverStoredQuantity, 0, MaxStoredQuantity);
+        if (rewardSnapshotUsesClaimableQuantity)
+        {
+            if (baseStored >= MaxStoredQuantity) return MaxStoredQuantity;
+
+            long elapsedSinceSnapshot = Math.Max(
+                0L,
+                serverUnixSeconds - rewardSnapshotServerUnixSeconds);
+            long accumulatedSeconds = elapsedSinceSnapshot + rewardSnapshotRemainderSeconds;
+            long snapshotCycleCount = accumulatedSeconds / Math.Max(1L, (long)Mathf.Max(1f, productionIntervalSeconds));
+            long snapshotProduced = snapshotCycleCount * Math.Max(1L, (long)QuantityPerCycle);
+            return Mathf.Clamp(
+                baseStored + (int)Math.Min(int.MaxValue, snapshotProduced),
+                0,
+                MaxStoredQuantity);
+        }
+
         if (lastSettledServerUnixSeconds <= 0L) return baseStored;
 
         long elapsedSeconds = Math.Max(0L, serverUnixSeconds - lastSettledServerUnixSeconds);
@@ -276,6 +552,16 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     private float CalculateProgress(long serverUnixSeconds)
     {
         if (CalculateStoredQuantity(serverUnixSeconds) >= MaxStoredQuantity) return 1f;
+        if (rewardSnapshotUsesClaimableQuantity)
+        {
+            long elapsedSinceSnapshot = Math.Max(
+                0L,
+                serverUnixSeconds - rewardSnapshotServerUnixSeconds);
+            long snapshotInterval = Math.Max(1L, (long)Mathf.Max(1f, productionIntervalSeconds));
+            long snapshotRemainder = (elapsedSinceSnapshot + rewardSnapshotRemainderSeconds) % snapshotInterval;
+            return Mathf.Clamp01((float)snapshotRemainder / snapshotInterval);
+        }
+
         if (lastSettledServerUnixSeconds <= 0L) return 0f;
 
         long elapsedSeconds = Math.Max(0L, serverUnixSeconds - lastSettledServerUnixSeconds);
@@ -286,6 +572,16 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     private int CalculateRemainingSeconds(long serverUnixSeconds)
     {
         if (CalculateStoredQuantity(serverUnixSeconds) >= MaxStoredQuantity) return 0;
+        if (rewardSnapshotUsesClaimableQuantity)
+        {
+            long elapsedSinceSnapshot = Math.Max(
+                0L,
+                serverUnixSeconds - rewardSnapshotServerUnixSeconds);
+            long snapshotInterval = Math.Max(1L, (long)Mathf.Max(1f, productionIntervalSeconds));
+            long snapshotRemainder = (elapsedSinceSnapshot + rewardSnapshotRemainderSeconds) % snapshotInterval;
+            return (int)Math.Max(0L, snapshotInterval - snapshotRemainder);
+        }
+
         if (lastSettledServerUnixSeconds <= 0L) return Mathf.CeilToInt(productionIntervalSeconds);
 
         long elapsedSeconds = Math.Max(0L, serverUnixSeconds - lastSettledServerUnixSeconds);
@@ -303,17 +599,52 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
 
     private void RefreshView()
     {
+        bool waitingForServer = IsBackendAuthoritative() && !hasServerSnapshot;
         long serverNow = GetEstimatedServerUnixSeconds();
-        int amount = CalculateStoredQuantity(serverNow);
-        bool ready = amount > 0;
+        int amount = waitingForServer ? 0 : CalculateStoredQuantity(serverNow);
+        bool ready = !waitingForServer && amount > 0;
         bool full = amount >= MaxStoredQuantity;
 
         if (collectButton != null) collectButton.interactable = ready;
         if (iconImage != null) iconImage.color = ready ? new Color(0.95f, 0.72f, 0.24f, 1f) : new Color(0.32f, 0.36f, 0.40f, 1f);
-        if (progressFill != null) progressFill.fillAmount = ready ? 1f : CalculateProgress(serverNow);
+        if (progressFill != null) progressFill.fillAmount = ready ? 1f : waitingForServer ? 0f : CalculateProgress(serverNow);
         if (iconText != null) iconText.text = ResolveIconText();
-        if (amountText != null) amountText.text = $"x{amount}/{MaxStoredQuantity}";
-        if (timerText != null) timerText.text = full ? "Full" : ready ? "Ready" : FormatRemainingTime(CalculateRemainingSeconds(serverNow));
+        if (amountText != null) amountText.text = waitingForServer ? "同步中" : $"x{amount}/{MaxStoredQuantity}";
+        if (timerText != null) timerText.text = waitingForServer ? "同步中" : full ? "Full" : ready ? "Ready" : FormatRemainingTime(CalculateRemainingSeconds(serverNow));
+    }
+
+    private bool IsBackendAuthoritative()
+    {
+        if (!useBackendWhenAuthenticated) return false;
+
+        BackendGameService service = BackendGameService.Instance;
+        return service != null && service.IsAuthenticated;
+    }
+
+    private void ResetLocalPreviewForBackendSync()
+    {
+        localClockInitialized = false;
+        syncedServerUnixSeconds = 0L;
+        lastSettledServerUnixSeconds = 0L;
+        serverStoredQuantity = 0;
+        localSecondsSinceServerSync = 0f;
+        rewardSnapshotServerUnixSeconds = 0L;
+        rewardSnapshotRemainderSeconds = 0;
+        rewardSnapshotUsesClaimableQuantity = false;
+        hasServerSnapshot = false;
+        RefreshView();
+    }
+
+    private int ResolveSnapshotRemainder(long nextSettlementSeconds)
+    {
+        if (nextSettlementSeconds <= 0L || serverStoredQuantity >= MaxStoredQuantity)
+        {
+            return 0;
+        }
+
+        long interval = Math.Max(1L, (long)Mathf.Max(1f, productionIntervalSeconds));
+        long clampedNextSettlement = Math.Min(interval, nextSettlementSeconds);
+        return (int)Math.Max(0L, interval - clampedNextSettlement);
     }
 
     private string ResolveIconText()

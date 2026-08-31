@@ -1,6 +1,6 @@
 # Idle Adventure 模式接口文档
 
-本文档对应 Flyway V16、V17、V51、V52、V67、V68、V69、V70 和当前 Java 实现。Idle Adventure 对外提供 28 条 `snake_case` 接口；原 10 条无 `player_id` 的精简接口已经下线并返回 HTTP 404。28 条接口共用一套服务端权威战斗、进度、体力、固定奖励、随机掉落、挂机加速和幂等逻辑，不存在客户端结算分支。好友体力赠礼的发送接口属于好友模块，见 [`friend-stamina-gift-api.md`](friend-stamina-gift-api.md)；V70 复用同一体力聚合服务支持钻石商城购买，商城契约见 [`diamond-shop-api.md`](diamond-shop-api.md)。
+本文档记录 Idle Adventure 的目标接口契约，并对应 Flyway V16、V17、V51、V52、V67、V68、V69、V70。版本边界：远端 `origin/sck@08b4f0c` 已包含本文记录的敌人预览字段与 Buff 403/6515 拒绝逻辑；本地后端已恢复为 `sck@6502a67`，这两处尚未闭环，差异在 4.3 和 6.4 单独标注。Idle Adventure 对外提供 28 条 `snake_case` 接口；原 10 条无 `player_id` 的精简接口已经下线并返回 HTTP 404。28 条接口共用一套服务端权威战斗、进度、体力、固定奖励、随机掉落、挂机加速和幂等逻辑，不存在客户端结算分支。好友体力赠礼的发送接口属于好友模块，见 [`friend-stamina-gift-api.md`](friend-stamina-gift-api.md)；V70 复用同一体力聚合服务支持钻石商城购买，商城契约见 [`diamond-shop-api.md`](diamond-shop-api.md)。
 
 基础地址：`http://localhost:8080/api`
 
@@ -27,7 +27,7 @@
 | 17 | `POST` | `/idle-adventure/players/{player_id}/sessions/{session_key}/resume` | 恢复会话 |
 | 18 | `POST` | `/idle-adventure/players/{player_id}/sessions/{session_key}/end` | 结束并结算奖励 |
 | 19 | `POST` | `/idle-adventure/players/{player_id}/sessions/{session_key}/rounds/resolve` | 权威结算一回合 |
-| 20 | `POST` | `/idle-adventure/players/{player_id}/sessions/{session_key}/buffs/apply` | 应用后端配置的额外 buff |
+| 20 | `POST` | `/idle-adventure/players/{player_id}/sessions/{session_key}/buffs/apply` | 行为与后端版本相关；见 6.4 |
 | 21 | `POST` | `/idle-adventure/players/{player_id}/sessions/{session_key}/stages/continue` | 继续下一关 |
 | 22 | `POST` | `/idle-adventure/players/{player_id}/sessions/{session_key}/stages/retry` | 重试当前关 |
 | 23 | `GET` | `/idle-adventure/players/{player_id}/progress` | 获取权威进度 |
@@ -179,9 +179,13 @@ GET /api/idle-adventure/stages/{stage}/enemies
 }
 ```
 
-`slots` 始终按 `slot_index=0..5` 返回六项，示例只展开前两项；空槽的 `enemy` 为 `null`。每项同时返回 `column`、`row`、`front_column`，槽位 `0..2` 为前排第 `0` 列，槽位 `3..5` 为后排第 `1` 列，便于 Unity 直接布局而不重复硬编码换算。`level`、生命、攻击、防御和速度均为该敌人在此关卡最终生效的配置，不能用敌人模板或客户端公式重新推算。`icon` 供列表与头像展示，`model_key` 供 Unity 选择模型资源；资源缺失时客户端应使用默认占位图或通用模型，不能阻断战斗。`skill_slots` 继续返回完整技能槽定义。
+远端 `origin/sck@08b4f0c` 的目标响应中，`slots` 始终按 `slot_index=0..5` 返回六项，示例只展开前两项；空槽的 `enemy` 为 `null`。每项同时返回 `column`、`row`、`front_column`，槽位 `0..2` 为前排第 `0` 列，槽位 `3..5` 为后排第 `1` 列，便于 Unity 直接布局而不重复硬编码换算。`level`、生命、攻击、防御和速度均为该敌人在此关卡最终生效的配置，不能用敌人模板或客户端公式重新推算。`icon` 供列表与头像展示，`model_key` 供 Unity 选择模型资源；资源缺失时客户端应使用默认占位图或通用模型，不能阻断战斗。`skill_slots` 继续返回完整技能槽定义。
 
-本次只新增响应字段，不改变 URL、请求方式、鉴权和既有字段。旧 Unity 忽略新增字段后仍可运行；如需展示关卡名称、等级、图标或按 `model_key` 加载模型，新 Unity 需要在响应模型中增加对应字段并完成展示逻辑。敌人配置当前没有品质字段，仓库也没有统一战力计算口径，因此接口不会返回推测的 `quality` 或 `combat_power`。
+目标响应只新增字段，不改变 URL、请求方式、鉴权和既有字段。当前 master 已在响应模型中增加对应字段，并在进入玩法、登录重连和回到前台时读取独立配置、玩家 NPC、当前关卡敌人预览及权威进度。本地已恢复的 `sck@6502a67` 不返回 `stage_name`、槽位布局和敌人的 `icon/model_key/level`，因此客户端会降级为关卡编号、敌人名称和数量；远端 `origin/sck@08b4f0c` 已返回这些字段。客户端不能自行推算战斗属性。敌人配置当前没有品质字段，仓库也没有统一战力计算口径，因此接口不会返回推测的 `quality` 或 `combat_power`。
+
+### 4.4 Unity 独立配置与进度刷新
+
+Unity 登录或重连后先调用首页和 `/progress`，以服务端 `highest_stage`、`last_stage` 更新本地进度及挂机收益显示；进入玩法页面、重连或回到前台时再调用本节 4.2/4.3 的独立 GET。独立 GET 仅用于展示、编队候选和版本核对，不会改变玩家状态；任何战斗、奖励、体力和属性结果仍以服务端会话响应为准。独立配置请求失败时可保留上一次快照并提示重试，但不得阻止已有会话恢复，也不得使用本地配置覆盖服务端快照。
 
 ## 五、编队接口
 
@@ -337,7 +341,7 @@ Idempotency-Key: buff-ia-session-1-001
 }
 ```
 
-该旧路径暂时保留以避免已发布 Unity 直接遇到 404，但当前统一返回 HTTP 403、业务码 `6515`，不会读取或修改战斗会话。原因是现有请求没有服务端签发的广告、活动、道具消耗或次数凭证，客户端提交的幂等键与 buff 配置 ID 不能证明玩家有资格获得增益。只有后续补齐服务端授权凭证、消费流水和防重放校验后，才能重新开放实际施加逻辑。
+该路径的行为取决于后端版本。远端 `origin/sck@08b4f0c` 统一返回 HTTP 403、业务码 `6515`，不会读取或修改战斗会话；本地已恢复的 `sck@6502a67` 会读取会话锁定版本的配置并实际施加来源为 `OTHER` 的 Buff。由于现有请求没有服务端签发的广告、活动、道具消耗或次数凭证，本地旧行为允许客户端在缺少业务资格证明时请求增益；正式开放按钮前仍需补齐授权凭证、消费流水和防重放校验。
 
 ### 6.5 继续与重试
 
@@ -565,7 +569,7 @@ RUNNING/PAUSED/STAGE_COMPLETE/FAILED --end--> ENDED
 | 6512 | 外部体力发放将超过数据库物理上限；HTTP 409，本次事务整体回滚 |
 | 6513 | 挂机加速未开放；HTTP 状态为 `409 Conflict`，不扣体力且不发奖 |
 | 6514 | 挂机奖励超过系统物理上限；HTTP 状态为 `409 Conflict`，本次事务整体回滚 |
-| 6515 | 额外战斗增益没有服务端授权；HTTP 状态为 `403 Forbidden`，不读取或修改会话 |
+| 6515 | 远端 `origin/sck@08b4f0c`：额外战斗增益没有服务端授权；HTTP 状态为 `403 Forbidden`，不读取或修改会话。本地 `sck@6502a67` 尚无此业务码 |
 
 ## 十、数据库与版本边界
 
@@ -650,7 +654,7 @@ V52 不修改已经执行的 V51，而是独立加固默认值、CHECK 约束、
 1. Idle Adventure 包只允许存在 `IdleAdventureController` 一个 REST 控制器；Unity 字段转换由 API DTO、VO 和 `IdleAdventureFacade` 统一完成。
 2. 28 条方法和路径必须精确匹配本文档，所有请求/响应字段保持 `snake_case`。
 3. MockMvc 逐条请求 28 条路径必须命中，原 10 条精简路径必须全部返回 404。
-4. 路径玩家越权、临时编队归属、主动清空、暂停/恢复幂等、通关防伪和未授权额外 buff 拒绝均有单元测试。
+4. 路径玩家越权、临时编队归属、主动清空、暂停/恢复幂等和通关防伪均有单元测试；额外 Buff 测试随版本不同分别覆盖服务端配置来源或未授权拒绝。
 5. 战斗测试覆盖行动顺序、死亡跳过、目标选择、技能冷却、倍率、状态机、固定奖励和随机池快照。
 6. 体力测试覆盖首次满体力、惰性恢复、恢复余数、满值消费锚点、策略切换、超上限保留、余额不足和乐观锁冲突。
 7. 随机奖励测试覆盖概率边界、首通范围、非法概率、逐抽审计，以及 `ITEM / EQUIPMENT / NPC` 发放和 NPC 重复碎片转换。
@@ -666,4 +670,4 @@ V52 不修改已经执行的 V51，而是独立加固默认值、CHECK 约束、
 4. **入驻 NPC 当前仍可参战**：`IDLE` 和 `SETTLED` NPC 都能进入编队。如产品要求互斥，查询与开战校验必须同时限制。
 5. **buff 展示上限需统一**：快照安全上限高于旧 Unity 六个图标槽，运营配置应控制同时生效数量。
 6. **历史流水需要清理策略**：会话命令、挂机幂等、随机批次和逐抽审计会持续增长，只能分批清理终态、已结算且超过审计保留期的数据；不得先删仍被待结算奖励引用的逐抽记录。
-7. **额外 buff 仍未开放**：旧 HTTP 路径当前固定返回 6515，不会修改会话。正式开放按钮前必须增加服务端授权凭证、消耗流水、次数/过期校验和防重放规则；幂等键不能替代资格校验。
+7. **额外 Buff 授权仍未闭环**：本地 `sck@6502a67` 会实际施加配置 Buff，远端 `origin/sck@08b4f0c` 则固定返回 6515。正式开放按钮前必须增加服务端授权凭证、消耗流水、次数/过期校验和防重放规则；幂等键不能替代资格校验。

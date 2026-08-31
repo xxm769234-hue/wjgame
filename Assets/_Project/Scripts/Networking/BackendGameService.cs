@@ -15,8 +15,67 @@ public sealed partial class BackendGameService : MonoBehaviour
     private const string HomePlayerIdKey = "PlayerId";
     private const string HomeSessionModeKey = "SessionMode";
     private const string HomeTokenExpiresAtKey = "TokenExpiresAtUtc";
+    private const string AreaSelectionOwnerPlayerIdKey = "weijun.areaSelection.playerId";
+    private const string OpenAreaLandTypeKey = "OpenAreaLandType";
+    private const string CurrentAreaLandTypeKey = "CurrentAreaLandType";
     private const string ApiOverrideKey = "ApiBaseUrlOverride";
     private const string ApiEnvironmentVariableName = "WEIJUN_API_BASE_URL";
+    private const string ProductionCollectKeyPrefix = "weijun.backend.production.collect.";
+    private const string ProductionSnapshotKeyPrefix = "weijun.backend.production.snapshot.";
+    private const string AfkCollectKeyPrefix = "weijun.backend.idleAdventure.afkCollect.";
+    private const string AfkAccelerateKeyPrefix = "weijun.backend.idleAdventure.afkAccelerate.";
+    private const string AfkSnapshotKeyPrefix = "weijun.backend.idleAdventure.afkSnapshot.";
+    private const string AfkStageClearKeyPrefix = "weijun.backend.idleAdventure.stageClear.";
+    private const string IdleAdventureCommandKeyPrefix = "weijun.backend.idleAdventure.command.";
+    private const string IdleAdventureStartKeyPrefix = "weijun.backend.idleAdventure.start.";
+    private const string IdleAdventureSessionSnapshotKeyPrefix = "weijun.backend.idleAdventure.sessionSnapshot.";
+    private const string IdempotencyContextSuffix = ".context";
+
+    private static readonly string[] AccountSnapshotPreferenceKeys =
+    {
+        "LoginUsername",
+        "PlayerNickname",
+        "PlayerNicknameVersion",
+        "PlayerNicknameUpdatedTime",
+        "PlayerNicknameChangeCount",
+        "PlayerNicknameChangeRequired",
+        "PlayerAvatarOwnerId",
+        "PlayerAvatarUrl",
+        "PlayerAvatarSource",
+        "PlayerAvatarVersion",
+        "PlayerAvatarUpdatedTime",
+        "PlayerTotalExperience",
+        "PlayerLevelCurveRevision",
+        "PlayerCurrentLevelExperience",
+        "PlayerRequiredExperience",
+        "PlayerExperienceProgressBps",
+        "PlayerMaxLevel",
+        "PlayerEconomyFrozen",
+        "PlayerStamina",
+        "ProfileLastSync",
+        "weijun.backend.sceneId",
+        "ServerMapWidth",
+        "ServerMapHeight",
+        "ServerLandCount",
+        "ServerBuildingCount",
+        "ServerMapLastSync",
+        "weijun.idleAdventure.highestClearedStage",
+        "Notification.DeepLink.Type",
+        "Notification.DeepLink.SceneId",
+        "Notification.DeepLink.PlayerBuildingId",
+        "Notification.DeepLink.PlayerLandId",
+        "weijun.npcAcquisition.routeKey",
+        "weijun.npcAcquisition.playerId",
+        "weijun.npcAcquisition.expiresAt",
+        "weijun.npcAcquisition.poolCode",
+        "weijun.npcAcquisition.highlightNpcId",
+        "weijun.npcAcquisition.taskCode",
+        "weijun.npcAcquisition.planCode",
+        "weijun.npcAcquisition.modeCode",
+        "weijun.npcAcquisition.stage",
+        "weijun.npcAcquisition.poolKey",
+        "weijun.npcAcquisition.mailId"
+    };
 
     public static BackendGameService Instance { get; private set; }
 
@@ -40,11 +99,30 @@ public sealed partial class BackendGameService : MonoBehaviour
     public InventoryItemResponse[] CurrentInventory { get; private set; }
     public NpcConfigResponse[] NpcCatalog { get; private set; }
     public NpcResponse[] PlayerNpcs { get; private set; }
+    public IReadOnlyList<LandConfig> RemoteAvailableLands => remoteAvailableLands;
+    public event Action<UserResponse> UserSnapshotChanged;
+    public event Action<InventoryItemResponse[]> InventorySnapshotChanged;
     private bool productionPollPending;
     private bool buildingSyncPending;
+    private bool sceneSwitchPending;
     private float nextProductionPollAt;
     private int observedSessionRevision;
+    private int sceneRequestGeneration;
     private readonly List<LandConfig> remoteAvailableLands = new List<LandConfig>();
+
+    private sealed class SessionRequestSnapshot
+    {
+        public readonly string Token;
+        public readonly int PlayerId;
+        public readonly int Revision;
+
+        public SessionRequestSnapshot(string token, int playerId, int revision)
+        {
+            Token = token;
+            PlayerId = playerId;
+            Revision = revision;
+        }
+    }
 
     public static BackendGameService EnsureInstance()
     {
@@ -233,11 +311,11 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     public Coroutine PurchaseLandSlot(
         LandSlotController slot,
-        Action<bool, string, LandSlotStateResponse> onComplete)
+        Action<BackendResult<LandSlotStateResponse>> onComplete)
     {
         if (!IsAuthenticated || slot == null)
         {
-            onComplete?.Invoke(false, "Backend session or slot is missing.", null);
+            onComplete?.Invoke(new BackendResult<LandSlotStateResponse>(false, 0, "Backend session or slot is missing.", null));
             return null;
         }
         return StartCoroutine(PurchaseLandSlotRoutine(slot, onComplete));
@@ -245,11 +323,11 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     public Coroutine PurifyLandSlot(
         LandSlotController slot,
-        Action<bool, string, LandSlotStateResponse> onComplete)
+        Action<BackendResult<LandSlotStateResponse>> onComplete)
     {
         if (!IsAuthenticated || slot == null)
         {
-            onComplete?.Invoke(false, "Backend session or slot is missing.", null);
+            onComplete?.Invoke(new BackendResult<LandSlotStateResponse>(false, 0, "Backend session or slot is missing.", null));
             return null;
         }
         return StartCoroutine(PurifyLandSlotRoutine(slot, onComplete));
@@ -327,7 +405,7 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     public Coroutine CompleteBuildingAction(LandSlotController slot, Action<bool, string> onComplete)
     {
-        return RunPlayerBuildingAction("building/complete", slot, false, onComplete);
+        return RunPlayerBuildingAction("building/complete", slot, true, onComplete);
     }
 
     public Coroutine DemolishBuilding(LandSlotController slot, Action<bool, string> onComplete)
@@ -357,7 +435,34 @@ public sealed partial class BackendGameService : MonoBehaviour
             onComplete?.Invoke(false, "Backend session or slot is missing.");
             return null;
         }
-        return StartCoroutine(CollectProductionRoutine(slot, onComplete));
+        string storageKey = ProductionCollectKeyPrefix + PlayerId + ".single." + slot.PlayerBuildingId;
+        string snapshotToken = GetOrCreateProductionBuildingSnapshotToken(slot.PlayerBuildingId);
+        string persistedKey = GetOrCreatePersistedIdempotencyKey(storageKey, snapshotToken);
+        return CollectProduction(slot, persistedKey, onComplete);
+    }
+
+    public Coroutine CollectProduction(
+        LandSlotController slot,
+        string idempotencyKey,
+        Action<bool, string> onComplete)
+    {
+        if (!IsAuthenticated || slot == null)
+        {
+            onComplete?.Invoke(false, "Backend session or slot is missing.");
+            return null;
+        }
+        if (!Guid.TryParse(idempotencyKey, out _))
+        {
+            onComplete?.Invoke(false, "A valid idempotency key is required.");
+            return null;
+        }
+        SessionRequestSnapshot session = CaptureSessionRequest();
+        string storageKey = ProductionCollectKeyPrefix + session.PlayerId + ".single." + slot.PlayerBuildingId;
+        SavePersistedIdempotencyKey(
+            storageKey,
+            idempotencyKey,
+            GetOrCreateProductionBuildingSnapshotToken(slot.PlayerBuildingId));
+        return StartCoroutine(CollectProductionRoutine(slot, idempotencyKey, storageKey, session, CurrentSceneId, onComplete));
     }
 
     public Coroutine LoadProductionDetail(LandSlotController slot, Action<BackendResult<ProductionResponse[]>> onComplete = null)
@@ -372,12 +477,46 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     public Coroutine CollectAllProductions(Action<bool, string, int> onComplete)
     {
+        return CollectAllProductions(CurrentSceneId, onComplete);
+    }
+
+    public Coroutine CollectAllProductions(string idempotencyKey, Action<bool, string, int> onComplete)
+    {
+        return CollectAllProductions(CurrentSceneId, idempotencyKey, onComplete);
+    }
+
+    public Coroutine CollectAllProductions(int sceneId, Action<bool, string, int> onComplete)
+    {
         if (!IsAuthenticated)
         {
             onComplete?.Invoke(false, "Backend session is not authenticated.", 0);
             return null;
         }
-        return StartCoroutine(CollectAllProductionsRoutine(onComplete));
+        string storageKey = BuildProductionCollectAllStorageKey(sceneId);
+        string snapshotToken = GetOrCreateProductionSceneSnapshotToken(sceneId);
+        string persistedKey = GetOrCreatePersistedIdempotencyKey(storageKey, snapshotToken);
+        return CollectAllProductions(sceneId, persistedKey, onComplete);
+    }
+
+    public Coroutine CollectAllProductions(int sceneId, string idempotencyKey, Action<bool, string, int> onComplete)
+    {
+        if (!IsAuthenticated)
+        {
+            onComplete?.Invoke(false, "Backend session is not authenticated.", 0);
+            return null;
+        }
+        if (!Guid.TryParse(idempotencyKey, out _))
+        {
+            onComplete?.Invoke(false, "A valid idempotency key is required.", 0);
+            return null;
+        }
+        SessionRequestSnapshot session = CaptureSessionRequest();
+        string storageKey = BuildProductionCollectAllStorageKey(sceneId);
+        SavePersistedIdempotencyKey(
+            storageKey,
+            idempotencyKey,
+            GetOrCreateProductionSceneSnapshotToken(sceneId));
+        return StartCoroutine(CollectAllProductionsRoutine(sceneId, idempotencyKey, storageKey, session, onComplete));
     }
 
     public Coroutine LoadIdleAdventureAfkReward(Action<BackendResult<IdleAdventureAfkRewardStateResponse>> onComplete = null)
@@ -454,7 +593,22 @@ public sealed partial class BackendGameService : MonoBehaviour
             return null;
         }
 
-        return StartCoroutine(StartIdleAdventureSessionRoutine(request, onComplete));
+        if (request == null)
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Idle Adventure start request is missing.", null));
+            return null;
+        }
+
+        SessionRequestSnapshot session = CaptureSessionRequest();
+        string storageKey = BuildIdleAdventureStartStorageKey(session.PlayerId);
+        string requestContext = BuildIdleAdventureStartRequestContext(request);
+        string idempotencyKey = GetOrCreatePersistedIdempotencyKey(storageKey, requestContext);
+        return StartCoroutine(StartIdleAdventureSessionRoutine(
+            request,
+            idempotencyKey,
+            storageKey,
+            session,
+            onComplete));
     }
 
     public Coroutine LoadIdleAdventureSession(string sessionKey, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
@@ -465,7 +619,7 @@ public sealed partial class BackendGameService : MonoBehaviour
             return null;
         }
 
-        return StartCoroutine(LoadIdleAdventureSessionRoutine(sessionKey, onComplete));
+        return StartCoroutine(LoadIdleAdventureSessionRoutine(sessionKey, CaptureSessionRequest(), onComplete));
     }
 
     public Coroutine ResolveIdleAdventureRound(string sessionKey, int clientRound, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
@@ -476,7 +630,22 @@ public sealed partial class BackendGameService : MonoBehaviour
             return null;
         }
 
-        return StartCoroutine(ResolveIdleAdventureRoundRoutine(sessionKey, clientRound, onComplete));
+        int normalizedRound = Mathf.Max(1, clientRound);
+        SessionRequestSnapshot session = CaptureSessionRequest();
+        string storageKey = BuildIdleAdventureCommandStorageKey(
+            session.PlayerId,
+            "round",
+            sessionKey,
+            normalizedRound.ToString());
+        string snapshotToken = GetOrCreateIdleAdventureSessionSnapshotToken(session.PlayerId, sessionKey);
+        string idempotencyKey = GetOrCreatePersistedIdempotencyKey(storageKey, snapshotToken);
+        return StartCoroutine(ResolveIdleAdventureRoundRoutine(
+            sessionKey,
+            normalizedRound,
+            idempotencyKey,
+            storageKey,
+            session,
+            onComplete));
     }
 
     public Coroutine ApplyIdleAdventureBuff(string sessionKey, IdleAdventureApplyBuffRequest request, Action<BackendResult<IdleAdventureBuffAppliedResponse>> onComplete = null)
@@ -487,7 +656,24 @@ public sealed partial class BackendGameService : MonoBehaviour
             return null;
         }
 
-        return StartCoroutine(ApplyIdleAdventureBuffRoutine(sessionKey, request, onComplete));
+        string discriminator = (request.target_side ?? string.Empty).Trim().ToUpperInvariant()
+            + "." + request.slot_index
+            + "." + request.buff_preset_id;
+        SessionRequestSnapshot session = CaptureSessionRequest();
+        string storageKey = BuildIdleAdventureCommandStorageKey(
+            session.PlayerId,
+            "buff",
+            sessionKey,
+            discriminator);
+        string snapshotToken = GetOrCreateIdleAdventureSessionSnapshotToken(session.PlayerId, sessionKey);
+        string idempotencyKey = GetOrCreatePersistedIdempotencyKey(storageKey, snapshotToken);
+        return StartCoroutine(ApplyIdleAdventureBuffRoutine(
+            sessionKey,
+            request,
+            idempotencyKey,
+            storageKey,
+            session,
+            onComplete));
     }
 
     public Coroutine ContinueIdleAdventureStage(string sessionKey, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
@@ -498,7 +684,12 @@ public sealed partial class BackendGameService : MonoBehaviour
             return null;
         }
 
-        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(sessionKey, "stages/continue", onComplete));
+        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(
+            sessionKey,
+            "stages/continue",
+            "continue",
+            CaptureSessionRequest(),
+            onComplete));
     }
 
     public Coroutine RetryIdleAdventureStage(string sessionKey, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
@@ -509,7 +700,12 @@ public sealed partial class BackendGameService : MonoBehaviour
             return null;
         }
 
-        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(sessionKey, "stages/retry", onComplete));
+        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(
+            sessionKey,
+            "stages/retry",
+            "retry",
+            CaptureSessionRequest(),
+            onComplete));
     }
 
     public Coroutine PauseIdleAdventureSession(string sessionKey, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
@@ -520,7 +716,12 @@ public sealed partial class BackendGameService : MonoBehaviour
             return null;
         }
 
-        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(sessionKey, "pause", onComplete));
+        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(
+            sessionKey,
+            "pause",
+            "pause",
+            CaptureSessionRequest(),
+            onComplete));
     }
 
     public Coroutine ResumeIdleAdventureSession(string sessionKey, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
@@ -531,7 +732,12 @@ public sealed partial class BackendGameService : MonoBehaviour
             return null;
         }
 
-        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(sessionKey, "resume", onComplete));
+        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(
+            sessionKey,
+            "resume",
+            "resume",
+            CaptureSessionRequest(),
+            onComplete));
     }
 
     public Coroutine EndIdleAdventureSession(string sessionKey, Action<BackendResult<IdleAdventureSessionResponse>> onComplete = null)
@@ -542,18 +748,17 @@ public sealed partial class BackendGameService : MonoBehaviour
             return null;
         }
 
-        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(sessionKey, "end", onComplete));
+        return StartCoroutine(PostIdleAdventureSessionCommandRoutine(
+            sessionKey,
+            "end",
+            "end",
+            CaptureSessionRequest(),
+            onComplete));
     }
 
     public Coroutine LoadIdleAdventureProgress(Action<BackendResult<IdleAdventureProgressResponse>> onComplete = null)
     {
-        if (!IsAuthenticated)
-        {
-            onComplete?.Invoke(new BackendResult<IdleAdventureProgressResponse>(false, 0, "Backend session is not authenticated.", null));
-            return null;
-        }
-
-        return StartCoroutine(LoadIdleAdventureProgressRoutine(onComplete));
+        return RefreshIdleAdventureProgress(onComplete);
     }
 
     public Coroutine CollectIdleAdventureAfkReward(Action<BackendResult<IdleAdventureAfkRewardCollectResponse>> onComplete = null)
@@ -563,8 +768,34 @@ public sealed partial class BackendGameService : MonoBehaviour
             onComplete?.Invoke(new BackendResult<IdleAdventureAfkRewardCollectResponse>(false, 0, "Backend session is not authenticated.", null));
             return null;
         }
+        string storageKey = AfkCollectKeyPrefix + PlayerId;
+        string snapshotToken = GetOrCreateIdleAdventureAfkSnapshotToken();
+        string key = GetOrCreatePersistedIdempotencyKey(storageKey, snapshotToken);
+        return CollectIdleAdventureAfkReward(key, onComplete);
+    }
 
-        return StartCoroutine(CollectIdleAdventureAfkRewardRoutine(onComplete));
+    public Coroutine CollectIdleAdventureAfkReward(
+        string idempotencyKey,
+        Action<BackendResult<IdleAdventureAfkRewardCollectResponse>> onComplete = null)
+    {
+        if (!IsAuthenticated)
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureAfkRewardCollectResponse>(false, 0, "Backend session is not authenticated.", null));
+            return null;
+        }
+        if (!Guid.TryParse(idempotencyKey, out _))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureAfkRewardCollectResponse>(false, 0, "A valid idempotency key is required.", null));
+            return null;
+        }
+        SessionRequestSnapshot session = CaptureSessionRequest();
+        string storageKey = AfkCollectKeyPrefix + session.PlayerId;
+        SavePersistedIdempotencyKey(
+            storageKey,
+            idempotencyKey,
+            GetOrCreateIdleAdventureAfkSnapshotToken());
+
+        return StartCoroutine(CollectIdleAdventureAfkRewardRoutine(idempotencyKey, storageKey, session, onComplete));
     }
 
     public Coroutine GetAvailableNpcs(LandSlotController slot, Action<BackendResult<NpcResponse[]>> onComplete)
@@ -695,23 +926,30 @@ public sealed partial class BackendGameService : MonoBehaviour
         yield return RequestInventoryRoutine(null);
         yield return LoadNpcCatalogRoutine(null);
         yield return LoadPlayerNpcsRoutine(null);
+        yield return RefreshIdleAdventureProgress(null);
         ScheduleNextProductionPoll();
     }
 
     private IEnumerator RequestUserRoutine(Action<bool> onComplete)
     {
+        string requestToken = Token;
+        int requestPlayerId = PlayerId;
+        int requestSessionRevision = observedSessionRevision;
         BackendResult<UserResponse> result = null;
-        yield return BackendApiClient.Get<UserResponse>(baseUrl, Token, "user/me", value => result = value);
+        yield return BackendApiClient.Get<UserResponse>(baseUrl, requestToken, "user/me", value => result = value);
+
+        if (!IsSessionRequestCurrent(requestToken, requestPlayerId, requestSessionRevision))
+        {
+            onComplete?.Invoke(false);
+            yield break;
+        }
 
         bool success = result != null && result.Success && result.Data != null;
         if (success)
         {
-            CurrentUser = result.Data;
-            PlayerId = CurrentUser.id;
+            ApplyUserSnapshot(result.Data);
             PlayerPrefs.SetInt(PlayerIdKey, PlayerId);
             PlayerPrefs.Save();
-            SyncWeChatFriendLevel(CurrentUser.level);
-            RefreshLandUnlockState();
             Debug.Log($"Backend user loaded: {CurrentUser.nickname} gold={CurrentUser.gold} wood={CurrentUser.wood} stone={CurrentUser.stone} iron={CurrentUser.iron}", this);
         }
         else if (result != null && result.HttpStatus == 401)
@@ -728,14 +966,33 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     private IEnumerator RequestInventoryRoutine(Action<BackendResult<InventoryItemResponse[]>> onComplete)
     {
+        string requestToken = Token;
+        int requestPlayerId = PlayerId;
+        int requestSessionRevision = observedSessionRevision;
         BackendResult<InventoryItemResponse[]> result = null;
-        yield return BackendApiClient.Get<InventoryItemResponse[]>(baseUrl, Token, $"inventory/list/{PlayerId}", value => result = value);
+        yield return BackendApiClient.Get<InventoryItemResponse[]>(
+            baseUrl,
+            requestToken,
+            $"inventory/list/{requestPlayerId}",
+            value => result = value);
+
+        if (!IsSessionRequestCurrent(requestToken, requestPlayerId, requestSessionRevision))
+        {
+            onComplete?.Invoke(new BackendResult<InventoryItemResponse[]>(
+                false,
+                0,
+                "Backend session changed while inventory was loading.",
+                null));
+            yield break;
+        }
 
         if (result != null && result.Success && result.Data != null)
         {
-            CurrentInventory = result.Data;
-            if (CurrentUser == null) CurrentUser = new UserResponse();
-            CurrentUser.items = result.Data;
+            ApplyInventorySnapshot(result.Data);
+        }
+        else if (result != null && result.HttpStatus == 401)
+        {
+            ClearSession();
         }
         else
         {
@@ -745,10 +1002,51 @@ public sealed partial class BackendGameService : MonoBehaviour
         onComplete?.Invoke(result);
     }
 
+    private bool IsSessionRequestCurrent(string requestToken, int requestPlayerId, int requestSessionRevision)
+    {
+        return requestSessionRevision == observedSessionRevision
+            && requestSessionRevision == PlayerPrefs.GetInt(SessionRevisionKey, 0)
+            && requestPlayerId == PlayerId
+            && string.Equals(requestToken, Token, StringComparison.Ordinal);
+    }
+
+    private SessionRequestSnapshot CaptureSessionRequest()
+    {
+        return new SessionRequestSnapshot(Token, PlayerId, observedSessionRevision);
+    }
+
+    private bool IsSessionRequestCurrent(SessionRequestSnapshot request)
+    {
+        return request != null
+            && IsSessionRequestCurrent(request.Token, request.PlayerId, request.Revision);
+    }
+
+    private int AdvanceSceneRequestGeneration()
+    {
+        sceneRequestGeneration = sceneRequestGeneration == int.MaxValue
+            ? 1
+            : sceneRequestGeneration + 1;
+        return sceneRequestGeneration;
+    }
+
+    private bool IsSceneRequestGenerationCurrent(int requestGeneration)
+    {
+        return requestGeneration == sceneRequestGeneration;
+    }
+
+    private bool IsSceneRequestCurrent(int expectedSceneId, int requestGeneration)
+    {
+        return IsSceneRequestGenerationCurrent(requestGeneration)
+            && (expectedSceneId <= 0 || CurrentSceneId == expectedSceneId);
+    }
+
     private IEnumerator LoadAvailableBuildingsRoutine()
     {
+        SessionRequestSnapshot session = CaptureSessionRequest();
         BackendResult<BuildingConfigResponse[]> result = null;
-        yield return BackendApiClient.Get<BuildingConfigResponse[]>(baseUrl, Token, $"building/available/{PlayerId}", value => result = value);
+        yield return BackendApiClient.Get<BuildingConfigResponse[]>(baseUrl, session.Token, $"building/available/{session.PlayerId}", value => result = value);
+
+        if (!IsSessionRequestCurrent(session)) yield break;
 
         if (result == null || !result.Success || result.Data == null)
         {
@@ -768,8 +1066,11 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     private IEnumerator LoadAvailableLandsRoutine()
     {
+        SessionRequestSnapshot session = CaptureSessionRequest();
         BackendResult<LandConfigResponse[]> result = null;
-        yield return BackendApiClient.Get<LandConfigResponse[]>(baseUrl, Token, $"land/available/{PlayerId}", value => result = value);
+        yield return BackendApiClient.Get<LandConfigResponse[]>(baseUrl, session.Token, $"land/available/{session.PlayerId}", value => result = value);
+
+        if (!IsSessionRequestCurrent(session)) yield break;
 
         remoteAvailableLands.Clear();
         if (result == null || !result.Success || result.Data == null)
@@ -779,35 +1080,55 @@ public sealed partial class BackendGameService : MonoBehaviour
             yield break;
         }
 
+        int placeableCount = 0;
         for (int i = 0; i < result.Data.Length; i++)
         {
             LandConfigResponse response = result.Data[i];
-            if (response == null || !response.canPlace) continue;
+            if (response == null) continue;
 
             LandConfig config = RuntimeConfigFactory.ResolveLand(response);
-            if (config != null) remoteAvailableLands.Add(config);
+            if (config == null) continue;
+
+            remoteAvailableLands.Add(config);
+            if (response.canPlace) placeableCount++;
         }
 
+        Debug.Log($"Backend available lands loaded: total={remoteAvailableLands.Count}, placeable={placeableCount}.", this);
         ApplyRemoteLandDragItems();
     }
 
     private void ApplyRemoteLandDragItems()
     {
         BuildPanelController panel = FindFirstObjectByType<BuildPanelController>();
-        if (panel != null) panel.SetRemoteAvailableLands(remoteAvailableLands);
+        if (panel == null) return;
+        if (CurrentUser == null)
+        {
+            panel.SetRemoteAvailableLands(null);
+            return;
+        }
+
+        int playerLevel = Mathf.Max(1, CurrentUser.level);
+        List<LandConfig> unlockedLands = new List<LandConfig>();
+        for (int i = 0; i < remoteAvailableLands.Count; i++)
+        {
+            LandConfig config = remoteAvailableLands[i];
+            if (config != null && config.unlockLevel <= playerLevel) unlockedLands.Add(config);
+        }
+
+        panel.SetRemoteAvailableLands(unlockedLands);
     }
 
     private IEnumerator CheckBuildingRoutine(BuildingConfig config, Action<BackendResult<BuildingConditionResponse>> onComplete)
     {
         BackendResult<BuildingConditionResponse> result = null;
-        yield return BackendApiClient.Get<BuildingConditionResponse>(baseUrl, Token, AddSceneQuery($"building/check/{PlayerId}/{config.buildingId}"), value => result = value);
+        yield return BackendApiClient.Get<BuildingConditionResponse>(baseUrl, Token, $"building/check/{PlayerId}/{config.buildingId}", value => result = value);
         onComplete?.Invoke(result);
     }
 
     private IEnumerator CheckBuildingForLandRoutine(LandSlotController slot, BuildingConfig config, Action<BackendResult<BuildingConditionResponse>> onComplete)
     {
         BackendResult<BuildingConditionResponse> result = null;
-        yield return BackendApiClient.Get<BuildingConditionResponse>(baseUrl, Token, AddSceneQuery($"building/check/{PlayerId}/{config.buildingId}/{slot.PlayerLandId}"), value => result = value);
+        yield return BackendApiClient.Get<BuildingConditionResponse>(baseUrl, Token, $"building/check/{PlayerId}/{config.buildingId}/{slot.PlayerLandId}", value => result = value);
         onComplete?.Invoke(result);
     }
 
@@ -818,6 +1139,7 @@ public sealed partial class BackendGameService : MonoBehaviour
 
         if (result != null && result.Success && result.Data != null)
         {
+            ApplyBuildingExperienceGrants(result.Data);
             if (MapManager.Instance != null) MapManager.Instance.ApplyRemoteBuildings(result.Data);
         }
         else
@@ -835,6 +1157,7 @@ public sealed partial class BackendGameService : MonoBehaviour
 
         if (result != null && result.Success && result.Data != null)
         {
+            ApplyBuildingExperienceGrant(result.Data);
             slot.ApplyRemoteBuilding(RuntimeConfigFactory.ResolveBuilding(result.Data), result.Data);
         }
         else
@@ -854,12 +1177,22 @@ public sealed partial class BackendGameService : MonoBehaviour
         }
 
         buildingSyncPending = true;
+        SessionRequestSnapshot session = CaptureSessionRequest();
+        int sceneId = CurrentSceneId;
+        string path = $"building/sync/{session.PlayerId}";
+        if (sceneId > 0) path += "?sceneId=" + sceneId;
         BackendResult<BuildingResponse[]> result = null;
-        yield return BackendApiClient.Post<BuildingResponse[]>(baseUrl, Token, AddSceneQuery($"building/sync/{PlayerId}"), null, value => result = value);
+        yield return BackendApiClient.Post<BuildingResponse[]>(baseUrl, session.Token, path, null, value => result = value);
         buildingSyncPending = false;
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(new BackendResult<BuildingResponse[]>(false, 0, "Backend session changed while buildings were syncing.", null));
+            yield break;
+        }
 
         if (result != null && result.Success && result.Data != null)
         {
+            ApplyBuildingExperienceGrants(result.Data);
             if (MapManager.Instance != null) MapManager.Instance.ApplyRemoteBuildings(result.Data);
         }
         else
@@ -872,13 +1205,38 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     private IEnumerator SyncMapRoutine(Action<bool, string> onComplete)
     {
+        SessionRequestSnapshot session = CaptureSessionRequest();
+        int sceneId = CurrentSceneId;
+        int requestSceneGeneration = sceneRequestGeneration;
+        string path = $"land/map/{session.PlayerId}";
+        if (sceneId > 0) path += "?sceneId=" + sceneId;
         BackendResult<MapDataResponse> result = null;
-        yield return BackendApiClient.Get<MapDataResponse>(baseUrl, Token, AddSceneQuery($"land/map/{PlayerId}"), value => result = value);
+        yield return BackendApiClient.Get<MapDataResponse>(baseUrl, session.Token, path, value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(false, "Backend session changed while the land map was syncing.");
+            yield break;
+        }
+        if (!IsSceneRequestCurrent(sceneId, requestSceneGeneration))
+        {
+            onComplete?.Invoke(false, "Land map response was superseded by a newer scene request.");
+            yield break;
+        }
 
         bool success = result != null && result.Success && result.Data != null;
         if (success)
         {
-            CurrentSceneId = result.Data.sceneId > 0 ? result.Data.sceneId : CurrentSceneId;
+            if (sceneId > 0 && result.Data.sceneId > 0 && result.Data.sceneId != sceneId)
+            {
+                onComplete?.Invoke(false, "Land map response did not match the requested scene.");
+                yield break;
+            }
+            int resolvedSceneId = result.Data.sceneId > 0 ? result.Data.sceneId : CurrentSceneId;
+            if (resolvedSceneId != CurrentSceneId)
+            {
+                CurrentSceneId = resolvedSceneId;
+                AdvanceSceneRequestGeneration();
+            }
             if (result.Data.sceneConfigVersion > 0L)
             {
                 CurrentSceneConfigVersion = result.Data.sceneConfigVersion;
@@ -910,13 +1268,35 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     private IEnumerator RefreshProductionsRoutine(Action<bool, string> onComplete)
     {
+        SessionRequestSnapshot session = CaptureSessionRequest();
+        int sceneId = CurrentSceneId;
+        int requestSceneGeneration = sceneRequestGeneration;
+        string path = $"production/list/{session.PlayerId}";
+        if (sceneId > 0) path += "?sceneId=" + sceneId;
         BackendResult<ProductionResponse[]> result = null;
-        yield return BackendApiClient.Get<ProductionResponse[]>(baseUrl, Token, AddSceneQuery($"production/list/{PlayerId}"), value => result = value);
+        yield return BackendApiClient.Get<ProductionResponse[]>(baseUrl, session.Token, path, value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(false, "Backend session changed while productions were refreshing.");
+            yield break;
+        }
+        if (!IsSceneRequestCurrent(sceneId, requestSceneGeneration))
+        {
+            onComplete?.Invoke(false, "Production response was superseded by a newer scene request.");
+            yield break;
+        }
 
-        bool success = result != null && result.Success && result.Data != null;
+        bool success = result != null && result.Success;
         if (success)
         {
-            if (MapManager.Instance != null) MapManager.Instance.ApplyRemoteProductions(result.Data);
+            RememberProductionSceneSnapshot(result.Data, sceneId);
+            RememberProductionBuildingSnapshots(result.Data);
+            if (MapManager.Instance != null)
+            {
+                MapManager.Instance.ApplyRemoteProductionSnapshotForScene(
+                    result.Data ?? new ProductionResponse[0],
+                    sceneId);
+            }
         }
         else
         {
@@ -933,12 +1313,41 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     private IEnumerator LoadProductionDetailRoutine(LandSlotController slot, Action<BackendResult<ProductionResponse[]>> onComplete)
     {
+        SessionRequestSnapshot session = CaptureSessionRequest();
+        int sceneId = CurrentSceneId;
+        int requestSceneGeneration = sceneRequestGeneration;
+        int playerBuildingId = slot.PlayerBuildingId;
+        string path = $"production/detail/{session.PlayerId}/{playerBuildingId}";
         BackendResult<ProductionResponse[]> result = null;
-        yield return BackendApiClient.Get<ProductionResponse[]>(baseUrl, Token, AddSceneQuery($"production/detail/{PlayerId}/{slot.PlayerBuildingId}"), value => result = value);
-
-        if (result != null && result.Success && result.Data != null)
+        yield return BackendApiClient.Get<ProductionResponse[]>(baseUrl, session.Token, path, value => result = value);
+        if (!IsSessionRequestCurrent(session))
         {
-            if (MapManager.Instance != null) MapManager.Instance.ApplyRemoteProductions(result.Data);
+            onComplete?.Invoke(new BackendResult<ProductionResponse[]>(false, 0, "Backend session changed while production detail was loading.", null));
+            yield break;
+        }
+        if (!IsSceneRequestCurrent(sceneId, requestSceneGeneration))
+        {
+            onComplete?.Invoke(new BackendResult<ProductionResponse[]>(false, 0, "Production detail response was superseded by a newer scene request.", null));
+            yield break;
+        }
+
+        if (result != null && result.Success)
+        {
+            ProductionResponse[] productions = result.Data ?? new ProductionResponse[0];
+            RememberProductionBuildingSnapshot(playerBuildingId, productions);
+            if (MapManager.Instance != null)
+            {
+                MapManager.Instance.ApplyRemoteProductionSnapshotForBuilding(playerBuildingId, productions);
+            }
+            if (result.Data == null)
+            {
+                result = new BackendResult<ProductionResponse[]>(
+                    true,
+                    result.HttpStatus,
+                    result.Code,
+                    result.Message,
+                    productions);
+            }
         }
         else
         {
@@ -979,9 +1388,8 @@ public sealed partial class BackendGameService : MonoBehaviour
         BuildBuildingRequest request = new BuildBuildingRequest
         {
             playerId = PlayerId,
-            sceneId = CurrentSceneId,
             buildingId = config.buildingId,
-            landId = slot.PlayerLandId
+            playerLandId = slot.PlayerLandId
         };
 
         BackendResult<BuildingResponse> result = null;
@@ -990,8 +1398,13 @@ public sealed partial class BackendGameService : MonoBehaviour
         bool success = result != null && result.Success && result.Data != null;
         if (success)
         {
+            ApplyBuildingExperienceGrant(result.Data);
             slot.ApplyRemoteBuilding(RuntimeConfigFactory.ResolveBuilding(result.Data), result.Data);
             yield return RequestUserRoutine(null);
+            yield return LoadAvailableBuildingsRoutine();
+        }
+        else if (result != null && result.Code == 1009)
+        {
             yield return LoadAvailableBuildingsRoutine();
         }
 
@@ -1013,7 +1426,6 @@ public sealed partial class BackendGameService : MonoBehaviour
         PlayerBuildingRequest request = new PlayerBuildingRequest
         {
             playerId = PlayerId,
-            sceneId = CurrentSceneId,
             playerBuildingId = slot.PlayerBuildingId
         };
 
@@ -1023,7 +1435,11 @@ public sealed partial class BackendGameService : MonoBehaviour
         bool success = result != null && result.Success;
         if (success)
         {
-            if (result.Data != null) slot.ApplyRemoteBuilding(RuntimeConfigFactory.ResolveBuilding(result.Data), result.Data);
+            if (result.Data != null)
+            {
+                ApplyBuildingExperienceGrant(result.Data);
+                slot.ApplyRemoteBuilding(RuntimeConfigFactory.ResolveBuilding(result.Data), result.Data);
+            }
             yield return SyncMapRoutine(null);
             if (refreshUser)
             {
@@ -1041,7 +1457,6 @@ public sealed partial class BackendGameService : MonoBehaviour
         PlayerBuildingRequest request = new PlayerBuildingRequest
         {
             playerId = PlayerId,
-            sceneId = CurrentSceneId,
             playerBuildingId = slot.PlayerBuildingId
         };
 
@@ -1053,6 +1468,7 @@ public sealed partial class BackendGameService : MonoBehaviour
         {
             slot.ClearBuildingStateFromBackend();
             yield return SyncMapRoutine(null);
+            yield return RefreshUserAndInventoryAfterMutation();
         }
 
         onComplete?.Invoke(success, ResultMessage(result));
@@ -1063,9 +1479,8 @@ public sealed partial class BackendGameService : MonoBehaviour
         MoveBuildingRequest request = new MoveBuildingRequest
         {
             playerId = PlayerId,
-            sceneId = CurrentSceneId,
             playerBuildingId = source.PlayerBuildingId,
-            targetLandId = target.PlayerLandId
+            targetPlayerLandId = target.PlayerLandId
         };
 
         BackendResult<BuildingResponse> result = null;
@@ -1075,37 +1490,75 @@ public sealed partial class BackendGameService : MonoBehaviour
         if (success)
         {
             yield return SyncMapRoutine(null);
+            yield return RefreshUserAndInventoryAfterMutation();
         }
 
         onComplete?.Invoke(success, ResultMessage(result));
     }
 
-    private IEnumerator CollectProductionRoutine(LandSlotController slot, Action<bool, string> onComplete)
+    private IEnumerator CollectProductionRoutine(
+        LandSlotController slot,
+        string idempotencyKey,
+        string storageKey,
+        SessionRequestSnapshot session,
+        int sceneId,
+        Action<bool, string> onComplete)
     {
+        int requestSceneGeneration = sceneRequestGeneration;
         PlayerBuildingRequest request = new PlayerBuildingRequest
         {
-            playerId = PlayerId,
-            sceneId = CurrentSceneId,
+            playerId = session.PlayerId,
             playerBuildingId = slot.PlayerBuildingId
         };
 
         BackendResult<ProductionCollectResponse> result = null;
-        yield return BackendApiClient.Post<ProductionCollectResponse>(baseUrl, Token, "production/collect", request, value => result = value);
+        yield return BackendApiClient.Post<ProductionCollectResponse>(baseUrl, session.Token, "production/collect", request, idempotencyKey, value => result = value);
+
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(false, "Backend session changed while production was being collected.");
+            yield break;
+        }
+        if (!IsSceneRequestCurrent(sceneId, requestSceneGeneration))
+        {
+            onComplete?.Invoke(false, "Production collect response was superseded by a newer scene request.");
+            yield break;
+        }
 
         bool success = result != null && result.Success && result.Data != null;
         if (success)
         {
-            slot.ClearRemoteProductionState();
-            ApplyProductionCollect(result.Data);
+            if (!DeletePersistedIdempotencyKey(storageKey, idempotencyKey))
+            {
+                onComplete?.Invoke(false, "Production collect response was superseded by a newer request.");
+                yield break;
+            }
+            ApplyProductionCollect(result.Data, slot.PlayerBuildingId);
+            yield return RefreshUserAndInventoryAfterMutation();
+            if (!IsSessionRequestCurrent(session))
+            {
+                onComplete?.Invoke(false, "Backend session changed while production state was refreshing.");
+                yield break;
+            }
             yield return LoadAvailableLandsRoutine();
+            if (!IsSessionRequestCurrent(session))
+            {
+                onComplete?.Invoke(false, "Backend session changed while available lands were refreshing.");
+                yield break;
+            }
             yield return LoadAvailableBuildingsRoutine();
+            if (!IsSessionRequestCurrent(session))
+            {
+                onComplete?.Invoke(false, "Backend session changed while available buildings were refreshing.");
+                yield break;
+            }
         }
         onComplete?.Invoke(success, ResultMessage(result));
     }
 
     private IEnumerator PurchaseLandSlotRoutine(
         LandSlotController slot,
-        Action<bool, string, LandSlotStateResponse> onComplete)
+        Action<BackendResult<LandSlotStateResponse>> onComplete)
     {
         PurchaseLandSlotRequest request = new PurchaseLandSlotRequest
         {
@@ -1133,12 +1586,12 @@ public sealed partial class BackendGameService : MonoBehaviour
             yield return SyncMapRoutine(null);
         }
 
-        onComplete?.Invoke(success, ResultMessage(result), result != null ? result.Data : null);
+        onComplete?.Invoke(result);
     }
 
     private IEnumerator PurifyLandSlotRoutine(
         LandSlotController slot,
-        Action<bool, string, LandSlotStateResponse> onComplete)
+        Action<BackendResult<LandSlotStateResponse>> onComplete)
     {
         PurchaseLandSlotRequest request = new PurchaseLandSlotRequest
         {
@@ -1149,14 +1602,6 @@ public sealed partial class BackendGameService : MonoBehaviour
             expectedSceneVersion = CurrentSceneConfigVersion,
             expectedPolicyRevision = CurrentLandPolicyRevision
         };
-
-        LandSlotStateResponse snapshot = FindPurificationSnapshot(slot.GridPosition.x, slot.GridPosition.y);
-        if (snapshot != null)
-        {
-            request.purificationItemId = snapshot.purificationItemId;
-            request.purificationItemKey = snapshot.purificationItemKey;
-            request.purificationItemAmount = snapshot.purificationItemAmount;
-        }
 
         BackendResult<LandSlotStateResponse> result = null;
         yield return BackendApiClient.Post<LandSlotStateResponse>(
@@ -1170,27 +1615,68 @@ public sealed partial class BackendGameService : MonoBehaviour
         if (success)
         {
             slot.ApplyRemoteUnlockState(result.Data);
+            yield return RefreshUserAndInventoryAfterMutation();
             yield return SyncMapRoutine(null);
         }
 
-        onComplete?.Invoke(success, ResultMessage(result), result != null ? result.Data : null);
+        onComplete?.Invoke(result);
     }
 
-    private IEnumerator CollectAllProductionsRoutine(Action<bool, string, int> onComplete)
+    private IEnumerator CollectAllProductionsRoutine(
+        int sceneId,
+        string idempotencyKey,
+        string storageKey,
+        SessionRequestSnapshot session,
+        Action<bool, string, int> onComplete)
     {
-        PlayerIdRequest request = new PlayerIdRequest { playerId = PlayerId, sceneId = CurrentSceneId };
+        int requestSceneGeneration = sceneRequestGeneration;
+        string request = sceneId > 0
+            ? "{\"playerId\":" + session.PlayerId + ",\"sceneId\":" + sceneId + "}"
+            : "{\"playerId\":" + session.PlayerId + "}";
         BackendResult<ProductionCollectResponse> result = null;
-        yield return BackendApiClient.Post<ProductionCollectResponse>(baseUrl, Token, "production/collect-all", request, value => result = value);
+        yield return BackendApiClient.Post<ProductionCollectResponse>(baseUrl, session.Token, "production/collect-all", request, idempotencyKey, value => result = value);
+
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(false, "Backend session changed while productions were being collected.", 0);
+            yield break;
+        }
+        if (!IsSceneRequestCurrent(sceneId, requestSceneGeneration))
+        {
+            onComplete?.Invoke(false, "Production collect-all response was superseded by a newer scene request.", 0);
+            yield break;
+        }
 
         bool success = result != null && result.Success && result.Data != null;
         int collectedCount = 0;
         if (success)
         {
+            if (!DeletePersistedIdempotencyKey(storageKey, idempotencyKey))
+            {
+                onComplete?.Invoke(false, "Production collect-all response was superseded by a newer request.", 0);
+                yield break;
+            }
             collectedCount = result.Data.collectedItems != null ? result.Data.collectedItems.Length : 0;
             if (MapManager.Instance != null) MapManager.Instance.ClearReadyRemoteProductions();
             ApplyProductionCollect(result.Data);
+            yield return RefreshUserAndInventoryAfterMutation();
+            if (!IsSessionRequestCurrent(session))
+            {
+                onComplete?.Invoke(false, "Backend session changed while production state was refreshing.", 0);
+                yield break;
+            }
             yield return LoadAvailableLandsRoutine();
+            if (!IsSessionRequestCurrent(session))
+            {
+                onComplete?.Invoke(false, "Backend session changed while available lands were refreshing.", 0);
+                yield break;
+            }
             yield return LoadAvailableBuildingsRoutine();
+            if (!IsSessionRequestCurrent(session))
+            {
+                onComplete?.Invoke(false, "Backend session changed while available buildings were refreshing.", 0);
+                yield break;
+            }
         }
 
         onComplete?.Invoke(success, ResultMessage(result), collectedCount);
@@ -1198,110 +1684,397 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     private IEnumerator LoadIdleAdventureAfkRewardRoutine(Action<BackendResult<IdleAdventureAfkRewardStateResponse>> onComplete)
     {
+        SessionRequestSnapshot session = CaptureSessionRequest();
         BackendResult<IdleAdventureAfkRewardStateResponse> result = null;
-        yield return BackendApiClient.Get<IdleAdventureAfkRewardStateResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/afk-reward", value => result = value);
+        yield return BackendApiClient.Get<IdleAdventureAfkRewardStateResponse>(baseUrl, session.Token, $"idle-adventure/players/{session.PlayerId}/afk-reward", value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureAfkRewardStateResponse>(false, 0, "Backend session changed while AFK state was loading.", null));
+            yield break;
+        }
+        if (result != null && result.Success && result.Data != null)
+        {
+            RememberIdleAdventureAfkSnapshot(result.Data);
+        }
         onComplete?.Invoke(result);
     }
 
     private IEnumerator LoadIdleAdventureHomeRoutine(Action<BackendResult<IdleAdventureHomeResponse>> onComplete)
     {
+        SessionRequestSnapshot session = CaptureSessionRequest();
         BackendResult<IdleAdventureHomeResponse> result = null;
-        yield return BackendApiClient.Get<IdleAdventureHomeResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/home", value => result = value);
+        yield return BackendApiClient.Get<IdleAdventureHomeResponse>(baseUrl, session.Token, $"idle-adventure/players/{session.PlayerId}/home", value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureHomeResponse>(false, 0, "Backend session changed while adventure home was loading.", null));
+            yield break;
+        }
         if (result != null && result.Success && result.Data != null && result.Data.stamina != null)
         {
             ApplyAuthoritativeStamina(result.Data.stamina);
+        }
+        if (result != null && result.Success && result.Data != null)
+        {
+            IdleAdventureAfkRewardStateResponse afkState = result.Data.ResolvedAfkReward;
+            if (afkState == null)
+            {
+                BackendResult<IdleAdventureAfkRewardStateResponse> afkResult = null;
+                yield return BackendApiClient.Get<IdleAdventureAfkRewardStateResponse>(
+                    baseUrl,
+                    session.Token,
+                    $"idle-adventure/players/{session.PlayerId}/afk-reward",
+                    value => afkResult = value);
+                if (!IsSessionRequestCurrent(session))
+                {
+                    onComplete?.Invoke(new BackendResult<IdleAdventureHomeResponse>(false, 0, "Backend session changed while adventure home was reconciling.", null));
+                    yield break;
+                }
+                if (afkResult != null && afkResult.Success) afkState = afkResult.Data;
+            }
+            RememberIdleAdventureAfkSnapshot(afkState);
+            ApplyIdleAdventureAfkStateToSources(afkState);
         }
         onComplete?.Invoke(result);
     }
 
     private IEnumerator LoadIdleAdventureFormationRoutine(Action<BackendResult<IdleAdventureFormationResponse>> onComplete)
     {
+        SessionRequestSnapshot session = CaptureSessionRequest();
         BackendResult<IdleAdventureFormationResponse> result = null;
-        yield return BackendApiClient.Get<IdleAdventureFormationResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/formation", value => result = value);
+        yield return BackendApiClient.Get<IdleAdventureFormationResponse>(
+            baseUrl,
+            session.Token,
+            $"idle-adventure/players/{session.PlayerId}/formation",
+            value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureFormationResponse>(false, 0, "Backend session changed while adventure formation was loading.", null));
+            yield break;
+        }
         onComplete?.Invoke(result);
     }
 
     private IEnumerator SaveIdleAdventureFormationRoutine(IdleAdventureSaveFormationRequest request, Action<BackendResult<IdleAdventureFormationResponse>> onComplete)
     {
+        SessionRequestSnapshot session = CaptureSessionRequest();
         string json = request != null ? request.ToJson() : "{\"slots\":[]}";
         BackendResult<IdleAdventureFormationResponse> result = null;
-        yield return BackendApiClient.Put<IdleAdventureFormationResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/formation", json, value => result = value);
+        yield return BackendApiClient.Put<IdleAdventureFormationResponse>(
+            baseUrl,
+            session.Token,
+            $"idle-adventure/players/{session.PlayerId}/formation",
+            json,
+            value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureFormationResponse>(false, 0, "Backend session changed while adventure formation was saving.", null));
+            yield break;
+        }
         onComplete?.Invoke(result);
     }
 
     private IEnumerator AutoFillIdleAdventureFormationRoutine(Action<BackendResult<IdleAdventureFormationResponse>> onComplete)
     {
+        SessionRequestSnapshot session = CaptureSessionRequest();
         BackendResult<IdleAdventureFormationResponse> result = null;
-        yield return BackendApiClient.Post<IdleAdventureFormationResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/formation/auto-fill", null, value => result = value);
+        yield return BackendApiClient.Post<IdleAdventureFormationResponse>(
+            baseUrl,
+            session.Token,
+            $"idle-adventure/players/{session.PlayerId}/formation/auto-fill",
+            null,
+            value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureFormationResponse>(false, 0, "Backend session changed while adventure formation was auto-filling.", null));
+            yield break;
+        }
         onComplete?.Invoke(result);
     }
 
     private IEnumerator ClearIdleAdventureFormationRoutine(Action<BackendResult<IdleAdventureFormationResponse>> onComplete)
     {
+        SessionRequestSnapshot session = CaptureSessionRequest();
         BackendResult<IdleAdventureFormationResponse> result = null;
-        yield return BackendApiClient.Post<IdleAdventureFormationResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/formation/clear", null, value => result = value);
+        yield return BackendApiClient.Post<IdleAdventureFormationResponse>(
+            baseUrl,
+            session.Token,
+            $"idle-adventure/players/{session.PlayerId}/formation/clear",
+            null,
+            value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureFormationResponse>(false, 0, "Backend session changed while adventure formation was clearing.", null));
+            yield break;
+        }
         onComplete?.Invoke(result);
     }
 
-    private IEnumerator StartIdleAdventureSessionRoutine(IdleAdventureStartSessionRequest request, Action<BackendResult<IdleAdventureSessionResponse>> onComplete)
+    private IEnumerator StartIdleAdventureSessionRoutine(
+        IdleAdventureStartSessionRequest request,
+        string idempotencyKey,
+        string storageKey,
+        SessionRequestSnapshot session,
+        Action<BackendResult<IdleAdventureSessionResponse>> onComplete)
     {
         BackendResult<IdleAdventureSessionResponse> result = null;
-        yield return BackendApiClient.Post<IdleAdventureSessionResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/sessions/start", request, value => result = value);
+        yield return BackendApiClient.Post<IdleAdventureSessionResponse>(
+            baseUrl,
+            session.Token,
+            $"idle-adventure/players/{session.PlayerId}/sessions/start",
+            request,
+            idempotencyKey,
+            value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Backend session changed while an adventure session was starting.", null));
+            yield break;
+        }
+        if (result != null && result.Success && result.Data != null)
+        {
+            DeletePersistedIdempotencyKey(storageKey, idempotencyKey);
+            RememberIdleAdventureSessionSnapshot(session.PlayerId, result.Data.session_key, result.Data);
+        }
+        else if (ShouldDiscardIdleAdventureStartKey(result))
+        {
+            DeletePersistedIdempotencyKey(storageKey, idempotencyKey);
+        }
         onComplete?.Invoke(result);
     }
 
-    private IEnumerator LoadIdleAdventureSessionRoutine(string sessionKey, Action<BackendResult<IdleAdventureSessionResponse>> onComplete)
+    private IEnumerator LoadIdleAdventureSessionRoutine(
+        string sessionKey,
+        SessionRequestSnapshot session,
+        Action<BackendResult<IdleAdventureSessionResponse>> onComplete)
     {
         BackendResult<IdleAdventureSessionResponse> result = null;
-        yield return BackendApiClient.Get<IdleAdventureSessionResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/sessions/{sessionKey}", value => result = value);
+        yield return BackendApiClient.Get<IdleAdventureSessionResponse>(baseUrl, session.Token, $"idle-adventure/players/{session.PlayerId}/sessions/{sessionKey}", value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Backend session changed while adventure state was loading.", null));
+            yield break;
+        }
+        if (result != null && result.Success && result.Data != null)
+        {
+            RememberIdleAdventureSessionSnapshot(session.PlayerId, sessionKey, result.Data);
+        }
         onComplete?.Invoke(result);
     }
 
-    private IEnumerator ResolveIdleAdventureRoundRoutine(string sessionKey, int clientRound, Action<BackendResult<IdleAdventureSessionResponse>> onComplete)
+    private IEnumerator ResolveIdleAdventureRoundRoutine(
+        string sessionKey,
+        int clientRound,
+        string idempotencyKey,
+        string storageKey,
+        SessionRequestSnapshot session,
+        Action<BackendResult<IdleAdventureSessionResponse>> onComplete)
     {
         IdleAdventureResolveRoundRequest request = new IdleAdventureResolveRoundRequest { client_round = Mathf.Max(1, clientRound) };
         BackendResult<IdleAdventureSessionResponse> result = null;
-        yield return BackendApiClient.Post<IdleAdventureSessionResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/sessions/{sessionKey}/rounds/resolve", request, value => result = value);
+        yield return BackendApiClient.Post<IdleAdventureSessionResponse>(
+            baseUrl,
+            session.Token,
+            $"idle-adventure/players/{session.PlayerId}/sessions/{sessionKey}/rounds/resolve",
+            request,
+            idempotencyKey,
+            value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Backend session changed while the adventure round was resolving.", null));
+            yield break;
+        }
+        if (result != null && result.Success && result.Data != null)
+        {
+            if (!DeletePersistedIdempotencyKey(storageKey, idempotencyKey))
+            {
+                onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Adventure round response was superseded by a newer request.", null));
+                yield break;
+            }
+            RememberIdleAdventureSessionSnapshot(session.PlayerId, sessionKey, result.Data);
+        }
         onComplete?.Invoke(result);
     }
 
-    private IEnumerator ApplyIdleAdventureBuffRoutine(string sessionKey, IdleAdventureApplyBuffRequest request, Action<BackendResult<IdleAdventureBuffAppliedResponse>> onComplete)
+    private IEnumerator ApplyIdleAdventureBuffRoutine(
+        string sessionKey,
+        IdleAdventureApplyBuffRequest request,
+        string idempotencyKey,
+        string storageKey,
+        SessionRequestSnapshot session,
+        Action<BackendResult<IdleAdventureBuffAppliedResponse>> onComplete)
     {
         BackendResult<IdleAdventureBuffAppliedResponse> result = null;
-        yield return BackendApiClient.Post<IdleAdventureBuffAppliedResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/sessions/{sessionKey}/buffs/apply", request, value => result = value);
+        yield return BackendApiClient.Post<IdleAdventureBuffAppliedResponse>(
+            baseUrl,
+            session.Token,
+            $"idle-adventure/players/{session.PlayerId}/sessions/{sessionKey}/buffs/apply",
+            request,
+            idempotencyKey,
+            value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureBuffAppliedResponse>(false, 0, "Backend session changed while the adventure buff was applying.", null));
+            yield break;
+        }
+        if (result != null && result.Success && result.Data != null)
+        {
+            if (!DeletePersistedIdempotencyKey(storageKey, idempotencyKey))
+            {
+                onComplete?.Invoke(new BackendResult<IdleAdventureBuffAppliedResponse>(false, 0, "Adventure buff response was superseded by a newer request.", null));
+                yield break;
+            }
+            RotateIdleAdventureSessionSnapshotToken(session.PlayerId, sessionKey);
+        }
         onComplete?.Invoke(result);
     }
 
-    private IEnumerator PostIdleAdventureSessionCommandRoutine(string sessionKey, string commandPath, Action<BackendResult<IdleAdventureSessionResponse>> onComplete)
+    private IEnumerator PostIdleAdventureSessionCommandRoutine(
+        string sessionKey,
+        string commandPath,
+        string operation,
+        SessionRequestSnapshot session,
+        Action<BackendResult<IdleAdventureSessionResponse>> onComplete)
     {
+        string storageKey = BuildIdleAdventureCommandStorageKey(session.PlayerId, operation, sessionKey, string.Empty);
+        string snapshotToken = GetOrCreateIdleAdventureSessionSnapshotToken(session.PlayerId, sessionKey);
+        string idempotencyKey = string.Equals(operation, "end", StringComparison.Ordinal)
+            ? GetOrCreatePersistedIdempotencyKey(storageKey)
+            : GetOrCreatePersistedIdempotencyKey(storageKey, snapshotToken);
         BackendResult<IdleAdventureSessionResponse> result = null;
-        yield return BackendApiClient.Post<IdleAdventureSessionResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/sessions/{sessionKey}/{commandPath}", null, value => result = value);
+        yield return BackendApiClient.Post<IdleAdventureSessionResponse>(
+            baseUrl,
+            session.Token,
+            $"idle-adventure/players/{session.PlayerId}/sessions/{sessionKey}/{commandPath}",
+            null,
+            idempotencyKey,
+            value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Backend session changed while the adventure command was running.", null));
+            yield break;
+        }
+        if (result != null && result.Success && result.Data != null)
+        {
+            if (!DeletePersistedIdempotencyKey(storageKey, idempotencyKey))
+            {
+                onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Adventure command response was superseded by a newer request.", null));
+                yield break;
+            }
+            RememberIdleAdventureSessionSnapshot(session.PlayerId, sessionKey, result.Data);
+        }
         if (result != null && result.Success && result.Data != null && result.Data.items != null)
         {
-            CurrentInventory = ConvertIdleAdventureInventory(result.Data.items);
-            if (CurrentUser == null) CurrentUser = new UserResponse();
-            CurrentUser.items = CurrentInventory;
+            ApplyInventorySnapshot(ConvertIdleAdventureInventory(result.Data.items));
+            yield return RefreshUserAndInventoryAfterMutation();
+            if (!IsSessionRequestCurrent(session))
+            {
+                onComplete?.Invoke(new BackendResult<IdleAdventureSessionResponse>(false, 0, "Backend session changed while adventure rewards were refreshing.", null));
+                yield break;
+            }
         }
         onComplete?.Invoke(result);
     }
 
     private IEnumerator LoadIdleAdventureProgressRoutine(Action<BackendResult<IdleAdventureProgressResponse>> onComplete)
     {
+        SessionRequestSnapshot session = CaptureSessionRequest();
         BackendResult<IdleAdventureProgressResponse> result = null;
-        yield return BackendApiClient.Get<IdleAdventureProgressResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/progress", value => result = value);
+        yield return BackendApiClient.Get<IdleAdventureProgressResponse>(baseUrl, session.Token, $"idle-adventure/players/{session.PlayerId}/progress", value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureProgressResponse>(false, 0, "Backend session changed while adventure progress was loading.", null));
+            yield break;
+        }
         onComplete?.Invoke(result);
     }
 
-    private IEnumerator CollectIdleAdventureAfkRewardRoutine(Action<BackendResult<IdleAdventureAfkRewardCollectResponse>> onComplete)
+    private IEnumerator CollectIdleAdventureAfkRewardRoutine(
+        string idempotencyKey,
+        string storageKey,
+        SessionRequestSnapshot session,
+        Action<BackendResult<IdleAdventureAfkRewardCollectResponse>> onComplete)
     {
         BackendResult<IdleAdventureAfkRewardCollectResponse> result = null;
-        yield return BackendApiClient.Post<IdleAdventureAfkRewardCollectResponse>(baseUrl, Token, $"idle-adventure/players/{PlayerId}/afk-reward/collect", null, value => result = value);
+        yield return BackendApiClient.Post<IdleAdventureAfkRewardCollectResponse>(
+            baseUrl,
+            session.Token,
+            $"idle-adventure/players/{session.PlayerId}/afk-reward/collect",
+            null,
+            idempotencyKey,
+            value => result = value);
+
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(new BackendResult<IdleAdventureAfkRewardCollectResponse>(false, 0, "Backend session changed while AFK rewards were being collected.", null));
+            yield break;
+        }
 
         if (result != null && result.Success && result.Data != null)
         {
-            CurrentInventory = ConvertIdleAdventureInventory(result.Data.items);
-            if (CurrentUser == null) CurrentUser = new UserResponse();
-            CurrentUser.items = CurrentInventory;
+            if (!OwnsPersistedIdempotencyKey(storageKey, idempotencyKey))
+            {
+                onComplete?.Invoke(new BackendResult<IdleAdventureAfkRewardCollectResponse>(false, 0, "AFK reward response was superseded by a newer request.", null));
+                yield break;
+            }
+            if (result.Data.items != null)
+            {
+                ApplyInventorySnapshot(ConvertIdleAdventureInventory(result.Data.items));
+            }
+
+            bool stateConfirmed = IdleAdventureAfkRewardSource.IsUsableBackendStateResponse(result.Data.state);
+            if (!stateConfirmed)
+            {
+                BackendResult<IdleAdventureAfkRewardStateResponse> stateResult = null;
+                yield return BackendApiClient.Get<IdleAdventureAfkRewardStateResponse>(
+                    baseUrl,
+                    session.Token,
+                    $"idle-adventure/players/{session.PlayerId}/afk-reward",
+                    value => stateResult = value);
+                if (!IsSessionRequestCurrent(session))
+                {
+                    onComplete?.Invoke(new BackendResult<IdleAdventureAfkRewardCollectResponse>(false, 0, "Backend session changed while AFK state was refreshing.", null));
+                    yield break;
+                }
+                if (!OwnsPersistedIdempotencyKey(storageKey, idempotencyKey))
+                {
+                    onComplete?.Invoke(new BackendResult<IdleAdventureAfkRewardCollectResponse>(false, 0, "AFK reward response was superseded while state was refreshing.", null));
+                    yield break;
+                }
+                if (stateResult != null
+                    && stateResult.Success
+                    && IdleAdventureAfkRewardSource.IsUsableBackendStateResponse(stateResult.Data))
+                {
+                    result.Data.state = stateResult.Data;
+                    stateConfirmed = true;
+                }
+            }
+
+            if (stateConfirmed)
+            {
+                if (!DeletePersistedIdempotencyKey(storageKey, idempotencyKey))
+                {
+                    onComplete?.Invoke(new BackendResult<IdleAdventureAfkRewardCollectResponse>(false, 0, "AFK reward response was superseded before state was applied.", null));
+                    yield break;
+                }
+                RememberIdleAdventureAfkSnapshot(result.Data.state);
+            }
+            else if (!OwnsPersistedIdempotencyKey(storageKey, idempotencyKey))
+            {
+                onComplete?.Invoke(new BackendResult<IdleAdventureAfkRewardCollectResponse>(false, 0, "AFK reward response was superseded before reconciliation completed.", null));
+                yield break;
+            }
+
+            ApplyIdleAdventureAfkStateToSources(result.Data.state);
+            yield return RefreshUserAndInventoryAfterMutation();
+            if (!IsSessionRequestCurrent(session))
+            {
+                onComplete?.Invoke(new BackendResult<IdleAdventureAfkRewardCollectResponse>(false, 0, "Backend session changed while AFK rewards were refreshing.", null));
+                yield break;
+            }
+            if (!stateConfirmed && !OwnsPersistedIdempotencyKey(storageKey, idempotencyKey))
+            {
+                onComplete?.Invoke(new BackendResult<IdleAdventureAfkRewardCollectResponse>(false, 0, "AFK reward response was superseded while rewards were refreshing.", null));
+                yield break;
+            }
         }
 
         onComplete?.Invoke(result);
@@ -1350,22 +2123,51 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     private IEnumerator SettleNpcRoutine(LandSlotController slot, int playerNpcId, Action<bool, string> onComplete)
     {
+        SessionRequestSnapshot session = CaptureSessionRequest();
+        int sceneId = CurrentSceneId;
+        int requestSceneGeneration = sceneRequestGeneration;
+        int playerBuildingId = slot.PlayerBuildingId;
         NpcSettleRequest request = new NpcSettleRequest
         {
-            playerId = PlayerId,
-            sceneId = CurrentSceneId,
-            playerBuildingId = slot.PlayerBuildingId,
+            playerId = session.PlayerId,
+            playerBuildingId = playerBuildingId,
             playerNpcId = playerNpcId
         };
 
         BackendResult<ProductionResponse[]> result = null;
-        yield return BackendApiClient.Post<ProductionResponse[]>(baseUrl, Token, "production/npc/settle", request, value => result = value);
+        yield return BackendApiClient.Post<ProductionResponse[]>(baseUrl, session.Token, "production/npc/settle", request, value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(false, "Backend session changed while the NPC was settling.");
+            yield break;
+        }
+        if (!IsSceneRequestCurrent(sceneId, requestSceneGeneration))
+        {
+            onComplete?.Invoke(false, "NPC settle response was superseded by a newer scene request.");
+            yield break;
+        }
 
-        bool success = result != null && result.Success && result.Data != null;
+        bool success = result != null && result.Success;
         if (success)
         {
-            if (MapManager.Instance != null) MapManager.Instance.ApplyRemoteProductions(result.Data);
+            ProductionResponse[] productions = result.Data ?? new ProductionResponse[0];
+            RememberProductionBuildingSnapshot(playerBuildingId, productions);
+            if (MapManager.Instance != null)
+            {
+                MapManager.Instance.ApplyRemoteProductionSnapshotForBuilding(playerBuildingId, productions);
+            }
             yield return LoadPlayerNpcsRoutine(null);
+            if (!IsSessionRequestCurrent(session) || !IsSceneRequestCurrent(sceneId, requestSceneGeneration))
+            {
+                onComplete?.Invoke(false, "NPC settle response was superseded while related state was refreshing.");
+                yield break;
+            }
+            yield return RefreshUserAndInventoryAfterMutation();
+            if (!IsSessionRequestCurrent(session) || !IsSceneRequestCurrent(sceneId, requestSceneGeneration))
+            {
+                onComplete?.Invoke(false, "NPC settle response was superseded while resources were refreshing.");
+                yield break;
+            }
             ScheduleNextProductionPoll();
         }
 
@@ -1374,21 +2176,50 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     private IEnumerator RemoveNpcRoutine(LandSlotController slot, Action<bool, string> onComplete)
     {
+        SessionRequestSnapshot session = CaptureSessionRequest();
+        int sceneId = CurrentSceneId;
+        int requestSceneGeneration = sceneRequestGeneration;
+        int playerBuildingId = slot.PlayerBuildingId;
         PlayerBuildingRequest request = new PlayerBuildingRequest
         {
-            playerId = PlayerId,
-            sceneId = CurrentSceneId,
-            playerBuildingId = slot.PlayerBuildingId
+            playerId = session.PlayerId,
+            playerBuildingId = playerBuildingId
         };
 
         BackendResult<ProductionResponse[]> result = null;
-        yield return BackendApiClient.Post<ProductionResponse[]>(baseUrl, Token, "production/npc/remove", request, value => result = value);
+        yield return BackendApiClient.Post<ProductionResponse[]>(baseUrl, session.Token, "production/npc/remove", request, value => result = value);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(false, "Backend session changed while the NPC was being removed.");
+            yield break;
+        }
+        if (!IsSceneRequestCurrent(sceneId, requestSceneGeneration))
+        {
+            onComplete?.Invoke(false, "NPC remove response was superseded by a newer scene request.");
+            yield break;
+        }
 
-        bool success = result != null && result.Success && result.Data != null;
+        bool success = result != null && result.Success;
         if (success)
         {
-            if (MapManager.Instance != null) MapManager.Instance.ApplyRemoteProductions(result.Data);
+            ProductionResponse[] productions = result.Data ?? new ProductionResponse[0];
+            RememberProductionBuildingSnapshot(playerBuildingId, productions);
+            if (MapManager.Instance != null)
+            {
+                MapManager.Instance.ApplyRemoteProductionSnapshotForBuilding(playerBuildingId, productions);
+            }
             yield return LoadPlayerNpcsRoutine(null);
+            if (!IsSessionRequestCurrent(session) || !IsSceneRequestCurrent(sceneId, requestSceneGeneration))
+            {
+                onComplete?.Invoke(false, "NPC remove response was superseded while related state was refreshing.");
+                yield break;
+            }
+            yield return RefreshUserAndInventoryAfterMutation();
+            if (!IsSessionRequestCurrent(session) || !IsSceneRequestCurrent(sceneId, requestSceneGeneration))
+            {
+                onComplete?.Invoke(false, "NPC remove response was superseded while resources were refreshing.");
+                yield break;
+            }
             ScheduleNextProductionPoll();
         }
 
@@ -1413,14 +2244,584 @@ public sealed partial class BackendGameService : MonoBehaviour
         onComplete?.Invoke(success, ResultMessage(result));
     }
 
-    private void ApplyProductionCollect(ProductionCollectResponse response)
+    private void ApplyProductionCollect(ProductionCollectResponse response, int playerBuildingId = 0)
     {
         if (response == null) return;
-        if (MapManager.Instance != null) MapManager.Instance.ApplyRemoteProductions(response.productions);
-        if (CurrentUser == null) CurrentUser = new UserResponse();
-        CurrentUser.items = response.items;
-        CurrentInventory = response.items;
+        ProductionResponse[] productions = response.productions ?? new ProductionResponse[0];
+        bool buildingScope = string.Equals(response.collectScope, "BUILDING", StringComparison.OrdinalIgnoreCase);
+        bool sceneScope = string.Equals(response.collectScope, "SCENE", StringComparison.OrdinalIgnoreCase);
+        bool allScenes = string.Equals(response.collectScope, "ALL_SCENES", StringComparison.OrdinalIgnoreCase);
+        RememberProductionBuildingSnapshots(productions);
+        if (buildingScope && playerBuildingId > 0)
+        {
+            RememberProductionBuildingSnapshot(playerBuildingId, productions);
+        }
+        else if (sceneScope)
+        {
+            RememberProductionSceneSnapshot(productions, response.sceneId);
+        }
+        else if (allScenes)
+        {
+            RememberProductionSceneSnapshot(productions, 0);
+        }
+        if (MapManager.Instance != null)
+        {
+            if (buildingScope && playerBuildingId > 0)
+            {
+                MapManager.Instance.ApplyRemoteProductionSnapshotForBuilding(playerBuildingId, productions);
+            }
+            else if (sceneScope && response.sceneId == CurrentSceneId)
+            {
+                MapManager.Instance.ApplyRemoteProductionSnapshotForScene(productions, response.sceneId);
+            }
+            else if (allScenes)
+            {
+                MapManager.Instance.ApplyRemoteProductionSnapshotForScene(productions, CurrentSceneId);
+            }
+        }
+        if (response.items != null) ApplyInventorySnapshot(response.items);
         Debug.Log("Backend production collect succeeded; inventory snapshot refreshed.", this);
+    }
+
+    private IEnumerator RefreshUserAndInventoryAfterMutation()
+    {
+        bool userLoaded = false;
+        yield return RequestUserRoutine(success => userLoaded = success);
+        if (!userLoaded || CurrentUser == null || CurrentUser.items == null)
+        {
+            yield return RequestInventoryRoutine(null);
+        }
+    }
+
+    private void ApplyUserSnapshot(UserResponse snapshot)
+    {
+        if (snapshot == null) return;
+
+        UserResponse existing = CurrentUser;
+        bool samePlayer = existing != null
+            && existing.id > 0L
+            && snapshot.id == existing.id;
+        bool wouldRollbackProgression = samePlayer
+            && (existing.totalExperience > snapshot.totalExperience
+                || (existing.totalExperience == snapshot.totalExperience
+                    && existing.level > snapshot.level));
+        if (wouldRollbackProgression)
+        {
+            snapshot.totalExperience = existing.totalExperience;
+            snapshot.level = existing.level;
+            snapshot.currentLevelExperience = existing.currentLevelExperience;
+            snapshot.requiredExperienceForNextLevel = existing.requiredExperienceForNextLevel;
+            snapshot.experienceProgressBps = existing.experienceProgressBps;
+            snapshot.levelCurveRevision = existing.levelCurveRevision;
+            snapshot.maxLevel = existing.maxLevel;
+        }
+
+        CurrentUser = snapshot;
+        if (snapshot.id > 0) PlayerId = ToSafeInt(snapshot.id);
+        if (snapshot.items != null)
+        {
+            CurrentInventory = snapshot.items;
+        }
+
+        PlayerPrefs.SetInt("PlayerLv", Mathf.Max(1, snapshot.level));
+        PlayerPrefs.SetString("LoginUsername", snapshot.username ?? string.Empty);
+        PlayerPrefs.SetString("PlayerNickname", snapshot.nickname ?? string.Empty);
+        PlayerPrefs.SetString("PlayerNicknameVersion", Math.Max(0L, snapshot.nicknameVersion).ToString());
+        PlayerPrefs.SetString("PlayerNicknameUpdatedTime", snapshot.nicknameUpdatedTime ?? string.Empty);
+        PlayerPrefs.SetInt("PlayerNicknameChangeCount", Math.Max(0, snapshot.nicknameChangeCount));
+        PlayerPrefs.SetInt("PlayerNicknameChangeRequired", snapshot.nicknameChangeRequired ? 1 : 0);
+        PlayerPrefs.SetInt("PlayerAvatarOwnerId", ToSafeInt(snapshot.id));
+        PlayerPrefs.SetString("PlayerAvatarUrl", snapshot.avatarUrl ?? string.Empty);
+        PlayerPrefs.SetString("PlayerAvatarSource", snapshot.avatarSource ?? "DEFAULT");
+        PlayerPrefs.SetString("PlayerAvatarVersion", Math.Max(0L, snapshot.avatarVersion).ToString());
+        PlayerPrefs.SetString("PlayerAvatarUpdatedTime", snapshot.avatarUpdatedTime ?? string.Empty);
+        PlayerPrefs.SetString("PlayerTotalExperience", Math.Max(0L, snapshot.totalExperience).ToString());
+        PlayerPrefs.SetInt("PlayerCurrentLevelExperience", ToPlayerPrefsInt(snapshot.currentLevelExperience));
+        PlayerPrefs.SetInt("PlayerRequiredExperience", ToPlayerPrefsInt(snapshot.requiredExperienceForNextLevel));
+        PlayerPrefs.SetInt("PlayerExperienceProgressBps", Mathf.Clamp(snapshot.experienceProgressBps, 0, 10000));
+        PlayerPrefs.SetInt("PlayerLevelCurveRevision", ToPlayerPrefsInt(snapshot.levelCurveRevision));
+        PlayerPrefs.SetInt("PlayerMaxLevel", snapshot.maxLevel ? 1 : 0);
+        PlayerPrefs.SetInt("PlayerEconomyFrozen", snapshot.economyFrozen ? 1 : 0);
+        SetResourcePreference("Gold", snapshot.gold);
+        SetResourcePreference("Wood", snapshot.wood);
+        SetResourcePreference("Stone", snapshot.stone);
+        SetResourcePreference("Iron", snapshot.iron);
+        SetResourcePreference("Crystal", snapshot.diamond);
+        PlayerPrefs.Save();
+        SyncWeChatFriendLevel(snapshot.level);
+        RefreshLandUnlockState();
+        UserSnapshotChanged?.Invoke(CurrentUser);
+        if (snapshot.items != null) InventorySnapshotChanged?.Invoke(snapshot.items);
+    }
+
+    private void ApplyInventorySnapshot(InventoryItemResponse[] items)
+    {
+        if (items == null) return;
+
+        CurrentInventory = items;
+        if (CurrentUser == null) CurrentUser = new UserResponse();
+        CurrentUser.items = items;
+        for (int i = 0; i < items.Length; i++)
+        {
+            InventoryItemResponse item = items[i];
+            if (item == null) continue;
+            string key = NormalizeResourceKey(item.itemKey, item.name);
+            if (string.IsNullOrEmpty(key)) continue;
+            SetResourcePreference(key, item.quantity);
+            if (CurrentUser != null)
+            {
+                switch (key)
+                {
+                    case "Gold": CurrentUser.gold = ToSafeInt(item.quantity); break;
+                    case "Wood": CurrentUser.wood = ToSafeInt(item.quantity); break;
+                    case "Stone": CurrentUser.stone = ToSafeInt(item.quantity); break;
+                    case "Iron": CurrentUser.iron = ToSafeInt(item.quantity); break;
+                    case "Crystal": CurrentUser.diamond = ToSafeInt(item.quantity); break;
+                }
+            }
+        }
+        PlayerPrefs.Save();
+        InventorySnapshotChanged?.Invoke(items);
+        UserSnapshotChanged?.Invoke(CurrentUser);
+    }
+
+    private void ApplyBuildingExperienceGrants(BuildingResponse[] buildings)
+    {
+        if (buildings == null) return;
+
+        BuildingResponse latest = null;
+        for (int i = 0; i < buildings.Length; i++)
+        {
+            BuildingResponse candidate = buildings[i];
+            if (candidate == null || candidate.experienceGrant == null) continue;
+            if (latest == null
+                || candidate.experienceGrant.afterExperience > latest.experienceGrant.afterExperience)
+            {
+                latest = candidate;
+            }
+        }
+
+        ApplyBuildingExperienceGrant(latest);
+    }
+
+    private void ApplyBuildingExperienceGrant(BuildingResponse building)
+    {
+        if (building == null || building.experienceGrant == null) return;
+        ExperienceGrantResponse grant = building.experienceGrant;
+        if (grant.playerId > 0L && grant.playerId != PlayerId) return;
+        if (CurrentUser != null && CurrentUser.totalExperience > grant.afterExperience) return;
+        if (CurrentUser == null) CurrentUser = new UserResponse();
+
+        CurrentUser.totalExperience = Math.Max(0L, grant.afterExperience);
+        CurrentUser.level = Mathf.Max(1, grant.afterLevel);
+        CurrentUser.currentLevelExperience = Math.Max(0L, grant.currentLevelExperience);
+        CurrentUser.requiredExperienceForNextLevel = Math.Max(0L, grant.requiredExperienceForNextLevel);
+        CurrentUser.experienceProgressBps = Mathf.Clamp(grant.experienceProgressBps, 0, 10000);
+        CurrentUser.levelCurveRevision = Math.Max(0L, grant.curveRevision);
+        CurrentUser.maxLevel = grant.maxLevel;
+
+        PlayerPrefs.SetInt("PlayerLv", CurrentUser.level);
+        PlayerPrefs.SetString("PlayerTotalExperience", CurrentUser.totalExperience.ToString());
+        PlayerPrefs.SetInt("PlayerCurrentLevelExperience", ToPlayerPrefsInt(CurrentUser.currentLevelExperience));
+        PlayerPrefs.SetInt("PlayerRequiredExperience", ToPlayerPrefsInt(CurrentUser.requiredExperienceForNextLevel));
+        PlayerPrefs.SetInt("PlayerExperienceProgressBps", CurrentUser.experienceProgressBps);
+        PlayerPrefs.SetInt("PlayerLevelCurveRevision", ToPlayerPrefsInt(CurrentUser.levelCurveRevision));
+        PlayerPrefs.SetInt("PlayerMaxLevel", CurrentUser.maxLevel ? 1 : 0);
+        PlayerPrefs.Save();
+        SyncWeChatFriendLevel(CurrentUser.level);
+        RefreshLandUnlockState();
+        UserSnapshotChanged?.Invoke(CurrentUser);
+    }
+
+    private static string NormalizeResourceKey(string itemKey, string itemName)
+    {
+        string value = string.IsNullOrEmpty(itemKey) ? itemName : itemKey;
+        if (string.IsNullOrEmpty(value)) return string.Empty;
+        string normalized = value.Trim().Replace("-", "_").Replace(" ", "_").ToLowerInvariant();
+        switch (normalized)
+        {
+            case "gold":
+            case "coin":
+            case "coins":
+            case "金币": return "Gold";
+            case "wood":
+            case "lumber":
+            case "木材": return "Wood";
+            case "stone":
+            case "石材": return "Stone";
+            case "iron":
+            case "ore":
+            case "铁矿": return "Iron";
+            case "diamond":
+            case "crystal":
+            case "diamonds":
+            case "钻石": return "Crystal";
+            default: return string.Empty;
+        }
+    }
+
+    private static int ToSafeInt(long value)
+    {
+        if (value <= 0L) return 0;
+        return value >= int.MaxValue ? int.MaxValue : (int)value;
+    }
+
+    private static int ToPlayerPrefsInt(long value)
+    {
+        return ToSafeInt(value);
+    }
+
+    private static void SetResourcePreference(string key, long value)
+    {
+        if (string.IsNullOrEmpty(key)) return;
+        PlayerPrefs.SetInt(key, ToPlayerPrefsInt(value));
+    }
+
+    private static string GetOrCreatePersistedIdempotencyKey(string key)
+    {
+        string existing = PlayerPrefs.GetString(key, string.Empty);
+        if (Guid.TryParse(existing, out _)) return existing;
+
+        string created = Guid.NewGuid().ToString("D");
+        PlayerPrefs.SetString(key, created);
+        PlayerPrefs.Save();
+        return created;
+    }
+
+    private static string GetOrCreatePersistedIdempotencyKey(string key, string context)
+    {
+        string existing = PlayerPrefs.GetString(key, string.Empty);
+        string existingContext = PlayerPrefs.GetString(key + IdempotencyContextSuffix, string.Empty);
+        if (Guid.TryParse(existing, out _)
+            && !string.IsNullOrEmpty(context)
+            && string.Equals(existingContext, context, StringComparison.Ordinal))
+        {
+            return existing;
+        }
+
+        string created = Guid.NewGuid().ToString("D");
+        PlayerPrefs.SetString(key, created);
+        PlayerPrefs.SetString(key + IdempotencyContextSuffix, context ?? string.Empty);
+        PlayerPrefs.Save();
+        return created;
+    }
+
+    private string BuildProductionCollectAllStorageKey(int sceneId)
+    {
+        return ProductionCollectKeyPrefix + PlayerId + ".all." + (sceneId > 0 ? sceneId.ToString() : "global");
+    }
+
+    private string GetOrCreateProductionBuildingSnapshotToken(int playerBuildingId)
+    {
+        return GetOrCreatePersistedIdempotencyKey(
+            ProductionSnapshotKeyPrefix + PlayerId + ".building." + playerBuildingId);
+    }
+
+    private string GetOrCreateProductionSceneSnapshotToken(int sceneId)
+    {
+        return GetOrCreatePersistedIdempotencyKey(
+            ProductionSnapshotKeyPrefix + PlayerId + ".scene." + (sceneId > 0 ? sceneId.ToString() : "global"));
+    }
+
+    private void RememberProductionBuildingSnapshots(ProductionResponse[] productions)
+    {
+        if (productions == null) return;
+        Dictionary<int, List<ProductionResponse>> grouped = new Dictionary<int, List<ProductionResponse>>();
+        for (int index = 0; index < productions.Length; index++)
+        {
+            ProductionResponse production = productions[index];
+            if (production == null || production.playerBuildingId <= 0) continue;
+            if (!grouped.TryGetValue(production.playerBuildingId, out List<ProductionResponse> values))
+            {
+                values = new List<ProductionResponse>();
+                grouped.Add(production.playerBuildingId, values);
+            }
+            values.Add(production);
+        }
+
+        foreach (KeyValuePair<int, List<ProductionResponse>> entry in grouped)
+        {
+            RememberProductionBuildingSnapshot(entry.Key, entry.Value.ToArray());
+        }
+    }
+
+    private void RememberProductionBuildingSnapshot(int playerBuildingId, ProductionResponse[] productions)
+    {
+        if (playerBuildingId <= 0) return;
+        RememberPersistedSnapshot(
+            ProductionSnapshotKeyPrefix + PlayerId + ".building." + playerBuildingId,
+            BuildProductionSnapshotFingerprint(productions, 0, playerBuildingId));
+    }
+
+    private void RememberProductionSceneSnapshot(ProductionResponse[] productions, int sceneId)
+    {
+        RememberPersistedSnapshot(
+            ProductionSnapshotKeyPrefix + PlayerId + ".scene." + (sceneId > 0 ? sceneId.ToString() : "global"),
+            BuildProductionSnapshotFingerprint(productions, sceneId, 0));
+    }
+
+    private static string BuildProductionSnapshotFingerprint(
+        ProductionResponse[] productions,
+        int sceneId,
+        int playerBuildingId)
+    {
+        List<string> entries = new List<string>();
+        if (productions != null)
+        {
+            for (int index = 0; index < productions.Length; index++)
+            {
+                ProductionResponse production = productions[index];
+                if (production == null) continue;
+                if (playerBuildingId > 0 && production.playerBuildingId != playerBuildingId) continue;
+                if (sceneId > 0 && production.sceneId > 0 && production.sceneId != sceneId) continue;
+                entries.Add(
+                    production.sceneId + "|"
+                    + production.playerBuildingId + "|"
+                    + production.itemId + "|"
+                    + (production.itemKey ?? string.Empty) + "|"
+                    + production.storedAmount + "|"
+                    + (production.lastSettleTime ?? string.Empty) + "|"
+                    + production.storageCapacity);
+            }
+        }
+        entries.Sort(StringComparer.Ordinal);
+        return ComputeSnapshotFingerprint(string.Join("\n", entries.ToArray()));
+    }
+
+    private string GetOrCreateIdleAdventureAfkSnapshotToken()
+    {
+        return GetOrCreatePersistedIdempotencyKey(AfkSnapshotKeyPrefix + PlayerId);
+    }
+
+    private void RememberIdleAdventureAfkSnapshot(IdleAdventureAfkRewardStateResponse state)
+    {
+        if (state == null) return;
+        CurrentIdleAdventureAfkReward = state;
+        string canonical = state.ResolvedLastSettledServerUnixSeconds
+            + "|" + state.ResolvedItemKey
+            + "|" + state.ResolvedBaseQuantityPerCycle
+            + "|" + state.ResolvedQuantityPerHighestStage
+            + "|" + state.ResolvedProductionIntervalSeconds
+            + "|" + state.ResolvedMaxStoredQuantity;
+        RememberPersistedSnapshot(AfkSnapshotKeyPrefix + PlayerId, ComputeSnapshotFingerprint(canonical));
+    }
+
+    private static void RememberPersistedSnapshot(string key, string fingerprint)
+    {
+        if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(fingerprint)) return;
+        string fingerprintKey = key + ".fingerprint";
+        string existingToken = PlayerPrefs.GetString(key, string.Empty);
+        string existingFingerprint = PlayerPrefs.GetString(fingerprintKey, string.Empty);
+        if (Guid.TryParse(existingToken, out _)
+            && string.Equals(existingFingerprint, fingerprint, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        PlayerPrefs.SetString(key, Guid.NewGuid().ToString("D"));
+        PlayerPrefs.SetString(fingerprintKey, fingerprint);
+        PlayerPrefs.Save();
+    }
+
+    private static string ComputeSnapshotFingerprint(string canonical)
+    {
+        using (System.Security.Cryptography.SHA256 sha256 = System.Security.Cryptography.SHA256.Create())
+        {
+            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(canonical ?? string.Empty);
+            return BitConverter.ToString(sha256.ComputeHash(bytes)).Replace("-", string.Empty);
+        }
+    }
+
+    private string BuildIdleAdventureCommandStorageKey(
+        string operation,
+        string sessionKey,
+        string discriminator)
+    {
+        return BuildIdleAdventureCommandStorageKey(PlayerId, operation, sessionKey, discriminator);
+    }
+
+    private static string BuildIdleAdventureCommandStorageKey(
+        int playerId,
+        string operation,
+        string sessionKey,
+        string discriminator)
+    {
+        return IdleAdventureCommandKeyPrefix
+            + playerId
+            + "."
+            + NormalizeStorageKeySegment(operation)
+            + "."
+            + NormalizeStorageKeySegment(sessionKey)
+            + "."
+            + NormalizeStorageKeySegment(discriminator);
+    }
+
+    private static string BuildIdleAdventureStartStorageKey(int playerId)
+    {
+        return IdleAdventureStartKeyPrefix + playerId;
+    }
+
+    private static string BuildIdleAdventureStartRequestContext(IdleAdventureStartSessionRequest request)
+    {
+        if (request == null) return string.Empty;
+
+        string canonical = request.stage
+            + "|"
+            + request.use_saved_formation
+            + "|"
+            + (request.formation_slots == null
+                ? string.Empty
+                : JsonUtility.ToJson(new IdleAdventureSaveFormationRequest
+                {
+                    slots = request.formation_slots
+                }));
+        return ComputeSnapshotFingerprint(canonical);
+    }
+
+    private static bool ShouldDiscardIdleAdventureStartKey(BackendResult<IdleAdventureSessionResponse> result)
+    {
+        if (result == null || result.HttpStatus <= 0) return false;
+        if (result.HttpStatus == 408 || result.HttpStatus == 429) return false;
+        if (result.Code == 0 && result.HttpStatus >= 200 && result.HttpStatus < 300) return false;
+        return result.HttpStatus < 500;
+    }
+
+    private string GetOrCreateIdleAdventureSessionSnapshotToken(string sessionKey)
+    {
+        return GetOrCreateIdleAdventureSessionSnapshotToken(PlayerId, sessionKey);
+    }
+
+    private static string GetOrCreateIdleAdventureSessionSnapshotToken(int playerId, string sessionKey)
+    {
+        return GetOrCreatePersistedIdempotencyKey(BuildIdleAdventureSessionSnapshotStorageKey(playerId, sessionKey));
+    }
+
+    private static void RememberIdleAdventureSessionSnapshot(
+        int playerId,
+        string sessionKey,
+        IdleAdventureSessionResponse state)
+    {
+        if (playerId <= 0 || string.IsNullOrWhiteSpace(sessionKey) || state == null) return;
+
+        List<string> entries = new List<string>
+        {
+            "stage=" + state.stage,
+            "attempt=" + state.stage_attempt,
+            "round=" + state.round,
+            "status=" + (state.status ?? string.Empty),
+            "paused=" + state.paused,
+            "choice=" + state.stage_choice_pending,
+            "next=" + state.pending_next_stage
+        };
+        AppendIdleAdventureSnapshotEntries(entries, "friendly", state.friendlies);
+        AppendIdleAdventureSnapshotEntries(entries, "enemy", state.enemies);
+        AppendIdleAdventureSnapshotEntries(entries, "reward", state.pending_rewards);
+        entries.Sort(StringComparer.Ordinal);
+        RememberPersistedSnapshot(
+            BuildIdleAdventureSessionSnapshotStorageKey(playerId, sessionKey),
+            ComputeSnapshotFingerprint(string.Join("\n", entries.ToArray())));
+    }
+
+    private static void AppendIdleAdventureSnapshotEntries<T>(List<string> entries, string prefix, T[] values)
+    {
+        if (entries == null || values == null) return;
+        for (int index = 0; index < values.Length; index++)
+        {
+            T value = values[index];
+            if (ReferenceEquals(value, null)) continue;
+            entries.Add(prefix + "=" + JsonUtility.ToJson(value));
+        }
+    }
+
+    private void RotateIdleAdventureSessionSnapshotToken(string sessionKey)
+    {
+        RotateIdleAdventureSessionSnapshotToken(PlayerId, sessionKey);
+    }
+
+    private static void RotateIdleAdventureSessionSnapshotToken(int playerId, string sessionKey)
+    {
+        if (playerId <= 0 || string.IsNullOrWhiteSpace(sessionKey)) return;
+        SavePersistedIdempotencyKey(
+            BuildIdleAdventureSessionSnapshotStorageKey(playerId, sessionKey),
+            Guid.NewGuid().ToString("D"));
+    }
+
+    private string BuildIdleAdventureSessionSnapshotStorageKey(string sessionKey)
+    {
+        return BuildIdleAdventureSessionSnapshotStorageKey(PlayerId, sessionKey);
+    }
+
+    private static string BuildIdleAdventureSessionSnapshotStorageKey(int playerId, string sessionKey)
+    {
+        return IdleAdventureSessionSnapshotKeyPrefix
+            + playerId
+            + "."
+            + NormalizeStorageKeySegment(sessionKey);
+    }
+
+    private static string NormalizeStorageKeySegment(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return "none";
+
+        System.Text.StringBuilder builder = new System.Text.StringBuilder(value.Length);
+        for (int index = 0; index < value.Length; index++)
+        {
+            char character = value[index];
+            if ((character >= 'a' && character <= 'z')
+                || (character >= 'A' && character <= 'Z')
+                || (character >= '0' && character <= '9')
+                || character == '-' || character == '_')
+            {
+                builder.Append(character);
+            }
+            else
+            {
+                builder.Append('_');
+            }
+        }
+
+        return builder.Length == 0 ? "none" : builder.ToString();
+    }
+
+    private static void SavePersistedIdempotencyKey(string key, string value)
+    {
+        if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(value)) return;
+        PlayerPrefs.SetString(key, value);
+        PlayerPrefs.Save();
+    }
+
+    private static void SavePersistedIdempotencyKey(string key, string value, string context)
+    {
+        if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(value)) return;
+        PlayerPrefs.SetString(key, value);
+        PlayerPrefs.SetString(key + IdempotencyContextSuffix, context ?? string.Empty);
+        PlayerPrefs.Save();
+    }
+
+    private static bool OwnsPersistedIdempotencyKey(string key, string expectedValue)
+    {
+        return !string.IsNullOrEmpty(key)
+            && !string.IsNullOrEmpty(expectedValue)
+            && string.Equals(PlayerPrefs.GetString(key, string.Empty), expectedValue, StringComparison.Ordinal);
+    }
+
+    private static bool DeletePersistedIdempotencyKey(string key, string expectedValue)
+    {
+        if (!OwnsPersistedIdempotencyKey(key, expectedValue)) return false;
+        PlayerPrefs.DeleteKey(key);
+        PlayerPrefs.DeleteKey(key + IdempotencyContextSuffix);
+        PlayerPrefs.Save();
+        return true;
+    }
+
+    private void ApplyIdleAdventureAfkStateToSources(IdleAdventureAfkRewardStateResponse state)
+    {
+        if (state == null) return;
+        IdleAdventureAfkRewardSource[] sources = FindObjectsByType<IdleAdventureAfkRewardSource>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        for (int i = 0; i < sources.Length; i++)
+        {
+            if (sources[i] != null) sources[i].ApplyBackendStateFromService(state);
+        }
     }
 
     private static InventoryItemResponse[] ConvertIdleAdventureInventory(IdleAdventureInventoryItemResponse[] source)
@@ -1435,12 +2836,12 @@ public sealed partial class BackendGameService : MonoBehaviour
 
             converted[i] = new InventoryItemResponse
             {
-                itemId = (int)item.item_id,
-                itemKey = item.item_key,
-                name = string.IsNullOrEmpty(item.display_name) ? item.name : item.display_name,
-                itemType = item.item_type,
+                itemId = (int)Math.Min(int.MaxValue, item.ResolvedItemId),
+                itemKey = item.ResolvedItemKey,
+                name = item.ResolvedName,
+                itemType = item.ResolvedItemType,
                 icon = item.icon,
-                quantity = (int)item.quantity
+                quantity = Math.Max(0L, item.quantity)
             };
         }
 
@@ -1449,9 +2850,13 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     private void StoreLogin(LoginResponse response)
     {
+        sceneSwitchPending = false;
+        AdvanceSceneRequestGeneration();
+        int authenticatedPlayerId = response.user != null ? ToSafeInt(response.user.id) : 0;
+        ReconcileAreaSelectionForPlayer(authenticatedPlayerId);
         Token = response.token;
-        CurrentUser = response.user;
-        PlayerId = response.user != null ? response.user.id : 0;
+        ApplyUserSnapshot(response.user);
+        PlayerId = authenticatedPlayerId;
         PlayerPrefs.SetString(TokenKey, Token);
         PlayerPrefs.SetInt(PlayerIdKey, PlayerId);
         PlayerPrefs.SetInt(SessionManagedKey, 1);
@@ -1464,19 +2869,34 @@ public sealed partial class BackendGameService : MonoBehaviour
             (DateTimeOffset.UtcNow.ToUnixTimeSeconds() + Math.Max(1, response.expiresIn)).ToString());
         observedSessionRevision = IncrementSessionRevision();
         PlayerPrefs.Save();
-        if (CurrentUser != null)
-        {
-            SyncWeChatFriendLevel(CurrentUser.level);
-            RefreshLandUnlockState();
-        }
         Debug.Log($"Backend login succeeded: playerId={PlayerId}", this);
     }
 
     private void ClearSession()
     {
+        sceneSwitchPending = false;
+        AdvanceSceneRequestGeneration();
+        int authenticatedPlayerId = PlayerPrefs.GetInt(HomePlayerIdKey, 0);
+        if (authenticatedPlayerId <= 0)
+        {
+            authenticatedPlayerId = PlayerId;
+        }
+
+        ReconcileAreaSelectionForPlayer(authenticatedPlayerId);
+        bool wasAccountSession = (PlayerPrefs.GetInt(HomeLoginStateKey, 0) == 1
+                && string.Equals(
+                    PlayerPrefs.GetString(HomeSessionModeKey, string.Empty),
+                    "account",
+                    StringComparison.Ordinal))
+            || PlayerPrefs.GetInt(SessionManagedKey, 0) == 1
+            || !string.IsNullOrEmpty(Token)
+            || PlayerId > 0;
+
         Token = string.Empty;
         PlayerId = 0;
         CurrentUser = null;
+        remoteAvailableLands.Clear();
+        purificationSnapshots.Clear();
         RefreshLandUnlockState();
         CurrentInventory = null;
         NpcCatalog = null;
@@ -1486,7 +2906,17 @@ public sealed partial class BackendGameService : MonoBehaviour
         CurrentSceneConfigVersion = 0L;
         CurrentLandPolicyRevision = 0L;
         CurrentStamina = null;
+        CurrentIdleAdventureAfkReward = null;
         CurrentWorkState = null;
+        IdleAdventureConfig = null;
+        IdleAdventureBuffPresets = null;
+        IdleAdventureSkills = null;
+        IdleAdventureFieldBuffs = null;
+        IdleAdventureAttributeRestraints = null;
+        IdleAdventureStageRewards = null;
+        IdleAdventureAvailableNpcs = null;
+        IdleAdventureStageEnemyPreview = null;
+        IdleAdventureProgress = null;
         PlayerPrefs.DeleteKey(SceneIdKey);
         PlayerPrefs.DeleteKey(TokenKey);
         PlayerPrefs.DeleteKey(PlayerIdKey);
@@ -1496,14 +2926,49 @@ public sealed partial class BackendGameService : MonoBehaviour
         PlayerPrefs.SetInt(HomeLoginStateKey, 0);
         PlayerPrefs.DeleteKey(HomeSessionModeKey);
         PlayerPrefs.SetInt(SessionManagedKey, 0);
+        if (wasAccountSession)
+        {
+            ClearAccountSnapshotPreferences();
+        }
         observedSessionRevision = IncrementSessionRevision();
         PlayerPrefs.Save();
     }
 
+    private static void ClearAccountSnapshotPreferences()
+    {
+        for (int index = 0; index < AccountSnapshotPreferenceKeys.Length; index++)
+        {
+            PlayerPrefs.DeleteKey(AccountSnapshotPreferenceKeys[index]);
+        }
+    }
+
+    private static void ReconcileAreaSelectionForPlayer(int playerId)
+    {
+        if (playerId <= 0)
+        {
+            return;
+        }
+
+        int ownerPlayerId = PlayerPrefs.GetInt(AreaSelectionOwnerPlayerIdKey, 0);
+        if (ownerPlayerId <= 0)
+        {
+            ownerPlayerId = PlayerPrefs.GetInt(HomePlayerIdKey, 0);
+        }
+
+        if (ownerPlayerId > 0 && ownerPlayerId != playerId)
+        {
+            PlayerPrefs.DeleteKey(OpenAreaLandTypeKey);
+            PlayerPrefs.DeleteKey(CurrentAreaLandTypeKey);
+        }
+
+        PlayerPrefs.SetInt(AreaSelectionOwnerPlayerIdKey, playerId);
+    }
+
     private void RefreshLandUnlockState()
     {
-        if (MapManager.Instance == null) return;
-        MapManager.Instance.RefreshLandUnlockState(CurrentUser != null ? CurrentUser.level : 1);
+        int playerLevel = CurrentUser != null ? Mathf.Max(1, CurrentUser.level) : 1;
+        if (MapManager.Instance != null) MapManager.Instance.RefreshLandUnlockState(playerLevel);
+        ApplyRemoteLandDragItems();
     }
 
     private void RefreshSharedSessionIfNeeded()
@@ -1514,16 +2979,31 @@ public sealed partial class BackendGameService : MonoBehaviour
             return;
         }
 
+        sceneSwitchPending = false;
+        AdvanceSceneRequestGeneration();
         observedSessionRevision = currentRevision;
         Token = PlayerPrefs.GetString(TokenKey, string.Empty);
         PlayerId = PlayerPrefs.GetInt(PlayerIdKey, 0);
         CurrentUser = null;
+        RefreshLandUnlockState();
         CurrentInventory = null;
         NpcCatalog = null;
         PlayerNpcs = null;
+        remoteAvailableLands.Clear();
+        purificationSnapshots.Clear();
         LandScenes = null;
         CurrentStamina = null;
+        CurrentIdleAdventureAfkReward = null;
         CurrentWorkState = null;
+        IdleAdventureConfig = null;
+        IdleAdventureBuffPresets = null;
+        IdleAdventureSkills = null;
+        IdleAdventureFieldBuffs = null;
+        IdleAdventureAttributeRestraints = null;
+        IdleAdventureStageRewards = null;
+        IdleAdventureAvailableNpcs = null;
+        IdleAdventureStageEnemyPreview = null;
+        IdleAdventureProgress = null;
         CurrentSceneId = PlayerPrefs.GetInt(SceneIdKey, 0);
         CurrentSceneConfigVersion = 0L;
         CurrentLandPolicyRevision = 0L;

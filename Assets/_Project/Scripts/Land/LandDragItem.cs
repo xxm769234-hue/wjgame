@@ -37,6 +37,14 @@ public sealed class LandDragItem : MonoBehaviour, IBeginDragHandler, IDragHandle
             Debug.LogWarning("Land drag ignored because backend land config is not loaded.", this);
             return;
         }
+        if (!config.canPlace)
+        {
+            string reason = string.IsNullOrEmpty(config.disabledReason)
+                ? "Backend currently rejects this land configuration."
+                : config.disabledReason;
+            Debug.LogWarning($"Land drag rejected by backend availability: {reason}", this);
+            return;
+        }
 
         if (BuildManager.Instance == null)
         {
@@ -67,7 +75,26 @@ public sealed class LandDragItem : MonoBehaviour, IBeginDragHandler, IDragHandle
     private static string FormatLabel(LandConfig land)
     {
         string name = DisplayName(land);
-        return land.cost > 0 ? $"{name}\nCost: {land.cost}" : name;
+        string cost = FormatCost(land);
+        if (land.canPlace) return string.IsNullOrEmpty(cost) ? name : $"{name}\n{cost}";
+
+        string reason = string.IsNullOrEmpty(land.disabledReason) ? "Unavailable" : land.disabledReason;
+        return string.IsNullOrEmpty(cost)
+            ? $"{name}\nUnavailable: {reason}"
+            : $"{name}\n{cost}\nUnavailable: {reason}";
+    }
+
+    private static string FormatCost(LandConfig land)
+    {
+        if (land == null) return string.Empty;
+
+        System.Collections.Generic.List<string> costs = new System.Collections.Generic.List<string>();
+        if (land.goldCost > 0L) costs.Add($"Gold {land.goldCost:N0}");
+        if (land.woodCost > 0L) costs.Add($"Wood {land.woodCost:N0}");
+        if (land.stoneCost > 0L) costs.Add($"Stone {land.stoneCost:N0}");
+        if (land.ironCost > 0L) costs.Add($"Iron {land.ironCost:N0}");
+        if (costs.Count > 0) return "Cost: " + string.Join(", ", costs);
+        return land.cost > 0 ? $"Cost: {land.cost:N0}" : string.Empty;
     }
 
     private static string DisplayName(LandConfig land)

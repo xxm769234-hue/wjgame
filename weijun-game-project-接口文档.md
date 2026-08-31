@@ -1,12 +1,12 @@
 # Weijun Game Project 后端接口文档
 
-重新生成时间：2026-08-27
-更新日期：2026-08-27
-同步说明：已按当前玩家端、微信公共回调和 `/api/ops/**` 管理端路由复核并同步至 Flyway V98。V97 新增开发者固定头像编号与选择接口，V98 放宽并加固头像来源一致性约束；V1-V98 执行成功后均禁止修改，后续数据库变化从 V99 开始。
-版本提示：文档中标注 V93、V96 或更早版本的段落是对应功能的历史交付记录，不代表当前最高版本；上线迁移、校验和与结构核对统一以 V98 和仓库 `src/main/resources/db/migration` 实际文件为准。
+重新生成时间：2026-08-28
+更新日期：2026-08-28
+同步说明：目标契约已按远端后端 `origin/sck@08b4f0c` 的玩家端、微信公共回调和 `/api/ops/**` 管理端路由复核至 Flyway V98。V94 将公告、系统邮件和系统奖励的展示业务编号与创建幂等键分离；V95 新增微信小游戏官方客服联系人、工单、消息和可靠发送 Outbox；V96 加固临时会话工单时间列与 Outbox 节点租约；V97 新增开发者固定头像编号与选择接口；V98 放宽并加固头像来源一致性约束。V1-V98 执行成功后均禁止修改，后续数据库变化从 V99 开始。
+版本提示：本地后端已按用户要求恢复为 `sck@6502a67`，数据库迁移最高为 V96；远端目标后端 `origin/sck@08b4f0c` 已到 V98。文档中标注 V93、V96 或更早版本的段落是对应功能的历史交付记录，不代表目标契约的当前最高版本；实际部署必须以运行后端提交和 `src/main/resources/db/migration` 文件为准。本次 Unity 合并不修改后端仓库或数据库。
 Unity 本次需要修改：保留既有 NPC 获取渠道改造，并新增 `GET /api/customer-service/entry` 预取；玩家点击客服按钮的 touch/click 回调中调用微信官方 `wx.openCustomerServiceConversation`，支持 `sessionFrom` 过期重拉、最低基础库 `2.0.3`、关闭状态和 SDK 失败提示。管理端工单、微信回调和 Outbox 不需要 Unity 实现。
 本次运行角色部署改造的客户端影响：Unity 与管理端接口路径、请求参数、响应 JSON、鉴权方式和错误码全部保持不变，不需要为了 API/Worker 分进程修改客户端代码。
-本次挂机冒险编队改造的客户端影响：既有 HTTP 路径和请求结构不变；Unity 可新增监听 `IDLE_ADVENTURE_FORMATION_CHANGED`，但必须把消息作为刷新提示并重新查询服务端编队，不能直接用可能乱序的事件快照覆盖本地状态。本次关卡敌人预览只新增响应字段，旧 Unity 忽略未知字段即可继续运行；若要显示等级、图标、模型或槽位布局，需要同步扩展 Unity DTO/UI。
+本次挂机冒险编队改造的客户端影响：既有 HTTP 路径和请求结构不变；Unity 可新增监听 `IDLE_ADVENTURE_FORMATION_CHANGED`，但必须把消息作为刷新提示并重新查询服务端编队，不能直接用可能乱序的事件快照覆盖本地状态。当前 master 已扩展 Unity DTO/UI，并在进入挂机冒险、登录重连或回到前台后读取独立配置、玩家 NPC、当前关卡敌人预览和权威进度。版本边界：远端 `origin/sck@08b4f0c` 已按本节目标契约返回 `stage_name`、槽位 `column/row/front_column` 以及敌人的 `icon/model_key/level`；本地后端已恢复为 `sck@6502a67`，尚不返回这些新增字段。客户端保留字段缺失时只显示关卡编号、敌人名称和数量的兼容降级。
 客户端：Unity / 微信小游戏前端
 后端基础地址：`http://localhost:8080/api`
 统一 Content-Type：`application/json; charset=UTF-8`
@@ -4176,7 +4176,7 @@ Idle Adventure 对 Unity 保留原 26 条 `snake_case` 接口，并新增体力�
 | 17 | `POST` | `/api/idle-adventure/players/{playerId}/sessions/{sessionKey}/resume` | 恢复会话 |
 | 18 | `POST` | `/api/idle-adventure/players/{playerId}/sessions/{sessionKey}/end` | 结束并结算奖励 |
 | 19 | `POST` | `/api/idle-adventure/players/{playerId}/sessions/{sessionKey}/rounds/resolve` | 权威结算一回合 |
-| 20 | `POST` | `/api/idle-adventure/players/{playerId}/sessions/{sessionKey}/buffs/apply` | 应用后端配置的额外 buff |
+| 20 | `POST` | `/api/idle-adventure/players/{playerId}/sessions/{sessionKey}/buffs/apply` | 行为与后端版本相关：远端目标版本拒绝 403/6515，本地 `sck@6502a67` 仍会施加配置 Buff；见 64.5 |
 | 21 | `POST` | `/api/idle-adventure/players/{playerId}/sessions/{sessionKey}/stages/continue` | 继续下一关 |
 | 22 | `POST` | `/api/idle-adventure/players/{playerId}/sessions/{sessionKey}/stages/retry` | 重试当前关 |
 | 23 | `GET` | `/api/idle-adventure/players/{playerId}/progress` | 获取权威进度 |
@@ -4185,6 +4185,25 @@ Idle Adventure 对 Unity 保留原 26 条 `snake_case` 接口，并新增体力�
 | 26 | `POST` | `/api/idle-adventure/players/{playerId}/afk-reward/collect` | 领取挂机奖励 |
 | 27 | `GET` | `/api/idle-adventure/players/{playerId}/stamina` | 刷新并获取当前体力与恢复倒计时 |
 | 28 | `POST` | `/api/idle-adventure/players/{playerId}/afk-reward/accelerate` | 消耗体力领取一份完整挂机上限奖励 |
+
+### 18.1 Unity 当前调用闭环（master）
+
+登录或重连完成后，客户端先读取首页和独立体力快照，再读取 `/progress`，把服务端的 `highest_stage`/`last_stage` 同步到本地关卡进度和挂机收益源。进入挂机冒险页面、应用回到前台或网络重连时，客户端会按当前目标关卡读取以下独立只读接口：
+
+```text
+GET /api/idle-adventure/config
+GET /api/idle-adventure/buff-presets
+GET /api/idle-adventure/skills
+GET /api/idle-adventure/field-buffs?stage={stage}
+GET /api/idle-adventure/attribute-restraints
+GET /api/idle-adventure/stage-rewards
+GET /api/idle-adventure/players/{playerId}/npcs
+GET /api/idle-adventure/stages/{stage}/enemies
+```
+
+这些请求均沿用玩家 `Authorization`，不会修改玩家状态；其中 `field-buffs` 的 `stage` 可以省略，客户端只在目标关卡已确定时传入。配置、技能、Buff、克制和奖励快照用于展示及版本核对，战斗结算仍以会话接口的服务端响应为准，不能在客户端自行推导奖励或属性。敌人预览缺少新字段时允许降级显示名称/数量，但不得用本地公式覆盖服务端战斗属性。
+
+`IDLE_ADVENTURE_FORMATION_CHANGED`、WebSocket 重连和回到前台只触发重新查询，不直接套用事件快照；本地存在未提交编队编辑时，刷新结果不得覆盖编辑中的内容。独立配置读取属于展示和防止旧缓存的增强能力，首页、体力、进度、编队、会话、挂机领取等核心流程仍按上方 28 条接口的既有顺序执行。
 
 ## 19. 玩家经验、任务和好友接口（V25-V29、V81/V81.1/V82）
 
@@ -4914,6 +4933,14 @@ npm.cmd --prefix admin-web run build
 | `wx.createPageManager` / `PageManager` | 小游戏客户端 | 加载和展示微信 OPENLINK 原生页面 |
 
 `wx.createPageManager` 从基础库 3.6.7 开始支持；好友送礼状态和发送接口从基础库 3.11.2 开始支持，因此本功能统一最低基础库版本为 `3.11.2`。低版本必须隐藏赠礼入口或显示升级微信提示，不能降级为客户端自发奖励。
+
+#### 20.2.1 当前 master 的 Unity 接入边界
+
+当前仓库的主域 Unity 流程是：点击好友面板入口后请求 `/api/wechat/friend-gifts/catalog`，只使用服务端返回的 `giftPackages[0]` 和 `pageManagerOpenlink`，同步当前玩家的 `player_level`，再通过 `PageManager` 打开微信官方 OPENLINK 页面；主域不读取微信好友列表，也不在本地发放奖励。对应入口和回调为 `WeChatPlatformBridge.OpenFriendGiftPage`、`OnWeChatFriendGiftPageOpened` 和 `OnWeChatFriendGiftPageFailed`。
+
+仓库同时提供给开放数据域适配层使用的桥接方法：`GetFriendCloudStorage`（回调 `OnWeChatFriendCloudStorageSucceeded/Failed`）、`GetFriendSendGiftStatus`（回调 `OnWeChatFriendSendGiftStatusSucceeded/Failed`）、`SendGiftToFriend`（回调 `OnWeChatSendGiftToFriendSucceeded/Failed`）以及 `PostFriendGiftRenderMessage`（回调 `OnWeChatOpenDataMessageSucceeded/Failed`）。这些方法仅负责校验参数、基础库版本和转发官方 API；每次调用最多触发一次成功或失败回调，失败时必须禁用对应操作并展示平台错误。
+
+当前仓库没有另一个可直接发布的开放数据域好友列表渲染包，因而不能把上述桥接方法描述成主域已经完成的自定义好友列表。若采用自定义列表，必须由独立开放数据域代码读取 `player_level`、按 `blockSend/blockCode/blockReason` 展示状态，并只通过 `giftId + openid` 发起赠送；不得把服务端 token、奖励数量、回调密钥或任意场景数据传入开放数据域。无论采用官方 OPENLINK 还是自定义列表，资源到账都只认服务端 `minigame_deliver_goods` 回调和 `OrderId` 幂等流水。
 
 官方参考：
 
@@ -12123,7 +12150,9 @@ Authorization: Bearer <player-token>
 4. 在游戏顶部公屏或跑马灯区域展示 `data.content`；`data.rewards` 只用于可选文字摘要、埋点或详情展示，不提供图标、品质或资产定位能力，也不能重复发奖。
 5. 场景切换时保留内存队列，退出登录时清空队列与该账号临时去重状态；断线重连后不请求历史通报。
 
-当前仓库不包含 Unity 工程，因此本次交付的是后端、管理端和完整协议；Unity 顶部轮播 UI、动画及队列需要客户端按本节接入。
+当前 master 已包含 Unity 主域接入：`HomePageUIRealtime` 只接受 `CARD_DRAW_RARE_BROADCAST` 公共消息，按 `eventId` 做有界去重，解析 `expiresAt`/`expires_at`（Unix 秒或日期字符串），丢弃过期消息，并把未过期消息放入最多 512 条的静态 FIFO 队列；顶部文本轮播每条默认展示 5 秒，剩余有效期不足 5 秒时按剩余时间展示。队列和去重历史在场景切换、应用回到前台及 WebSocket 重连期间保留；退出登录或鉴权失效时清空，并按账号切换隔离，断线重连不请求历史补发。
+
+该 Unity 接入只展示服务端 `data.content`，不会根据 `data.rewards` 发奖、推导图标或覆盖背包；服务端抽卡 HTTP 响应仍是扣费、奖励和到账的唯一权威。队列是内存 best-effort 展示，不能据此证明所有在线会话已收到消息；服务端仍需按本节 Outbox/Redis 规则投递，客户端继续按 `eventId` 去重。
 
 ### 55.5 Outbox 重试边界、数据库与上线
 
@@ -13240,7 +13269,7 @@ POST /api/idle-adventure/players/{player_id}/afk-reward/collect
 POST /api/idle-adventure/players/{player_id}/sessions/{session_key}/buffs/apply
 ```
 
-在尚未具备服务端授权凭证、消费流水和防重放校验前，该旧路径统一返回 HTTP 403、业务码 `6515`，不会修改战斗会话。客户端幂等键不能替代玩家获得 Buff 的业务资格。
+该路径的行为取决于后端版本。远端 `origin/sck@08b4f0c` 在尚未具备服务端授权凭证、消费流水和防重放校验前统一返回 HTTP 403、业务码 `6515`，不会修改战斗会话；本地已恢复的 `sck@6502a67` 会读取服务端配置并实际施加来源为 `OTHER` 的 Buff。客户端幂等键不能替代玩家获得 Buff 的业务资格，因此本地旧行为不能作为安全授权闭环。
 
 ### 64.6 数据库与兼容性
 
@@ -13257,7 +13286,7 @@ GET /api/idle-adventure/stages/{stage}/enemies
 Authorization: Bearer <player-token>
 ```
 
-响应继续返回固定六个槽位，并新增以下只读字段：
+下列为远端 `origin/sck@08b4f0c` 的目标响应字段；本地已恢复的 `sck@6502a67` 仍返回固定六个槽位及敌人基础字段，但不返回 `stage_name`、槽位坐标和敌人的资源键/等级：
 
 - `stage_name`：当前已发布关卡名称；
 - `column`、`row`、`front_column`：槽位布局信息；
@@ -13265,7 +13294,7 @@ Authorization: Bearer <player-token>
 - `enemy.level`：该关卡槽位最终生效等级；
 - `enemy.max_health`、`attack`、`defense`、`speed`：该槽位最终生效属性。
 
-空槽位仍返回 `enemy: null`。新增字段不改变 URL、鉴权、请求方式或既有字段，旧 Unity 可兼容；新 Unity 若需要展示这些信息，需在敌人响应模型中增加字段并在 UI 中使用 `stage_name`、等级、属性和资源标识。客户端不得根据等级自行推算属性。
+空槽位仍返回 `enemy: null`。目标版本的新增字段不改变 URL、鉴权、请求方式或既有字段，旧 Unity 可兼容；当前 master 已具备接收这些字段的 DTO，并在字段缺失时降级显示。客户端不得根据等级自行推算属性。
 
 管理端路径为“配置中心 -> 挂机冒险 -> 关卡配置”。展开关卡后，敌方阵容编辑表下方显示“阵容属性预览”，固定展示六槽位、前后排、等级、战斗属性、技能、图标、模型以及生命/攻击/防御合计和速度总和（仅用于配置核对）。该预览只读计算，不写回配置；正式发布仍由后端严格校验。
 
@@ -13296,7 +13325,7 @@ Authorization: Bearer <player-token>
 }
 ```
 
-Unity 必须使用显式、大小写敏感的映射表：`AVATAR_001` → `Resources/Avatars/avatar_001`、`AVATAR_002` → `Resources/Avatars/avatar_002`、`AVATAR_003` → `Resources/Avatars/avatar_003`（路径不含扩展名）。加载失败或编号未知时回退包内默认头像，不得尝试下载 `avatarUrl`；`enabled=false` 的项不得展示为可选项。
+Unity 必须使用显式、大小写敏感的映射表：`AVATAR_001` → `Resources/Avatars/avatar_001`、`AVATAR_002` → `Resources/UI/AvatarPresets/微信图片_20260812141117_70_71`、`AVATAR_003` → `Resources/UI/AvatarPresets/微信图片_20260812141246_71_71`（路径不含扩展名）。加载失败或编号未知时回退包内默认头像，不得尝试下载 `avatarUrl`；`enabled=false` 的项不得展示为可选项。
 
 ### 选择固定头像
 

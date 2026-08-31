@@ -2117,6 +2117,8 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(giftHint.rectTransform, new Vector2(52f, -370f), new Vector2(418f, 30f));
         Button gift = CreateButton("FriendsGiftButton", content.transform, "赠送体力", new Color(0.32f, 0.66f, 0.38f, 1f), Color.white, 19);
         SetTopLeft(gift.GetComponent<RectTransform>(), new Vector2(72f, -416f), new Vector2(174f, 50f));
+        Button dailyGift = CreateButton("FriendsDailyGiftButton", content.transform, "赠送物品", new Color(0.30f, 0.52f, 0.76f, 1f), Color.white, 17);
+        SetTopLeft(dailyGift.GetComponent<RectTransform>(), new Vector2(72f, -468f), new Vector2(174f, 46f));
         Button delete = CreateButton("FriendsDeleteButton", content.transform, "删除好友", new Color(0.84f, 0.38f, 0.30f, 1f), Color.white, 19);
         SetTopLeft(delete.GetComponent<RectTransform>(), new Vector2(276f, -416f), new Vector2(174f, 50f));
         Button requestPrimary = CreateButton("FriendsRequestPrimaryButton", content.transform, "同意", new Color(0.32f, 0.66f, 0.38f, 1f), Color.white, 19);

@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public partial class HomePageUI
@@ -13,6 +14,7 @@ public partial class HomePageUI
     private bool notificationMutationRunning;
     private int notificationPageIndex;
     private long selectedNotificationId;
+    private bool notificationNavigationRunning;
 
     private SubscribeTemplateResponse[] pendingSubscribeTemplates = new SubscribeTemplateResponse[0];
     private bool subscribeRequestRunning;
@@ -225,6 +227,7 @@ public partial class HomePageUI
             if (emptyReadButton != null) emptyReadButton.interactable = false;
             SetSceneButtonText(emptyReadButton, "标记已读");
             BindSceneButton(emptyReadButton, null);
+            ConfigureNotificationAction(root, null);
             return;
         }
 
@@ -242,6 +245,221 @@ public partial class HomePageUI
         }
         SetSceneButtonText(readButton, notification.readFlag ? "已读" : "标记已读");
         BindSceneButton(readButton, MarkSelectedNotificationRead);
+        ConfigureNotificationAction(root, notification);
+    }
+
+    private void ConfigureNotificationAction(Transform root, RealtimeNotification notification)
+    {
+        if (root == null)
+        {
+            return;
+        }
+
+        Button actionButton = FindSceneComponent<Button>(root, "NotificationActionButton");
+        if (actionButton == null)
+        {
+            Transform parent = FindSceneTransform(root, "MailDetailArea");
+            if (parent == null)
+            {
+                parent = FindSceneTransform(root, "NotificationDetailArea");
+            }
+            if (parent == null)
+            {
+                parent = FindSceneTransform(root, "SystemMailPanel");
+            }
+            if (parent == null)
+            {
+                parent = root;
+            }
+
+            actionButton = CreateButton(
+                parent,
+                "NotificationActionButton",
+                string.Empty,
+                new Color(0.25f, 0.52f, 0.64f, 1f),
+                Color.white);
+            SetRect(
+                actionButton.GetComponent<RectTransform>(),
+                new Vector2(1f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(1f, 0f),
+                new Vector2(-24f, 22f),
+                new Vector2(190f, 48f));
+            ConfigureClearButtonLabel(actionButton, 18);
+        }
+
+        if (!TryGetNotificationAction(notification, out NotificationPayload payload, out string actionText))
+        {
+            actionButton.gameObject.SetActive(false);
+            BindSceneButton(actionButton, null);
+            return;
+        }
+
+        actionButton.gameObject.SetActive(true);
+        actionButton.interactable = !notificationNavigationRunning && !notificationMutationRunning;
+        SetSceneButtonText(actionButton, notificationNavigationRunning ? "处理中..." : actionText);
+        BindSceneButton(actionButton, () => StartCoroutine(NavigateNotification(notification, payload)));
+    }
+
+    private bool TryGetNotificationAction(
+        RealtimeNotification notification,
+        out NotificationPayload payload,
+        out string actionText)
+    {
+        payload = null;
+        actionText = string.Empty;
+        if (notification == null)
+        {
+            return false;
+        }
+
+        payload = ParseNotificationPayload(notification.payload);
+        string scene = payload == null ? string.Empty : payload.scene;
+        if (string.IsNullOrEmpty(scene))
+        {
+            scene = notification.type;
+            if (payload == null)
+            {
+                payload = new NotificationPayload();
+            }
+            payload.scene = scene;
+        }
+
+        scene = scene.Trim().ToUpperInvariant();
+        switch (scene)
+        {
+            case "MAIL":
+            case "MAIL_RECEIVED":
+            case "MAIL_ATTACHMENT_CLAIMED":
+                if (payload.ResolvedMailId <= 0L)
+                {
+                    return false;
+                }
+                actionText = "查看邮件";
+                return true;
+            case "PAYMENT_DELIVERED":
+                if (string.IsNullOrWhiteSpace(payload.ResolvedOrderNo))
+                {
+                    return false;
+                }
+                actionText = "查看充值订单";
+                return true;
+            case "RESOURCE_READY":
+                actionText = "前往经营场景";
+                return true;
+            case "BUILDING_COMPLETED":
+                if (payload.ResolvedPlayerBuildingId <= 0L && payload.ResolvedPlayerLandId <= 0L)
+                {
+                    return false;
+                }
+                actionText = "查看建筑";
+                return true;
+            case "AD_REWARD_CLAIMED":
+                actionText = "打开背包";
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static NotificationPayload ParseNotificationPayload(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return null;
+        }
+
+        NotificationPayload payload = ParseJson<NotificationPayload>(raw);
+        if (payload != null)
+        {
+            return payload;
+        }
+
+        string unwrapped = raw.Trim();
+        if (unwrapped.Length >= 2 && unwrapped[0] == '"' && unwrapped[unwrapped.Length - 1] == '"')
+        {
+            unwrapped = unwrapped.Substring(1, unwrapped.Length - 2)
+                .Replace("\\\"", "\"")
+                .Replace("\\\\", "\\");
+            payload = ParseJson<NotificationPayload>(unwrapped);
+        }
+
+        return payload;
+    }
+
+    private IEnumerator NavigateNotification(RealtimeNotification notification, NotificationPayload payload)
+    {
+        if (notification == null || payload == null || notificationNavigationRunning)
+        {
+            yield break;
+        }
+
+        notificationNavigationRunning = true;
+        ConfigureNotificationAction(GetNotificationPanelRoot(), notification);
+        if (!notification.readFlag)
+        {
+            yield return MarkNotificationRead(notification);
+        }
+
+        string scene = string.IsNullOrEmpty(payload.scene)
+            ? notification.type
+            : payload.scene.Trim().ToUpperInvariant();
+        switch (scene)
+        {
+            case "MAIL":
+            case "MAIL_RECEIVED":
+            case "MAIL_ATTACHMENT_CLAIMED":
+                selectedMailId = payload.ResolvedMailId;
+                if (selectedMailId > 0L)
+                {
+                    ShowMailContent();
+                }
+                else
+                {
+                    SetStatus("通知未提供有效邮件编号，无法定位邮件。");
+                }
+                break;
+            case "PAYMENT_DELIVERED":
+                SetPendingPaymentOrderFromNotification(payload.ResolvedOrderNo);
+                ShowRechargeContent();
+                StartCoroutine(RecoverPendingPaymentOrder("正在查询通知中的充值订单..."));
+                break;
+            case "RESOURCE_READY":
+                QueueNotificationSceneTarget(payload);
+                HideNotificationCenter();
+                SceneManager.LoadScene("Simulation management mode");
+                break;
+            case "BUILDING_COMPLETED":
+                HomePageUINotificationDeepLink.QueueBuilding(
+                    payload.ResolvedSceneId,
+                    payload.ResolvedPlayerBuildingId,
+                    payload.ResolvedPlayerLandId);
+                HideNotificationCenter();
+                SceneManager.LoadScene("Simulation management mode");
+                break;
+            case "AD_REWARD_CLAIMED":
+                HideNotificationCenter();
+                ShowBagContent();
+                StartCoroutine(RefreshAccountSnapshot("广告奖励已到账，背包已刷新。"));
+                break;
+            default:
+                SetStatus("该通知暂时没有可用跳转。");
+                break;
+        }
+
+        notificationNavigationRunning = false;
+        ConfigureNotificationAction(GetNotificationPanelRoot(), FindNotification(selectedNotificationId));
+    }
+
+    private static void QueueNotificationSceneTarget(NotificationPayload payload)
+    {
+        if (payload == null)
+        {
+            return;
+        }
+
+        int sceneId = payload.ResolvedSceneId;
+        HomePageUINotificationDeepLink.QueueScene(sceneId);
     }
 
     private void ConfigureNotificationPaging(Transform root, int pageCount)
@@ -504,20 +722,20 @@ public partial class HomePageUI
                 yield break;
             }
 
-            List<SubscribeTemplateResponse> enabled = new List<SubscribeTemplateResponse>();
+            List<SubscribeTemplateResponse> availableTemplates = new List<SubscribeTemplateResponse>();
             if (response.data != null)
             {
                 for (int i = 0; i < response.data.Length; i++)
                 {
                     SubscribeTemplateResponse template = response.data[i];
-                    if (template != null && template.enabled && !string.IsNullOrEmpty(template.templateId))
+                    if (template != null && !string.IsNullOrEmpty(template.templateId))
                     {
-                        enabled.Add(template);
+                        availableTemplates.Add(template);
                     }
                 }
             }
 
-            pendingSubscribeTemplates = enabled.ToArray();
+            pendingSubscribeTemplates = availableTemplates.ToArray();
             if (pendingSubscribeTemplates.Length == 0)
             {
                 subscribeRequestRunning = false;
@@ -1112,6 +1330,42 @@ public partial class HomePageUI
     private class NotificationReadAllApiResponse : BasicApiResponse
     {
         public int data;
+    }
+
+    [Serializable]
+    private class NotificationPayload
+    {
+        public string scene;
+        public long mailId;
+        public long mail_id;
+        public long playerBuildingId;
+        public long player_building_id;
+        public long buildingId;
+        public long building_id;
+        public long sceneId;
+        public long scene_id;
+        public long playerLandId;
+        public long player_land_id;
+        public string orderNo;
+        public string order_no;
+        public string adScene;
+        public string ad_scene;
+        public string watchId;
+        public string watch_id;
+
+        public long ResolvedMailId => mailId > 0L ? mailId : mail_id;
+        public long ResolvedPlayerBuildingId => playerBuildingId > 0L ? playerBuildingId : player_building_id;
+        public long ResolvedBuildingId => buildingId > 0L ? buildingId : building_id;
+        public int ResolvedSceneId
+        {
+            get
+            {
+                long value = sceneId > 0L ? sceneId : scene_id;
+                return value > int.MaxValue ? 0 : (int)value;
+            }
+        }
+        public long ResolvedPlayerLandId => playerLandId > 0L ? playerLandId : player_land_id;
+        public string ResolvedOrderNo => string.IsNullOrWhiteSpace(orderNo) ? order_no : orderNo;
     }
 
     [Serializable]
