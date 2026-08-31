@@ -146,6 +146,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private string backendRunningSessionKey;
     private int backendHighestStage;
     private int backendNextStage = 1;
+    private int selectedReplayStage;
     private IdleAdventurePlayerNpcResponse[] backendAvailableNpcs = new IdleAdventurePlayerNpcResponse[0];
     private Coroutine backendHomeLoadRoutine;
     private bool backendHomeLoadRunning;
@@ -618,6 +619,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         backendRunningSessionKey = string.Empty;
         backendHighestStage = 0;
         backendNextStage = 1;
+        selectedReplayStage = 0;
         backendAvailableNpcs = new IdleAdventurePlayerNpcResponse[0];
         backendRuntimeCombatants.Clear();
         backendStageClearRequests.Clear();
@@ -1907,8 +1909,10 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         else
         {
             startPanelView.Bind(StartAdventure);
+            startPanelView.BindStageSelection(SelectPreviousStartStage, SelectNextStartStage);
             formationPanelView.Bind(OpenFormationPanel, CloseFormationPanel, AutoFillFormation, ClearFormation, AssignFormationSlot, ClearFormationSlot);
             formationPanelView.ApplySlotLayout(true);
+            RefreshStartStageSelectionView();
             RefreshFormationView();
         }
 
@@ -2068,6 +2072,18 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         TextMeshProUGUI formationText = CreateText("Formation Status", statusStrip, "Camp prepared  |  Gate open  |  Team ready", 19, FontStyles.Bold, TextAlignmentOptions.Center);
         Stretch(formationText.rectTransform);
 
+        RectTransform stageSelector = CreatePanel("Stage Selector", startPanel, new Color(0.10f, 0.12f, 0.15f, 0.96f));
+        Anchor(stageSelector, new Vector2(0.28f, 0.24f), new Vector2(0.72f, 0.35f), Vector2.zero, Vector2.zero);
+
+        Button previousStageButton = CreateButton("Previous Stage Button", stageSelector, "Previous");
+        Anchor(previousStageButton.GetComponent<RectTransform>(), new Vector2(0f, 0f), new Vector2(0.22f, 1f), Vector2.zero, Vector2.zero);
+
+        TextMeshProUGUI stageSelectionText = CreateText("Stage Selection Text", stageSelector, "Loading authoritative progress...", 18, FontStyles.Bold, TextAlignmentOptions.Center);
+        Anchor(stageSelectionText.rectTransform, new Vector2(0.23f, 0f), new Vector2(0.77f, 1f), new Vector2(8f, 4f), new Vector2(-8f, -4f));
+
+        Button nextStageButton = CreateButton("Next Stage Button", stageSelector, "Next");
+        Anchor(nextStageButton.GetComponent<RectTransform>(), new Vector2(0.78f, 0f), new Vector2(1f, 1f), Vector2.zero, Vector2.zero);
+
         Button formationButton = CreateButton("Open Formation Button", startPanel, "Formation");
         Anchor(formationButton.GetComponent<RectTransform>(), new Vector2(0.28f, 0.13f), new Vector2(0.44f, 0.19f), Vector2.zero, Vector2.zero);
 
@@ -2144,8 +2160,16 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         Anchor(closeButton.GetComponent<RectTransform>(), new Vector2(0.42f, 0.86f), new Vector2(0.58f, 0.93f), Vector2.zero, Vector2.zero);
 
         startPanelView = startPanel.gameObject.AddComponent<IdleAdventureStartPanel>();
-        startPanelView.Initialize(startPanelTitleText, startPanelBodyText, startButton);
+        startPanelView.Initialize(
+            startPanelTitleText,
+            startPanelBodyText,
+            stageSelectionText,
+            previousStageButton,
+            nextStageButton,
+            startButton);
         startPanelView.Bind(StartAdventure);
+        startPanelView.BindStageSelection(SelectPreviousStartStage, SelectNextStartStage);
+        RefreshStartStageSelectionView();
 
         formationPanelView = startPanel.gameObject.AddComponent<IdleAdventureFormationPanel>();
         formationPanelView.Initialize(formationWindow, formationText, formationButton, closeButton, autoFillButton, clearButton, formationSlots, formationLabels, formationDropTargets, npcItems, npcLabels, npcDragItems, ownerCanvas);
@@ -2272,14 +2296,13 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         acquisitionRouteModeCode = modeCode;
         acquisitionRouteStage = requestedStage;
         acquisitionRoutePoolKey = poolKey;
-        stage = requestedStage;
-        backendNextStage = requestedStage;
         if (startPanelView != null)
         {
             startPanelView.SetContent(
                 "Idle Adventure mode",
-                $"Mode: {modeCode}  Stage: {requestedStage}  Drop pool: {poolKey}");
+                $"Guide target: Stage {requestedStage}  Drop pool: {poolKey}. Use the stage selector to replay it.");
         }
+        RefreshStartStageSelectionView();
         AddLog($"Acquisition guide target: mode={modeCode}, stage={requestedStage}, pool={poolKey}.");
         ClearPendingRoleAcquisitionRouteStorage();
     }
@@ -2335,6 +2358,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         backendRuntimeCombatants.Clear();
         localSimulationBlockedLogged = false;
         pendingNextStage = -1;
+        selectedReplayStage = 0;
         stage = 1;
         round = 1;
         battleLog.Clear();
@@ -2355,7 +2379,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         HideEndPanel();
         ShowStartPanel();
         SetWaitingText();
-        if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", $"Next stage: {NextUnclearedStage()}");
+        if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", "Loading authoritative progress...");
+        RefreshStartStageSelectionView();
         RefreshFormationView();
     }
 
@@ -2511,6 +2536,70 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         HidePausePanel();
     }
 
+    private void SelectPreviousStartStage()
+    {
+        ChangeSelectedStartStage(-1);
+    }
+
+    private void SelectNextStartStage()
+    {
+        ChangeSelectedStartStage(1);
+    }
+
+    private void ChangeSelectedStartStage(int direction)
+    {
+        if (backendRequestPending || battleStarted || backendHighestStage <= 0 || direction == 0) return;
+
+        SanitizeSelectedReplayStage();
+        int optionCount = backendHighestStage + 1;
+        int optionIndex = selectedReplayStage;
+        optionIndex = (optionIndex + direction) % optionCount;
+        if (optionIndex < 0) optionIndex += optionCount;
+        selectedReplayStage = optionIndex;
+
+        int requestedStage = ResolveSelectedStartStage();
+        RefreshStartStageSelectionView();
+        if (startPanelView != null)
+        {
+            string selectionText = selectedReplayStage > 0
+                ? $"Loading Stage {selectedReplayStage} replay preview..."
+                : $"Loading authoritative Stage {backendNextStage} preview...";
+            startPanelView.SetContent("Idle Adventure mode", selectionText);
+        }
+        QueueBackendReferenceDataLoad(requestedStage);
+    }
+
+    private int ResolveSelectedStartStage()
+    {
+        SanitizeSelectedReplayStage();
+        return selectedReplayStage > 0
+            ? selectedReplayStage
+            : Mathf.Max(1, backendNextStage);
+    }
+
+    private void SanitizeSelectedReplayStage()
+    {
+        if (selectedReplayStage < 1 || selectedReplayStage > backendHighestStage)
+        {
+            selectedReplayStage = 0;
+        }
+    }
+
+    private void RefreshStartStageSelectionView()
+    {
+        if (startPanelView == null) return;
+
+        SanitizeSelectedReplayStage();
+        string selection = selectedReplayStage > 0
+            ? $"Replay Stage {selectedReplayStage}"
+            : $"Continue Stage {Mathf.Max(1, backendNextStage)}";
+        string guide = acquisitionRouteApplied && acquisitionRouteStage > 0
+            ? $"  |  Guide target: Stage {acquisitionRouteStage}"
+            : string.Empty;
+        startPanelView.SetStageSelection(
+            $"{selection}\nHighest cleared: {Mathf.Max(0, backendHighestStage)}{guide}");
+    }
+
     private void StartAdventure()
     {
         if (battleStarted) return;
@@ -2542,7 +2631,18 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", "Starting from backend...");
 
         yield return RefreshBackendStamina(service);
-        yield return RefreshBackendHomeBeforeSessionStart(service);
+        bool homeRefreshSucceeded = false;
+        yield return RefreshBackendHomeBeforeSessionStart(service, succeeded => homeRefreshSucceeded = succeeded);
+        if (!homeRefreshSucceeded)
+        {
+            backendRequestPending = false;
+            if (startPanelView != null)
+            {
+                startPanelView.SetContent("Idle Adventure mode", "Unable to refresh authoritative stage progress. Please retry.");
+            }
+            UpdateButtonStates();
+            yield break;
+        }
         if (!string.IsNullOrEmpty(backendRunningSessionKey))
         {
             BackendResult<IdleAdventureSessionResponse> endResult = null;
@@ -2561,23 +2661,29 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             backendRunningSessionKey = string.Empty;
         }
 
-        int requestedStage = Mathf.Max(1, backendNextStage > 0 ? backendNextStage : NextUnclearedStage());
+        int requestedStage = ResolveSelectedStartStage();
         yield return StartBackendSessionFromSavedFormation(service, requestedStage, "Backend battle start failed");
     }
 
-    private IEnumerator RefreshBackendHomeBeforeSessionStart(BackendGameService service)
+    private IEnumerator RefreshBackendHomeBeforeSessionStart(BackendGameService service, Action<bool> onComplete)
     {
-        if (service == null || !service.IsAuthenticated) yield break;
+        if (service == null || !service.IsAuthenticated)
+        {
+            onComplete?.Invoke(false);
+            yield break;
+        }
 
         BackendResult<IdleAdventureHomeResponse> homeResult = null;
         yield return service.LoadIdleAdventureHome(value => homeResult = value);
         if (homeResult != null && homeResult.Success && homeResult.Data != null)
         {
             ApplyBackendHome(homeResult.Data);
+            onComplete?.Invoke(true);
         }
         else
         {
             AddLog($"Backend home refresh before start failed: {BackendResultMessage(homeResult)}");
+            onComplete?.Invoke(false);
         }
     }
 
@@ -2622,6 +2728,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         HidePausePanel();
         ApplyBackendSessionSnapshot(result.Data, true);
         SetBattleRunningLocally();
+        selectedReplayStage = 0;
         acquisitionRouteApplied = false;
         acquisitionRouteModeCode = string.Empty;
         acquisitionRouteStage = 0;
@@ -2970,6 +3077,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         backendHighestStage = highest;
         backendNextStage = Mathf.Max(1, highest + 1);
+        SanitizeSelectedReplayStage();
+        RefreshStartStageSelectionView();
         if (stageProgress != null) stageProgress.SetProgressFromServer(highest);
         if (afkRewardSource != null) afkRewardSource.SetHighestClearedStageFromProgress(highest);
     }
@@ -3837,25 +3946,26 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             ?? (service == null ? null : service.CurrentIdleAdventureAfkReward));
         RefreshStaminaView();
 
-        int resolvedHighestStage = home.progress != null
-            ? home.progress.ResolvedHighestStage
-            : home.ResolvedHighestStage;
-        int resolvedNextStage = home.progress != null
-            ? home.progress.ResolvedNextStage
-            : home.ResolvedNextStage;
+        int resolvedHighestStage = home.ResolvedHighestStage;
+        if (resolvedHighestStage <= 0 && home.progress != null)
+        {
+            resolvedHighestStage = home.progress.ResolvedHighestStage;
+        }
+
+        int resolvedNextStage = home.ResolvedNextStage;
+        if (resolvedNextStage <= 0 && home.progress != null)
+        {
+            resolvedNextStage = home.progress.ResolvedNextStage;
+        }
         backendHighestStage = Mathf.Max(0, resolvedHighestStage);
         backendNextStage = Mathf.Max(1, resolvedNextStage > 0 ? resolvedNextStage : backendHighestStage + 1);
+        SanitizeSelectedReplayStage();
 
         IdleAdventureSessionSummaryResponse activeSession = home.ResolvedActiveSession;
         string resolvedSessionKey = activeSession != null
             ? activeSession.ResolvedSessionKey
             : home.ResolvedRunningSessionKey;
         bool hasRunningSession = home.ResolvedHasRunningSession;
-        if (!hasRunningSession && acquisitionRouteApplied && acquisitionRouteStage > 0)
-        {
-            backendNextStage = acquisitionRouteStage;
-            stage = acquisitionRouteStage;
-        }
         backendRunningSessionKey = hasRunningSession && !string.IsNullOrEmpty(resolvedSessionKey)
             ? resolvedSessionKey
             : string.Empty;
@@ -3883,10 +3993,13 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             string runningText = hasRunningSession && !string.IsNullOrEmpty(resolvedSessionKey)
                 ? "Running session can be resumed from backend"
-                : $"Next stage: {backendNextStage}";
+                : acquisitionRouteApplied && acquisitionRouteStage > 0
+                    ? $"Authoritative next stage: {backendNextStage}. Guide target: Stage {acquisitionRouteStage}."
+                    : $"Authoritative next stage: {backendNextStage}.";
             startPanelView.SetContent("Idle Adventure mode", runningText);
         }
 
+        RefreshStartStageSelectionView();
         RefreshFormationView();
         if (!backendRequestPending) UpdateButtonStates();
         if (backendFormationDirty) SaveBackendFormationIfAvailable();
@@ -3910,6 +4023,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (stageProgress != null) stageProgress.SetProgressFromServer(highestStage);
         if (afkRewardSource != null) afkRewardSource.SetHighestClearedStageFromProgress(highestStage);
+        SanitizeSelectedReplayStage();
+        RefreshStartStageSelectionView();
         RefreshStaminaView();
     }
 
@@ -4350,7 +4465,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         bool normalPausePending = battleStarted && paused && !stageChoicePending && !stageFailedPending && !modePausedByChoice;
         bool pausePanelOpen = pausePanelView != null && pausePanelView.IsVisible;
         if (pauseButton != null) pauseButton.interactable = battleStarted && !backendRequestPending && !stageChoicePending && !stageFailedPending && !modePausedByChoice && !pausePanelOpen;
-        if (startPanelView != null) startPanelView.SetInteractable(!backendRequestPending && !battleStarted && FormationDeployedCount() > 0);
+        if (startPanelView != null)
+        {
+            startPanelView.SetInteractable(!backendRequestPending && !battleStarted && FormationDeployedCount() > 0);
+            startPanelView.SetStageSelectionInteractable(!backendRequestPending && !battleStarted && backendHighestStage > 0);
+        }
         if (stageEndPanelView != null)
         {
             stageEndPanelView.SetContinueInteractable(!backendRequestPending && battleStarted && !modePausedByChoice && ((stageChoicePending && pendingNextStage > 0) || stageFailedPending));
