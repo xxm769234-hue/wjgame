@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using TMPro;
+using Text = TMPro.TMP_Text;
 
 public partial class HomePageUI
 {
@@ -361,9 +363,9 @@ public partial class HomePageUI
             {
                 Stretch(iconLabel.rectTransform);
                 iconLabel.fontSize = 24;
-                iconLabel.resizeTextForBestFit = true;
-                iconLabel.resizeTextMinSize = 16;
-                iconLabel.resizeTextMaxSize = 24;
+                iconLabel.enableAutoSizing = true;
+                iconLabel.fontSizeMin = 16;
+                iconLabel.fontSizeMax = 24;
             }
             ConfigureCompactEquipmentSlotText(root, "EquipmentSlotName" + suffix, new Vector2(8f, -66f), new Vector2(123f, 24f), 16, 12);
             ConfigureCompactEquipmentSlotText(root, "EquipmentSlotState" + suffix, new Vector2(8f, -92f), new Vector2(123f, 20f), 13, 11);
@@ -376,9 +378,9 @@ public partial class HomePageUI
                 if (emptyLabel != null)
                 {
                     emptyLabel.fontSize = 11;
-                    emptyLabel.resizeTextForBestFit = true;
-                    emptyLabel.resizeTextMinSize = 9;
-                    emptyLabel.resizeTextMaxSize = 11;
+                    emptyLabel.enableAutoSizing = true;
+                    emptyLabel.fontSizeMin = 9;
+                    emptyLabel.fontSizeMax = 11;
                 }
             }
         }
@@ -427,9 +429,9 @@ public partial class HomePageUI
 
         SetRect(label.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
         label.fontSize = fontSize;
-        label.resizeTextForBestFit = true;
-        label.resizeTextMinSize = minimumFontSize;
-        label.resizeTextMaxSize = fontSize;
+        label.enableAutoSizing = true;
+        label.fontSizeMin = minimumFontSize;
+        label.fontSizeMax = fontSize;
     }
 
     private static void RenameLegacyEquipmentNode(
@@ -561,9 +563,9 @@ public partial class HomePageUI
             if (value != null)
             {
                 SetRect(value.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(40f, -8f), new Vector2(82f, 32f));
-                value.resizeTextForBestFit = true;
-                value.resizeTextMinSize = 11;
-                value.resizeTextMaxSize = Mathf.Max(16, value.fontSize);
+                value.enableAutoSizing = true;
+                value.fontSizeMin = 11;
+                value.fontSizeMax = Mathf.Max(16, value.fontSize);
             }
         }
     }
@@ -789,11 +791,11 @@ public partial class HomePageUI
         Text descriptionText = FindSceneComponent<Text>(root, "EquipmentDetailDescription");
         if (descriptionText != null)
         {
-            descriptionText.resizeTextForBestFit = true;
-            descriptionText.resizeTextMinSize = 10;
-            descriptionText.resizeTextMaxSize = 16;
-            descriptionText.horizontalOverflow = HorizontalWrapMode.Wrap;
-            descriptionText.verticalOverflow = VerticalWrapMode.Truncate;
+            descriptionText.enableAutoSizing = true;
+            descriptionText.fontSizeMin = 10;
+            descriptionText.fontSizeMax = 16;
+            descriptionText.enableWordWrapping = true;
+            descriptionText.overflowMode = TextOverflowModes.Truncate;
             descriptionText.lineSpacing = 0.9f;
             RectTransform descriptionCard = descriptionText.transform.parent as RectTransform;
             if (descriptionCard != null)

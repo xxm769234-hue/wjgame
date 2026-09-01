@@ -9,6 +9,8 @@ using UnityEngine.Events;
 using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using Text = TMPro.TMP_Text;
+using Font = TMPro.TMP_FontAsset;
 
 public partial class HomePageUI : MonoBehaviour
 {
@@ -122,7 +124,7 @@ public partial class HomePageUI : MonoBehaviour
             return;
         }
 
-        fallbackFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        fallbackFont = RuntimeFontAssetProvider.Resolve();
         if (defaultFont == null)
         {
             defaultFont = fallbackFont;
@@ -375,7 +377,7 @@ public partial class HomePageUI : MonoBehaviour
             return;
         }
 
-        fallbackFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        fallbackFont = RuntimeFontAssetProvider.Resolve();
         if (defaultFont == null)
         {
             defaultFont = fallbackFont;
@@ -5530,22 +5532,38 @@ public partial class HomePageUI : MonoBehaviour
 
     private Text CreateText(string name, Transform parent, string text, int size, FontStyle style, Color color, TextAnchor alignment)
     {
-        GameObject obj = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+        GameObject obj = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
         obj.transform.SetParent(parent, false);
 
-        Text label = obj.GetComponent<Text>();
-        Font resolvedFont = ResolveFont(text);
-        label.font = resolvedFont;
+        TMP_Text label = obj.GetComponent<TMP_Text>();
+        label.font = RuntimeFontAssetProvider.Resolve();
         label.text = text;
         label.fontSize = size;
-        label.fontStyle = resolvedFont == defaultFont ? FontStyle.Normal : style;
+        label.fontStyle = style == FontStyle.Bold ? FontStyles.Bold : style == FontStyle.Italic ? FontStyles.Italic : FontStyles.Normal;
         label.color = color;
-        label.alignment = alignment;
-        label.resizeTextForBestFit = true;
-        label.resizeTextMinSize = 12;
-        label.resizeTextMaxSize = size;
+        label.alignment = ConvertTextAlignment(alignment);
+        label.enableAutoSizing = true;
+        label.fontSizeMin = 12;
+        label.fontSizeMax = size;
         label.raycastTarget = false;
         return label;
+    }
+
+    private static TextAlignmentOptions ConvertTextAlignment(TextAnchor alignment)
+    {
+        switch (alignment)
+        {
+            case TextAnchor.UpperLeft: return TextAlignmentOptions.TopLeft;
+            case TextAnchor.UpperCenter: return TextAlignmentOptions.Top;
+            case TextAnchor.UpperRight: return TextAlignmentOptions.TopRight;
+            case TextAnchor.MiddleLeft: return TextAlignmentOptions.MidlineLeft;
+            case TextAnchor.MiddleCenter: return TextAlignmentOptions.Center;
+            case TextAnchor.MiddleRight: return TextAlignmentOptions.MidlineRight;
+            case TextAnchor.LowerLeft: return TextAlignmentOptions.BottomLeft;
+            case TextAnchor.LowerCenter: return TextAlignmentOptions.Bottom;
+            case TextAnchor.LowerRight: return TextAlignmentOptions.BottomRight;
+            default: return TextAlignmentOptions.TopLeft;
+        }
     }
 
     private Font ResolveFont(string text)
@@ -5555,20 +5573,12 @@ public partial class HomePageUI : MonoBehaviour
             return defaultFont ?? fallbackFont;
         }
 
-        foreach (char character in text)
-        {
-            if (!char.IsControl(character) && !char.IsSurrogate(character) && !defaultFont.HasCharacter(character))
-            {
-                return fallbackFont ?? defaultFont;
-            }
-        }
-
-        return defaultFont;
+        return RuntimeFontAssetProvider.Resolve();
     }
 
     private Text CreateMailText(string name, Transform parent, string text, int size, FontStyle style, Color color, TextAnchor alignment)
     {
-        Text label = CreateText(name, parent, text, size, style, color, alignment);
+        TMP_Text label = CreateText(name, parent, text, size, style, color, alignment);
         ConfigureClearText(label, size);
         return label;
     }
@@ -5592,7 +5602,7 @@ public partial class HomePageUI : MonoBehaviour
                 SetRect(shine.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), Vector2.zero, new Vector2(0f, 18f));
             }
 
-            Text label = CreateText("Text", image.transform, text, 22, FontStyle.Bold, textColor, TextAnchor.MiddleCenter);
+            TMP_Text label = CreateText("Text", image.transform, text, 22, FontStyle.Bold, textColor, TextAnchor.MiddleCenter);
             Stretch(label.rectTransform);
             Outline outline = label.gameObject.AddComponent<Outline>();
             outline.effectColor = new Color(0.31f, 0.14f, 0.05f, 0.65f);
@@ -5618,16 +5628,16 @@ public partial class HomePageUI : MonoBehaviour
 
     private void ShrinkButtonLabel(Button button, int fontSize)
     {
-        Text label = button.GetComponentInChildren<Text>(true);
+        TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
         if (label == null)
         {
             return;
         }
 
         label.fontSize = fontSize;
-        label.resizeTextForBestFit = true;
-        label.resizeTextMinSize = 10;
-        label.resizeTextMaxSize = fontSize;
+        label.enableAutoSizing = true;
+        label.fontSizeMin = 10;
+        label.fontSizeMax = fontSize;
     }
 
     private void ConfigureClearText(Text label, int fontSize)
@@ -5638,16 +5648,14 @@ public partial class HomePageUI : MonoBehaviour
         }
 
         label.fontSize = fontSize;
-        label.resizeTextForBestFit = false;
-        label.resizeTextMinSize = fontSize;
-        label.resizeTextMaxSize = fontSize;
-        label.horizontalOverflow = HorizontalWrapMode.Wrap;
-        label.verticalOverflow = VerticalWrapMode.Truncate;
+        label.enableAutoSizing = false;
+        label.enableWordWrapping = true;
+        label.overflowMode = TextOverflowModes.Truncate;
     }
 
     private void ConfigureClearButtonLabel(Button button, int fontSize)
     {
-        Text label = button.GetComponentInChildren<Text>(true);
+        TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
         ConfigureClearText(label, fontSize);
 
         if (label == null)

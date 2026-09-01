@@ -6,6 +6,10 @@ using UnityEngine.EventSystems;
 using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using TMPro;
+using Text = TMPro.TMP_Text;
+using InputField = TMPro.TMP_InputField;
+using Font = TMPro.TMP_FontAsset;
 
 public partial class GameBoot : MonoBehaviour
 {
@@ -50,7 +54,7 @@ public partial class GameBoot : MonoBehaviour
 
     private void Start()
     {
-        defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        defaultFont = RuntimeFontAssetProvider.Resolve();
         BuildLoginUI();
         string complianceBlockedMessage = PlayerPrefs.GetString("ComplianceBlockedMessage", string.Empty);
         if (!string.IsNullOrEmpty(complianceBlockedMessage))
@@ -364,7 +368,7 @@ public partial class GameBoot : MonoBehaviour
             LoginStyle.ApplyInput(input.GetComponent<Image>());
         }
         input.textComponent.fontSize = ResolveFontSize(18);
-        Text placeholderText = input.placeholder as Text;
+        TMP_Text placeholderText = input.placeholder as TMP_Text;
         if (placeholderText != null)
         {
             placeholderText.fontSize = ResolveFontSize(16);
@@ -417,13 +421,14 @@ public partial class GameBoot : MonoBehaviour
 
         Button button = CreateButton(parent, name, text, color, textColor);
         SetRect(button.GetComponent<RectTransform>(), CenterAnchor(), CenterAnchor(), CenterAnchor(), position, size);
-        Text label = button.GetComponentInChildren<Text>(true);
+        TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
         if (label != null)
         {
             int resolvedFontSize = ResolveFontSize(fontSize);
             label.fontSize = resolvedFontSize;
-            label.resizeTextMinSize = Mathf.Max(8, resolvedFontSize - 8);
-            label.resizeTextMaxSize = resolvedFontSize;
+            label.enableAutoSizing = true;
+            label.fontSizeMin = Mathf.Max(8, resolvedFontSize - 8);
+            label.fontSizeMax = resolvedFontSize;
         }
 
         return button;
@@ -858,8 +863,8 @@ public partial class GameBoot : MonoBehaviour
         SetRect(titleText.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, 92f), new Vector2(620f, 64f));
 
         Text messageText = CreateText("PolicyMessage", card.transform, message, 20, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleCenter);
-        messageText.horizontalOverflow = HorizontalWrapMode.Wrap;
-        messageText.verticalOverflow = VerticalWrapMode.Overflow;
+        messageText.enableWordWrapping = true;
+        messageText.overflowMode = TextOverflowModes.Overflow;
         SetRect(messageText.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, 5f), new Vector2(620f, 120f));
 
         if (!string.IsNullOrWhiteSpace(updateUrl))
@@ -910,10 +915,12 @@ public partial class GameBoot : MonoBehaviour
             user.experienceProgressBps,
             user.maxLevel,
             user.economyFrozen);
-        PlayerPrefs.SetString("PlayerAvatarUrl", user.avatarUrl ?? string.Empty);
-        PlayerPrefs.SetString("PlayerAvatarSource", user.avatarSource ?? "DEFAULT");
-        PlayerPrefs.SetString("PlayerAvatarVersion", Math.Max(0L, user.avatarVersion).ToString(CultureInfo.InvariantCulture));
-        PlayerPrefs.SetString("PlayerAvatarUpdatedTime", user.avatarUpdatedTime ?? string.Empty);
+        string avatarStateKeyPrefix = "PlayerAvatarState." + user.id + ".";
+        PlayerPrefs.SetString(avatarStateKeyPrefix + "Code", user.avatarCode ?? string.Empty);
+        PlayerPrefs.SetString(avatarStateKeyPrefix + "Source", user.avatarSource ?? "DEFAULT");
+        PlayerPrefs.SetString(avatarStateKeyPrefix + "Version", Math.Max(0L, user.avatarVersion).ToString(CultureInfo.InvariantCulture));
+        PlayerPrefs.SetString(avatarStateKeyPrefix + "UpdatedTime", user.avatarUpdatedTime ?? string.Empty);
+        PlayerPrefs.SetInt(avatarStateKeyPrefix + "HasState", 1);
         PlayerPrefs.SetString("PlayerNicknameVersion", Math.Max(0L, user.nicknameVersion).ToString(CultureInfo.InvariantCulture));
         PlayerPrefs.SetString("PlayerNicknameUpdatedTime", user.nicknameUpdatedTime ?? string.Empty);
         PlayerPrefs.SetInt("PlayerNicknameChangeCount", Math.Max(0, user.nicknameChangeCount));
@@ -977,23 +984,40 @@ public partial class GameBoot : MonoBehaviour
 
     private Text CreateText(string name, Transform parent, string text, int size, FontStyle fontStyle, Color color, TextAnchor alignment)
     {
-        GameObject obj = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+        GameObject obj = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
         obj.transform.SetParent(parent, false);
 
-        Text label = obj.GetComponent<Text>();
+        TMP_Text label = obj.GetComponent<TMP_Text>();
         LoginCanvasStyle style = LoginStyle;
         int resolvedFontSize = ResolveFontSize(size);
-        label.font = style != null ? style.ResolveFont(defaultFont) : defaultFont;
+        label.font = RuntimeFontAssetProvider.Resolve();
         label.text = text;
         label.fontSize = resolvedFontSize;
-        label.fontStyle = style != null ? style.ResolveFontStyle(name, fontStyle) : fontStyle;
+        label.fontStyle = fontStyle == FontStyle.Bold ? FontStyles.Bold : fontStyle == FontStyle.Italic ? FontStyles.Italic : FontStyles.Normal;
         label.color = style != null ? style.ResolveTextColor(name, color) : color;
-        label.alignment = alignment;
-        label.resizeTextForBestFit = true;
-        label.resizeTextMinSize = Mathf.Clamp(resolvedFontSize - 4, 8, resolvedFontSize);
-        label.resizeTextMaxSize = resolvedFontSize;
+        label.alignment = ConvertTextAlignment(alignment);
+        label.enableAutoSizing = true;
+        label.fontSizeMin = Mathf.Clamp(resolvedFontSize - 4, 8, resolvedFontSize);
+        label.fontSizeMax = resolvedFontSize;
         label.raycastTarget = false;
         return label;
+    }
+
+    private static TextAlignmentOptions ConvertTextAlignment(TextAnchor alignment)
+    {
+        switch (alignment)
+        {
+            case TextAnchor.UpperLeft: return TextAlignmentOptions.TopLeft;
+            case TextAnchor.UpperCenter: return TextAlignmentOptions.Top;
+            case TextAnchor.UpperRight: return TextAlignmentOptions.TopRight;
+            case TextAnchor.MiddleLeft: return TextAlignmentOptions.MidlineLeft;
+            case TextAnchor.MiddleCenter: return TextAlignmentOptions.Center;
+            case TextAnchor.MiddleRight: return TextAlignmentOptions.MidlineRight;
+            case TextAnchor.LowerLeft: return TextAlignmentOptions.BottomLeft;
+            case TextAnchor.LowerCenter: return TextAlignmentOptions.Bottom;
+            case TextAnchor.LowerRight: return TextAlignmentOptions.BottomRight;
+            default: return TextAlignmentOptions.TopLeft;
+        }
     }
 
     private InputField CreateInputField(Transform parent, string name, string placeholder)
@@ -1003,13 +1027,13 @@ public partial class GameBoot : MonoBehaviour
         Image frame = CreateImage(name, parent, inputColor);
         frame.raycastTarget = true;
 
-        InputField input = frame.gameObject.AddComponent<InputField>();
+        TMP_InputField input = frame.gameObject.AddComponent<TMP_InputField>();
         input.targetGraphic = frame;
         input.transition = Selectable.Transition.ColorTint;
         input.colors = CreateSelectableColors(inputColor, inputHoverColor, Color.white, new Color(0.82f, 0.86f, 0.92f, 1f));
-        input.lineType = InputField.LineType.SingleLine;
+        input.lineType = TMP_InputField.LineType.SingleLine;
 
-        Text text = CreateText("Text", frame.transform, string.Empty, 14, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleLeft);
+        TMP_Text text = CreateText("Text", frame.transform, string.Empty, 14, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleLeft);
         RectTransform textRect = text.rectTransform;
         textRect.anchorMin = Vector2.zero;
         textRect.anchorMax = Vector2.one;
@@ -1017,7 +1041,7 @@ public partial class GameBoot : MonoBehaviour
         textRect.offsetMax = new Vector2(-16f, 0f);
         input.textComponent = text;
 
-        Text placeholderText = CreateText("Placeholder", frame.transform, placeholder, 12, FontStyle.Normal, new Color(0.56f, 0.61f, 0.68f, 1f), TextAnchor.MiddleLeft);
+        TMP_Text placeholderText = CreateText("Placeholder", frame.transform, placeholder, 12, FontStyle.Normal, new Color(0.56f, 0.61f, 0.68f, 1f), TextAnchor.MiddleLeft);
         RectTransform placeholderRect = placeholderText.rectTransform;
         placeholderRect.anchorMin = Vector2.zero;
         placeholderRect.anchorMax = Vector2.one;
@@ -1208,8 +1232,8 @@ public partial class GameBoot : MonoBehaviour
         public int stone;
         public int iron;
         public int diamond;
-        public string avatarUrl;
         public string avatarSource;
+        public string avatarCode;
         public long avatarVersion;
         public string avatarUpdatedTime;
         public ItemData[] items;

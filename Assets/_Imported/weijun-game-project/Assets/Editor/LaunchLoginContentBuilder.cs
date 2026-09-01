@@ -3,11 +3,15 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using TMPro;
+using Text = TMPro.TMP_Text;
+using Font = TMPro.TMP_FontAsset;
+using InputField = TMPro.TMP_InputField;
 
 public static class LaunchLoginContentBuilder
 {
     private const string LaunchScenePath = "Assets/_Project/Scenes/Launch.unity";
-    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy)_爱给网_aigei_com.ttf";
+    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
 
     private static readonly Color BackgroundColor = new Color(0.48f, 0.30f, 0.16f, 1f);
     private static readonly Color ShadowColor = new Color(0.18f, 0.10f, 0.05f, 0.28f);
@@ -77,7 +81,7 @@ public static class LaunchLoginContentBuilder
         }
 
         Font font = AssetDatabase.LoadAssetAtPath<Font>(FontPath)
-            ?? Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            ?? RuntimeFontAssetProvider.Resolve();
         style.EditorSetFont(font);
 
         ClearChildren(contentRoot);
@@ -273,11 +277,11 @@ public static class LaunchLoginContentBuilder
         style.ApplyInput(frame);
         frame.raycastTarget = true;
 
-        InputField input = frame.gameObject.AddComponent<InputField>();
+        TMP_InputField input = frame.gameObject.AddComponent<TMP_InputField>();
         input.targetGraphic = frame;
         input.transition = Selectable.Transition.ColorTint;
         input.colors = CreateSelectableColors(InputColor, InputHoverColor, Color.white, new Color(0.82f, 0.86f, 0.92f, 1f));
-        input.lineType = InputField.LineType.SingleLine;
+        input.lineType = TMP_InputField.LineType.SingleLine;
 
         Text text = CreateText("Text", frame.transform, string.Empty, 18, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleLeft, style);
         Stretch(text.rectTransform, new Vector2(16f, 0f), new Vector2(-16f, 0f));
@@ -341,19 +345,36 @@ public static class LaunchLoginContentBuilder
     {
         RectTransform root = CreateRectObject(name, parent);
         root.gameObject.AddComponent<CanvasRenderer>();
-        Text text = root.gameObject.AddComponent<Text>();
+        TMP_Text text = root.gameObject.AddComponent<TextMeshProUGUI>();
         int resolvedFontSize = style.ResolveFontSize(fontSize);
-        text.font = style.ResolveFont(Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf"));
+        text.font = style.ResolveFont(RuntimeFontAssetProvider.Resolve());
         text.text = value;
         text.fontSize = resolvedFontSize;
         text.fontStyle = style.ResolveFontStyle(name, fontStyle);
         text.color = style.ResolveTextColor(name, color);
-        text.alignment = alignment;
-        text.resizeTextForBestFit = true;
-        text.resizeTextMinSize = Mathf.Clamp(resolvedFontSize - 4, 8, resolvedFontSize);
-        text.resizeTextMaxSize = resolvedFontSize;
+        text.alignment = ConvertTextAlignment(alignment);
+        text.enableAutoSizing = true;
+        text.fontSizeMin = Mathf.Clamp(resolvedFontSize - 4, 8, resolvedFontSize);
+        text.fontSizeMax = resolvedFontSize;
         text.raycastTarget = false;
         return text;
+    }
+
+    private static TextAlignmentOptions ConvertTextAlignment(TextAnchor alignment)
+    {
+        switch (alignment)
+        {
+            case TextAnchor.UpperLeft: return TextAlignmentOptions.TopLeft;
+            case TextAnchor.UpperCenter: return TextAlignmentOptions.Top;
+            case TextAnchor.UpperRight: return TextAlignmentOptions.TopRight;
+            case TextAnchor.MiddleLeft: return TextAlignmentOptions.MidlineLeft;
+            case TextAnchor.MiddleCenter: return TextAlignmentOptions.Center;
+            case TextAnchor.MiddleRight: return TextAlignmentOptions.MidlineRight;
+            case TextAnchor.LowerLeft: return TextAlignmentOptions.BottomLeft;
+            case TextAnchor.LowerCenter: return TextAlignmentOptions.Bottom;
+            case TextAnchor.LowerRight: return TextAlignmentOptions.BottomRight;
+            default: return TextAlignmentOptions.TopLeft;
+        }
     }
 
     private static ColorBlock CreateSelectableColors(Color normal, Color highlighted, Color pressed, Color disabled)

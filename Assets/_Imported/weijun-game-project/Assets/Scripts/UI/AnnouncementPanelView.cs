@@ -2,6 +2,7 @@ using System.Collections;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
+using TMPro;
 
 [DisallowMultipleComponent]
 public sealed class AnnouncementPanelView : MonoBehaviour
@@ -13,11 +14,11 @@ public sealed class AnnouncementPanelView : MonoBehaviour
     [SerializeField] private Image confirmButtonImage;
 
     [Header("Announcement Text")]
-    [SerializeField] private Text titleText;
-    [SerializeField] private Text versionText;
-    [SerializeField] private Text publishDateText;
-    [SerializeField] private Text bodyText;
-    [SerializeField] private Text scrollHintText;
+    [SerializeField] private TMP_Text titleText;
+    [SerializeField] private TMP_Text versionText;
+    [SerializeField] private TMP_Text publishDateText;
+    [SerializeField] private TMP_Text bodyText;
+    [SerializeField] private TMP_Text scrollHintText;
 
     [Header("Scrolling")]
     [SerializeField] private ScrollRect scrollRect;
@@ -88,7 +89,7 @@ public sealed class AnnouncementPanelView : MonoBehaviour
         }
     }
 
-    private static void SetText(Text label, string value)
+    private static void SetText(TMP_Text label, string value)
     {
         if (label != null)
         {
@@ -102,11 +103,11 @@ public sealed class AnnouncementPanelView : MonoBehaviour
         Image paper,
         Image titleBanner,
         Image confirmBackground,
-        Text title,
-        Text version,
-        Text publishDate,
-        Text body,
-        Text scrollHint,
+        TMP_Text title,
+        TMP_Text version,
+        TMP_Text publishDate,
+        TMP_Text body,
+        TMP_Text scrollHint,
         ScrollRect announcementScrollRect,
         RectTransform announcementContent,
         Button close,

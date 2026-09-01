@@ -113,8 +113,13 @@ public partial class HomePageUI
             return;
         }
 
-        bool isPublicBroadcast = realtimeEvent.type == "CARD_DRAW_RARE_BROADCAST";
-        if (!realtimeConnected || (!isPublicBroadcast && !IsCurrentPlayerRealtimeEvent(realtimeEvent)))
+        bool isPublicBroadcast = realtimeEvent.type == "CARD_DRAW_RARE_BROADCAST"
+            || realtimeEvent.type == "AVATAR_CATALOG_CHANGED";
+        bool isAvatarChange = realtimeEvent.type == "AVATAR_CHANGED";
+        if (!realtimeConnected
+            || (!isPublicBroadcast
+                && !IsCurrentPlayerRealtimeEvent(realtimeEvent)
+                && (!isAvatarChange || !IsKnownAvatarPlayerEvent(realtimeEvent, json))))
         {
             return;
         }
@@ -151,6 +156,26 @@ public partial class HomePageUI
         {
             FriendPresenceRealtimeEvent presenceEvent = ParseJson<FriendPresenceRealtimeEvent>(json);
             ApplyV38FriendPresence(presenceEvent == null ? null : presenceEvent.data);
+            return;
+        }
+
+        if (realtimeEvent.type == "AVATAR_CHANGED")
+        {
+            AvatarChangedRealtimeEvent avatarEvent = ParseJson<AvatarChangedRealtimeEvent>(json);
+            ApplyAvatarChangedRealtime(avatarEvent == null ? null : avatarEvent.data);
+            return;
+        }
+
+        if (realtimeEvent.type == "AVATAR_CATALOG_CHANGED")
+        {
+            AvatarCatalogChangedRealtimeEvent catalogEvent = ParseJson<AvatarCatalogChangedRealtimeEvent>(json);
+            if (catalogEvent == null || catalogEvent.data == null)
+            {
+                Debug.LogWarning("Avatar catalog change event did not contain data.");
+                return;
+            }
+
+            RefreshAvatarCatalogFromRealtime();
             return;
         }
 
@@ -292,6 +317,29 @@ public partial class HomePageUI
     private static bool IsCurrentPlayerRealtimeEvent(RealtimeEvent realtimeEvent)
     {
         return realtimeEvent != null && realtimeEvent.playerId == GameSession.PlayerId;
+    }
+
+    private bool IsKnownAvatarPlayerEvent(RealtimeEvent realtimeEvent, string json)
+    {
+        if (realtimeEvent == null)
+        {
+            return false;
+        }
+
+        AvatarChangedRealtimeEvent avatarEvent = ParseJson<AvatarChangedRealtimeEvent>(json);
+        long playerId = avatarEvent != null && avatarEvent.data != null && avatarEvent.data.playerId > 0
+            ? avatarEvent.data.playerId
+            : realtimeEvent.playerId;
+        if (playerId == GameSession.PlayerId)
+        {
+            return true;
+        }
+        if (playerId > int.MaxValue)
+        {
+            return false;
+        }
+
+        return FindV37Friend((int)playerId) != null;
     }
 
     private void EnqueueRareCardDrawBroadcast(string content, string expiresAt)
@@ -918,6 +966,32 @@ public partial class HomePageUI
         public long presenceVersion;
         public string lastActiveTime;
         public string lastOfflineTime;
+    }
+
+    [Serializable]
+    private class AvatarChangedRealtimeEvent
+    {
+        public string type;
+        public string eventId;
+        public long playerId;
+        public AvatarChangedRealtimeData data;
+        public string serverTime;
+    }
+
+    [Serializable]
+    private class AvatarCatalogChangedRealtimeEvent
+    {
+        public string type;
+        public string eventId;
+        public long playerId;
+        public AvatarCatalogChangedData data;
+        public string serverTime;
+    }
+
+    [Serializable]
+    private class AvatarCatalogChangedData
+    {
+        public long catalogVersion;
     }
 
     [Serializable]

@@ -4,6 +4,9 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using TMPro;
+using Text = TMPro.TMP_Text;
+using InputField = TMPro.TMP_InputField;
 
 public partial class HomePageUI
 {
@@ -513,7 +516,7 @@ public partial class HomePageUI
                 selected,
                 friend.playerId,
                 friend.nickname,
-                friend.avatarUrl,
+                friend.avatarCode,
                 friend.avatarVersion,
                 BuildV38FriendRowMetadata(friend),
                 GetV38FriendPresenceLabel(friend),
@@ -561,7 +564,7 @@ public partial class HomePageUI
             int otherPlayerId = incoming ? request.requesterPlayerId : request.recipientPlayerId;
             string otherName = incoming ? request.requesterNickname : request.recipientNickname;
             int otherLevel = incoming ? request.requesterLevel : request.recipientLevel;
-            string otherAvatarUrl = incoming ? request.requesterAvatarUrl : request.recipientAvatarUrl;
+            string otherAvatarCode = incoming ? request.requesterAvatarCode : request.recipientAvatarCode;
             long otherAvatarVersion = incoming ? request.requesterAvatarVersion : request.recipientAvatarVersion;
             RenderV37Row(
                 row,
@@ -569,7 +572,7 @@ public partial class HomePageUI
                 request.requestId == v37SelectedRequestId,
                 otherPlayerId,
                 otherName,
-                otherAvatarUrl,
+                otherAvatarCode,
                 otherAvatarVersion,
                 $"Lv.{Mathf.Max(1, otherLevel)}    {FormatV37RequestTime(request.createTime)}",
                 incoming ? "等待你处理" : "等待对方同意",
@@ -590,7 +593,7 @@ public partial class HomePageUI
         bool selected,
         int playerId,
         string nickname,
-        string avatarUrl,
+        string avatarCode,
         long avatarVersion,
         string metadata,
         string state,
@@ -611,7 +614,7 @@ public partial class HomePageUI
         {
             avatar.color = GetFriendAvatarColor(playerId.ToString());
             Text avatarInitial = FindSceneComponent<Text>(row, "FriendRowAvatar" + rowIndex);
-            ApplyAvatarImage(avatar, avatarInitial, playerId, avatarUrl, avatarVersion);
+            ApplyAvatarImage(avatar, avatarInitial, playerId, avatarCode, avatarVersion);
         }
 
         Image mark = FindSceneComponent<Image>(row, "FriendRowOnlineMark" + rowIndex);
@@ -652,7 +655,7 @@ public partial class HomePageUI
             friend.playerId,
             friend.nickname,
             friend.level,
-            friend.avatarUrl,
+            friend.avatarCode,
             friend.avatarVersion,
             GetV38FriendPresenceLabel(friend),
             BuildV38FriendPresenceDetail(friend),
@@ -706,7 +709,7 @@ public partial class HomePageUI
             result.playerId,
             result.nickname,
             result.level,
-            result.avatarUrl,
+            result.avatarCode,
             result.avatarVersion,
             "搜索结果",
             "当前关系：" + GetV37RelationshipLabel(result.relationshipStatus),
@@ -760,14 +763,14 @@ public partial class HomePageUI
         int otherPlayerId = incoming ? request.requesterPlayerId : request.recipientPlayerId;
         string otherName = incoming ? request.requesterNickname : request.recipientNickname;
         int otherLevel = incoming ? request.requesterLevel : request.recipientLevel;
-        string otherAvatarUrl = incoming ? request.requesterAvatarUrl : request.recipientAvatarUrl;
+        string otherAvatarCode = incoming ? request.requesterAvatarCode : request.recipientAvatarCode;
         long otherAvatarVersion = incoming ? request.requesterAvatarVersion : request.recipientAvatarVersion;
         SetV37DetailBase(
             root,
             otherPlayerId,
             otherName,
             otherLevel,
-            otherAvatarUrl,
+            otherAvatarCode,
             otherAvatarVersion,
             incoming ? "收到的好友申请" : "发出的好友申请",
             "申请状态：" + request.status,
@@ -802,7 +805,7 @@ public partial class HomePageUI
         int playerId,
         string nickname,
         int level,
-        string avatarUrl,
+        string avatarCode,
         long avatarVersion,
         string title,
         string detail,
@@ -818,7 +821,7 @@ public partial class HomePageUI
                 avatar,
                 FindSceneComponent<Text>(root, "FriendDetailAvatar"),
                 playerId,
-                avatarUrl,
+                avatarCode,
                 avatarVersion);
         }
 
@@ -1629,7 +1632,7 @@ public partial class HomePageUI
         public int level;
         public string relationshipStatus;
         public long pendingRequestId;
-        public string avatarUrl;
+        public string avatarCode;
         public long avatarVersion;
     }
 
@@ -1670,9 +1673,9 @@ public partial class HomePageUI
         public int recipientPlayerId;
         public string recipientNickname;
         public int recipientLevel;
-        public string requesterAvatarUrl;
+        public string requesterAvatarCode;
         public long requesterAvatarVersion;
-        public string recipientAvatarUrl;
+        public string recipientAvatarCode;
         public long recipientAvatarVersion;
         public string status;
         public string createTime;

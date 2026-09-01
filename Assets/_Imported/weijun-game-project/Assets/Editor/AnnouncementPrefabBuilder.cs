@@ -2,6 +2,9 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
+using Text = TMPro.TMP_Text;
+using Font = TMPro.TMP_FontAsset;
 
 public static class AnnouncementPrefabBuilder
 {
@@ -9,7 +12,7 @@ public static class AnnouncementPrefabBuilder
     private const string PaperSpritePath = "Assets/Sprites/Humble Gift - Paper UI System/Humble Gift - Paper UI System v1.1/Sprites/Paper UI Pack/Plain/8 Shop/1.png";
     private const string HeaderSpritePath = "Assets/Sprites/Humble Gift - Paper UI System/Humble Gift - Paper UI System v1.1/Sprites/Paper UI Pack/Plain/2 Headers/4.png";
     private const string ButtonSpritePath = "Assets/Sprites/Humble Gift - Paper UI System/Humble Gift - Paper UI System v1.1/Sprites/Paper UI Pack/Plain/4 Notification/2.png";
-    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy)_爱给网_aigei_com.ttf";
+    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
 
     private static Font defaultFont;
 
@@ -30,7 +33,7 @@ public static class AnnouncementPrefabBuilder
     {
         Directory.CreateDirectory(Path.GetDirectoryName(PrefabPath));
         defaultFont = AssetDatabase.LoadAssetAtPath<Font>(FontPath)
-            ?? Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            ?? RuntimeFontAssetProvider.Resolve();
         Sprite paperSprite = AssetDatabase.LoadAssetAtPath<Sprite>(PaperSpritePath);
         Sprite headerSprite = AssetDatabase.LoadAssetAtPath<Sprite>(HeaderSpritePath);
         Sprite buttonSprite = AssetDatabase.LoadAssetAtPath<Sprite>(ButtonSpritePath);
@@ -205,9 +208,9 @@ public static class AnnouncementPrefabBuilder
             FontStyle.Normal,
             new Color(0.30f, 0.18f, 0.10f, 1f),
             TextAnchor.UpperLeft);
-        bodyText.resizeTextForBestFit = false;
-        bodyText.horizontalOverflow = HorizontalWrapMode.Wrap;
-        bodyText.verticalOverflow = VerticalWrapMode.Overflow;
+        bodyText.enableAutoSizing = false;
+        bodyText.enableWordWrapping = true;
+        bodyText.overflowMode = TextOverflowModes.Overflow;
         bodyText.lineSpacing = 1.18f;
 
         Image scrollbarTrack = CreateImage("Scrollbar", scrollObject.transform, new Color(0.45f, 0.28f, 0.15f, 0.20f));
@@ -306,22 +309,54 @@ public static class AnnouncementPrefabBuilder
         Color color,
         TextAnchor alignment)
     {
-        GameObject target = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+        GameObject target = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
         target.transform.SetParent(parent, false);
-        Text label = target.GetComponent<Text>();
+        TMP_Text label = target.GetComponent<TMP_Text>();
         label.font = defaultFont;
         label.text = value;
         label.fontSize = fontSize;
-        label.fontStyle = FontStyle.Normal;
+        label.fontStyle = ConvertFontStyle(fontStyle);
         label.color = color;
-        label.alignment = alignment;
-        label.resizeTextForBestFit = true;
-        label.resizeTextMinSize = Mathf.Min(12, fontSize);
-        label.resizeTextMaxSize = fontSize;
-        label.horizontalOverflow = HorizontalWrapMode.Wrap;
-        label.verticalOverflow = VerticalWrapMode.Truncate;
+        label.alignment = ConvertAlignment(alignment);
+        label.enableAutoSizing = true;
+        label.fontSizeMin = Mathf.Min(12, fontSize);
+        label.fontSizeMax = fontSize;
+        label.enableWordWrapping = true;
+        label.overflowMode = TextOverflowModes.Truncate;
         label.raycastTarget = false;
         return label;
+    }
+
+    private static TextAlignmentOptions ConvertAlignment(TextAnchor alignment)
+    {
+        switch (alignment)
+        {
+            case TextAnchor.UpperLeft: return TextAlignmentOptions.TopLeft;
+            case TextAnchor.UpperCenter: return TextAlignmentOptions.Top;
+            case TextAnchor.UpperRight: return TextAlignmentOptions.TopRight;
+            case TextAnchor.MiddleLeft: return TextAlignmentOptions.MidlineLeft;
+            case TextAnchor.MiddleCenter: return TextAlignmentOptions.Center;
+            case TextAnchor.MiddleRight: return TextAlignmentOptions.MidlineRight;
+            case TextAnchor.LowerLeft: return TextAlignmentOptions.BottomLeft;
+            case TextAnchor.LowerCenter: return TextAlignmentOptions.Bottom;
+            case TextAnchor.LowerRight: return TextAlignmentOptions.BottomRight;
+            default: return TextAlignmentOptions.TopLeft;
+        }
+    }
+
+    private static FontStyles ConvertFontStyle(FontStyle style)
+    {
+        switch (style)
+        {
+            case FontStyle.Bold:
+                return FontStyles.Bold;
+            case FontStyle.Italic:
+                return FontStyles.Italic;
+            case FontStyle.BoldAndItalic:
+                return FontStyles.Bold | FontStyles.Italic;
+            default:
+                return FontStyles.Normal;
+        }
     }
 
     private static void SetTopLeft(RectTransform rect, Vector2 position, Vector2 size)

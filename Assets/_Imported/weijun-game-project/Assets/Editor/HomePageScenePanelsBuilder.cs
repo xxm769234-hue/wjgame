@@ -5,6 +5,10 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using TMPro;
 using UnityEngine.UI;
+using Text = TMPro.TMP_Text;
+using Font = TMPro.TMP_FontAsset;
+using InputField = TMPro.TMP_InputField;
+using LegacyText = UnityEngine.UI.Text;
 
 public static class HomePageScenePanelsBuilder
 {
@@ -16,10 +20,10 @@ public static class HomePageScenePanelsBuilder
     private const int MinimumComponentizedBookSchemaVersion = 8;
     private const int ScenePanelsSchemaVersion = 12;
     private const int EquipmentRows = 6;
-    private const string RoleFontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy) SDF.asset";
+    private const string RoleFontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
     private const string ProfileFontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
     private const int RoleListRows = 20;
-    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy)_爱给网_aigei_com.ttf";
+    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
 
     private static Font defaultFont;
     private static Font fallbackFont;
@@ -67,7 +71,7 @@ public static class HomePageScenePanelsBuilder
                 {
                     if (registry.Get(HomePageScenePanelType.Role) == null)
                     {
-                        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+                        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ProfileFontPath);
                         HomePageScenePanel rolePanel = BuildRolePanel(canvasObject.transform);
                         rolePanel.SetVisible(false);
                         registry.EditorAppendPanel(rolePanel, ScenePanelsSchemaVersion);
@@ -168,7 +172,7 @@ public static class HomePageScenePanelsBuilder
             Object.DestroyImmediate(existing.gameObject);
         }
 
-        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ProfileFontPath);
         HomePageScenePanel panel = BuildLotteryPanel(canvasObject.transform);
         panel.SetVisible(false);
         registry.EditorReplacePanel(panel, registry.SchemaVersion);
@@ -199,7 +203,7 @@ public static class HomePageScenePanelsBuilder
             Object.DestroyImmediate(existing.gameObject);
         }
 
-        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ProfileFontPath);
         HomePageScenePanel panel = BuildLotteryPanel(canvasObject.transform);
         panel.SetVisible(false);
         registry.EditorReplacePanel(panel, registry.SchemaVersion);
@@ -230,7 +234,7 @@ public static class HomePageScenePanelsBuilder
 
         if (registry.Get(HomePageScenePanelType.Role) == null)
         {
-            roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+            roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ProfileFontPath);
             HomePageScenePanel rolePanel = BuildRolePanel(canvasObject.transform);
             rolePanel.SetVisible(false);
             registry.EditorAppendPanel(rolePanel, ScenePanelsSchemaVersion);
@@ -305,7 +309,7 @@ public static class HomePageScenePanelsBuilder
                 }
                 else
                 {
-                    Text legacyIdentifier = identifier.GetComponent<Text>();
+                    LegacyText legacyIdentifier = identifier.GetComponent<LegacyText>();
                     if (legacyIdentifier != null)
                     {
                         legacyIdentifier.text = "玩家ID  WJ-00000000";
@@ -407,10 +411,10 @@ public static class HomePageScenePanelsBuilder
 
     private static void ConvertProfileTextComponents(Transform profileRoot, Transform excludedRoot, TMP_FontAsset fontAsset)
     {
-        Text[] legacyTexts = profileRoot.GetComponentsInChildren<Text>(true);
+        LegacyText[] legacyTexts = profileRoot.GetComponentsInChildren<LegacyText>(true);
         for (int i = 0; i < legacyTexts.Length; i++)
         {
-            Text legacy = legacyTexts[i];
+            LegacyText legacy = legacyTexts[i];
             if (legacy == null || (excludedRoot != null && (legacy.transform == excludedRoot || legacy.transform.IsChildOf(excludedRoot))))
             {
                 continue;
@@ -462,7 +466,7 @@ public static class HomePageScenePanelsBuilder
             return;
         }
 
-        Text legacy = buttonRoot.GetComponentInChildren<Text>(true);
+        LegacyText legacy = buttonRoot.GetComponentInChildren<LegacyText>(true);
         if (legacy != null)
         {
             legacy.text = value;
@@ -513,9 +517,9 @@ public static class HomePageScenePanelsBuilder
 
     private static void BuildScenePanels(Scene scene, bool saveScene)
     {
-        fallbackFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        defaultFont = AssetDatabase.LoadAssetAtPath<Font>(FontPath) ?? fallbackFont;
-        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+        fallbackFont = AssetDatabase.LoadAssetAtPath<Font>(ProfileFontPath) ?? RuntimeFontAssetProvider.Resolve();
+        defaultFont = AssetDatabase.LoadAssetAtPath<Font>(ProfileFontPath) ?? fallbackFont;
+        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ProfileFontPath);
         EnsureTestNode(scene);
 
         GameObject existing = FindRoot(scene, CanvasName);
@@ -1730,7 +1734,7 @@ public static class HomePageScenePanelsBuilder
 
     private static HomePageScenePanel BuildRolePanel(Transform parent)
     {
-        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ProfileFontPath);
         HomePageScenePanel scenePanel = CreateScenePanel(parent, "RoleScenePanel", HomePageScenePanelType.Role);
         Transform root = scenePanel.transform;
         CreateDimmer(root);
@@ -2142,9 +2146,9 @@ public static class HomePageScenePanelsBuilder
         input.lineType = InputField.LineType.SingleLine;
 
         Text value = CreateText("Text", frame.transform, string.Empty, fontSize, FontStyle.Normal, new Color(0.24f, 0.16f, 0.09f, 1f), TextAnchor.MiddleLeft);
-        value.resizeTextForBestFit = false;
-        value.horizontalOverflow = HorizontalWrapMode.Wrap;
-        value.verticalOverflow = VerticalWrapMode.Truncate;
+        value.enableAutoSizing = false;
+        value.enableWordWrapping = true;
+        value.overflowMode = TextOverflowModes.Truncate;
         value.rectTransform.anchorMin = Vector2.zero;
         value.rectTransform.anchorMax = Vector2.one;
         value.rectTransform.offsetMin = new Vector2(14f, 4f);
@@ -2152,7 +2156,7 @@ public static class HomePageScenePanelsBuilder
         input.textComponent = value;
 
         Text hint = CreateText("Placeholder", frame.transform, placeholder, Mathf.Max(14, fontSize - 2), FontStyle.Normal, new Color(0.52f, 0.47f, 0.40f, 0.82f), TextAnchor.MiddleLeft);
-        hint.resizeTextForBestFit = false;
+        hint.enableAutoSizing = false;
         hint.rectTransform.anchorMin = Vector2.zero;
         hint.rectTransform.anchorMax = Vector2.one;
         hint.rectTransform.offsetMin = new Vector2(14f, 4f);
@@ -2395,7 +2399,7 @@ public static class HomePageScenePanelsBuilder
 
     private static Text CreateText(string name, Transform parent, string value, int fontSize, FontStyle style, Color color, TextAnchor alignment)
     {
-        GameObject target = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+        GameObject target = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
         target.layer = LayerMask.NameToLayer("UI");
         target.transform.SetParent(parent, false);
         Text label = target.GetComponent<Text>();
@@ -2403,34 +2407,21 @@ public static class HomePageScenePanelsBuilder
         label.font = resolvedFont;
         label.text = value;
         label.fontSize = fontSize;
-        label.fontStyle = resolvedFont == defaultFont ? FontStyle.Normal : style;
+        label.fontStyle = style == FontStyle.Bold ? FontStyles.Bold : style == FontStyle.Italic ? FontStyles.Italic : style == FontStyle.BoldAndItalic ? FontStyles.Bold | FontStyles.Italic : FontStyles.Normal;
         label.color = color;
-        label.alignment = alignment;
-        label.resizeTextForBestFit = true;
-        label.resizeTextMinSize = Mathf.Min(12, fontSize);
-        label.resizeTextMaxSize = fontSize;
-        label.horizontalOverflow = HorizontalWrapMode.Wrap;
-        label.verticalOverflow = VerticalWrapMode.Truncate;
+        label.alignment = ConvertTextAlignment(alignment);
+        label.enableAutoSizing = true;
+        label.fontSizeMin = Mathf.Min(12, fontSize);
+        label.fontSizeMax = fontSize;
+        label.enableWordWrapping = true;
+        label.overflowMode = TextOverflowModes.Truncate;
         label.raycastTarget = false;
         return label;
     }
 
     private static Font ResolveFont(string value)
     {
-        if (defaultFont == null || string.IsNullOrEmpty(value))
-        {
-            return defaultFont ?? fallbackFont;
-        }
-
-        foreach (char character in value)
-        {
-            if (!char.IsControl(character) && !char.IsSurrogate(character) && !defaultFont.HasCharacter(character))
-            {
-                return fallbackFont ?? defaultFont;
-            }
-        }
-
-        return defaultFont;
+        return defaultFont ?? fallbackFont ?? RuntimeFontAssetProvider.Resolve();
     }
 
     private static GameObject CreateRectObject(string name, Transform parent)

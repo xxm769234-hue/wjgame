@@ -6,6 +6,9 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using Text = TMPro.TMP_Text;
+using InputField = TMPro.TMP_InputField;
+using LegacyText = UnityEngine.UI.Text;
 
 public partial class HomePageUI
 {
@@ -105,7 +108,7 @@ public partial class HomePageUI
         SetSceneText(root, "ProfileCancellationDetailsText", BuildProfileCancellationDetailsText(isAuthenticated));
         SetSceneText(root, "ProfileComplianceText", BuildProfileComplianceText(isAuthenticated));
         SetSceneText(root, "ProfileNicknameHint", BuildProfileNicknameHint());
-        ConfigureProfileAvatarControls(root, true, nickname);
+        ConfigureProfileAvatarControls(root, isAuthenticated, nickname);
 
         InputField nicknameInput = FindSceneComponent<InputField>(root, "ProfileNicknameInput");
         bool canEditNickname = isAuthenticated
@@ -169,21 +172,12 @@ public partial class HomePageUI
     private void EnsureAccountProfileTextMeshPro(Transform root)
     {
         Transform nicknameInput = FindSceneTransform(root, "ProfileNicknameInput");
-        TMP_FontAsset fontAsset = null;
-        TMP_Text[] existingTmpLabels = root.GetComponentsInChildren<TMP_Text>(true);
-        for (int i = 0; i < existingTmpLabels.Length; i++)
-        {
-            if (existingTmpLabels[i] != null && existingTmpLabels[i].font != null)
-            {
-                fontAsset = existingTmpLabels[i].font;
-                break;
-            }
-        }
+        TMP_FontAsset fontAsset = RuntimeFontAssetProvider.Resolve();
 
-        Text[] legacyLabels = root.GetComponentsInChildren<Text>(true);
+        LegacyText[] legacyLabels = root.GetComponentsInChildren<LegacyText>(true);
         for (int i = 0; i < legacyLabels.Length; i++)
         {
-            Text legacy = legacyLabels[i];
+            LegacyText legacy = legacyLabels[i];
             if (legacy == null || (nicknameInput != null && (legacy.transform == nicknameInput || legacy.transform.IsChildOf(nicknameInput))))
             {
                 continue;
@@ -220,7 +214,7 @@ public partial class HomePageUI
                 continue;
             }
 
-            TMP_FontAsset fallbackFontAsset = fontAsset != null ? fontAsset : TMP_Settings.GetFontAsset();
+            TMP_FontAsset fallbackFontAsset = fontAsset != null ? fontAsset : TMP_Settings.defaultFontAsset;
             if (fallbackFontAsset != null)
             {
                 replacement.font = fallbackFontAsset;
@@ -686,6 +680,7 @@ public partial class HomePageUI
 
     private void ClearClosedAccountProfileState()
     {
+        int playerId = GameSession.PlayerId;
         GameSession.Clear();
         string[] accountStateKeys =
         {
@@ -693,6 +688,7 @@ public partial class HomePageUI
             "PlayerNickname",
             "PlayerAvatarUrl",
             "PlayerAvatarSource",
+            "PlayerAvatarCode",
             "PlayerAvatarVersion",
             "PlayerAvatarUpdatedTime",
             "AccountStatus",
@@ -718,6 +714,17 @@ public partial class HomePageUI
         for (int index = 0; index < accountStateKeys.Length; index++)
         {
             PlayerPrefs.DeleteKey(accountStateKeys[index]);
+        }
+
+        if (playerId > 0)
+        {
+            string avatarStateKeyPrefix = GetPlayerAvatarStateKeyPrefix(playerId);
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "Code");
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "Source");
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "Version");
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "UpdatedTime");
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "HasState");
+            avatarByPlayerId.Remove(playerId);
         }
 
         PlayerPrefs.Save();
@@ -1063,7 +1070,7 @@ public partial class HomePageUI
         PlayerPrefs.SetInt("Stone", profile.stone);
         PlayerPrefs.SetInt("Iron", profile.iron);
         PlayerPrefs.SetInt("Crystal", Mathf.Max(0, profile.diamond));
-        SaveCurrentAvatarState(profile.avatarUrl, profile.avatarSource, profile.avatarVersion, profile.avatarUpdatedTime);
+        SaveCurrentAvatarState(profile.avatarCode, profile.avatarSource, profile.avatarVersion, profile.avatarUpdatedTime);
         PlayerPrefs.SetString("ProfileLastSync", DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
         PlayerPrefs.Save();
         WeChatPlatformBridge.SyncFriendLevel(profile.level);
@@ -1108,7 +1115,7 @@ public partial class HomePageUI
             return;
         }
 
-        Text[] labels = mainPageTransform.GetComponentsInChildren<Text>(true);
+        LegacyText[] labels = mainPageTransform.GetComponentsInChildren<LegacyText>(true);
         for (int i = 0; i < labels.Length; i++)
         {
             if (labels[i].name == "AvatarName" || labels[i].name == "BookAvatarName")
@@ -1438,8 +1445,8 @@ public partial class HomePageUI
         public int stone;
         public int iron;
         public int diamond;
-        public string avatarUrl;
         public string avatarSource;
+        public string avatarCode;
         public long avatarVersion;
         public string avatarUpdatedTime;
         public InventoryItemResponse[] items;
@@ -1555,7 +1562,7 @@ public partial class HomePageUI
         public string nickname;
         public int level;
         public string friendsSince;
-        public string avatarUrl;
+        public string avatarCode;
         public long avatarVersion;
         public bool dailyStaminaGiftSent;
         public bool dailyStaminaGiftReceived;
