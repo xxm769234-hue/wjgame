@@ -9,7 +9,7 @@ public static class AnnouncementPrefabBuilder
     private const string PaperSpritePath = "Assets/Sprites/Humble Gift - Paper UI System/Humble Gift - Paper UI System v1.1/Sprites/Paper UI Pack/Plain/8 Shop/1.png";
     private const string HeaderSpritePath = "Assets/Sprites/Humble Gift - Paper UI System/Humble Gift - Paper UI System v1.1/Sprites/Paper UI Pack/Plain/2 Headers/4.png";
     private const string ButtonSpritePath = "Assets/Sprites/Humble Gift - Paper UI System/Humble Gift - Paper UI System v1.1/Sprites/Paper UI Pack/Plain/4 Notification/2.png";
-    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy)_爱给网_aigei_com.ttf";
+    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal.otf";
 
     private static Font defaultFont;
 
@@ -29,8 +29,7 @@ public static class AnnouncementPrefabBuilder
     public static void BuildPrefab()
     {
         Directory.CreateDirectory(Path.GetDirectoryName(PrefabPath));
-        defaultFont = AssetDatabase.LoadAssetAtPath<Font>(FontPath)
-            ?? Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        defaultFont = AssetDatabase.LoadAssetAtPath<Font>(FontPath);
         Sprite paperSprite = AssetDatabase.LoadAssetAtPath<Sprite>(PaperSpritePath);
         Sprite headerSprite = AssetDatabase.LoadAssetAtPath<Sprite>(HeaderSpritePath);
         Sprite buttonSprite = AssetDatabase.LoadAssetAtPath<Sprite>(ButtonSpritePath);

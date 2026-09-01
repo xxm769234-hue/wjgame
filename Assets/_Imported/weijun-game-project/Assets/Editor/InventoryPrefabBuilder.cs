@@ -13,7 +13,7 @@ public static class InventoryPrefabBuilder
     private const int PrefabSchemaVersion = 3;
     private const int InventoryCapacity = 40;
     private const int InventoryColumns = 8;
-    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy) SDF.asset";
+    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
     private const string ResourceIconDirectory = "Assets/_Imported/weijun-game-project/Assets/UI/资源图标/";
 
     private static Font defaultFont;
@@ -38,8 +38,7 @@ public static class InventoryPrefabBuilder
     {
         Directory.CreateDirectory(PrefabDirectory);
         fontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(FontPath);
-        defaultFont = AssetDatabase.LoadAssetAtPath<Font>("Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy).ttf")
-            ?? Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        defaultFont = AssetDatabase.LoadAssetAtPath<Font>("Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal.otf");
         GameObject root = new GameObject("InventoryPanelView", typeof(RectTransform));
         try
         {

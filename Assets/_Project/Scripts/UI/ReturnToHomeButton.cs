@@ -58,5 +58,77 @@ public sealed class ReturnToHomeButton : MonoBehaviour
         label.alignment = TextAlignmentOptions.Center;
         label.color = Color.white;
         label.raycastTarget = false;
+        SmallButtonIconUtility.ApplyToButton(button, "返回", 42f, 7f, 7f);
+    }
+}
+
+public static class SmallButtonIconUtility
+{
+    private const string ResourcePath = "UI/SmallIcons/";
+
+    public static bool ApplyToImage(Image image, string resourceName)
+    {
+        if (image == null) return false;
+
+        Sprite sprite = Resources.Load<Sprite>(ResourcePath + resourceName);
+        if (sprite == null)
+        {
+            Debug.LogWarning($"Small button icon was not found: {ResourcePath}{resourceName}", image);
+            return false;
+        }
+
+        image.sprite = sprite;
+        image.type = Image.Type.Simple;
+        image.preserveAspect = true;
+        return true;
+    }
+
+    public static Image ApplyToButton(
+        Button button,
+        string resourceName,
+        float iconWidth = 44f,
+        float horizontalPadding = 8f,
+        float verticalPadding = 6f)
+    {
+        if (button == null) return null;
+
+        Transform iconTransform = button.transform.Find("SmallIcon");
+        Image icon;
+        if (iconTransform == null)
+        {
+            GameObject iconObject = new GameObject("SmallIcon", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            iconObject.layer = button.gameObject.layer;
+            iconObject.transform.SetParent(button.transform, false);
+            icon = iconObject.GetComponent<Image>();
+        }
+        else
+        {
+            icon = iconTransform.GetComponent<Image>();
+            if (icon == null) icon = iconTransform.gameObject.AddComponent<Image>();
+        }
+
+        if (!ApplyToImage(icon, resourceName)) return null;
+
+        icon.color = Color.white;
+        icon.raycastTarget = false;
+        RectTransform iconRect = icon.rectTransform;
+        iconRect.anchorMin = new Vector2(0f, 0f);
+        iconRect.anchorMax = new Vector2(0f, 1f);
+        iconRect.pivot = new Vector2(0.5f, 0.5f);
+        iconRect.offsetMin = new Vector2(horizontalPadding, verticalPadding);
+        iconRect.offsetMax = new Vector2(horizontalPadding + iconWidth, -verticalPadding);
+        icon.transform.SetAsFirstSibling();
+
+        TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+        if (label != null && label.transform != icon.transform)
+        {
+            RectTransform labelRect = label.rectTransform;
+            labelRect.anchorMin = Vector2.zero;
+            labelRect.anchorMax = Vector2.one;
+            labelRect.offsetMin = new Vector2(horizontalPadding + iconWidth + 4f, labelRect.offsetMin.y);
+            labelRect.offsetMax = new Vector2(-horizontalPadding, labelRect.offsetMax.y);
+        }
+
+        return icon;
     }
 }

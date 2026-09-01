@@ -485,7 +485,6 @@ public sealed class MapManager : MonoBehaviour
         if (hasBounds)
         {
             runtimeMapBounds = AddTopSpacing(combinedBounds, mapTopSpacing);
-            ResizeMapBackground(runtimeMapBounds);
             runtimeMapBounds.Expand(new Vector3(
                 Mathf.Max(0f, mapBackgroundPadding.x) * 2f,
                 Mathf.Max(0f, mapBackgroundPadding.y) * 2f,
@@ -840,8 +839,17 @@ public sealed class MapManager : MonoBehaviour
         Vector3 parentScale = backgroundTransform.parent != null ? backgroundTransform.parent.lossyScale : Vector3.one;
         float parentScaleX = Mathf.Abs(parentScale.x) <= 0.0001f ? 1f : Mathf.Abs(parentScale.x);
         float parentScaleY = Mathf.Abs(parentScale.y) <= 0.0001f ? 1f : Mathf.Abs(parentScale.y);
-        float targetWorldWidth = mapBounds.size.x + mapBackgroundPadding.x * 2f;
-        float targetWorldHeight = mapBounds.size.y + mapBackgroundPadding.y * 2f;
+        float targetWorldWidth = mapBounds.size.x;
+        float targetWorldHeight = mapBounds.size.y;
+
+        Camera camera = Camera.main;
+        if (camera != null && camera.orthographic)
+        {
+            float viewportHeight = camera.orthographicSize * 2f;
+            float viewportWidth = viewportHeight * Mathf.Max(0.01f, camera.aspect);
+            targetWorldWidth = Mathf.Max(targetWorldWidth, viewportWidth);
+            targetWorldHeight = Mathf.Max(targetWorldHeight, viewportHeight);
+        }
 
         backgroundTransform.localScale = new Vector3(
             targetWorldWidth / (spriteSize.x * parentScaleX),
@@ -883,5 +891,6 @@ public sealed class MapManager : MonoBehaviour
         MapCameraController controller = camera.GetComponent<MapCameraController>();
         if (controller == null) controller = camera.gameObject.AddComponent<MapCameraController>();
         controller.Configure(runtimeMapBounds, runtimeUnitWidth, runtimeUnitHeight);
+        ResizeMapBackground(runtimeMapBounds);
     }
 }

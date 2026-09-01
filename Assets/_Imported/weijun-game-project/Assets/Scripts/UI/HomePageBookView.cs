@@ -160,27 +160,46 @@ public sealed class HomePageBookView : MonoBehaviour
         CaptureMetrics();
 
         const string leftPage = "MainBookPage/LeftStoryPage/";
+        const string collage = leftPage + "LeftFeatureCollage/";
         activityButton = FindComponent<Button>(leftPage + "ActivityButton");
-        roleButton = FindComponent<Button>(leftPage + "RoleButton");
-        lotteryButton = FindComponent<Button>(leftPage + "LotteryButton");
+        roleButton = FindComponent<Button>(collage + "RoleButton") ?? FindComponent<Button>(leftPage + "RoleButton");
+        lotteryButton = FindComponent<Button>(collage + "LotteryButton") ?? FindComponent<Button>(leftPage + "LotteryButton");
         mailButton = FindComponent<Button>("MainBookPage/BottomMailButton");
-        bagButton = FindComponent<Button>(leftPage + "SideBagButton");
-        equipmentButton = FindComponent<Button>(leftPage + "SideEquipmentButton");
-        shopButton = FindComponent<Button>(leftPage + "SideShopButton");
-        friendsButton = FindComponent<Button>(leftPage + "FriendsButton");
+        bagButton = FindComponent<Button>(collage + "SideBagButton") ?? FindComponent<Button>(leftPage + "SideBagButton");
+        equipmentButton = FindComponent<Button>(collage + "SideEquipmentButton") ?? FindComponent<Button>(leftPage + "SideEquipmentButton");
+        shopButton = FindComponent<Button>(collage + "SideShopButton") ?? FindComponent<Button>(leftPage + "SideShopButton");
+        friendsButton = FindComponent<Button>(collage + "FriendsButton") ?? FindComponent<Button>(leftPage + "FriendsButton");
         noticeButton = FindComponent<Button>("MainBookPage/BottomNoticeButton");
         settingsButton = FindComponent<Button>("MainBookPage/SideSettingsButton");
 
         const string rightPage = "MainBookPage/RightTownPage/";
-        taskButton = FindComponent<Button>(leftPage + "BottomTaskButton");
+        taskButton = FindComponent<Button>(collage + "BottomTaskButton") ?? FindComponent<Button>(leftPage + "BottomTaskButton");
         dailySignButton = FindComponent<Button>(leftPage + "BottomDailySignButton");
+        ConfigureAlphaHitTest(roleButton);
+        ConfigureAlphaHitTest(lotteryButton);
+        ConfigureAlphaHitTest(bagButton);
+        ConfigureAlphaHitTest(equipmentButton);
+        ConfigureAlphaHitTest(shopButton);
+        ConfigureAlphaHitTest(friendsButton);
+        ConfigureAlphaHitTest(taskButton);
         battleButton = FindComponent<Button>(rightPage + "BattleModeEntry/BattleEnterButton");
         enterMapButton = FindComponent<Button>(rightPage + "ManagementModeEntry/ManagementEnterButton");
+        ConfigureAlphaHitTest(battleButton);
+        ConfigureAlphaHitTest(enterMapButton);
         mapEnterStampButton = null;
         areaButtons = new Button[0];
         selectedAreaTitle = null;
         selectedAreaDescription = null;
         selectedAreaHint = null;
+    }
+
+    private static void ConfigureAlphaHitTest(Button button)
+    {
+        Image image = button != null ? button.targetGraphic as Image : null;
+        if (image != null && image.sprite != null)
+        {
+            image.alphaHitTestMinimumThreshold = 0.1f;
+        }
     }
 
     private void CaptureMetrics()

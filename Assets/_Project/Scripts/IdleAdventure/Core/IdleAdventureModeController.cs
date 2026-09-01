@@ -1547,6 +1547,10 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         TextMeshProUGUI iconText = CreateText("Icon Text", iconImage.transform, "G", 34, FontStyles.Bold, TextAlignmentOptions.Center);
         Stretch(iconText.rectTransform);
+        if (SmallButtonIconUtility.ApplyToImage(iconImage, "挂机奖励"))
+        {
+            iconText.gameObject.SetActive(false);
+        }
 
         TextMeshProUGUI amountText = CreateText("Amount Text", panel, "x0", 21, FontStyles.Bold, TextAlignmentOptions.Center);
         Anchor(amountText.rectTransform, new Vector2(0.58f, 0.50f), new Vector2(1f, 0.86f), new Vector2(0f, 0f), new Vector2(-10f, 0f));
@@ -2086,9 +2090,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         Button formationButton = CreateButton("Open Formation Button", startPanel, "Formation");
         Anchor(formationButton.GetComponent<RectTransform>(), new Vector2(0.28f, 0.13f), new Vector2(0.44f, 0.19f), Vector2.zero, Vector2.zero);
+        SmallButtonIconUtility.ApplyToButton(formationButton, "编队");
 
         Button startButton = CreateButton("Start Battle Button", startPanel, "Start Battle");
         Anchor(startButton.GetComponent<RectTransform>(), new Vector2(0.56f, 0.13f), new Vector2(0.72f, 0.19f), Vector2.zero, Vector2.zero);
+        SmallButtonIconUtility.ApplyToButton(startButton, "对战副");
 
         RectTransform formationWindow = CreatePanel("Formation Window", startPanel, new Color(0.035f, 0.04f, 0.05f, 0.98f));
         Stretch(formationWindow);
@@ -2155,6 +2161,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         Button clearButton = CreateButton("Formation Clear Button", formationWindow, "Clear");
         Anchor(clearButton.GetComponent<RectTransform>(), new Vector2(0.80f, 0.86f), new Vector2(0.92f, 0.93f), Vector2.zero, Vector2.zero);
+        SmallButtonIconUtility.ApplyToButton(clearButton, "一键清除", 38f, 6f, 5f);
 
         Button closeButton = CreateButton("Formation Close Button", formationWindow, "Confirm");
         Anchor(closeButton.GetComponent<RectTransform>(), new Vector2(0.42f, 0.86f), new Vector2(0.58f, 0.93f), Vector2.zero, Vector2.zero);

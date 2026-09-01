@@ -35,6 +35,9 @@ public partial class GameBoot : MonoBehaviour
     private InputField passwordInput;
     private Toggle rememberToggle;
     private Text statusText;
+    private Button startGameButton;
+    private GameObject loginDialog;
+    private Button loginDialogCloseButton;
     private Button loginButton;
     private Button registerButton;
     private Button weChatButton;
@@ -50,7 +53,7 @@ public partial class GameBoot : MonoBehaviour
 
     private void Start()
     {
-        defaultFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        defaultFont = RuntimeFontAssetProvider.ResolveLegacy();
         BuildLoginUI();
         string complianceBlockedMessage = PlayerPrefs.GetString("ComplianceBlockedMessage", string.Empty);
         if (!string.IsNullOrEmpty(complianceBlockedMessage))
@@ -66,13 +69,20 @@ public partial class GameBoot : MonoBehaviour
     {
         if ((privacyPolicyOverlay != null && privacyPolicyOverlay.activeSelf)
             || (accountManagementPanel != null && accountManagementPanel.activeSelf)
-            || (realNamePanel != null && realNamePanel.activeSelf))
+            || (realNamePanel != null && realNamePanel.activeSelf)
+            || (settingsPanel != null && settingsPanel.activeSelf))
         {
             return;
         }
 
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
         {
+            if (loginDialog != null && !loginDialog.activeSelf)
+            {
+                ShowLoginDialog();
+                return;
+            }
+
             TryLogin();
         }
     }
@@ -113,6 +123,9 @@ public partial class GameBoot : MonoBehaviour
             return false;
         }
 
+        startGameButton = contentView.StartGameButton;
+        loginDialog = contentView.LoginDialog;
+        loginDialogCloseButton = contentView.LoginDialogCloseButton;
         accountInput = contentView.AccountInput;
         nicknameInput = contentView.NicknameInput;
         passwordInput = contentView.PasswordInput;
@@ -123,6 +136,8 @@ public partial class GameBoot : MonoBehaviour
         weChatButton = contentView.WeChatLoginButton;
         settingsPanel = contentView.SettingsPanel;
 
+        startGameButton.onClick.AddListener(ShowLoginDialog);
+        loginDialogCloseButton.onClick.AddListener(HideLoginDialog);
         loginButton.onClick.AddListener(TryLogin);
         registerButton.onClick.AddListener(TryRegister);
         weChatButton.onClick.AddListener(TryWeChatLogin);
@@ -130,10 +145,38 @@ public partial class GameBoot : MonoBehaviour
         contentView.MailButton.onClick.AddListener(() => ShowError("登录后可在首页查看系统邮件"));
         contentView.SettingsCloseButton.onClick.AddListener(HideSettingsPanel);
 
+        loginDialog.SetActive(false);
         settingsPanel.SetActive(false);
         InitializeLoginFields();
         SetStatus(string.Empty, ErrorColor);
         return true;
+    }
+
+    private void ShowLoginDialog()
+    {
+        if (loginDialog == null)
+        {
+            return;
+        }
+
+        loginDialog.SetActive(true);
+        loginDialog.transform.SetAsLastSibling();
+        if (accountInput != null)
+        {
+            accountInput.Select();
+            accountInput.ActivateInputField();
+        }
+    }
+
+    private void HideLoginDialog()
+    {
+        if (requestRunning || loginDialog == null)
+        {
+            return;
+        }
+
+        HideSettingsPanel();
+        loginDialog.SetActive(false);
     }
 
     private void InitializeLoginFields()
@@ -936,6 +979,8 @@ public partial class GameBoot : MonoBehaviour
         if (nicknameInput != null) nicknameInput.interactable = !busy;
         if (passwordInput != null) passwordInput.interactable = !busy;
         if (rememberToggle != null) rememberToggle.interactable = !busy;
+        if (startGameButton != null) startGameButton.interactable = !busy;
+        if (loginDialogCloseButton != null) loginDialogCloseButton.interactable = !busy;
         if (loginButton != null) loginButton.interactable = !busy;
         if (registerButton != null) registerButton.interactable = !busy;
         if (weChatButton != null) weChatButton.interactable = !busy;

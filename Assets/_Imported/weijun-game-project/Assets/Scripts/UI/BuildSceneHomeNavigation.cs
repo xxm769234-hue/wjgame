@@ -12,6 +12,7 @@ public sealed class BuildSceneHomeNavigation : MonoBehaviour
 {
     private const string HomeSceneName = "HomeScene";
     private const string ManagementSceneName = "Simulation management mode";
+    private const string SimulationShortcutResourcesPath = "UI/Simulation/Shortcuts/";
 
     private const int NavigationSortingOrder = 220;
     private const float LeftMargin = 28f;
@@ -102,12 +103,13 @@ public sealed class BuildSceneHomeNavigation : MonoBehaviour
         SetHomeBookInvisible(bookView);
         CreateNavigationCanvas();
         nextVerticalShortcutTop = LeftMargin;
+        Vector2? mailShortcutSize = GetShortcutSize(bookView.MailButton);
         MoveShortcut(bookView.MailButton, "MailShortcut", true, 0);
         MoveShortcut(bookView.NoticeButton, "NoticeShortcut", true, 1);
         MoveShortcut(bookView.SettingsButton, "SettingsShortcut", true, 2);
-        MoveShortcut(bookView.TaskButton, "TaskShortcut", true, 3);
-        MoveShortcut(bookView.BagButton, "BagShortcut", true, 4);
-        MoveShortcut(bookView.ShopButton, "ShopShortcut", true, 5);
+        MoveShortcut(bookView.TaskButton, "TaskShortcut", true, 3, "任务", mailShortcutSize);
+        MoveShortcut(bookView.BagButton, "BagShortcut", true, 4, "仓库", mailShortcutSize);
+        MoveShortcut(bookView.ShopButton, "ShopShortcut", true, 5, "商店", mailShortcutSize);
     }
 
     private HomePageUI EnsureHomePageUi()
@@ -226,7 +228,19 @@ public sealed class BuildSceneHomeNavigation : MonoBehaviour
         navigationRoot.localScale = Vector3.one;
     }
 
-    private void MoveShortcut(Button button, string shortcutName, bool vertical, int index)
+    private static Vector2? GetShortcutSize(Button button)
+    {
+        RectTransform buttonRect = button != null ? button.transform as RectTransform : null;
+        return buttonRect != null ? buttonRect.rect.size : (Vector2?)null;
+    }
+
+    private void MoveShortcut(
+        Button button,
+        string shortcutName,
+        bool vertical,
+        int index,
+        string simulationIconName = null,
+        Vector2? shortcutSizeOverride = null)
     {
         if (button == null)
         {
@@ -242,23 +256,24 @@ public sealed class BuildSceneHomeNavigation : MonoBehaviour
         }
 
         Vector2 originalSize = buttonRect.rect.size;
+        Vector2 shortcutSize = shortcutSizeOverride ?? originalSize;
         Vector2 originalPivot = buttonRect.pivot;
         Vector3 originalScale = buttonRect.localScale;
         button.transform.SetParent(navigationRoot, false);
         button.name = shortcutName;
         buttonRect.localScale = originalScale;
         buttonRect.pivot = originalPivot;
-        buttonRect.sizeDelta = originalSize;
+        buttonRect.sizeDelta = shortcutSize;
         buttonRect.anchorMin = vertical ? new Vector2(0f, 1f) : Vector2.zero;
         buttonRect.anchorMax = buttonRect.anchorMin;
 
         if (vertical)
         {
             float top = nextVerticalShortcutTop;
-            nextVerticalShortcutTop += originalSize.y + ShortcutSpacing;
+            nextVerticalShortcutTop += shortcutSize.y + ShortcutSpacing;
             buttonRect.anchoredPosition = new Vector2(
-                LeftMargin + originalSize.x * originalPivot.x,
-                -top - originalSize.y * (1f - originalPivot.y));
+                LeftMargin + shortcutSize.x * originalPivot.x,
+                -top - shortcutSize.y * (1f - originalPivot.y));
         }
         else
         {
@@ -269,8 +284,57 @@ public sealed class BuildSceneHomeNavigation : MonoBehaviour
             }
 
             buttonRect.anchoredPosition = new Vector2(
-                left + originalSize.x * originalPivot.x,
-                BottomMargin + originalSize.y * originalPivot.y);
+                left + shortcutSize.x * originalPivot.x,
+                BottomMargin + shortcutSize.y * originalPivot.y);
+        }
+
+        ApplySimulationShortcutIcon(button, simulationIconName);
+    }
+
+    private void ApplySimulationShortcutIcon(Button button, string resourceName)
+    {
+        if (button == null || string.IsNullOrEmpty(resourceName))
+        {
+            return;
+        }
+
+        Sprite sprite = Resources.Load<Sprite>(SimulationShortcutResourcesPath + resourceName);
+        if (sprite == null)
+        {
+            Debug.LogWarning("Simulation shortcut icon is missing: " + resourceName, this);
+            return;
+        }
+
+        Image targetImage = button.targetGraphic as Image;
+        if (targetImage == null)
+        {
+            targetImage = button.GetComponent<Image>();
+        }
+
+        if (targetImage == null)
+        {
+            Debug.LogWarning("Simulation shortcut has no Image: " + button.name, this);
+            return;
+        }
+
+        targetImage.sprite = sprite;
+        targetImage.color = Color.white;
+        targetImage.type = Image.Type.Simple;
+        targetImage.preserveAspect = true;
+        targetImage.useSpriteMesh = false;
+        targetImage.raycastTarget = true;
+        targetImage.alphaHitTestMinimumThreshold = 0.1f;
+
+        Transform iconTransform = button.transform.Find("IconPatch");
+        if (iconTransform != null)
+        {
+            iconTransform.gameObject.SetActive(false);
+        }
+
+        Transform titleTransform = button.transform.Find("Title");
+        if (titleTransform != null)
+        {
+            titleTransform.gameObject.SetActive(false);
         }
     }
 

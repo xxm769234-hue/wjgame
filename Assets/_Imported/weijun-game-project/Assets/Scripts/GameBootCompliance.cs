@@ -60,6 +60,8 @@ public partial class GameBoot
         if (existingToggle != null)
         {
             privacyConsentToggle = existingToggle.GetComponent<Toggle>();
+            Transform existingLabel = existingToggle.Find("Label");
+            privacyConsentLabel = existingLabel != null ? existingLabel.GetComponent<TMP_Text>() : null;
         }
 
         if (privacyConsentToggle == null)

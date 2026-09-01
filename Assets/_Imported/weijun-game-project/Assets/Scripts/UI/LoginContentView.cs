@@ -6,7 +6,12 @@ public sealed class LoginContentView : MonoBehaviour
 {
     [SerializeField] private LoginCanvasStyle style;
 
+    [Header("Landing Controls")]
+    [SerializeField] private Button startGameButton;
+
     [Header("Login Controls")]
+    [SerializeField] private GameObject loginDialog;
+    [SerializeField] private Button loginDialogCloseButton;
     [SerializeField] private InputField accountInput;
     [SerializeField] private InputField nicknameInput;
     [SerializeField] private InputField passwordInput;
@@ -23,6 +28,9 @@ public sealed class LoginContentView : MonoBehaviour
     [SerializeField] private Button settingsCloseButton;
 
     public LoginCanvasStyle Style => style;
+    public Button StartGameButton => startGameButton;
+    public GameObject LoginDialog => loginDialog;
+    public Button LoginDialogCloseButton => loginDialogCloseButton;
     public InputField AccountInput => accountInput;
     public InputField NicknameInput => nicknameInput;
     public InputField PasswordInput => passwordInput;
@@ -37,6 +45,9 @@ public sealed class LoginContentView : MonoBehaviour
     public Button SettingsCloseButton => settingsCloseButton;
 
     public bool HasCompleteLoginLayout =>
+        startGameButton != null &&
+        loginDialog != null &&
+        loginDialogCloseButton != null &&
         accountInput != null &&
         nicknameInput != null &&
         passwordInput != null &&
@@ -71,6 +82,9 @@ public sealed class LoginContentView : MonoBehaviour
 #if UNITY_EDITOR
     public void EditorSetReferences(
         LoginCanvasStyle newStyle,
+        Button newStartGameButton,
+        GameObject newLoginDialog,
+        Button newLoginDialogCloseButton,
         InputField newAccountInput,
         InputField newNicknameInput,
         InputField newPasswordInput,
@@ -85,6 +99,9 @@ public sealed class LoginContentView : MonoBehaviour
         Button newSettingsCloseButton)
     {
         style = newStyle;
+        startGameButton = newStartGameButton;
+        loginDialog = newLoginDialog;
+        loginDialogCloseButton = newLoginDialogCloseButton;
         accountInput = newAccountInput;
         nicknameInput = newNicknameInput;
         passwordInput = newPasswordInput;

@@ -90,6 +90,11 @@ public sealed class HomePageBookStyle : MonoBehaviour
         for (int i = 0; i < images.Length; i++)
         {
             Image image = images[i];
+            if (IsLeftPageArtButton(image) || IsRightPageArtButton(image))
+            {
+                continue;
+            }
+
             if (IsFeatureButton(image.name))
             {
                 ApplyFeatureButton(image);
@@ -103,6 +108,47 @@ public sealed class HomePageBookStyle : MonoBehaviour
                 ApplyMapCard(image);
             }
         }
+    }
+
+    private static bool IsLeftPageArtButton(Image image)
+    {
+        if (image == null || image.transform.parent == null)
+        {
+            return false;
+        }
+
+        string parentName = image.transform.parent.name;
+        return (parentName == "LeftFeatureCollage" || parentName == "LeftStoryPage")
+            && IsLeftPageArtButtonName(image.name);
+    }
+
+    private static bool IsLeftPageArtButtonName(string objectName)
+    {
+        switch (objectName)
+        {
+            case "RoleButton":
+            case "SideEquipmentButton":
+            case "SideBagButton":
+            case "SideShopButton":
+            case "FriendsButton":
+            case "LotteryButton":
+            case "BottomTaskButton":
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsRightPageArtButton(Image image)
+    {
+        if (image == null || image.transform.parent == null)
+        {
+            return false;
+        }
+
+        string parentName = image.transform.parent.name;
+        return (parentName == "BattleModeEntry" && image.name == "BattleEnterButton")
+            || (parentName == "ManagementModeEntry" && image.name == "ManagementEnterButton");
     }
 
     private static void ApplyAtPath(Transform root, string path, System.Action<Image> applyStyle)

@@ -11,15 +11,17 @@ public static class HomePageScenePanelsBuilder
     private const string HomeScenePath = "Assets/_Project/Scenes/HomeScene.unity";
     private const string CanvasName = "HomePanelsCanvas";
     private const string InventoryPrefabPath = "Assets/Resources/UI/InventoryPanel.prefab";
-    private const string HomeBackgroundPath = "Assets/_Imported/weijun-game-project/Assets/UI/背景.png";
+    private const string HomeBackgroundPath = "Assets/_Imported/weijun-game-project/Assets/UI/背景/748fb3f0714f48099ad24b48fb5e533f.png";
+    private const string LeftButtonArtFolder = "Assets/Resources/UI/Home/LeftButtons/";
+    private const string RightButtonArtFolder = "Assets/Resources/UI/Home/RightButtons/";
     private const string TestNodeName = "测试节点";
     private const int MinimumComponentizedBookSchemaVersion = 8;
     private const int ScenePanelsSchemaVersion = 12;
     private const int EquipmentRows = 6;
-    private const string RoleFontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy) SDF.asset";
+    private const string RoleFontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
     private const string ProfileFontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
     private const int RoleListRows = 20;
-    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/平方重(PingFang Heavy)_爱给网_aigei_com.ttf";
+    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal.otf";
 
     private static Font defaultFont;
     private static Font fallbackFont;
@@ -513,8 +515,8 @@ public static class HomePageScenePanelsBuilder
 
     private static void BuildScenePanels(Scene scene, bool saveScene)
     {
-        fallbackFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        defaultFont = AssetDatabase.LoadAssetAtPath<Font>(FontPath) ?? fallbackFont;
+        fallbackFont = AssetDatabase.LoadAssetAtPath<Font>(FontPath);
+        defaultFont = fallbackFont;
         roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
         EnsureTestNode(scene);
 
@@ -617,10 +619,60 @@ public static class HomePageScenePanelsBuilder
         Sprite background = AssetDatabase.LoadAssetAtPath<Sprite>(HomeBackgroundPath);
         style.EditorSetDefaultSprites(background);
         homePage.EditorSetFont(defaultFont);
+        homePage.EditorSetLeftPageButtonSprites(
+            LoadLeftButtonSprite("角色.png"),
+            LoadLeftButtonSprite("装备.png"),
+            LoadLeftButtonSprite("仓库.png"),
+            LoadLeftButtonSprite("商城.png"),
+            LoadLeftButtonSprite("好友.png"),
+            LoadLeftButtonSprite("召唤.png"),
+            LoadLeftButtonSprite("任务.png"));
+        homePage.EditorSetRightPageButtonSprites(
+            LoadRightButtonSprite("战斗.png"),
+            LoadRightButtonSprite("建造.png"));
         homePage.EditorRebuildBookPreview();
         EditorUtility.SetDirty(style);
         EditorUtility.SetDirty(homePage);
         return rect;
+    }
+
+    private static Sprite LoadLeftButtonSprite(string fileName)
+    {
+        return LoadPageButtonSprite(LeftButtonArtFolder + fileName, "Left");
+    }
+
+    private static Sprite LoadRightButtonSprite(string fileName)
+    {
+        return LoadPageButtonSprite(RightButtonArtFolder + fileName, "Right");
+    }
+
+    private static Sprite LoadPageButtonSprite(string assetPath, string pageName)
+    {
+        TextureImporter importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
+        if (importer == null)
+        {
+            Debug.LogError(pageName + " page button texture was not found: " + assetPath);
+            return null;
+        }
+
+        bool requiresReimport = importer.textureType != TextureImporterType.Sprite
+            || importer.spriteImportMode != SpriteImportMode.Single
+            || !importer.isReadable
+            || !importer.alphaIsTransparency
+            || importer.mipmapEnabled
+            || importer.wrapMode != TextureWrapMode.Clamp;
+        if (requiresReimport)
+        {
+            importer.textureType = TextureImporterType.Sprite;
+            importer.spriteImportMode = SpriteImportMode.Single;
+            importer.isReadable = true;
+            importer.alphaIsTransparency = true;
+            importer.mipmapEnabled = false;
+            importer.wrapMode = TextureWrapMode.Clamp;
+            importer.SaveAndReimport();
+        }
+
+        return AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
     }
 
     private static void RemoveLegacyHomePageController(Scene scene, HomePageUI retainedController)

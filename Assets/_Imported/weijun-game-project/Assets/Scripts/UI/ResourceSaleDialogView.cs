@@ -49,7 +49,7 @@ public sealed class ResourceSaleDialogView : MonoBehaviour
         initialized = true;
         fontAsset = fontAsset != null
             ? fontAsset
-            : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            : RuntimeFontAssetProvider.ResolveLegacy();
 
         RectTransform root = GetComponent<RectTransform>();
         root.anchorMin = Vector2.zero;

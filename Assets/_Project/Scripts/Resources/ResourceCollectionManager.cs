@@ -114,6 +114,7 @@ public sealed class ResourceCollectionManager : MonoBehaviour
                 collectAllButton.onClick.RemoveListener(OnClickCollectAll);
                 collectAllButton.onClick.AddListener(OnClickCollectAll);
                 ConfigureButtonRect(collectAllButton.GetComponent<RectTransform>());
+                SmallButtonIconUtility.ApplyToButton(collectAllButton, "一键收取", 48f, 8f, 8f);
                 return;
             }
         }
@@ -154,6 +155,7 @@ public sealed class ResourceCollectionManager : MonoBehaviour
         collectAllButtonText.color = Color.white;
         collectAllButtonText.alignment = TextAlignmentOptions.Center;
         collectAllButtonText.enableWordWrapping = true;
+        SmallButtonIconUtility.ApplyToButton(collectAllButton, "一键收取", 48f, 8f, 8f);
     }
 
     private void ConfigureButtonRect(RectTransform rect)

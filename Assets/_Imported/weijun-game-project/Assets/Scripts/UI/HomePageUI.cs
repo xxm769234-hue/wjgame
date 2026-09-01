@@ -19,6 +19,9 @@ public partial class HomePageUI : MonoBehaviour
     private const string AuthTokenKey = GameSession.AuthTokenKey;
     private const string PlayerIdKey = GameSession.PlayerIdKey;
     private const string LotteryChanceKey = "LotteryChanceCount";
+    private const string LeftButtonResourcesPath = "UI/Home/LeftButtons/";
+    private const string RightButtonResourcesPath = "UI/Home/RightButtons/";
+    private const string SmallIconResourcesPath = "UI/SmallIcons/";
     private const int DefaultLotteryChanceCount = 100;
     private const int InventoryCapacity = 40;
     private const int InventoryColumns = 8;
@@ -34,6 +37,17 @@ public partial class HomePageUI : MonoBehaviour
     private static readonly Color DisabledTextColor = new Color(0.63f, 0.58f, 0.49f, 1f);
 
     [SerializeField] private Font defaultFont;
+    [Header("Left Page Buttons")]
+    [SerializeField] private Sprite roleButtonSprite;
+    [SerializeField] private Sprite equipmentButtonSprite;
+    [SerializeField] private Sprite inventoryButtonSprite;
+    [SerializeField] private Sprite shopButtonSprite;
+    [SerializeField] private Sprite friendsButtonSprite;
+    [SerializeField] private Sprite summonButtonSprite;
+    [SerializeField] private Sprite taskButtonSprite;
+    [Header("Right Page Buttons")]
+    [SerializeField] private Sprite battleButtonSprite;
+    [SerializeField] private Sprite managementButtonSprite;
     private Font fallbackFont;
     private Transform mainPageTransform;
     private HomePageBookView boundBookView;
@@ -122,7 +136,7 @@ public partial class HomePageUI : MonoBehaviour
             return;
         }
 
-        fallbackFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        fallbackFont = RuntimeFontAssetProvider.ResolveLegacy();
         if (defaultFont == null)
         {
             defaultFont = fallbackFont;
@@ -214,6 +228,12 @@ public partial class HomePageUI : MonoBehaviour
         BindButton(view.DailySignButton, ShowDailySignContent);
         BindButton(view.EnterMapButton, EnterSelectedArea);
         BindButton(view.MapEnterStampButton, EnterSelectedArea);
+
+        ApplyBookSmallIcon(view.MailButton, "邮件");
+        ApplyBookSmallIcon(view.NoticeButton, "公告");
+        ApplyBookSmallIcon(view.SettingsButton, "设置");
+        ApplyBookSmallIcon(view.ActivityButton, "活动");
+        ApplyBookSmallIcon(view.DailySignButton, "签到");
 
         for (int i = 0; i < view.AreaButtons.Length && i < areas.Length; i++)
         {
@@ -367,6 +387,30 @@ public partial class HomePageUI : MonoBehaviour
         defaultFont = value;
     }
 
+    public void EditorSetLeftPageButtonSprites(
+        Sprite role,
+        Sprite equipment,
+        Sprite inventory,
+        Sprite shop,
+        Sprite friends,
+        Sprite summon,
+        Sprite task)
+    {
+        roleButtonSprite = role;
+        equipmentButtonSprite = equipment;
+        inventoryButtonSprite = inventory;
+        shopButtonSprite = shop;
+        friendsButtonSprite = friends;
+        summonButtonSprite = summon;
+        taskButtonSprite = task;
+    }
+
+    public void EditorSetRightPageButtonSprites(Sprite battle, Sprite management)
+    {
+        battleButtonSprite = battle;
+        managementButtonSprite = management;
+    }
+
     public void EditorRebuildBookPreview()
     {
         RectTransform root = transform as RectTransform;
@@ -375,7 +419,7 @@ public partial class HomePageUI : MonoBehaviour
             return;
         }
 
-        fallbackFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+        fallbackFont = RuntimeFontAssetProvider.ResolveLegacy();
         if (defaultFont == null)
         {
             defaultFont = fallbackFont;
@@ -532,15 +576,7 @@ public partial class HomePageUI : MonoBehaviour
         AddBookPageTitle(leftPage, "\u57ce\u9547\u624b\u8bb0", "\u89d2\u8272 / \u88c5\u5907 / \u529f\u80fd", new Vector2(56f, -30f));
         AddBookPageTitle(rightPage, "\u9886\u5730\u5730\u56fe", "\u63a2\u7d22 / \u6a21\u62df\u7ecf\u8425 / \u5bf9\u6218", new Vector2(56f, -30f));
 
-        CreateBookFeatureButton(leftPage, "BottomDailySignButton", "\u6bcf\u65e5\u7b7e\u5230", "\u6bcf\u65e5\u5956\u52b1", new Vector2(56f, -104f), new Vector2(340f, 100f), new Color(0.78f, 0.46f, 0.22f, 1f), ShowDailySignContent);
-        CreateBookFeatureButton(leftPage, "ActivityButton", "\u6d3b\u52a8", "\u65b0\u624b\u7b7e\u5230", new Vector2(434f, -104f), new Vector2(340f, 100f), new Color(0.57f, 0.48f, 0.76f, 1f), ShowNewbieSignContent);
-        CreateBookFeatureButton(leftPage, "RoleButton", "\u89d2\u8272", "\u89d2\u8272\u4e0e\u6210\u957f", new Vector2(56f, -244f), new Vector2(218f, 124f), new Color(0.72f, 0.38f, 0.22f, 1f), ShowCharacterContent);
-        CreateBookFeatureButton(leftPage, "SideEquipmentButton", "\u88c5\u5907", "\u89d2\u8272\u88c5\u5907", new Vector2(306f, -244f), new Vector2(218f, 124f), new Color(0.36f, 0.46f, 0.70f, 1f), ShowEquipmentContent);
-        CreateBookFeatureButton(leftPage, "LotteryButton", "\u62bd\u5956", "\u5956\u6c60\u4e0e\u62bd\u53d6", new Vector2(556f, -244f), new Vector2(218f, 124f), new Color(0.78f, 0.52f, 0.18f, 1f), ShowLotteryContent);
-        CreateBookFeatureButton(leftPage, "BottomTaskButton", "\u4efb\u52a1", "\u4e3b\u7ebf\u4e0e\u65e5\u5e38", new Vector2(56f, -402f), new Vector2(166f, 112f), new Color(0.32f, 0.58f, 0.64f, 1f), ShowTaskContent);
-        CreateBookFeatureButton(leftPage, "FriendsButton", "\u597d\u53cb", "\u597d\u53cb\u5217\u8868", new Vector2(240f, -402f), new Vector2(166f, 112f), new Color(0.46f, 0.38f, 0.70f, 1f), ShowFriendsContent);
-        CreateBookFeatureButton(leftPage, "SideBagButton", "\u4ed3\u5e93", "\u7269\u54c1\u4e0e\u8d44\u6e90", new Vector2(424f, -402f), new Vector2(166f, 112f), new Color(0.50f, 0.34f, 0.20f, 1f), ShowBagContent);
-        CreateBookFeatureButton(leftPage, "SideShopButton", "\u5546\u57ce", "\u9053\u5177\u4e0e\u793c\u5305", new Vector2(608f, -402f), new Vector2(166f, 112f), new Color(0.37f, 0.58f, 0.38f, 1f), ShowShopContent);
+        BuildLeftPageButtonCollage(leftPage);
 
         CreateBookTopActionButton(page.transform, "BottomMailButton", "\u90ae\u4ef6", new Vector2(1450f, -24f), ShowMailContent);
         CreateBookTopActionButton(page.transform, "BottomNoticeButton", "\u516c\u544a", new Vector2(1590f, -24f), ShowAnnouncement);
@@ -550,21 +586,19 @@ public partial class HomePageUI : MonoBehaviour
             rightPage,
             "BattleModeEntry",
             "BattleEnterButton",
-            "\u5bf9\u6218",
-            "Sprites/Arts/png/volcano.png",
-            new Vector2(56f, -104f),
-            new Vector2(711.2f, 300f),
-            new Color(0.48f, 0.18f, 0.13f, 1f),
+            "\u6218\u6597",
+            ResolveRightButtonSprite(battleButtonSprite, "\u6218\u6597"),
+            new Vector2(126.5f, 0f),
+            new Vector2(593f, 386f),
             ShowBattleContent);
         CreateModeEntry(
             rightPage,
             "ManagementModeEntry",
             "ManagementEnterButton",
-            "\u6a21\u62df\u7ecf\u8425",
-            "Sprites/Arts/png/grass.jpeg",
-            new Vector2(56f, -430f),
-            new Vector2(711.2f, 300f),
-            new Color(0.30f, 0.48f, 0.28f, 1f),
+            "\u5efa\u9020",
+            ResolveRightButtonSprite(managementButtonSprite, "\u5efa\u9020"),
+            new Vector2(100.5f, -389f),
+            new Vector2(645f, 425f),
             EnterSelectedArea);
 
         statusText = CreateText("Status", page.transform, string.Empty, 18, FontStyle.Bold, new Color(0.98f, 0.89f, 0.66f, 1f), TextAnchor.MiddleRight);
@@ -583,7 +617,124 @@ public partial class HomePageUI : MonoBehaviour
 
         Text titleText = CreateText("Title", button.transform, title, 18, FontStyle.Bold, InkColor, TextAnchor.MiddleCenter);
         SetRect(titleText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), Vector2.zero, new Vector2(124f, 52f));
+        ApplyBookSmallIcon(button, ResolveBookSmallIconName(name));
         return button;
+    }
+
+    private static string ResolveBookSmallIconName(string buttonName)
+    {
+        switch (buttonName)
+        {
+            case "BottomMailButton": return "邮件";
+            case "BottomNoticeButton": return "公告";
+            case "SideSettingsButton": return "设置";
+            case "ActivityButton": return "活动";
+            case "BottomDailySignButton": return "签到";
+            default: return string.Empty;
+        }
+    }
+
+    private static void ApplyBookSmallIcon(Button button, string resourceName)
+    {
+        if (button == null || string.IsNullOrEmpty(resourceName)) return;
+
+        Sprite sprite = Resources.Load<Sprite>(SmallIconResourcesPath + resourceName);
+        if (sprite == null)
+        {
+            Debug.LogWarning($"Home page icon was not found: {SmallIconResourcesPath}{resourceName}", button);
+            return;
+        }
+
+        Transform iconTransform = button.transform.Find("IconPatch");
+        Image icon;
+        if (iconTransform == null)
+        {
+            GameObject iconObject = new GameObject("IconPatch", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            iconObject.layer = button.gameObject.layer;
+            iconObject.transform.SetParent(button.transform, false);
+            icon = iconObject.GetComponent<Image>();
+        }
+        else
+        {
+            icon = iconTransform.GetComponent<Image>();
+            if (icon == null) icon = iconTransform.gameObject.AddComponent<Image>();
+        }
+
+        icon.sprite = sprite;
+        icon.color = Color.white;
+        icon.type = Image.Type.Simple;
+        icon.preserveAspect = true;
+        icon.raycastTarget = false;
+        RectTransform iconRect = icon.rectTransform;
+        iconRect.anchorMin = Vector2.zero;
+        iconRect.anchorMax = Vector2.one;
+        iconRect.pivot = new Vector2(0.5f, 0.5f);
+        iconRect.anchoredPosition = Vector2.zero;
+        iconRect.sizeDelta = Vector2.zero;
+        icon.transform.SetAsFirstSibling();
+    }
+
+    private void BuildLeftPageButtonCollage(Transform parent)
+    {
+        GameObject collageObject = new GameObject("LeftFeatureCollage", typeof(RectTransform));
+        collageObject.layer = LayerMask.NameToLayer("UI");
+        collageObject.transform.SetParent(parent, false);
+        Stretch(collageObject.GetComponent<RectTransform>());
+
+        Transform collage = collageObject.transform;
+        CreateLeftPageImageButton(collage, "RoleButton", ResolveLeftButtonSprite(roleButtonSprite, "\u89d2\u8272"), new Vector2(292.125f, 12.6875f), new Vector2(322.08f, 230.4f), ShowCharacterContent);
+        CreateLeftPageImageButton(collage, "SideEquipmentButton", ResolveLeftButtonSprite(equipmentButtonSprite, "\u88c5\u5907"), new Vector2(616.5f, 14.5625f), new Vector2(213.84f, 261.12f), ShowEquipmentContent);
+        CreateLeftPageImageButton(collage, "SideBagButton", ResolveLeftButtonSprite(inventoryButtonSprite, "\u4ed3\u5e93"), new Vector2(261.1875f, -139.1875f), new Vector2(315.36f, 351.6f), ShowBagContent);
+        CreateLeftPageImageButton(collage, "SideShopButton", ResolveLeftButtonSprite(shopButtonSprite, "\u5546\u57ce"), new Vector2(425.25f, -156.0625f), new Vector2(403.2f, 359.28f), ShowShopContent);
+        CreateLeftPageImageButton(collage, "FriendsButton", ResolveLeftButtonSprite(friendsButtonSprite, "\u597d\u53cb"), new Vector2(232.125f, -382.9375f), new Vector2(332.88f, 204.96f), ShowFriendsContent);
+        CreateLeftPageImageButton(collage, "LotteryButton", ResolveLeftButtonSprite(summonButtonSprite, "\u53ec\u5524"), new Vector2(487.125f, -353.875f), new Vector2(339.36f, 427.92f), ShowLotteryContent);
+        CreateLeftPageImageButton(collage, "BottomTaskButton", ResolveLeftButtonSprite(taskButtonSprite, "\u4efb\u52a1"), new Vector2(203.0625f, -598.5625f), new Vector2(558.72f, 185.52f), ShowTaskContent);
+    }
+
+    private Button CreateLeftPageImageButton(
+        Transform parent,
+        string name,
+        Sprite sprite,
+        Vector2 position,
+        Vector2 size,
+        Action onClick)
+    {
+        Image image = CreateImage(name, parent, sprite != null ? Color.white : Color.clear);
+        image.sprite = sprite;
+        image.type = Image.Type.Simple;
+        image.preserveAspect = false;
+        image.useSpriteMesh = true;
+        image.raycastTarget = sprite != null;
+        image.alphaHitTestMinimumThreshold = sprite != null ? 0.1f : 0f;
+        SetRect(image.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
+
+        Button button = image.gameObject.AddComponent<Button>();
+        button.targetGraphic = image;
+        button.transition = Selectable.Transition.ColorTint;
+        button.colors = CreateSelectableColors(Color.white, new Color(1f, 0.97f, 0.88f, 1f), new Color(0.88f, 0.84f, 0.76f, 1f), new Color(1f, 1f, 1f, 0.45f));
+        button.interactable = sprite != null;
+        button.onClick.AddListener(() => onClick());
+
+        if (sprite == null)
+        {
+            Debug.LogError($"Left page button sprite is missing for {name}.", this);
+        }
+
+        return button;
+    }
+
+    private static Sprite ResolveLeftButtonSprite(Sprite assignedSprite, string resourceName)
+    {
+        return assignedSprite != null
+            ? assignedSprite
+            : Resources.Load<Sprite>(LeftButtonResourcesPath + resourceName);
+    }
+
+    private static Sprite ResolveRightButtonSprite(Sprite assignedSprite, string resourceName)
+    {
+        return assignedSprite != null
+            ? assignedSprite
+            : Resources.Load<Sprite>(RightButtonResourcesPath + resourceName);
     }
 
     private void AddOpenBookSpread(Transform parent)
@@ -757,6 +908,7 @@ public partial class HomePageUI : MonoBehaviour
             TextMeshProUGUI editableTitle = titleObject.GetComponent<TextMeshProUGUI>();
             editableTitle.text = title;
             editableTitle.raycastTarget = false;
+            ApplyBookSmallIcon(editableButton, ResolveBookSmallIconName(name));
             return editableButton;
         }
 
@@ -862,34 +1014,41 @@ public partial class HomePageUI : MonoBehaviour
         string entryName,
         string buttonName,
         string buttonTitle,
-        string spritePath,
+        Sprite sprite,
         Vector2 position,
         Vector2 size,
-        Color buttonColor,
         Action onClick)
     {
-        Image entry = CreateImage(entryName, parent, new Color(0.82f, 0.78f, 0.66f, 1f));
-        entry.raycastTarget = false;
-        SetRect(entry.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
+        GameObject entryObject = new GameObject(entryName, typeof(RectTransform));
+        entryObject.layer = LayerMask.NameToLayer("UI");
+        entryObject.transform.SetParent(parent, false);
+        RectTransform entryRect = entryObject.GetComponent<RectTransform>();
+        SetRect(entryRect, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
 
-        Sprite sprite = LoadSpriteFromAsset(spritePath);
-        if (sprite != null)
-        {
-            entry.sprite = sprite;
-            entry.color = Color.white;
-            entry.preserveAspect = false;
-        }
+        Image image = CreateImage(buttonName, entryObject.transform, sprite != null ? Color.white : Color.clear);
+        image.sprite = sprite;
+        image.type = Image.Type.Simple;
+        image.preserveAspect = false;
+        image.useSpriteMesh = true;
+        image.raycastTarget = sprite != null;
+        image.alphaHitTestMinimumThreshold = sprite != null ? 0.1f : 0f;
+        SetRect(image.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), Vector2.zero, size);
 
-        Button button = CreateButton(entry.transform, buttonName, buttonTitle, buttonColor, Color.white);
+        Button button = image.gameObject.AddComponent<Button>();
+        button.targetGraphic = image;
+        button.transition = Selectable.Transition.ColorTint;
+        button.colors = CreateSelectableColors(Color.white, new Color(1f, 0.97f, 0.88f, 1f), new Color(0.88f, 0.84f, 0.76f, 1f), new Color(1f, 1f, 1f, 0.45f));
+        button.interactable = sprite != null;
         button.onClick.AddListener(() => onClick());
-        SetRect(
-            button.GetComponent<RectTransform>(),
-            TopLeftAnchor(),
-            TopLeftAnchor(),
-            TopLeftAnchor(),
-            new Vector2((size.x - 178f) * 0.5f, -size.y + 30f),
-            new Vector2(178f, 62f));
-        ConfigureClearButtonLabel(button, 22);
+
+        Text label = CreateText("Text", image.transform, buttonTitle, 30, FontStyle.Bold, InkColor, TextAnchor.MiddleCenter);
+        SetRect(label.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2((size.x - 220f) * 0.5f, -size.y + 36f), new Vector2(220f, 48f));
+        ConfigureClearText(label, 30);
+
+        if (sprite == null)
+        {
+            Debug.LogError($"Right page button sprite is missing for {buttonName}.", this);
+        }
     }
 
     private void CreateAreaThumb(Transform parent, AreaInfo area, string spritePath, Vector2 position)

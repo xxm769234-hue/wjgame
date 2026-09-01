@@ -18,6 +18,8 @@ public sealed class LoginCanvasStyle : MonoBehaviour
 
     [Header("Sprites")]
     [SerializeField] private Sprite backgroundSprite;
+    [SerializeField] private Sprite logoSprite;
+    [SerializeField] private Sprite startGameButtonSprite;
     [SerializeField] private Sprite paperSprite;
     [SerializeField] private Sprite panelSprite;
     [SerializeField] private Sprite inputSprite;
@@ -116,6 +118,16 @@ public sealed class LoginCanvasStyle : MonoBehaviour
         ApplyImage(image, backgroundSprite, backgroundColor);
     }
 
+    public void ApplyLogo(Image image)
+    {
+        ApplyImage(image, logoSprite, Color.white);
+    }
+
+    public void ApplyStartGameButton(Image image)
+    {
+        ApplyImage(image, startGameButtonSprite, primaryButtonColor);
+    }
+
     public void ApplyPaper(Image image)
     {
         ApplyImage(image, paperSprite, paperColor);
@@ -200,6 +212,13 @@ public sealed class LoginCanvasStyle : MonoBehaviour
     public void EditorSetFont(Font value)
     {
         font = value;
+    }
+
+    public void EditorSetLoginSprites(Sprite newBackgroundSprite, Sprite newLogoSprite, Sprite newStartGameButtonSprite)
+    {
+        backgroundSprite = newBackgroundSprite;
+        logoSprite = newLogoSprite;
+        startGameButtonSprite = newStartGameButtonSprite;
     }
 #endif
 }

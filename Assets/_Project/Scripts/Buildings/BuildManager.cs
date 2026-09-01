@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>
 /// Owns the build session and preview lifetime. UI movement belongs to BuildPanelController.
@@ -25,6 +26,11 @@ public sealed class BuildManager : MonoBehaviour
         Instance = this;
         if (worldCamera == null) worldCamera = Camera.main;
         mapManager = MapManager.EnsureInstance();
+        GameObject buildButtonObject = GameObject.Find("BuildButton");
+        if (buildButtonObject != null)
+        {
+            SmallButtonIconUtility.ApplyToButton(buildButtonObject.GetComponent<Button>(), "建造副", 48f, 8f, 8f);
+        }
     }
 
     private void OnDestroy()
