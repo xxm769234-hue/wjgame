@@ -572,12 +572,29 @@ public partial class GameBoot
 
         string access = compliance.gameAccessAllowed ? "允许进入游戏" : "暂不允许进入游戏";
         string reason = string.IsNullOrEmpty(compliance.blockReason) ? "NONE" : compliance.blockReason;
+        string consentSummary = managementConsent == null
+            ? "未读取"
+            : (managementConsent.consentValid ? "有效" : "无效")
+                + "（当前政策 " + (managementConsent.currentPolicyVersion ?? "UNKNOWN") + "）";
+        string latestConsent = managementConsent == null || string.IsNullOrEmpty(managementConsent.latestAction)
+            ? "暂无授权记录"
+            : managementConsent.latestAction
+                + " / "
+                + (string.IsNullOrEmpty(managementConsent.latestPolicyVersion)
+                    ? "UNKNOWN"
+                    : managementConsent.latestPolicyVersion)
+                + " / "
+                + (string.IsNullOrEmpty(managementConsent.latestOccurredTime)
+                    ? "时间未知"
+                    : managementConsent.latestOccurredTime);
         return "实名状态：" + (compliance.verificationStatus ?? "UNKNOWN")
             + "\n年龄档位：" + (compliance.ageGroup ?? "UNKNOWN")
             + "\n准入结果：" + access
             + "\n限制原因：" + reason
             + "\n服务端提示：" + (string.IsNullOrEmpty(compliance.message) ? "无" : compliance.message)
-            + "\n剩余时长：" + Mathf.Max(0, compliance.remainingSeconds) + " 秒";
+            + "\n剩余时长：" + Mathf.Max(0, compliance.remainingSeconds) + " 秒"
+            + "\n隐私授权：" + consentSummary
+            + "\n最近授权动作：" + latestConsent;
     }
 
     private void BeginPrivacyConsent()
@@ -1068,6 +1085,7 @@ public partial class GameBoot
             "PlayerAvatarCode",
             "PlayerAvatarVersion",
             "PlayerAvatarUpdatedTime",
+            "PlayerAvatarResourcePath",
             "AccountStatus",
             "AccountManagementOnly",
             "PrivacyConsentRequired",

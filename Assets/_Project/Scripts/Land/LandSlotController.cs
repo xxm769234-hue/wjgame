@@ -62,7 +62,7 @@ public sealed class LandSlotController : MonoBehaviour
     private float nextRemoteCompletionAttemptAt;
     private bool resourceReady;
     private string remoteResourceName;
-    private int remoteResourceAmount;
+    private long remoteResourceAmount;
     private bool runtimeUnlocked = true;
     private int runtimeUnlockUnitIndex = -1;
     private int runtimeRequiredPlayerLevel = 1;
@@ -73,10 +73,10 @@ public sealed class LandSlotController : MonoBehaviour
     private bool runtimePurchased = true;
     private bool runtimePurchaseAvailable;
     private bool runtimePlacementUnlocked = true;
-    private int runtimePurchaseGoldCost;
-    private int runtimePurificationItemId;
+    private long runtimePurchaseGoldCost;
+    private long runtimePurificationItemId;
     private string runtimePurificationItemKey = string.Empty;
-    private int runtimePurificationItemAmount;
+    private long runtimePurificationItemAmount;
     private bool hasRemoteUnlockState;
     private bool hasRuntimeLayoutGridPosition;
     private TextMeshPro purchaseIndicator;
@@ -121,10 +121,10 @@ public sealed class LandSlotController : MonoBehaviour
     public bool IsPurchased => !runtimeRequiresGoldPurchase || runtimePurchased;
     public bool IsPurchaseAvailable => runtimePurchaseAvailable;
     public bool IsPlacementUnlocked => runtimePlacementUnlocked;
-    public int PurchaseGoldCost => runtimePurchaseGoldCost;
-    public int PurificationItemId => runtimePurificationItemId;
+    public long PurchaseGoldCost => runtimePurchaseGoldCost;
+    public long PurificationItemId => runtimePurificationItemId;
     public string PurificationItemKey => runtimePurificationItemKey;
-    public int PurificationItemAmount => runtimePurificationItemAmount;
+    public long PurificationItemAmount => runtimePurificationItemAmount;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetSortingOrderAllocator()
@@ -300,14 +300,14 @@ public sealed class LandSlotController : MonoBehaviour
         runtimeRequiresPurification = response.requiresPurification;
         runtimePurified = !response.requiresPurification || response.purified;
         runtimePurificationAvailable = response.purificationAvailable;
-        runtimePurificationItemId = Mathf.Max(0, response.purificationItemId);
+        runtimePurificationItemId = System.Math.Max(0L, response.purificationItemId);
         runtimePurificationItemKey = response.purificationItemKey ?? string.Empty;
-        runtimePurificationItemAmount = Mathf.Max(0, response.purificationItemAmount);
+        runtimePurificationItemAmount = System.Math.Max(0L, response.purificationItemAmount);
         runtimeRequiresGoldPurchase = response.requiresPurchase;
         runtimePurchased = !response.requiresPurchase || response.purchased;
         runtimePurchaseAvailable = response.purchaseAvailable;
         runtimePlacementUnlocked = response.placementUnlocked;
-        runtimePurchaseGoldCost = Mathf.Max(0, response.goldCost);
+        runtimePurchaseGoldCost = System.Math.Max(0L, response.goldCost);
         hasRemoteUnlockState = true;
         RefreshPurchaseIndicator();
     }
@@ -372,7 +372,7 @@ public sealed class LandSlotController : MonoBehaviour
         if (response == null || response.playerBuildingId != playerBuildingId) return;
 
         remoteResourceName = string.IsNullOrEmpty(response.itemName) ? response.itemKey : response.itemName;
-        remoteResourceAmount = Mathf.Max(0, response.storedAmount);
+        remoteResourceAmount = System.Math.Max(0L, response.storedAmount);
         UpsertProduction(response);
         ApplyRemoteSettledNpc(response.settledNpc);
         resourceReady = response.canCollect && remoteResourceAmount > 0;
@@ -386,7 +386,27 @@ public sealed class LandSlotController : MonoBehaviour
         }
     }
 
-    public void ClearRemoteProductionState(int remainingSeconds = 0)
+    public void ReplaceRemoteProductions(ProductionResponse[] productions)
+    {
+        latestProductions.Clear();
+        resourceReady = false;
+        remoteResourceName = string.Empty;
+        remoteResourceAmount = 0L;
+        ApplyRemoteSettledNpc(null);
+        HideResourceBubble();
+
+        if (productions == null) return;
+        for (int index = 0; index < productions.Length; index++)
+        {
+            ProductionResponse production = productions[index];
+            if (production != null && production.playerBuildingId == playerBuildingId)
+            {
+                ApplyRemoteProduction(production);
+            }
+        }
+    }
+
+    public void ClearRemoteProductionState(long remainingSeconds = 0L)
     {
         resourceReady = false;
         remoteResourceAmount = 0;
@@ -861,8 +881,17 @@ public sealed class LandSlotController : MonoBehaviour
     public bool AllowsBuildingType(BuildingConfig config)
     {
         if (currentLand == null || config == null) return false;
+        if (!string.IsNullOrWhiteSpace(config.requiredLandType)
+            && !string.Equals(
+                config.requiredLandType.Trim(),
+                currentLand.LandTypeKey,
+                System.StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         string[] allowedTypes = currentLand.allowBuildingType;
-        if (allowedTypes == null || allowedTypes.Length == 0) return true;
+        if (allowedTypes == null || allowedTypes.Length == 0) return false;
 
         for (int i = 0; i < allowedTypes.Length; i++)
         {
@@ -944,7 +973,7 @@ public sealed class LandSlotController : MonoBehaviour
 
     private int GetDisplayedResourceAmount()
     {
-        return remoteResourceAmount;
+        return remoteResourceAmount > int.MaxValue ? int.MaxValue : (int)remoteResourceAmount;
     }
 
     private void ForceBuildLand(LandConfig config)
@@ -972,7 +1001,7 @@ public sealed class LandSlotController : MonoBehaviour
             return;
         }
 
-        float safeRemainingSeconds = Mathf.Max(0, response.remainingTime);
+        float safeRemainingSeconds = (float)System.Math.Min(float.MaxValue, System.Math.Max(0L, response.remainingTime));
         buildingDuration = ResolveRemoteBuildingDuration(response, safeRemainingSeconds);
         safeRemainingSeconds = Mathf.Min(safeRemainingSeconds, buildingDuration);
 

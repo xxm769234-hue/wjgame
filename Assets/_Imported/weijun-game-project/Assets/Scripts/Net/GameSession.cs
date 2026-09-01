@@ -15,6 +15,57 @@ public static class GameSession
     private const string BackendSessionRevisionKey = "weijun.backend.sessionRevision";
 
     private const string AccountMode = "account";
+    private const string AreaSelectionOwnerPlayerIdKey = "weijun.areaSelection.playerId";
+    private const string OpenAreaLandTypeKey = "OpenAreaLandType";
+    private const string CurrentAreaLandTypeKey = "CurrentAreaLandType";
+
+    private static readonly string[] AccountSnapshotPreferenceKeys =
+    {
+        "LoginUsername",
+        "PlayerNickname",
+        "PlayerNicknameVersion",
+        "PlayerNicknameUpdatedTime",
+        "PlayerNicknameChangeCount",
+        "PlayerNicknameChangeRequired",
+        "PlayerAvatarOwnerId",
+        "PlayerAvatarUrl",
+        "PlayerAvatarSource",
+        "PlayerAvatarCode",
+        "PlayerAvatarVersion",
+        "PlayerAvatarUpdatedTime",
+        "PlayerAvatarResourcePath",
+        "PlayerTotalExperience",
+        "PlayerLevelCurveRevision",
+        "PlayerCurrentLevelExperience",
+        "PlayerRequiredExperience",
+        "PlayerExperienceProgressBps",
+        "PlayerMaxLevel",
+        "PlayerEconomyFrozen",
+        "PlayerStamina",
+        "ProfileLastSync",
+        "weijun.backend.sceneId",
+        "ServerMapWidth",
+        "ServerMapHeight",
+        "ServerLandCount",
+        "ServerBuildingCount",
+        "ServerMapLastSync",
+        "weijun.idleAdventure.highestClearedStage",
+        "Notification.DeepLink.Type",
+        "Notification.DeepLink.SceneId",
+        "Notification.DeepLink.PlayerBuildingId",
+        "Notification.DeepLink.PlayerLandId",
+        "weijun.npcAcquisition.routeKey",
+        "weijun.npcAcquisition.playerId",
+        "weijun.npcAcquisition.expiresAt",
+        "weijun.npcAcquisition.poolCode",
+        "weijun.npcAcquisition.highlightNpcId",
+        "weijun.npcAcquisition.taskCode",
+        "weijun.npcAcquisition.planCode",
+        "weijun.npcAcquisition.modeCode",
+        "weijun.npcAcquisition.stage",
+        "weijun.npcAcquisition.poolKey",
+        "weijun.npcAcquisition.mailId"
+    };
 
     public static string Token => PlayerPrefs.GetString(AuthTokenKey, string.Empty);
     public static int PlayerId => PlayerPrefs.GetInt(PlayerIdKey, 0);
@@ -64,6 +115,7 @@ public static class GameSession
         bool maxLevel = false,
         bool economyFrozen = false)
     {
+        ReconcileAreaSelectionForPlayer(playerId);
         long expiresAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + Math.Max(1, expiresInSeconds);
         PlayerPrefs.SetInt(LoginStateKey, 1);
         PlayerPrefs.SetString(SessionModeKey, AccountMode);
@@ -93,6 +145,14 @@ public static class GameSession
 
     public static void Clear()
     {
+        ReconcileAreaSelectionForPlayer(PlayerId);
+        bool wasAccountSession = PlayerPrefs.GetInt(LoginStateKey, 0) == 1
+            && string.Equals(PlayerPrefs.GetString(SessionModeKey, string.Empty), AccountMode, StringComparison.Ordinal);
+        if (wasAccountSession)
+        {
+            ClearAccountSnapshot();
+        }
+
         PlayerPrefs.SetInt(LoginStateKey, 0);
         PlayerPrefs.DeleteKey(SessionModeKey);
         PlayerPrefs.DeleteKey(AuthTokenKey);
@@ -101,6 +161,36 @@ public static class GameSession
         PlayerPrefs.DeleteKey(PlayerIdKey);
         SaveBackendSession(string.Empty, 0, false);
         PlayerPrefs.Save();
+    }
+
+    private static void ReconcileAreaSelectionForPlayer(int playerId)
+    {
+        if (playerId <= 0)
+        {
+            return;
+        }
+
+        int ownerPlayerId = PlayerPrefs.GetInt(AreaSelectionOwnerPlayerIdKey, 0);
+        if (ownerPlayerId <= 0)
+        {
+            ownerPlayerId = PlayerPrefs.GetInt(PlayerIdKey, 0);
+        }
+
+        if (ownerPlayerId > 0 && ownerPlayerId != playerId)
+        {
+            PlayerPrefs.DeleteKey(OpenAreaLandTypeKey);
+            PlayerPrefs.DeleteKey(CurrentAreaLandTypeKey);
+        }
+
+        PlayerPrefs.SetInt(AreaSelectionOwnerPlayerIdKey, playerId);
+    }
+
+    private static void ClearAccountSnapshot()
+    {
+        for (int index = 0; index < AccountSnapshotPreferenceKeys.Length; index++)
+        {
+            PlayerPrefs.DeleteKey(AccountSnapshotPreferenceKeys[index]);
+        }
     }
 
     private static void SaveBackendSession(string token, int playerId, bool sessionManaged)

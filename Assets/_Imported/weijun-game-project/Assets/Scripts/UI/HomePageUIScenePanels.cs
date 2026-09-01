@@ -174,7 +174,12 @@ public partial class HomePageUI
         SetSceneText(row, "TaskItemDescription", task.description);
         SetSceneText(row, "TaskProgressTitle", task.IsComplete ? "任务完成" : "任务进度");
         SetSceneText(row, "TaskProgressValue", $"{Mathf.Min(task.current, task.target)}/{task.target}");
-        SetSceneText(row, "TaskRewardText", $"{task.rewardName}\nx{task.rewardAmount}");
+        SetSceneText(
+            row,
+            "TaskRewardText",
+            string.IsNullOrEmpty(task.rewardSummary)
+                ? $"{task.rewardName}\nx{task.rewardAmount}"
+                : task.rewardSummary);
 
         Image progressFill = FindSceneComponent<Image>(row, "TaskProgressFill");
         if (progressFill != null)
@@ -795,6 +800,7 @@ public partial class HomePageUI
         });
         BindSceneButton(FindSceneComponent<Button>(root, "SettingsLogoutButton"), () => HandleSettingsLogout(root));
         ConfigureNotificationSubscriptionButton(root);
+        ConfigureCustomerServiceButton(root);
 
         SetSceneButtonText(
             FindSceneComponent<Button>(root, "SettingsLogoutButton"),

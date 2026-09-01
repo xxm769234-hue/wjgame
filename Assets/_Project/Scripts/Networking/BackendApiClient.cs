@@ -17,6 +17,16 @@ public static class BackendApiClient
         return Send<T>(baseUrl, token, UnityWebRequest.kHttpVerbPOST, path, body, Guid.NewGuid().ToString("D"), onComplete);
     }
 
+    public static IEnumerator PostWithoutIdempotencyKey<T>(
+        string baseUrl,
+        string token,
+        string path,
+        object body,
+        Action<BackendResult<T>> onComplete)
+    {
+        return Send<T>(baseUrl, token, UnityWebRequest.kHttpVerbPOST, path, body, null, onComplete);
+    }
+
     public static IEnumerator Post<T>(string baseUrl, string token, string path, object body, string idempotencyKey, Action<BackendResult<T>> onComplete)
     {
         return Send<T>(baseUrl, token, UnityWebRequest.kHttpVerbPOST, path, body, idempotencyKey, onComplete);

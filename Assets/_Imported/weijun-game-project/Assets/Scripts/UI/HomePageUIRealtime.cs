@@ -11,6 +11,9 @@ using UnityEngine.UI;
 public partial class HomePageUI
 {
     private const float RealtimeHandshakeTimeoutSeconds = 10f;
+    private const float RareBroadcastDisplaySeconds = 5f;
+    private const int RareBroadcastHistoryLimit = 512;
+    private const int RareBroadcastQueueLimit = 512;
 
     private Coroutine realtimeHeartbeatCoroutine;
     private Coroutine realtimeReconnectCoroutine;
@@ -18,6 +21,12 @@ public partial class HomePageUI
     private Coroutine realtimeFallbackCoroutine;
     private readonly HashSet<string> realtimeEventIds = new HashSet<string>();
     private readonly Queue<string> realtimeEventOrder = new Queue<string>();
+    private static readonly Dictionary<string, DateTimeOffset> rareBroadcastSeen = new Dictionary<string, DateTimeOffset>(StringComparer.Ordinal);
+    private static readonly Queue<RareBroadcastSeen> rareBroadcastSeenOrder = new Queue<RareBroadcastSeen>();
+    private static readonly Queue<RareBroadcastQueueItem> rareBroadcastQueue = new Queue<RareBroadcastQueueItem>();
+    private static int rareBroadcastPlayerId;
+    private Coroutine rareBroadcastPlaybackCoroutine;
+    private Text rareBroadcastText;
     private bool realtimeConnected;
     private bool realtimeTransportOpen;
     private bool realtimeClosing;
@@ -42,8 +51,13 @@ public partial class HomePageUI
     {
         if (!HasAuthSession())
         {
+            ClearRareBroadcastState();
             return;
         }
+
+        PrepareRareBroadcastSession();
+        EnsureRareBroadcastUi();
+        StartRareBroadcastPlaybackIfNeeded();
 
         if (!RealtimePlatformBridge.IsAvailable)
         {
@@ -195,23 +209,7 @@ public partial class HomePageUI
 
         if (realtimeEvent.type == "CARD_DRAW_RARE_BROADCAST")
         {
-            RareCardDrawRealtimeEvent rareEvent = ParseJson<RareCardDrawRealtimeEvent>(json);
-            RareCardDrawData rareData = rareEvent == null ? null : rareEvent.data;
-            if (rareData == null || string.IsNullOrWhiteSpace(rareData.content))
-            {
-                Debug.LogWarning("Rare card draw broadcast did not contain data.content.");
-                return;
-            }
-
-            string content = rareData.content.Trim();
-            if (IsRareCardDrawBroadcastExpired(rareData.expiresAt))
-            {
-                return;
-            }
-
-            EnqueueRareCardDrawBroadcast(content, rareData.expiresAt);
-            SetStatus("抽奖稀有奖品广播：" + content
-                + (string.IsNullOrEmpty(rareData.expiresAt) ? string.Empty : "（有效期至 " + rareData.expiresAt + "）"));
+            RouteRareCardDrawBroadcast(realtimeEvent, json);
             return;
         }
 
@@ -235,10 +233,7 @@ public partial class HomePageUI
 
         if (realtimeEvent.type == "PLAYER_ONBOARDING_UPDATED")
         {
-            if (PlayerOnboardingManager.Instance != null)
-            {
-                PlayerOnboardingManager.Instance.RefreshCurrent();
-            }
+            PlayerOnboardingManager.EnsureInstance().RefreshCurrent();
             SetStatus("新手引导状态已更新，请按当前提示继续");
             return;
         }
@@ -268,9 +263,278 @@ public partial class HomePageUI
             }
             else if (realtimeEvent.data.type == "PAYMENT_DELIVERED")
             {
-                StartCoroutine(RefreshAccountSnapshot("支付奖励已到账，资源已刷新。"));
+                HandlePaymentDeliveredRealtimeNotification(realtimeEvent.data.payload);
             }
         }
+    }
+
+    private void PrepareRareBroadcastSession()
+    {
+        int playerId = GameSession.PlayerId;
+        if (rareBroadcastPlayerId > 0 && rareBroadcastPlayerId != playerId)
+        {
+            ClearRareBroadcastState();
+        }
+        rareBroadcastPlayerId = playerId;
+        PurgeRareBroadcastHistory(DateTimeOffset.UtcNow);
+    }
+
+    private void EnsureRareBroadcastUi()
+    {
+        if (rareBroadcastText != null || mainPageTransform == null)
+        {
+            return;
+        }
+
+        Transform existing = mainPageTransform.Find("Rare Reward Broadcast");
+        if (existing != null)
+        {
+            rareBroadcastText = existing.GetComponent<Text>();
+        }
+
+        if (rareBroadcastText == null)
+        {
+            rareBroadcastText = CreateText(
+                "Rare Reward Broadcast",
+                mainPageTransform,
+                string.Empty,
+                18,
+                FontStyle.Bold,
+                new Color(0.36f, 0.16f, 0.04f, 1f),
+                TextAnchor.MiddleCenter);
+        }
+
+        RectTransform rect = rareBroadcastText.rectTransform;
+        rect.anchorMin = new Vector2(0.5f, 1f);
+        rect.anchorMax = new Vector2(0.5f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.anchoredPosition = new Vector2(0f, -76f);
+        rect.sizeDelta = new Vector2(920f, 42f);
+        rareBroadcastText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        rareBroadcastText.verticalOverflow = VerticalWrapMode.Truncate;
+        rareBroadcastText.gameObject.SetActive(false);
+    }
+
+    private void RouteRareCardDrawBroadcast(RealtimeEvent realtimeEvent, string json)
+    {
+        if (!TryAcceptRareBroadcast(realtimeEvent, json, out RareBroadcastQueueItem item))
+        {
+            return;
+        }
+
+        if (IsLotteryScenePanelVisible()
+            && rareCardDrawBroadcastText != null
+            && rareCardDrawBroadcastViewport != null)
+        {
+            EnqueueRareCardDrawBroadcast(
+                item.content,
+                item.expiresAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture));
+            return;
+        }
+
+        EnqueueRareBroadcast(item);
+    }
+
+    private bool TryAcceptRareBroadcast(
+        RealtimeEvent realtimeEvent,
+        string json,
+        out RareBroadcastQueueItem item)
+    {
+        item = null;
+        if (realtimeEvent == null || string.IsNullOrWhiteSpace(realtimeEvent.eventId))
+        {
+            return false;
+        }
+
+        RareCardDrawRealtimeEvent rareEvent = ParseJson<RareCardDrawRealtimeEvent>(json);
+        RareCardDrawData rareData = rareEvent == null ? null : rareEvent.data;
+        if (rareData == null || string.IsNullOrWhiteSpace(rareData.content))
+        {
+            Debug.LogWarning("Rare card draw broadcast did not contain data.content.");
+            return false;
+        }
+
+        if (!TryParseRareBroadcastExpiry(rareData, out DateTimeOffset expiresAt))
+        {
+            return false;
+        }
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        if (expiresAt <= now)
+        {
+            return false;
+        }
+
+        PrepareRareBroadcastSession();
+        PurgeRareBroadcastHistory(now);
+        if (rareBroadcastSeen.ContainsKey(realtimeEvent.eventId))
+        {
+            return false;
+        }
+
+        rareBroadcastSeen[realtimeEvent.eventId] = expiresAt;
+        rareBroadcastSeenOrder.Enqueue(new RareBroadcastSeen(realtimeEvent.eventId, expiresAt));
+        while (rareBroadcastSeenOrder.Count > RareBroadcastHistoryLimit)
+        {
+            RemoveOldestRareBroadcastHistoryEntry();
+        }
+
+        item = new RareBroadcastQueueItem(
+            realtimeEvent.eventId,
+            rareData.content.Trim(),
+            expiresAt);
+        return true;
+    }
+
+    private void EnqueueRareBroadcast(RareBroadcastQueueItem item)
+    {
+        rareBroadcastQueue.Enqueue(item);
+        while (rareBroadcastQueue.Count > RareBroadcastQueueLimit)
+        {
+            rareBroadcastQueue.Dequeue();
+        }
+        EnsureRareBroadcastUi();
+        StartRareBroadcastPlaybackIfNeeded();
+    }
+
+    private void StartRareBroadcastPlaybackIfNeeded()
+    {
+        if (rareBroadcastPlaybackCoroutine == null && rareBroadcastQueue.Count > 0 && isActiveAndEnabled)
+        {
+            rareBroadcastPlaybackCoroutine = StartCoroutine(PlayRareBroadcastQueue());
+        }
+    }
+
+    private IEnumerator PlayRareBroadcastQueue()
+    {
+        while (rareBroadcastQueue.Count > 0 && HasAuthSession())
+        {
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            PurgeRareBroadcastHistory(now);
+            RareBroadcastQueueItem item = rareBroadcastQueue.Dequeue();
+            if (item == null || item.expiresAt <= now)
+            {
+                continue;
+            }
+
+            EnsureRareBroadcastUi();
+            if (rareBroadcastText == null)
+            {
+                continue;
+            }
+
+            rareBroadcastText.text = item.content;
+            rareBroadcastText.gameObject.SetActive(true);
+            float displaySeconds = RareBroadcastDisplaySeconds;
+            if (item.expiresAt - now < TimeSpan.FromSeconds(displaySeconds))
+            {
+                displaySeconds = Mathf.Max(0.1f, (float)(item.expiresAt - now).TotalSeconds);
+            }
+            yield return new WaitForSecondsRealtime(displaySeconds);
+            if (rareBroadcastText != null)
+            {
+                rareBroadcastText.text = string.Empty;
+                rareBroadcastText.gameObject.SetActive(false);
+            }
+        }
+
+        if (rareBroadcastText != null && rareBroadcastQueue.Count == 0)
+        {
+            rareBroadcastText.text = string.Empty;
+            rareBroadcastText.gameObject.SetActive(false);
+        }
+        rareBroadcastPlaybackCoroutine = null;
+    }
+
+    private static bool TryParseRareBroadcastExpiry(RareCardDrawData data, out DateTimeOffset expiresAt)
+    {
+        expiresAt = default(DateTimeOffset);
+        string value = string.IsNullOrWhiteSpace(data.expiresAt) ? data.expires_at : data.expiresAt;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        if (long.TryParse(value.Trim(), out long unixSeconds) && unixSeconds > 0L)
+        {
+            try
+            {
+                expiresAt = DateTimeOffset.FromUnixTimeSeconds(unixSeconds);
+                return true;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
+        }
+
+        return DateTimeOffset.TryParse(
+            value,
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AllowWhiteSpaces
+                | System.Globalization.DateTimeStyles.AssumeLocal,
+            out expiresAt);
+    }
+
+    private static void PurgeRareBroadcastHistory(DateTimeOffset now)
+    {
+        int pending = rareBroadcastSeenOrder.Count;
+        for (int index = 0; index < pending; index++)
+        {
+            RareBroadcastSeen entry = rareBroadcastSeenOrder.Dequeue();
+            if (entry.expiresAt <= now)
+            {
+                if (rareBroadcastSeen.TryGetValue(entry.eventId, out DateTimeOffset expiry)
+                    && expiry == entry.expiresAt)
+                {
+                    rareBroadcastSeen.Remove(entry.eventId);
+                }
+                continue;
+            }
+
+            rareBroadcastSeenOrder.Enqueue(entry);
+        }
+
+        while (rareBroadcastSeenOrder.Count > RareBroadcastHistoryLimit)
+        {
+            RemoveOldestRareBroadcastHistoryEntry();
+        }
+    }
+
+    private static void RemoveOldestRareBroadcastHistoryEntry()
+    {
+        if (rareBroadcastSeenOrder.Count == 0)
+        {
+            return;
+        }
+
+        RareBroadcastSeen oldest = rareBroadcastSeenOrder.Dequeue();
+        if (rareBroadcastSeen.TryGetValue(oldest.eventId, out DateTimeOffset expiry)
+            && expiry == oldest.expiresAt)
+        {
+            rareBroadcastSeen.Remove(oldest.eventId);
+        }
+    }
+
+    private void ClearRareBroadcastState()
+    {
+        realtimeEventIds.Clear();
+        realtimeEventOrder.Clear();
+        rareBroadcastQueue.Clear();
+        rareBroadcastSeen.Clear();
+        rareBroadcastSeenOrder.Clear();
+        rareBroadcastPlayerId = 0;
+        if (rareBroadcastPlaybackCoroutine != null)
+        {
+            StopCoroutine(rareBroadcastPlaybackCoroutine);
+            rareBroadcastPlaybackCoroutine = null;
+        }
+        if (rareBroadcastText != null)
+        {
+            rareBroadcastText.text = string.Empty;
+            rareBroadcastText.gameObject.SetActive(false);
+        }
+        ClearRareCardDrawBroadcastState();
     }
 
     private void ConfirmRealtimeHandshake(RealtimeEvent realtimeEvent)
@@ -530,6 +794,21 @@ public partial class HomePageUI
         }
     }
 
+    private void ClearRareCardDrawBroadcastState()
+    {
+        rareCardDrawBroadcastQueue.Clear();
+        if (rareCardDrawBroadcastCoroutine != null)
+        {
+            StopCoroutine(rareCardDrawBroadcastCoroutine);
+            rareCardDrawBroadcastCoroutine = null;
+        }
+        if (rareCardDrawBroadcastText != null)
+        {
+            rareCardDrawBroadcastText.text = string.Empty;
+        }
+        HideRareCardDrawBroadcast();
+    }
+
     private bool IsLotteryScenePanelVisible()
     {
         return lotteryPanelObject != null && lotteryPanelObject.activeInHierarchy;
@@ -654,7 +933,8 @@ public partial class HomePageUI
         object operation;
         try
         {
-            operation = method.Invoke(service, new object[] { null });
+            ParameterInfo[] parameters = method.GetParameters();
+            operation = method.Invoke(service, parameters.Length == 0 ? null : new object[] { null });
         }
         catch (Exception exception)
         {
@@ -912,6 +1192,8 @@ public partial class HomePageUI
         {
             resumeRealtimeAfterPause = false;
             StartCoroutine(RefreshServerStamina());
+            LoadPendingPaymentState();
+            StartCoroutine(RecoverPendingPaymentOrder("应用恢复前台，正在补查支付订单..."));
             BeginRealtimeConnection();
         }
     }
@@ -1051,17 +1333,75 @@ public partial class HomePageUI
     [Serializable]
     private class RareCardDrawRealtimeEvent
     {
+        public string type;
+        public string eventId;
+        public int playerId;
         public RareCardDrawData data;
     }
 
     [Serializable]
     private class RareCardDrawData
     {
+        public string playerName;
+        public string poolName;
         public string rewardName;
         public string rewardKey;
         public string rarity;
         public string content;
+        public RareCardDrawReward[] rewards;
+        public int omittedRewardTypeCount;
+        public string occurredAt;
         public string expiresAt;
+        public string occurred_at;
+        public string expires_at;
+    }
+
+    [Serializable]
+    private class RareCardDrawReward
+    {
+        public string rewardName;
+        public string rewardCategory;
+        public int hitCount;
+        public long configuredAmount;
+        public bool duplicateNpcConverted;
+        public RareCardDrawGrant[] grants;
+    }
+
+    [Serializable]
+    private class RareCardDrawGrant
+    {
+        public string rewardType;
+        public string rewardName;
+        public string rewardCategory;
+        public int hitCount;
+        public long amount;
+        public bool duplicateNpcConverted;
+    }
+
+    private sealed class RareBroadcastSeen
+    {
+        public readonly string eventId;
+        public readonly DateTimeOffset expiresAt;
+
+        public RareBroadcastSeen(string eventId, DateTimeOffset expiresAt)
+        {
+            this.eventId = eventId;
+            this.expiresAt = expiresAt;
+        }
+    }
+
+    private sealed class RareBroadcastQueueItem
+    {
+        public readonly string eventId;
+        public readonly string content;
+        public readonly DateTimeOffset expiresAt;
+
+        public RareBroadcastQueueItem(string eventId, string content, DateTimeOffset expiresAt)
+        {
+            this.eventId = eventId;
+            this.content = content;
+            this.expiresAt = expiresAt;
+        }
     }
 
     [Serializable]

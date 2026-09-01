@@ -43,6 +43,7 @@ public sealed class LandInfoPanel : MonoBehaviour
     private int productionRecipesBuildingId;
     private bool workStateRequestRunning;
     private bool workTimeRequestRunning;
+    private bool workTimeFeatureUnavailable;
     private bool recipesRequestRunning;
     private bool recipeSwitchRequestRunning;
     private string recipeSwitchIdempotencyKey = string.Empty;
@@ -91,6 +92,11 @@ public sealed class LandInfoPanel : MonoBehaviour
         shownFrame = Time.frameCount;
         PositionNearSlot(slot);
         RefreshRemoteDetails(slot);
+        BackendGameService service = BackendGameService.Instance;
+        if (slot.HasBuilding && service != null && service.IsAuthenticated)
+        {
+            EnsureWorkStateLoaded(service);
+        }
     }
 
     public void Hide()
@@ -211,18 +217,19 @@ public sealed class LandInfoPanel : MonoBehaviour
         {
             BuildingConfig config = buildings[i];
             if (config == null) continue;
-
-            if (!buildingManager.CanBuildOnSlot(current, config, out string disabledReason))
+            if (current == null || !current.AllowsBuildingType(config))
             {
-                if (logButtonClicks) Debug.Log($"LandInfoPanel hidden building item: {config.buildingName}. reason={disabledReason}", this);
+                if (logButtonClicks) Debug.Log($"LandInfoPanel hidden incompatible building item: {config.buildingName} type={config.buildingType} requiredLand={config.requiredLandType}", this);
                 continue;
             }
 
-            string label = FormatBuildingLabel(config);
+            bool canBuild = buildingManager.CanBuildOnSlot(current, config, out string disabledReason);
+            string label = FormatBuildingLabel(config, canBuild ? string.Empty : disabledReason);
             BuildingConfig captured = config;
             visibleCount++;
-            CreateTextButton($"Building Item {visibleCount}", buildingListContent, label, new Vector2(0f, 0f), new Vector2(600f, 58f), 24f, () => SelectBuilding(captured));
-            if (logButtonClicks) Debug.Log($"LandInfoPanel shown building item: {config.buildingName} type={config.buildingType} id={config.buildingId}", this);
+            Button itemButton = CreateTextButton($"Building Item {visibleCount}", buildingListContent, label, new Vector2(0f, 0f), new Vector2(600f, 72f), 20f, () => SelectBuilding(captured));
+            itemButton.interactable = canBuild;
+            if (logButtonClicks) Debug.Log($"LandInfoPanel shown building item: {config.buildingName} type={config.buildingType} id={config.buildingId} canBuild={canBuild}", this);
         }
 
         buildingListPanel.gameObject.SetActive(true);
@@ -574,7 +581,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             && service.IsAuthenticated;
         bool workTimeBusy = workStateRequestRunning || workTimeRequestRunning;
         bool recipesBusy = recipesRequestRunning || recipeSwitchRequestRunning;
-        SetButtonVisible(workTimeButton, canUseProduction, !workTimeBusy);
+        SetButtonVisible(workTimeButton, canUseProduction && !workTimeFeatureUnavailable, !workTimeBusy);
         SetButtonVisible(recipeButton, canUseProduction, !recipesBusy);
 
         SetButtonLabel(workTimeButton, workTimePreview != null ? "确认补充" : "补充工时");
@@ -616,7 +623,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         workTimePreviewRequest = new ProductionWorkTimeRequest
         {
             itemId = fuel.itemId,
-            quantity = Mathf.Max(1, Mathf.Min(1, fuel.maxConsumableQuantity)),
+            quantity = 1L,
             expectedConfigVersion = service.CurrentWorkState.configVersion
         };
         workTimeRequestRunning = true;
@@ -630,9 +637,14 @@ public sealed class LandInfoPanel : MonoBehaviour
             {
                 workTimePreview = null;
                 workTimePreviewRequest = null;
+                if (result != null && result.Code == 7801) workTimeFeatureUnavailable = true;
                 productionActionMessage = result == null
                     ? "补充工时预览失败"
                     : string.IsNullOrEmpty(result.Message) ? "当前无法补充工时" : result.Message;
+                if (result != null && ShouldRefreshWorkState(result.Code))
+                {
+                    service.LoadProductionWorkState(_ => RefreshProductionStatus());
+                }
             }
             else
             {
@@ -672,6 +684,13 @@ public sealed class LandInfoPanel : MonoBehaviour
             productionActionMessage = result == null
                 ? "补充工时失败"
                 : string.IsNullOrEmpty(result.Message) ? "补充工时失败" : result.Message;
+            if (result != null && result.Code > 0)
+            {
+                if (result.Code == 7801) workTimeFeatureUnavailable = true;
+                workTimePreview = null;
+                workTimePreviewRequest = null;
+                workTimeIdempotencyKey = string.Empty;
+            }
         }
         else
         {
@@ -746,6 +765,22 @@ public sealed class LandInfoPanel : MonoBehaviour
                 productionActionMessage = result == null
                     ? "切换配方失败"
                     : string.IsNullOrEmpty(result.Message) ? "切换配方失败" : result.Message;
+                if (result != null && (result.Code == 7810 || result.Code == 7811 || result.Code == 7812))
+                {
+                    productionRecipes = null;
+                    recipeSwitchIdempotencyKey = string.Empty;
+                    ReloadRecipesAfterConflict(
+                        service,
+                        request.playerBuildingId,
+                        result.Code == 7811 ? "配方版本已变化，请检查新配方后再次确认。" : productionActionMessage);
+                    if (result.Code == 7812) service.SyncMap();
+                    return;
+                }
+                if (result != null && result.Code == 7813)
+                {
+                    productionRecipes = null;
+                    recipeSwitchIdempotencyKey = string.Empty;
+                }
             }
             else
             {
@@ -768,11 +803,50 @@ public sealed class LandInfoPanel : MonoBehaviour
         service.LoadProductionWorkState(result =>
         {
             workStateRequestRunning = false;
+            if (result != null && result.Success) workTimeFeatureUnavailable = false;
             productionActionMessage = result == null || !result.Success
                 ? "读取工作时间失败"
                 : "工作时间已同步，请再次点击补充";
             RefreshProductionStatus();
         });
+    }
+
+    private void ReloadRecipesAfterConflict(BackendGameService service, long playerBuildingId, string message)
+    {
+        if (service == null || !service.IsAuthenticated || playerBuildingId <= 0L) return;
+
+        recipesRequestRunning = true;
+        service.LoadProductionRecipes(playerBuildingId, result =>
+        {
+            recipesRequestRunning = false;
+            if (current == null || current.PlayerBuildingId != playerBuildingId) return;
+
+            if (result != null && result.Success && result.Data != null)
+            {
+                productionRecipes = result.Data;
+                productionRecipesBuildingId = current.PlayerBuildingId;
+                productionActionMessage = message;
+            }
+            else
+            {
+                productionRecipes = null;
+                productionActionMessage = result == null || string.IsNullOrEmpty(result.Message)
+                    ? "重新读取配方失败。"
+                    : result.Message;
+            }
+            RefreshProductionStatus();
+        });
+    }
+
+    private static bool ShouldRefreshWorkState(int code)
+    {
+        return code == 7801
+            || code == 7802
+            || code == 7803
+            || code == 7805
+            || code == 7806
+            || code == 7807
+            || code == 7809;
     }
 
     private static ProductionFuelResponse FindAvailableFuel(ProductionWorkStateResponse state)
@@ -865,12 +939,18 @@ public sealed class LandInfoPanel : MonoBehaviour
         }
     }
 
-    private static string FormatBuildingLabel(BuildingConfig config)
+    private static string FormatBuildingLabel(BuildingConfig config, string disabledReason)
     {
         string buildTime = config.buildSeconds > 0 ? $"{config.buildSeconds}s" : "Instant";
-        string cost = config.cost > 0 ? $"Cost {config.cost}" : "Free";
-        string suffix = config.canBuild ? string.Empty : $" ({config.disabledReason})";
-        return $"{config.buildingName} - {cost} - {buildTime}{suffix}";
+        List<string> costs = new List<string>();
+        if (config.goldCost > 0L) costs.Add($"Gold {config.goldCost:N0}");
+        if (config.woodCost > 0L) costs.Add($"Wood {config.woodCost:N0}");
+        if (config.stoneCost > 0L) costs.Add($"Stone {config.stoneCost:N0}");
+        if (config.ironCost > 0L) costs.Add($"Iron {config.ironCost:N0}");
+        string cost = costs.Count > 0 ? string.Join(", ", costs) : config.cost > 0 ? $"Cost {config.cost:N0}" : "Free";
+        string ownership = config.hasOwnershipLimit ? $"  Owned {config.ownedCount}/{config.maxOwnedCount}" : string.Empty;
+        string reason = string.IsNullOrEmpty(disabledReason) ? string.Empty : $"\nUnavailable: {disabledReason}";
+        return $"{config.buildingName} - {cost} - {buildTime}{ownership}{reason}";
     }
 
     private static string FormatBuildingStatus(LandSlotController slot)
@@ -926,11 +1006,11 @@ public sealed class LandInfoPanel : MonoBehaviour
         return string.Join(", ", parts);
     }
 
-    private static string FormatRemaining(int remainingSeconds)
+    private static string FormatRemaining(long remainingSeconds)
     {
         if (remainingSeconds <= 0) return "Waiting";
-        int minutes = remainingSeconds / 60;
-        int seconds = remainingSeconds % 60;
+        long minutes = remainingSeconds / 60L;
+        long seconds = remainingSeconds % 60L;
         return minutes > 0 ? $"Next {minutes}m {seconds}s" : $"Next {seconds}s";
     }
 

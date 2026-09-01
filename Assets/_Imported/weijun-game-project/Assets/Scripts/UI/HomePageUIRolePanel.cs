@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -9,6 +10,19 @@ using UnityEngine.UI;
 
 public partial class HomePageUI
 {
+    private const string PendingRoleAcquisitionRouteKey = "weijun.npcAcquisition.routeKey";
+    private const string PendingRoleAcquisitionRoutePlayerIdKey = "weijun.npcAcquisition.playerId";
+    private const string PendingRoleAcquisitionRouteExpiresAtKey = "weijun.npcAcquisition.expiresAt";
+    private const string PendingRoleAcquisitionRoutePoolCodeKey = "weijun.npcAcquisition.poolCode";
+    private const string PendingRoleAcquisitionRouteHighlightNpcIdKey = "weijun.npcAcquisition.highlightNpcId";
+    private const string PendingRoleAcquisitionRouteTaskCodeKey = "weijun.npcAcquisition.taskCode";
+    private const string PendingRoleAcquisitionRoutePlanCodeKey = "weijun.npcAcquisition.planCode";
+    private const string PendingRoleAcquisitionRouteModeCodeKey = "weijun.npcAcquisition.modeCode";
+    private const string PendingRoleAcquisitionRouteStageKey = "weijun.npcAcquisition.stage";
+    private const string PendingRoleAcquisitionRoutePoolKeyKey = "weijun.npcAcquisition.poolKey";
+    private const string PendingRoleAcquisitionRouteMailIdKey = "weijun.npcAcquisition.mailId";
+    private const int MaxRoleAcquisitionRouteTokenLength = 128;
+
     private GameObject rolePanelObject;
     private RoleCatalogEntry[] roleCatalogEntries = new RoleCatalogEntry[0];
     private RolePlayerEntry[] rolePlayerEntries = new RolePlayerEntry[0];
@@ -23,6 +37,8 @@ public partial class HomePageUI
     private bool roleAutoUpgradePreviewRunning;
     private string roleAutoUpgradePreviewError = string.Empty;
     private string roleAutoUpgradeIdempotencyKey = string.Empty;
+    private string roleAutoUpgradeRequestSignature = string.Empty;
+    private readonly Dictionary<string, string> roleAutoUpgradePendingKeys = new Dictionary<string, string>();
 
     private void ShowRolePanel()
     {
@@ -363,11 +379,14 @@ public partial class HomePageUI
                     : useAutoUpgrade
                         ? $"一键升至 Lv.{roleAutoUpgradePreview.payableTargetLevel}"
                         : "升级");
-            BindSceneButton(upgrade, entry.player == null || roleUpgradeRunning || previewLoading
-                ? null
-                : useAutoUpgrade
-                    ? () => StartCoroutine(AutoUpgradeRole(entry.player, entry.catalog.maxLevel))
-                    : () => StartCoroutine(UpgradeRole(entry.player.playerNpcId)));
+            Action upgradeAction = null;
+            if (entry.player != null && !roleUpgradeRunning && !previewLoading)
+            {
+                upgradeAction = useAutoUpgrade
+                    ? (Action)(() => StartCoroutine(AutoUpgradeRole(entry.player, entry.catalog.maxLevel)))
+                    : () => StartCoroutine(UpgradeRole(entry.player.playerNpcId));
+            }
+            BindSceneButton(upgrade, upgradeAction);
         }
 
         if (acquire != null)
@@ -379,7 +398,10 @@ public partial class HomePageUI
             SetSceneButtonText(acquire, canAcquire && !string.IsNullOrEmpty(entry.catalog.acquisition.buttonText)
                 ? entry.catalog.acquisition.buttonText
                 : "前往获取");
-            BindSceneButton(acquire, canAcquire ? () => StartCoroutine(GetRoleAcquisitionGuide(entry.catalog.npcId)) : null);
+            Action acquireAction = canAcquire
+                ? (Action)(() => StartCoroutine(GetRoleAcquisitionGuide(entry.catalog.npcId)))
+                : null;
+            BindSceneButton(acquire, acquireAction);
         }
     }
 
@@ -404,6 +426,10 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
+            if (roleAutoUpgradePreviewNpcId != playerNpcId)
+            {
+                yield break;
+            }
             if (HandleUnauthorizedResponse(request))
             {
                 roleUpgradeRunning = false;
@@ -425,7 +451,20 @@ public partial class HomePageUI
         }
 
         roleUpgradeRunning = false;
+        yield return RefreshGeneralInventoryAfterRoleMutation();
         yield return LoadRolePanelData();
+    }
+
+    private IEnumerator RefreshGeneralInventoryAfterRoleMutation()
+    {
+        List<string> syncedCategories = new List<string>();
+        List<string> failedCategories = new List<string>();
+        yield return RefreshCardDrawInventoryState(syncedCategories, failedCategories);
+        if (failedCategories.Count > 0)
+        {
+            roleStatusMessage = "Upgrade succeeded, but inventory refresh failed: "
+                + string.Join(", ", failedCategories.ToArray());
+        }
     }
 
     private void ResetRoleAutoUpgradePreview()
@@ -435,6 +474,7 @@ public partial class HomePageUI
         roleAutoUpgradePreviewRunning = false;
         roleAutoUpgradePreviewError = string.Empty;
         roleAutoUpgradeIdempotencyKey = string.Empty;
+        roleAutoUpgradeRequestSignature = string.Empty;
     }
 
     private void EnsureRoleAutoUpgradePreview(RoleDisplayEntry entry)
@@ -449,6 +489,12 @@ public partial class HomePageUI
             && (roleAutoUpgradePreviewRunning || roleAutoUpgradePreview != null || !string.IsNullOrEmpty(roleAutoUpgradePreviewError)))
         {
             return;
+        }
+
+        if (roleAutoUpgradePreviewNpcId != playerNpcId)
+        {
+            roleAutoUpgradeIdempotencyKey = string.Empty;
+            roleAutoUpgradeRequestSignature = string.Empty;
         }
 
         roleAutoUpgradePreview = null;
@@ -473,6 +519,10 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
+            if (roleAutoUpgradePreviewNpcId != playerNpcId)
+            {
+                yield break;
+            }
             if (HandleUnauthorizedResponse(request))
             {
                 roleAutoUpgradePreviewRunning = false;
@@ -501,16 +551,23 @@ public partial class HomePageUI
     {
         if (player == null || player.playerNpcId <= 0L || roleUpgradeRunning) yield break;
 
-        int currentLevel = Mathf.Max(1, player.level);
-        int targetLevel = roleAutoUpgradePreview != null && roleAutoUpgradePreviewNpcId == player.playerNpcId
+        bool hasMatchingPreview = roleAutoUpgradePreview != null
+            && roleAutoUpgradePreviewNpcId == player.playerNpcId;
+        int currentLevel = hasMatchingPreview
+            ? Mathf.Max(1, roleAutoUpgradePreview.currentLevel)
+            : Mathf.Max(1, player.level);
+        int payableTargetLevel = hasMatchingPreview
             ? roleAutoUpgradePreview.payableTargetLevel
             : Mathf.Max(currentLevel, fallbackTargetLevel);
-        if (targetLevel <= currentLevel)
+        if (payableTargetLevel <= currentLevel)
         {
             roleStatusMessage = string.IsNullOrEmpty(roleAutoUpgradePreviewError) ? "角色已经无法继续升级" : roleAutoUpgradePreviewError;
             RenderRolePanel();
             yield break;
         }
+        int targetLevel = hasMatchingPreview && roleAutoUpgradePreview.requestedTargetLevel > currentLevel
+            ? roleAutoUpgradePreview.requestedTargetLevel
+            : payableTargetLevel;
 
         string planFingerprint = roleAutoUpgradePreview == null ? string.Empty : roleAutoUpgradePreview.planFingerprint;
         if (string.IsNullOrEmpty(planFingerprint))
@@ -521,11 +578,24 @@ public partial class HomePageUI
             yield break;
         }
 
+        string requestSignature = GameSession.PlayerId
+            + ":"
+            + player.playerNpcId
+            + ":"
+            + currentLevel
+            + ":"
+            + targetLevel
+            + ":"
+            + planFingerprint;
         roleUpgradeRunning = true;
-        if (string.IsNullOrEmpty(roleAutoUpgradeIdempotencyKey))
+        if (!roleAutoUpgradePendingKeys.TryGetValue(requestSignature, out string pendingIdempotencyKey)
+            || !Guid.TryParse(pendingIdempotencyKey, out _))
         {
-            roleAutoUpgradeIdempotencyKey = System.Guid.NewGuid().ToString("D");
+            pendingIdempotencyKey = Guid.NewGuid().ToString("D");
+            roleAutoUpgradePendingKeys[requestSignature] = pendingIdempotencyKey;
         }
+        roleAutoUpgradeIdempotencyKey = pendingIdempotencyKey;
+        roleAutoUpgradeRequestSignature = requestSignature;
         roleStatusMessage = "正在执行角色一键升级...";
         RenderRolePanel();
 
@@ -563,24 +633,40 @@ public partial class HomePageUI
             RoleAutoUpgradeApiResponse response = ParseJson<RoleAutoUpgradeApiResponse>(request.downloadHandler.text);
             if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
+                bool definitiveRejection = response != null
+                    && response.code != 200
+                    && request.responseCode > 0
+                    && request.responseCode < 500;
                 roleUpgradeRunning = false;
                 roleStatusMessage = "角色一键升级失败：" + (response == null
                     ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
                     : GetApiError(response));
+                if (definitiveRejection)
+                {
+                    roleAutoUpgradePendingKeys.Remove(requestSignature);
+                    roleAutoUpgradePreview = null;
+                    roleAutoUpgradePreviewNpcId = 0L;
+                    roleAutoUpgradePreviewError = string.Empty;
+                    roleAutoUpgradeIdempotencyKey = string.Empty;
+                    roleAutoUpgradeRequestSignature = string.Empty;
+                }
                 RenderRolePanel();
                 yield break;
             }
 
+            roleAutoUpgradePendingKeys.Remove(requestSignature);
             roleStatusMessage = $"角色已升级到 Lv.{response.data.reachedLevel}，服务器已同步资源";
         }
 
         roleUpgradeRunning = false;
         ResetRoleAutoUpgradePreview();
+        yield return RefreshGeneralInventoryAfterRoleMutation();
         yield return LoadRolePanelData();
     }
 
     private IEnumerator GetRoleAcquisitionGuide(int npcId)
     {
+        ClearPendingRoleAcquisitionRoute();
         UnityWebRequest request = CreateAuthorizedGet($"/npc/{npcId}/acquisition-guide");
         if (request == null)
         {
@@ -608,6 +694,7 @@ public partial class HomePageUI
             }
 
             RoleAcquisitionGuideData guide = response.data;
+            ClearPendingRoleAcquisitionRoute();
             if (guide.contractVersion > 1)
             {
                 roleStatusMessage = "角色获取协议版本过高，请更新客户端";
@@ -644,56 +731,84 @@ public partial class HomePageUI
 
     private void RouteRoleAcquisitionGuide(RoleAcquisitionGuideData guide)
     {
+        ClearPendingRoleAcquisitionRoute();
+        if (guide == null)
+        {
+            roleStatusMessage = "Acquisition route is unavailable.";
+            RenderRolePanel();
+            return;
+        }
+
+        if (!string.IsNullOrEmpty(guide.status)
+            && !string.Equals(guide.status, "AVAILABLE", StringComparison.OrdinalIgnoreCase))
+        {
+            roleStatusMessage = string.IsNullOrEmpty(guide.message)
+                ? "This acquisition route is no longer available."
+                : guide.message;
+            RenderRolePanel();
+            return;
+        }
+
         string routeKey = guide.routeKey ?? string.Empty;
         switch (routeKey.ToUpperInvariant())
         {
             case "CARD_DRAW":
-                if (guide.routeParams == null || string.IsNullOrEmpty(guide.routeParams.poolCode))
+                if (!TryValidateCardDrawRoute(guide))
                 {
                     roleStatusMessage = "抽奖入口参数无效";
                     RenderRolePanel();
                     break;
                 }
+                SavePendingRoleAcquisitionRoute("CARD_DRAW", guide.routeParams, guide.instructionExpiresAt);
+                ClearPendingRoleAcquisitionRouteStorage();
                 HideRolePanel();
-                ShowLotteryContent();
+                ShowLotteryContent(guide.routeParams.poolCode, guide.routeParams.highlightNpcId);
                 break;
             case "PLAYER_TASK":
-                if (guide.routeParams == null || string.IsNullOrEmpty(guide.routeParams.taskCode))
+                if (!TryValidatePlayerTaskRoute(guide))
                 {
                     roleStatusMessage = "任务入口参数无效";
                     RenderRolePanel();
                     break;
                 }
+                SavePendingRoleAcquisitionRoute("PLAYER_TASK", guide.routeParams, guide.instructionExpiresAt);
+                ClearPendingRoleAcquisitionRouteStorage();
                 HideRolePanel();
-                ShowTaskContent();
+                OpenServerTasks("daily", guide.routeParams.taskCode);
                 break;
             case "SIGN_IN":
-                if (guide.routeParams == null || string.IsNullOrEmpty(guide.routeParams.planCode))
+                if (!TryValidateSignInRoute(guide, out string normalizedPlanCode))
                 {
                     roleStatusMessage = "签到入口参数无效";
                     RenderRolePanel();
                     break;
                 }
+                SavePendingRoleAcquisitionRoute("SIGN_IN", guide.routeParams, guide.instructionExpiresAt);
+                ClearPendingRoleAcquisitionRouteStorage();
                 HideRolePanel();
-                ShowDailySignContent();
+                OpenServerSignIn(normalizedPlanCode);
                 break;
             case "MAIL":
-                if (guide.routeParams == null || guide.routeParams.mailId <= 0)
+                if (!TryValidateMailRoute(guide))
                 {
                     roleStatusMessage = "邮件入口参数无效";
                     RenderRolePanel();
                     break;
                 }
+                SavePendingRoleAcquisitionRoute("MAIL", guide.routeParams, guide.instructionExpiresAt);
+                ClearPendingRoleAcquisitionRouteStorage();
                 HideRolePanel();
-                ShowMailContent();
+                ShowMailContent(guide.routeParams.mailId);
                 break;
             case "IDLE_ADVENTURE":
-                if (guide.routeParams == null || string.IsNullOrEmpty(guide.routeParams.modeCode))
+                if (!TryValidateIdleAdventureRoute(guide, out string normalizedModeCode))
                 {
                     roleStatusMessage = "挂机入口参数无效";
                     RenderRolePanel();
                     break;
                 }
+                guide.routeParams.modeCode = normalizedModeCode;
+                SavePendingRoleAcquisitionRoute("IDLE_ADVENTURE", guide.routeParams, guide.instructionExpiresAt);
                 HideRolePanel();
                 SceneManager.LoadScene(IdleAdventureSceneName);
                 break;
@@ -702,6 +817,153 @@ public partial class HomePageUI
                 RenderRolePanel();
                 break;
         }
+    }
+
+    private bool TryValidateCardDrawRoute(RoleAcquisitionGuideData guide)
+    {
+        RoleAcquisitionRouteParams route = guide == null ? null : guide.routeParams;
+        if (route == null
+            || !IsValidRoleRouteToken(route.poolCode)
+            || route.highlightNpcId <= 0)
+        {
+            return false;
+        }
+
+        return guide.npcId <= 0 || route.highlightNpcId == guide.npcId;
+    }
+
+    private bool TryValidatePlayerTaskRoute(RoleAcquisitionGuideData guide)
+    {
+        return guide != null
+            && guide.routeParams != null
+            && IsValidRoleRouteToken(guide.routeParams.taskCode);
+    }
+
+    private bool TryValidateSignInRoute(RoleAcquisitionGuideData guide, out string planCode)
+    {
+        planCode = string.Empty;
+        if (guide == null || guide.routeParams == null || !IsValidRoleRouteToken(guide.routeParams.planCode))
+        {
+            return false;
+        }
+
+        string normalized = NormalizeRoleRouteToken(guide.routeParams.planCode).ToUpperInvariant();
+        if (normalized != "NEWBIE" && normalized != "MONTHLY")
+        {
+            return false;
+        }
+
+        planCode = normalized;
+        return true;
+    }
+
+    private bool TryValidateMailRoute(RoleAcquisitionGuideData guide)
+    {
+        return guide != null
+            && guide.routeParams != null
+            && guide.routeParams.mailId > 0L;
+    }
+
+    private bool TryValidateIdleAdventureRoute(RoleAcquisitionGuideData guide, out string modeCode)
+    {
+        modeCode = string.Empty;
+        RoleAcquisitionRouteParams route = guide == null ? null : guide.routeParams;
+        if (route == null
+            || !IsValidRoleRouteToken(route.modeCode)
+            || !IsValidRoleRouteToken(route.poolKey)
+            || route.stage < 1
+            || route.stage > 10000)
+        {
+            return false;
+        }
+
+        string normalized = NormalizeRoleRouteToken(route.modeCode).ToUpperInvariant();
+        if (normalized != "IDLE_ADVENTURE"
+            && normalized != "IDLE_ADVENTURE_MODE"
+            && normalized != "BATTLE")
+        {
+            return false;
+        }
+
+        modeCode = normalized;
+        return true;
+    }
+
+    private static string NormalizeRoleRouteToken(string value)
+    {
+        return (value ?? string.Empty).Trim();
+    }
+
+    private static bool IsValidRoleRouteToken(string value)
+    {
+        string token = NormalizeRoleRouteToken(value);
+        if (string.IsNullOrEmpty(token) || token.Length > MaxRoleAcquisitionRouteTokenLength)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < token.Length; i++)
+        {
+            if (char.IsControl(token[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private void SavePendingRoleAcquisitionRoute(
+        string routeKey,
+        RoleAcquisitionRouteParams route,
+        string instructionExpiresAt)
+    {
+        ClearPendingRoleAcquisitionRouteStorage();
+        if (route == null || string.IsNullOrEmpty(routeKey))
+        {
+            return;
+        }
+
+        PlayerPrefs.SetString(PendingRoleAcquisitionRouteKey, routeKey);
+        PlayerPrefs.SetInt(PendingRoleAcquisitionRoutePlayerIdKey, GameSession.PlayerId);
+        PlayerPrefs.SetString(PendingRoleAcquisitionRouteExpiresAtKey, instructionExpiresAt ?? string.Empty);
+        PlayerPrefs.SetString(PendingRoleAcquisitionRoutePoolCodeKey, NormalizeRoleRouteToken(route.poolCode));
+        PlayerPrefs.SetInt(PendingRoleAcquisitionRouteHighlightNpcIdKey, Mathf.Max(0, route.highlightNpcId));
+        PlayerPrefs.SetString(PendingRoleAcquisitionRouteTaskCodeKey, NormalizeRoleRouteToken(route.taskCode));
+        PlayerPrefs.SetString(PendingRoleAcquisitionRoutePlanCodeKey, NormalizeRoleRouteToken(route.planCode));
+        PlayerPrefs.SetString(PendingRoleAcquisitionRouteModeCodeKey, NormalizeRoleRouteToken(route.modeCode));
+        PlayerPrefs.SetInt(PendingRoleAcquisitionRouteStageKey, Mathf.Max(0, route.stage));
+        PlayerPrefs.SetString(PendingRoleAcquisitionRoutePoolKeyKey, NormalizeRoleRouteToken(route.poolKey));
+        PlayerPrefs.SetString(
+            PendingRoleAcquisitionRouteMailIdKey,
+            route.mailId > 0L ? route.mailId.ToString(CultureInfo.InvariantCulture) : string.Empty);
+        PlayerPrefs.Save();
+    }
+
+    private void ClearPendingRoleAcquisitionRoute()
+    {
+        ClearPendingRoleAcquisitionRouteStorage();
+        pendingCardDrawPoolCode = string.Empty;
+        pendingCardDrawHighlightNpcId = 0;
+        cardDrawRoutePoolMismatch = false;
+        pendingServerTaskCode = string.Empty;
+        pendingMailRouteId = 0L;
+    }
+
+    private static void ClearPendingRoleAcquisitionRouteStorage()
+    {
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRouteKey);
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRoutePlayerIdKey);
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRouteExpiresAtKey);
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRoutePoolCodeKey);
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRouteHighlightNpcIdKey);
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRouteTaskCodeKey);
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRoutePlanCodeKey);
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRouteModeCodeKey);
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRouteStageKey);
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRoutePoolKeyKey);
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRouteMailIdKey);
+        PlayerPrefs.Save();
     }
 
     private void HideRolePanel()

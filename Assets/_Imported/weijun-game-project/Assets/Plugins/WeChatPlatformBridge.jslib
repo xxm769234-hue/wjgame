@@ -23,6 +23,104 @@ mergeInto(LibraryManager.library, {
     }
   },
 
+  $WJWeChatBridgeNotify: function (receiverName, method, value) {
+    if (!receiverName || !method) {
+      return;
+    }
+    var payload = value === undefined || value === null ? '' : String(value);
+    if (typeof SendMessage === 'function') {
+      SendMessage(receiverName, method, payload);
+    } else if (typeof GameGlobal !== 'undefined' && GameGlobal.Module && GameGlobal.Module.SendMessage) {
+      GameGlobal.Module.SendMessage(receiverName, method, payload);
+    }
+  },
+
+  $WJWeChatBridgeErrorMessage: function (error, fallback) {
+    if (error && error.errMsg) {
+      return String(error.errMsg);
+    }
+    if (error && error.message) {
+      return String(error.message);
+    }
+    if (typeof error === 'string' && error) {
+      return error;
+    }
+    return fallback || '微信接口调用失败';
+  },
+
+  $WJWeChatBridgeParseObject: function (json) {
+    if (typeof json !== 'string' || json.length > 262144) {
+      return null;
+    }
+    try {
+      var value = JSON.parse(json);
+      return value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+    } catch (ignored) {
+      return null;
+    }
+  },
+
+  $WJWeChatBridgeNormalizeString: function (value, maximumLength) {
+    if (typeof value !== 'string' || !value || value.length > maximumLength) {
+      return null;
+    }
+    for (var index = 0; index < value.length; index++) {
+      var code = value.charCodeAt(index);
+      if (code < 32 || code === 127) {
+        return null;
+      }
+    }
+    return value;
+  },
+
+  $WJWeChatBridgeNormalizeStringList__deps: ['$WJWeChatBridgeNormalizeString'],
+  $WJWeChatBridgeNormalizeStringList: function (value) {
+    if (!Array.isArray(value) || value.length === 0 || value.length > 1000) {
+      return null;
+    }
+    var normalized = [];
+    for (var index = 0; index < value.length; index++) {
+      var item = WJWeChatBridgeNormalizeString(value[index], 256);
+      if (!item) {
+        return null;
+      }
+      normalized.push(item);
+    }
+    return normalized;
+  },
+
+  $WJWeChatBridgeVersionAtLeast: function (current, minimum) {
+    if (!minimum || !current) {
+      return true;
+    }
+    var currentParts = String(current).split('.');
+    var minimumParts = String(minimum).split('.');
+    var length = Math.max(currentParts.length, minimumParts.length);
+    for (var index = 0; index < length; index++) {
+      var currentPart = parseInt(currentParts[index] || '0', 10) || 0;
+      var minimumPart = parseInt(minimumParts[index] || '0', 10) || 0;
+      if (currentPart > minimumPart) {
+        return true;
+      }
+      if (currentPart < minimumPart) {
+        return false;
+      }
+    }
+    return true;
+  },
+
+  $WJWeChatBridgeSdkVersion: function () {
+    if (typeof wx === 'undefined' || typeof wx.getSystemInfoSync !== 'function') {
+      return '';
+    }
+    try {
+      var systemInfo = wx.getSystemInfoSync();
+      return systemInfo && systemInfo.SDKVersion ? String(systemInfo.SDKVersion) : '';
+    } catch (ignored) {
+      return '';
+    }
+  },
+
   WJ_WeChatLogin: function (receiverNamePtr) {
     var receiverName = UTF8ToString(receiverNamePtr);
     var send = function (method, value) {
@@ -384,6 +482,265 @@ mergeInto(LibraryManager.library, {
     });
   },
 
+  WJ_WeChatGetFriendCloudStorage__deps: [
+    '$WJWeChatBridgeNotify',
+    '$WJWeChatBridgeErrorMessage',
+    '$WJWeChatBridgeParseObject',
+    '$WJWeChatBridgeNormalizeStringList',
+    '$WJWeChatBridgeVersionAtLeast',
+    '$WJWeChatBridgeSdkVersion'
+  ],
+  WJ_WeChatGetFriendCloudStorage: function (receiverNamePtr, requestJsonPtr) {
+    var receiverName = UTF8ToString(receiverNamePtr);
+    var settled = false;
+    var finish = function (method, value) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      WJWeChatBridgeNotify(receiverName, method, value);
+    };
+    var fail = function (error) {
+      finish(
+        'OnWeChatFriendCloudStorageFailed',
+        WJWeChatBridgeErrorMessage(error, '读取微信好友云存储失败'));
+    };
+
+    if (typeof wx === 'undefined' || typeof wx.getFriendCloudStorage !== 'function') {
+      fail('当前环境不支持 wx.getFriendCloudStorage');
+      return;
+    }
+
+    var request = WJWeChatBridgeParseObject(UTF8ToString(requestJsonPtr));
+    if (!request) {
+      fail('微信好友云存储参数格式错误');
+      return;
+    }
+
+    var keyList = WJWeChatBridgeNormalizeStringList(request.keyList);
+    if (!keyList) {
+      fail('微信好友云存储 keyList 不能为空或包含非法值');
+      return;
+    }
+    if (!WJWeChatBridgeVersionAtLeast(WJWeChatBridgeSdkVersion(), '3.11.2')) {
+      fail('微信基础库版本过低，需要 3.11.2 或更高版本');
+      return;
+    }
+
+    try {
+      wx.getFriendCloudStorage({
+        keyList: keyList,
+        success: function (result) {
+          var payload;
+          try {
+            payload = JSON.stringify(result || { data: [] });
+          } catch (error) {
+            fail('微信好友云存储返回结果格式错误');
+            return;
+          }
+          finish('OnWeChatFriendCloudStorageSucceeded', payload || '{"data":[]}');
+        },
+        fail: fail
+      });
+    } catch (error) {
+      fail(error);
+    }
+  },
+
+  WJ_WeChatGetFriendSendGiftStatus__deps: [
+    '$WJWeChatBridgeNotify',
+    '$WJWeChatBridgeErrorMessage',
+    '$WJWeChatBridgeParseObject',
+    '$WJWeChatBridgeNormalizeString',
+    '$WJWeChatBridgeNormalizeStringList',
+    '$WJWeChatBridgeVersionAtLeast',
+    '$WJWeChatBridgeSdkVersion'
+  ],
+  WJ_WeChatGetFriendSendGiftStatus: function (receiverNamePtr, requestJsonPtr) {
+    var receiverName = UTF8ToString(receiverNamePtr);
+    var settled = false;
+    var finish = function (method, value) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      WJWeChatBridgeNotify(receiverName, method, value);
+    };
+    var fail = function (error) {
+      finish(
+        'OnWeChatFriendSendGiftStatusFailed',
+        WJWeChatBridgeErrorMessage(error, '查询微信好友送礼状态失败'));
+    };
+
+    if (typeof wx === 'undefined' || typeof wx.getFriendSendGiftStatus !== 'function') {
+      fail('当前环境不支持 wx.getFriendSendGiftStatus');
+      return;
+    }
+
+    var request = WJWeChatBridgeParseObject(UTF8ToString(requestJsonPtr));
+    if (!request) {
+      fail('微信好友送礼状态参数格式错误');
+      return;
+    }
+
+    var giftId = WJWeChatBridgeNormalizeString(request.giftId, 256);
+    var openidList = WJWeChatBridgeNormalizeStringList(request.openidList);
+    if (!giftId || !openidList) {
+      fail('微信好友送礼状态 giftId 或 openidList 无效');
+      return;
+    }
+    if (!WJWeChatBridgeVersionAtLeast(WJWeChatBridgeSdkVersion(), '3.11.2')) {
+      fail('微信基础库版本过低，需要 3.11.2 或更高版本');
+      return;
+    }
+
+    try {
+      wx.getFriendSendGiftStatus({
+        giftId: giftId,
+        openidList: openidList,
+        success: function (result) {
+          var payload;
+          try {
+            payload = JSON.stringify(result || { data: [] });
+          } catch (error) {
+            fail('微信好友送礼状态返回结果格式错误');
+            return;
+          }
+          finish('OnWeChatFriendSendGiftStatusSucceeded', payload || '{"data":[]}');
+        },
+        fail: fail
+      });
+    } catch (error) {
+      fail(error);
+    }
+  },
+
+  WJ_WeChatSendGiftToFriend__deps: [
+    '$WJWeChatBridgeNotify',
+    '$WJWeChatBridgeErrorMessage',
+    '$WJWeChatBridgeParseObject',
+    '$WJWeChatBridgeNormalizeString',
+    '$WJWeChatBridgeVersionAtLeast',
+    '$WJWeChatBridgeSdkVersion'
+  ],
+  WJ_WeChatSendGiftToFriend: function (receiverNamePtr, requestJsonPtr) {
+    var receiverName = UTF8ToString(receiverNamePtr);
+    var settled = false;
+    var finish = function (method, value) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      WJWeChatBridgeNotify(receiverName, method, value);
+    };
+    var fail = function (error) {
+      finish(
+        'OnWeChatSendGiftToFriendFailed',
+        WJWeChatBridgeErrorMessage(error, '微信好友赠礼失败'));
+    };
+
+    if (typeof wx === 'undefined' || typeof wx.sendGiftToFriend !== 'function') {
+      fail('当前环境不支持 wx.sendGiftToFriend');
+      return;
+    }
+
+    var request = WJWeChatBridgeParseObject(UTF8ToString(requestJsonPtr));
+    if (!request) {
+      fail('微信好友赠礼参数格式错误');
+      return;
+    }
+
+    var giftId = WJWeChatBridgeNormalizeString(request.giftId, 256);
+    var openid = WJWeChatBridgeNormalizeString(request.openid, 256);
+    if (!giftId || !openid) {
+      fail('微信好友赠礼 giftId 或 openid 无效');
+      return;
+    }
+    if (!WJWeChatBridgeVersionAtLeast(WJWeChatBridgeSdkVersion(), '3.11.2')) {
+      fail('微信基础库版本过低，需要 3.11.2 或更高版本');
+      return;
+    }
+
+    try {
+      wx.sendGiftToFriend({
+        giftId: giftId,
+        openid: openid,
+        success: function (result) {
+          var payload = 'success';
+          if (result !== undefined && result !== null) {
+            try {
+              payload = JSON.stringify(result) || 'success';
+            } catch (error) {
+              payload = 'success';
+            }
+          }
+          finish('OnWeChatSendGiftToFriendSucceeded', payload);
+        },
+        fail: fail
+      });
+    } catch (error) {
+      fail(error);
+    }
+  },
+
+  WJ_WeChatPostMessageToOpenDataContext__deps: [
+    '$WJWeChatBridgeNotify',
+    '$WJWeChatBridgeErrorMessage',
+    '$WJWeChatBridgeParseObject'
+  ],
+  WJ_WeChatPostMessageToOpenDataContext: function (receiverNamePtr, messageJsonPtr) {
+    var receiverName = UTF8ToString(receiverNamePtr);
+    var settled = false;
+    var finish = function (method, value) {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      WJWeChatBridgeNotify(receiverName, method, value);
+    };
+    var fail = function (error) {
+      finish(
+        'OnWeChatOpenDataMessageFailed',
+        WJWeChatBridgeErrorMessage(error, '发送开放数据域消息失败'));
+    };
+
+    if (typeof wx === 'undefined' || typeof wx.getOpenDataContext !== 'function') {
+      fail('当前环境不支持 wx.getOpenDataContext');
+      return;
+    }
+
+    var message = WJWeChatBridgeParseObject(UTF8ToString(messageJsonPtr));
+    if (!message) {
+      fail('开放数据域消息必须是合法 JSON 对象');
+      return;
+    }
+
+    var openDataContext;
+    try {
+      openDataContext = wx.getOpenDataContext();
+    } catch (error) {
+      fail(error);
+      return;
+    }
+    if (!openDataContext || typeof openDataContext.postMessage !== 'function') {
+      fail('当前环境不支持开放数据域 postMessage');
+      return;
+    }
+
+    try {
+      var postResult = openDataContext.postMessage(message);
+      if (postResult && typeof postResult.then === 'function') {
+        postResult.then(
+          function () { finish('OnWeChatOpenDataMessageSucceeded', 'posted'); },
+          fail);
+      } else {
+        finish('OnWeChatOpenDataMessageSucceeded', 'posted');
+      }
+    } catch (error) {
+      fail(error);
+    }
+  },
+
   WJ_WeChatOpenFriendGiftPage__deps: ['$WJFriendGiftState'],
   WJ_WeChatOpenFriendGiftPage: function (receiverNamePtr, openlinkPtr, minimumVersionPtr) {
     var receiverName = UTF8ToString(receiverNamePtr);
@@ -466,6 +823,78 @@ mergeInto(LibraryManager.library, {
     }
     WJFriendGiftState.manager = null;
     WJFriendGiftState.openlink = '';
+  },
+
+  WJ_WeChatOpenCustomerServiceConversation: function (
+    receiverNamePtr,
+    sessionFromPtr,
+    showMessageCard,
+    sendMessageTitlePtr,
+    sendMessagePathPtr,
+    sendMessageImgPtr,
+    minimumVersionPtr) {
+    var receiverName = UTF8ToString(receiverNamePtr);
+    var sessionFrom = UTF8ToString(sessionFromPtr);
+    var sendMessageTitle = UTF8ToString(sendMessageTitlePtr);
+    var sendMessagePath = UTF8ToString(sendMessagePathPtr);
+    var sendMessageImg = UTF8ToString(sendMessageImgPtr);
+    var minimumVersion = UTF8ToString(minimumVersionPtr);
+    var send = function (method, value) {
+      if (typeof SendMessage === 'function') {
+        SendMessage(receiverName, method, value || '');
+      } else if (typeof GameGlobal !== 'undefined' && GameGlobal.Module && GameGlobal.Module.SendMessage) {
+        GameGlobal.Module.SendMessage(receiverName, method, value || '');
+      }
+    };
+    var versionAtLeast = function (current, minimum) {
+      if (!minimum) return true;
+      var currentParts = String(current || '').split('.');
+      var minimumParts = String(minimum || '').split('.');
+      var length = Math.max(currentParts.length, minimumParts.length);
+      for (var i = 0; i < length; i++) {
+        var currentPart = parseInt(currentParts[i] || '0', 10) || 0;
+        var minimumPart = parseInt(minimumParts[i] || '0', 10) || 0;
+        if (currentPart > minimumPart) return true;
+        if (currentPart < minimumPart) return false;
+      }
+      return true;
+    };
+
+    if (typeof wx === 'undefined' || typeof wx.openCustomerServiceConversation !== 'function') {
+      send('OnWeChatCustomerServiceFailed', '当前微信基础库不支持客服会话');
+      return;
+    }
+
+    var sdkVersion = '';
+    try {
+      sdkVersion = wx.getSystemInfoSync && wx.getSystemInfoSync().SDKVersion
+        ? wx.getSystemInfoSync().SDKVersion
+        : '';
+    } catch (ignored) {}
+    if (!versionAtLeast(sdkVersion, minimumVersion)) {
+      send('OnWeChatCustomerServiceFailed', '微信基础库版本过低，需要 ' + minimumVersion + ' 或更高版本');
+      return;
+    }
+
+    var options = {
+      sessionFrom: sessionFrom,
+      showMessageCard: !!showMessageCard,
+      success: function () { send('OnWeChatCustomerServiceOpened', 'opened'); },
+      fail: function (error) {
+        send('OnWeChatCustomerServiceFailed', error && error.errMsg ? error.errMsg : '客服会话打开失败');
+      }
+    };
+    if (showMessageCard) {
+      if (sendMessageTitle) options.sendMessageTitle = sendMessageTitle;
+      if (sendMessagePath) options.sendMessagePath = sendMessagePath;
+      if (sendMessageImg) options.sendMessageImg = sendMessageImg;
+    }
+
+    try {
+      wx.openCustomerServiceConversation(options);
+    } catch (error) {
+      send('OnWeChatCustomerServiceFailed', error && error.message ? error.message : '客服会话调用失败');
+    }
   },
 
   WJ_RealtimeConnect__deps: ['$WJRealtimeState', '$WJRealtimeNotify'],

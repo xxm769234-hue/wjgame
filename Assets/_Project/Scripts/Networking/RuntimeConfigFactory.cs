@@ -16,6 +16,7 @@ public static class RuntimeConfigFactory
         config.landName = string.IsNullOrEmpty(response.landName) ? $"Land {response.landId}" : response.landName;
         config.unlockLevel = Mathf.Max(1, response.level);
         config.landType = ParseLandType(response.landType);
+        config.backendLandType = response.landType ?? string.Empty;
         config.allowBuildingType = SplitCsv(response.allowBuildType);
         return config;
     }
@@ -24,16 +25,24 @@ public static class RuntimeConfigFactory
     {
         if (response == null) return FindAnyLandTemplate();
 
-        LandConfig existing = FindLandById(response.landId);
+        int landId = ToRuntimeId(response.landId);
+        LandConfig existing = FindLandById(landId);
         LandConfig config = existing != null ? UnityEngine.Object.Instantiate(existing) : CreateLandFromTemplate();
         if (config == null) return null;
 
-        config.landId = response.landId;
-        config.landName = string.IsNullOrEmpty(response.name) ? $"Land {response.landId}" : response.name;
+        config.landId = landId;
+        config.landName = string.IsNullOrEmpty(response.name) ? $"Land {landId}" : response.name;
         config.description = response.cannotPlaceReason;
         config.unlockLevel = Mathf.Max(1, response.unlockLevel);
         config.landType = ParseLandType(response.landType);
-        config.cost = response.goldCost + response.woodCost + response.stoneCost + response.ironCost;
+        config.backendLandType = response.landType ?? string.Empty;
+        config.goldCost = response.goldCost;
+        config.woodCost = response.woodCost;
+        config.stoneCost = response.stoneCost;
+        config.ironCost = response.ironCost;
+        config.cost = SumCostForLegacy(response.goldCost, response.woodCost, response.stoneCost, response.ironCost);
+        config.canPlace = response.canPlace;
+        config.disabledReason = response.cannotPlaceReason;
         config.allowBuildingType = SplitCsv(response.allowBuildType);
         return config;
     }
@@ -60,7 +69,7 @@ public static class RuntimeConfigFactory
     {
         if (response == null) return FindAnyBuildingTemplate();
 
-        int id = response.id > 0 ? response.id : response.buildingId;
+        int id = ToRuntimeId(response.id > 0L ? response.id : response.buildingId);
         BuildingConfig existing = FindBuildingById(id);
         BuildingConfig config = existing != null ? UnityEngine.Object.Instantiate(existing) : CreateBuildingFromTemplate();
         if (config == null) return null;
@@ -68,11 +77,21 @@ public static class RuntimeConfigFactory
         config.buildingId = id;
         config.buildingName = string.IsNullOrEmpty(response.name) ? $"Building {id}" : response.name;
         config.description = response.description;
-        config.cost = response.goldCost + response.woodCost + response.stoneCost + response.ironCost;
+        config.goldCost = response.goldCost;
+        config.woodCost = response.woodCost;
+        config.stoneCost = response.stoneCost;
+        config.ironCost = response.ironCost;
+        config.cost = SumCostForLegacy(response.goldCost, response.woodCost, response.stoneCost, response.ironCost);
         config.buildSeconds = Mathf.Max(0, response.buildTime);
         config.buildingType = string.IsNullOrEmpty(response.buildType) ? response.type : response.buildType;
+        config.requiredLandType = response.needLand ?? string.Empty;
         config.canBuild = response.canBuild;
         config.disabledReason = response.cannotBuildReason;
+        config.singletonGroupCode = response.singletonGroupCode;
+        config.ownedCount = Mathf.Max(0, response.ownedCount);
+        config.maxOwnedCount = Mathf.Max(0, response.maxOwnedCount);
+        config.hasOwnershipLimit = !string.IsNullOrEmpty(response.singletonGroupCode) && response.maxOwnedCount > 0;
+        config.ownershipLimitMet = response.ownershipLimitMet;
         ApplyProduce(config, response.produce);
         return config;
     }
@@ -166,6 +185,19 @@ public static class RuntimeConfigFactory
         string[] raw = value.Split(',');
         for (int i = 0; i < raw.Length; i++) raw[i] = raw[i].Trim();
         return raw;
+    }
+
+    private static int SumCostForLegacy(long gold, long wood, long stone, long iron)
+    {
+        long total = Math.Max(0L, gold) + Math.Max(0L, wood) + Math.Max(0L, stone) + Math.Max(0L, iron);
+        return total > int.MaxValue ? int.MaxValue : (int)total;
+    }
+
+    private static int ToRuntimeId(long value)
+    {
+        if (value <= 0L) return 0;
+        if (value > int.MaxValue) throw new OverflowException($"Backend identifier {value} exceeds the current Unity runtime identifier range.");
+        return (int)value;
     }
 
     private static void ApplyProduce(BuildingConfig config, string produce)

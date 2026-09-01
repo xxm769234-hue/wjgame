@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Reflection;
 using TMPro;
 using UnityEngine;
@@ -26,6 +27,13 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private const float FormationRealtimeRefreshDelaySeconds = 0.15f;
     private const float FormationRealtimeHandshakeTimeoutSeconds = 10f;
     private const float FormationRealtimeFallbackIntervalSeconds = 20f;
+    private const string PendingRoleAcquisitionRouteKey = "weijun.npcAcquisition.routeKey";
+    private const string PendingRoleAcquisitionRoutePlayerIdKey = "weijun.npcAcquisition.playerId";
+    private const string PendingRoleAcquisitionRouteExpiresAtKey = "weijun.npcAcquisition.expiresAt";
+    private const string PendingRoleAcquisitionRouteModeCodeKey = "weijun.npcAcquisition.modeCode";
+    private const string PendingRoleAcquisitionRouteStageKey = "weijun.npcAcquisition.stage";
+    private const string PendingRoleAcquisitionRoutePoolKeyKey = "weijun.npcAcquisition.poolKey";
+    private const int MaxRoleAcquisitionRouteTokenLength = 128;
 
     [Header("Mode Config")]
     [SerializeField] private IdleAdventureModeConfig modeConfig;
@@ -112,8 +120,16 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private Button accelerateButton;
     private bool interfaceBuildInProgress;
     private bool staminaRequestPending;
+    private IdleAdventureAfkRewardStateResponse accelerationPolicyState;
+    private bool accelerationPolicyLoaded;
+    private bool accelerationEnabled;
+    private int accelerationStaminaCost;
 
     private int stage = 1;
+    private bool acquisitionRouteApplied;
+    private string acquisitionRouteModeCode = string.Empty;
+    private int acquisitionRouteStage;
+    private string acquisitionRoutePoolKey = string.Empty;
     private int round = 1;
     private int pendingNextStage = -1;
     private bool battleStarted;
@@ -130,9 +146,17 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private string backendRunningSessionKey;
     private int backendHighestStage;
     private int backendNextStage = 1;
+    private int selectedReplayStage;
     private IdleAdventurePlayerNpcResponse[] backendAvailableNpcs = new IdleAdventurePlayerNpcResponse[0];
     private Coroutine backendHomeLoadRoutine;
     private bool backendHomeLoadRunning;
+    private Coroutine backendReferenceDataRoutine;
+    private bool backendReferenceDataLoaded;
+    private int backendReferenceDataStage;
+    private IdleAdventureStageEnemiesResponse backendEnemyPreview;
+    private int backendStatePlayerId;
+    private string backendStateToken = string.Empty;
+    private bool backendStateIdentityInitialized;
     private Coroutine formationRealtimeConnectionRoutine;
     private Coroutine formationRealtimeReconnectRoutine;
     private Coroutine formationRealtimeHandshakeRoutine;
@@ -243,7 +267,10 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         EnsureRewardLedger();
         EnsureStageProgress();
         EnsureAfkRewardSource();
+        ClearBackendAccountState();
+        CaptureBackendAccountIdentity();
         ResetToStartScreen();
+        ApplyPendingRoleAcquisitionRoute();
         formationRealtimeClosing = false;
         QueueBackendHomeLoad();
         QueueFormationRealtimeConnection();
@@ -257,6 +284,17 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         battleRoutine = StartCoroutine(BattleLoop());
     }
 
+    private void Update()
+    {
+        if (!Application.isPlaying || !isActiveAndEnabled)
+        {
+            return;
+        }
+
+        EnsureBackendAccountIsolation();
+        SyncAccelerationPolicyFromService();
+    }
+
     private void OnDisable()
     {
         if (!Application.isPlaying) return;
@@ -267,7 +305,18 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             battleRoutine = null;
         }
 
+        if (backendHomeLoadRoutine != null)
+        {
+            StopCoroutine(backendHomeLoadRoutine);
+            backendHomeLoadRoutine = null;
+        }
         backendHomeLoadRunning = false;
+        if (backendReferenceDataRoutine != null)
+        {
+            StopCoroutine(backendReferenceDataRoutine);
+            backendReferenceDataRoutine = null;
+        }
+        backendReferenceDataLoaded = false;
         StopFormationRealtimeConnection();
     }
 
@@ -488,6 +537,106 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         return service == null ? string.Empty : service.Token;
     }
 
+    private void CaptureBackendAccountIdentity()
+    {
+        BackendGameService service = ResolveBackendService();
+        backendStatePlayerId = service != null && service.IsAuthenticated ? service.PlayerId : 0;
+        backendStateToken = service != null && service.IsAuthenticated
+            ? service.Token ?? string.Empty
+            : string.Empty;
+        backendStateIdentityInitialized = true;
+    }
+
+    private void EnsureBackendAccountIsolation()
+    {
+        BackendGameService service = BackendGameService.Instance;
+        int currentPlayerId = service != null && service.IsAuthenticated ? service.PlayerId : 0;
+        string currentToken = service != null && service.IsAuthenticated
+            ? service.Token ?? string.Empty
+            : string.Empty;
+        if (!backendStateIdentityInitialized)
+        {
+            backendStatePlayerId = currentPlayerId;
+            backendStateToken = currentToken;
+            backendStateIdentityInitialized = true;
+            return;
+        }
+
+        if (backendStatePlayerId == currentPlayerId
+            && string.Equals(backendStateToken, currentToken, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        ClearBackendAccountState();
+        backendStatePlayerId = currentPlayerId;
+        backendStateToken = currentToken;
+        backendStateIdentityInitialized = true;
+        ResetToStartScreen();
+        ApplyPendingRoleAcquisitionRoute();
+
+        if (currentPlayerId > 0 && !string.IsNullOrEmpty(currentToken))
+        {
+            formationRealtimeClosing = false;
+            QueueBackendHomeLoad();
+            QueueFormationRealtimeConnection();
+            if (afkRewardSource != null)
+            {
+                afkRewardSource.TryLoadServerState();
+            }
+        }
+    }
+
+    private void ClearBackendAccountState()
+    {
+        if (backendHomeLoadRoutine != null)
+        {
+            StopCoroutine(backendHomeLoadRoutine);
+            backendHomeLoadRoutine = null;
+        }
+        backendHomeLoadRunning = false;
+
+        if (backendReferenceDataRoutine != null)
+        {
+            StopCoroutine(backendReferenceDataRoutine);
+            backendReferenceDataRoutine = null;
+        }
+        backendReferenceDataLoaded = false;
+        backendReferenceDataStage = 0;
+        backendEnemyPreview = null;
+
+        StopFormationRealtimeConnection();
+        formationRealtimeEventIds.Clear();
+        formationRealtimeEventOrder.Clear();
+        formationRealtimeHeartbeatSequence = 0;
+        resumeFormationRealtimeAfterPause = false;
+
+        backendModeActive = false;
+        backendRequestPending = false;
+        backendFormationDirty = false;
+        backendFormationRevision++;
+        backendSessionKey = string.Empty;
+        backendRunningSessionKey = string.Empty;
+        backendHighestStage = 0;
+        backendNextStage = 1;
+        selectedReplayStage = 0;
+        backendAvailableNpcs = new IdleAdventurePlayerNpcResponse[0];
+        backendRuntimeCombatants.Clear();
+        backendStageClearRequests.Clear();
+        staminaRequestPending = false;
+        ResetAccelerationPolicy();
+
+        acquisitionRouteApplied = false;
+        acquisitionRouteModeCode = string.Empty;
+        acquisitionRouteStage = 0;
+        acquisitionRoutePoolKey = string.Empty;
+
+        if (afkRewardSource != null)
+        {
+            afkRewardSource.ClearServerStateForAccountChange();
+        }
+    }
+
     public void OnRealtimeOpened(string message)
     {
         if (formationRealtimeClosing)
@@ -586,6 +735,13 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         StopFormationRealtimeHeartbeat();
         formationRealtimeHeartbeatRoutine = StartCoroutine(SendFormationRealtimeHeartbeats());
         StopFormationRealtimeFallbackPolling();
+        backendReferenceDataLoaded = false;
+        BackendGameService service = ResolveBackendService();
+        if (service != null && service.IsAuthenticated)
+        {
+            StartCoroutine(RefreshBackendProgress(service));
+            QueueBackendReferenceDataLoad(Mathf.Max(1, backendNextStage));
+        }
         QueueFormationRealtimeRefresh();
     }
 
@@ -839,6 +995,9 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             resumeFormationRealtimeAfterPause = false;
             formationRealtimeClosing = false;
+            backendReferenceDataLoaded = false;
+            QueueBackendHomeLoad();
+            if (afkRewardSource != null) afkRewardSource.TryLoadServerState();
             QueueFormationRealtimeRefresh();
             QueueFormationRealtimeConnection();
         }
@@ -1750,8 +1909,10 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         else
         {
             startPanelView.Bind(StartAdventure);
+            startPanelView.BindStageSelection(SelectPreviousStartStage, SelectNextStartStage);
             formationPanelView.Bind(OpenFormationPanel, CloseFormationPanel, AutoFillFormation, ClearFormation, AssignFormationSlot, ClearFormationSlot);
             formationPanelView.ApplySlotLayout(true);
+            RefreshStartStageSelectionView();
             RefreshFormationView();
         }
 
@@ -1911,6 +2072,18 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         TextMeshProUGUI formationText = CreateText("Formation Status", statusStrip, "Camp prepared  |  Gate open  |  Team ready", 19, FontStyles.Bold, TextAlignmentOptions.Center);
         Stretch(formationText.rectTransform);
 
+        RectTransform stageSelector = CreatePanel("Stage Selector", startPanel, new Color(0.10f, 0.12f, 0.15f, 0.96f));
+        Anchor(stageSelector, new Vector2(0.28f, 0.24f), new Vector2(0.72f, 0.35f), Vector2.zero, Vector2.zero);
+
+        Button previousStageButton = CreateButton("Previous Stage Button", stageSelector, "Previous");
+        Anchor(previousStageButton.GetComponent<RectTransform>(), new Vector2(0f, 0f), new Vector2(0.22f, 1f), Vector2.zero, Vector2.zero);
+
+        TextMeshProUGUI stageSelectionText = CreateText("Stage Selection Text", stageSelector, "Loading authoritative progress...", 18, FontStyles.Bold, TextAlignmentOptions.Center);
+        Anchor(stageSelectionText.rectTransform, new Vector2(0.23f, 0f), new Vector2(0.77f, 1f), new Vector2(8f, 4f), new Vector2(-8f, -4f));
+
+        Button nextStageButton = CreateButton("Next Stage Button", stageSelector, "Next");
+        Anchor(nextStageButton.GetComponent<RectTransform>(), new Vector2(0.78f, 0f), new Vector2(1f, 1f), Vector2.zero, Vector2.zero);
+
         Button formationButton = CreateButton("Open Formation Button", startPanel, "Formation");
         Anchor(formationButton.GetComponent<RectTransform>(), new Vector2(0.28f, 0.13f), new Vector2(0.44f, 0.19f), Vector2.zero, Vector2.zero);
 
@@ -1987,8 +2160,16 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         Anchor(closeButton.GetComponent<RectTransform>(), new Vector2(0.42f, 0.86f), new Vector2(0.58f, 0.93f), Vector2.zero, Vector2.zero);
 
         startPanelView = startPanel.gameObject.AddComponent<IdleAdventureStartPanel>();
-        startPanelView.Initialize(startPanelTitleText, startPanelBodyText, startButton);
+        startPanelView.Initialize(
+            startPanelTitleText,
+            startPanelBodyText,
+            stageSelectionText,
+            previousStageButton,
+            nextStageButton,
+            startButton);
         startPanelView.Bind(StartAdventure);
+        startPanelView.BindStageSelection(SelectPreviousStartStage, SelectNextStartStage);
+        RefreshStartStageSelectionView();
 
         formationPanelView = startPanel.gameObject.AddComponent<IdleAdventureFormationPanel>();
         formationPanelView.Initialize(formationWindow, formationText, formationButton, closeButton, autoFillButton, clearButton, formationSlots, formationLabels, formationDropTargets, npcItems, npcLabels, npcDragItems, ownerCanvas);
@@ -2048,6 +2229,119 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         pausePanelView.SetButtonLabels("Continue Battle", "Exit Mode");
     }
 
+    private void ApplyPendingRoleAcquisitionRoute()
+    {
+        acquisitionRouteApplied = false;
+        acquisitionRouteModeCode = string.Empty;
+        acquisitionRouteStage = 0;
+        acquisitionRoutePoolKey = string.Empty;
+
+        string routeKey = PlayerPrefs.GetString(PendingRoleAcquisitionRouteKey, string.Empty).Trim().ToUpperInvariant();
+        if (routeKey.Length == 0)
+        {
+            return;
+        }
+
+        string expiresAt = PlayerPrefs.GetString(PendingRoleAcquisitionRouteExpiresAtKey, string.Empty);
+        if (!string.IsNullOrEmpty(expiresAt)
+            && (!DateTimeOffset.TryParse(
+                    expiresAt,
+                    CultureInfo.InvariantCulture,
+                    DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                    out DateTimeOffset parsedExpiry)
+                || DateTimeOffset.UtcNow > parsedExpiry))
+        {
+            ClearPendingRoleAcquisitionRouteStorage();
+            return;
+        }
+
+        if (routeKey != "IDLE_ADVENTURE")
+        {
+            ClearPendingRoleAcquisitionRouteStorage();
+            return;
+        }
+
+        string modeCode = PlayerPrefs.GetString(PendingRoleAcquisitionRouteModeCodeKey, string.Empty).Trim().ToUpperInvariant();
+        string poolKey = PlayerPrefs.GetString(PendingRoleAcquisitionRoutePoolKeyKey, string.Empty).Trim();
+        int requestedStage = PlayerPrefs.GetInt(PendingRoleAcquisitionRouteStageKey, 0);
+        if ((modeCode != "IDLE_ADVENTURE" && modeCode != "IDLE_ADVENTURE_MODE" && modeCode != "BATTLE")
+            || !IsSafeRoleAcquisitionRouteToken(poolKey)
+            || requestedStage < 1
+            || requestedStage > 10000)
+        {
+            ClearPendingRoleAcquisitionRouteStorage();
+            return;
+        }
+
+        int routePlayerId = PlayerPrefs.GetInt(PendingRoleAcquisitionRoutePlayerIdKey, 0);
+        if (routePlayerId <= 0)
+        {
+            ClearPendingRoleAcquisitionRouteStorage();
+            return;
+        }
+
+        BackendGameService service = BackendGameService.Instance;
+        if (service == null || !service.IsAuthenticated)
+        {
+            return;
+        }
+
+        if (service.PlayerId != routePlayerId)
+        {
+            ClearPendingRoleAcquisitionRouteStorage();
+            return;
+        }
+
+        acquisitionRouteApplied = true;
+        acquisitionRouteModeCode = modeCode;
+        acquisitionRouteStage = requestedStage;
+        acquisitionRoutePoolKey = poolKey;
+        if (startPanelView != null)
+        {
+            startPanelView.SetContent(
+                "Idle Adventure mode",
+                $"Guide target: Stage {requestedStage}  Drop pool: {poolKey}. Use the stage selector to replay it.");
+        }
+        RefreshStartStageSelectionView();
+        AddLog($"Acquisition guide target: mode={modeCode}, stage={requestedStage}, pool={poolKey}.");
+        ClearPendingRoleAcquisitionRouteStorage();
+    }
+
+    private static bool IsSafeRoleAcquisitionRouteToken(string value)
+    {
+        string token = (value ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(token) || token.Length > MaxRoleAcquisitionRouteTokenLength)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < token.Length; i++)
+        {
+            if (char.IsControl(token[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static void ClearPendingRoleAcquisitionRouteStorage()
+    {
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRouteKey);
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRoutePlayerIdKey);
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRouteExpiresAtKey);
+        PlayerPrefs.DeleteKey("weijun.npcAcquisition.poolCode");
+        PlayerPrefs.DeleteKey("weijun.npcAcquisition.highlightNpcId");
+        PlayerPrefs.DeleteKey("weijun.npcAcquisition.taskCode");
+        PlayerPrefs.DeleteKey("weijun.npcAcquisition.planCode");
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRouteModeCodeKey);
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRouteStageKey);
+        PlayerPrefs.DeleteKey(PendingRoleAcquisitionRoutePoolKeyKey);
+        PlayerPrefs.DeleteKey("weijun.npcAcquisition.mailId");
+        PlayerPrefs.Save();
+    }
+
     private void ResetToStartScreen()
     {
         battleStarted = false;
@@ -2058,12 +2352,13 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         backendModeActive = false;
         backendRequestPending = false;
         backendFormationDirty = false;
-        backendFormationRevision = 0;
+        backendFormationRevision++;
         backendSessionKey = string.Empty;
         backendRunningSessionKey = string.Empty;
         backendRuntimeCombatants.Clear();
         localSimulationBlockedLogged = false;
         pendingNextStage = -1;
+        selectedReplayStage = 0;
         stage = 1;
         round = 1;
         battleLog.Clear();
@@ -2084,7 +2379,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         HideEndPanel();
         ShowStartPanel();
         SetWaitingText();
-        if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", $"Next stage: {NextUnclearedStage()}");
+        if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", "Loading authoritative progress...");
+        RefreshStartStageSelectionView();
         RefreshFormationView();
     }
 
@@ -2170,7 +2466,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         string fallbackName = $"Hero {definitionIndex + 1}";
         if (backendAvailableNpcs != null && definitionIndex >= 0 && definitionIndex < backendAvailableNpcs.Length && backendAvailableNpcs[definitionIndex] != null)
         {
-            string backendName = backendAvailableNpcs[definitionIndex].combatant_name;
+            string backendName = backendAvailableNpcs[definitionIndex].ResolvedCombatantName;
             return string.IsNullOrEmpty(backendName) ? fallbackName : backendName;
         }
 
@@ -2240,6 +2536,70 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         HidePausePanel();
     }
 
+    private void SelectPreviousStartStage()
+    {
+        ChangeSelectedStartStage(-1);
+    }
+
+    private void SelectNextStartStage()
+    {
+        ChangeSelectedStartStage(1);
+    }
+
+    private void ChangeSelectedStartStage(int direction)
+    {
+        if (backendRequestPending || battleStarted || backendHighestStage <= 0 || direction == 0) return;
+
+        SanitizeSelectedReplayStage();
+        int optionCount = backendHighestStage + 1;
+        int optionIndex = selectedReplayStage;
+        optionIndex = (optionIndex + direction) % optionCount;
+        if (optionIndex < 0) optionIndex += optionCount;
+        selectedReplayStage = optionIndex;
+
+        int requestedStage = ResolveSelectedStartStage();
+        RefreshStartStageSelectionView();
+        if (startPanelView != null)
+        {
+            string selectionText = selectedReplayStage > 0
+                ? $"Loading Stage {selectedReplayStage} replay preview..."
+                : $"Loading authoritative Stage {backendNextStage} preview...";
+            startPanelView.SetContent("Idle Adventure mode", selectionText);
+        }
+        QueueBackendReferenceDataLoad(requestedStage);
+    }
+
+    private int ResolveSelectedStartStage()
+    {
+        SanitizeSelectedReplayStage();
+        return selectedReplayStage > 0
+            ? selectedReplayStage
+            : Mathf.Max(1, backendNextStage);
+    }
+
+    private void SanitizeSelectedReplayStage()
+    {
+        if (selectedReplayStage < 1 || selectedReplayStage > backendHighestStage)
+        {
+            selectedReplayStage = 0;
+        }
+    }
+
+    private void RefreshStartStageSelectionView()
+    {
+        if (startPanelView == null) return;
+
+        SanitizeSelectedReplayStage();
+        string selection = selectedReplayStage > 0
+            ? $"Replay Stage {selectedReplayStage}"
+            : $"Continue Stage {Mathf.Max(1, backendNextStage)}";
+        string guide = acquisitionRouteApplied && acquisitionRouteStage > 0
+            ? $"  |  Guide target: Stage {acquisitionRouteStage}"
+            : string.Empty;
+        startPanelView.SetStageSelection(
+            $"{selection}\nHighest cleared: {Mathf.Max(0, backendHighestStage)}{guide}");
+    }
+
     private void StartAdventure()
     {
         if (battleStarted) return;
@@ -2271,7 +2631,18 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", "Starting from backend...");
 
         yield return RefreshBackendStamina(service);
-        yield return RefreshBackendHomeBeforeSessionStart(service);
+        bool homeRefreshSucceeded = false;
+        yield return RefreshBackendHomeBeforeSessionStart(service, succeeded => homeRefreshSucceeded = succeeded);
+        if (!homeRefreshSucceeded)
+        {
+            backendRequestPending = false;
+            if (startPanelView != null)
+            {
+                startPanelView.SetContent("Idle Adventure mode", "Unable to refresh authoritative stage progress. Please retry.");
+            }
+            UpdateButtonStates();
+            yield break;
+        }
         if (!string.IsNullOrEmpty(backendRunningSessionKey))
         {
             BackendResult<IdleAdventureSessionResponse> endResult = null;
@@ -2290,23 +2661,29 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             backendRunningSessionKey = string.Empty;
         }
 
-        int requestedStage = Mathf.Max(1, backendNextStage > 0 ? backendNextStage : NextUnclearedStage());
+        int requestedStage = ResolveSelectedStartStage();
         yield return StartBackendSessionFromSavedFormation(service, requestedStage, "Backend battle start failed");
     }
 
-    private IEnumerator RefreshBackendHomeBeforeSessionStart(BackendGameService service)
+    private IEnumerator RefreshBackendHomeBeforeSessionStart(BackendGameService service, Action<bool> onComplete)
     {
-        if (service == null || !service.IsAuthenticated) yield break;
+        if (service == null || !service.IsAuthenticated)
+        {
+            onComplete?.Invoke(false);
+            yield break;
+        }
 
         BackendResult<IdleAdventureHomeResponse> homeResult = null;
         yield return service.LoadIdleAdventureHome(value => homeResult = value);
         if (homeResult != null && homeResult.Success && homeResult.Data != null)
         {
             ApplyBackendHome(homeResult.Data);
+            onComplete?.Invoke(true);
         }
         else
         {
             AddLog($"Backend home refresh before start failed: {BackendResultMessage(homeResult)}");
+            onComplete?.Invoke(false);
         }
     }
 
@@ -2351,6 +2728,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         HidePausePanel();
         ApplyBackendSessionSnapshot(result.Data, true);
         SetBattleRunningLocally();
+        selectedReplayStage = 0;
+        acquisitionRouteApplied = false;
+        acquisitionRouteModeCode = string.Empty;
+        acquisitionRouteStage = 0;
+        acquisitionRoutePoolKey = string.Empty;
         AddLog(string.IsNullOrEmpty(result.Data.message) ? $"Backend battle started from Stage {stage}." : result.Data.message);
         UpdateButtonStates();
     }
@@ -2675,7 +3057,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             IdleAdventureRewardItemResponse reward = rewards[i];
             if (reward == null || reward.quantity <= 0) continue;
-            AddRewardToLedger(target, reward.item_key, reward.display_name, ToInt(reward.quantity));
+            AddRewardToLedger(
+                target,
+                reward.ResolvedItemKey,
+                reward.ResolvedDisplayName,
+                ToInt(reward.quantity));
         }
     }
 
@@ -2691,6 +3077,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         backendHighestStage = highest;
         backendNextStage = Mathf.Max(1, highest + 1);
+        SanitizeSelectedReplayStage();
+        RefreshStartStageSelectionView();
         if (stageProgress != null) stageProgress.SetProgressFromServer(highest);
         if (afkRewardSource != null) afkRewardSource.SetHighestClearedStageFromProgress(highest);
     }
@@ -3247,36 +3635,124 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         backendHomeLoadRoutine = StartCoroutine(LoadBackendHomeWhenReady());
     }
 
-    private IEnumerator LoadBackendHomeWhenReady()
+    private void QueueBackendReferenceDataLoad(int requestedStage)
     {
-        backendHomeLoadRunning = true;
+        if (!Application.isPlaying || !ShouldUseBackendApi()) return;
+
+        int normalizedStage = Mathf.Clamp(requestedStage, 1, 10000);
+        if (backendReferenceDataLoaded
+            && backendReferenceDataStage == normalizedStage)
+        {
+            return;
+        }
+
+        if (backendReferenceDataRoutine != null)
+        {
+            StopCoroutine(backendReferenceDataRoutine);
+        }
+
+        backendReferenceDataRoutine = StartCoroutine(
+            LoadBackendReferenceDataWhenReady(normalizedStage));
+    }
+
+    private IEnumerator LoadBackendReferenceDataWhenReady(int requestedStage)
+    {
         BackendGameService service = ResolveBackendService();
         float deadline = Time.unscaledTime + 8f;
-        while (service != null && (!service.IsAuthenticated || service.IsConnecting) && Time.unscaledTime < deadline)
+        while (service != null
+            && (!service.IsAuthenticated || service.IsConnecting)
+            && Time.unscaledTime < deadline)
         {
             yield return null;
         }
 
-        backendHomeLoadRoutine = null;
         if (service == null || !service.IsAuthenticated)
         {
-            backendHomeLoadRunning = false;
+            backendReferenceDataRoutine = null;
             yield break;
         }
 
-        yield return RefreshBackendStamina(service);
+        BackendResult<IdleAdventureReferenceDataResponse> result = null;
+        yield return service.RefreshIdleAdventureReferenceData(
+            requestedStage,
+            value => result = value);
+        backendReferenceDataRoutine = null;
 
-        BackendResult<IdleAdventureHomeResponse> result = null;
-        yield return service.LoadIdleAdventureHome(value => result = value);
+        if (result == null || result.Data == null)
+        {
+            AddLog("Idle Adventure reference data refresh failed: " + BackendResultMessage(result));
+            yield break;
+        }
+
+        ApplyBackendReferenceData(result.Data, requestedStage);
+        backendReferenceDataLoaded = result.Success;
+        backendReferenceDataStage = requestedStage;
+        if (!result.Success)
+        {
+            AddLog("Idle Adventure reference data partially refreshed: " + BackendResultMessage(result));
+        }
+    }
+
+    private IEnumerator RefreshBackendProgress(BackendGameService service)
+    {
+        if (service == null || !service.IsAuthenticated) yield break;
+
+        BackendResult<IdleAdventureProgressResponse> result = null;
+        yield return service.RefreshIdleAdventureProgress(value => result = value);
         if (result != null && result.Success && result.Data != null)
         {
-            ApplyBackendHome(result.Data);
+            ApplyBackendProgress(result.Data);
         }
-        else
+        else if (result != null)
         {
-            AddLog($"Backend home load failed: {BackendResultMessage(result)}");
+            AddLog("Idle Adventure progress refresh failed: " + BackendResultMessage(result));
+        }
+    }
+
+    private IEnumerator LoadBackendHomeWhenReady()
+    {
+        backendHomeLoadRunning = true;
+        BackendGameService service = ResolveBackendService();
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            float deadline = Time.unscaledTime + 8f;
+            while (service != null && (!service.IsAuthenticated || service.IsConnecting) && Time.unscaledTime < deadline)
+            {
+                yield return null;
+            }
+
+            if (service == null || !service.IsAuthenticated)
+            {
+                if (attempt < 2)
+                {
+                    yield return new WaitForSecondsRealtime(2f * (attempt + 1));
+                    service = ResolveBackendService();
+                    continue;
+                }
+
+                break;
+            }
+
+            yield return RefreshBackendStamina(service);
+
+            BackendResult<IdleAdventureHomeResponse> result = null;
+            yield return service.LoadIdleAdventureHome(value => result = value);
+            if (result != null && result.Success && result.Data != null)
+            {
+                ApplyBackendHome(result.Data);
+                yield return RefreshBackendProgress(service);
+                QueueBackendReferenceDataLoad(Mathf.Max(1, backendNextStage));
+                break;
+            }
+
+            AddLog($"Backend home load failed (attempt {attempt + 1}/3): {BackendResultMessage(result)}");
+            if (attempt < 2)
+            {
+                yield return new WaitForSecondsRealtime(2f * (attempt + 1));
+            }
         }
 
+        backendHomeLoadRoutine = null;
         backendHomeLoadRunning = false;
     }
 
@@ -3303,6 +3779,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         BackendGameService service = BackendGameService.Instance;
         IdleAdventureStaminaResponse stamina = service == null ? null : service.CurrentStamina;
+        bool authenticated = service != null && service.IsAuthenticated;
         if (staminaText != null)
         {
             staminaText.text = stamina == null
@@ -3312,16 +3789,41 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (accelerationText != null)
         {
-            accelerationText.text = stamina == null
-                ? "等待服务器"
-                : $"下次恢复 {stamina.SecondsToNextRecovery}s";
+            if (!authenticated)
+            {
+                accelerationText.text = "请先登录";
+            }
+            else if (!accelerationPolicyLoaded || stamina == null)
+            {
+                accelerationText.text = "同步加速配置";
+            }
+            else if (!accelerationEnabled)
+            {
+                accelerationText.text = "挂机加速未开放";
+            }
+            else if (accelerationStaminaCost <= 0)
+            {
+                accelerationText.text = "挂机加速配置无效";
+            }
+            else if (stamina.CurrentStamina < accelerationStaminaCost)
+            {
+                accelerationText.text = $"体力不足，需要 {accelerationStaminaCost}";
+            }
+            else
+            {
+                accelerationText.text = $"消耗 {accelerationStaminaCost} 体力 · 下次恢复 {stamina.SecondsToNextRecovery}s";
+            }
         }
 
         if (accelerateButton != null)
         {
             accelerateButton.interactable = !staminaRequestPending
+                && authenticated
+                && accelerationPolicyLoaded
+                && accelerationEnabled
+                && accelerationStaminaCost > 0
                 && stamina != null
-                && stamina.CurrentStamina > 0L;
+                && stamina.CurrentStamina >= accelerationStaminaCost;
         }
     }
 
@@ -3336,6 +3838,33 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             return;
         }
 
+        SyncAccelerationPolicyFromService();
+        if (!accelerationPolicyLoaded)
+        {
+            AddLog("挂机加速配置尚未同步，请稍后重试。");
+            QueueBackendHomeLoad();
+            return;
+        }
+        if (!accelerationEnabled)
+        {
+            AddLog("挂机加速当前未开放。");
+            return;
+        }
+        if (accelerationStaminaCost <= 0)
+        {
+            AddLog("挂机加速成本配置无效，请刷新后重试。");
+            QueueBackendHomeLoad();
+            return;
+        }
+
+        IdleAdventureStaminaResponse stamina = service.CurrentStamina;
+        if (stamina == null || stamina.CurrentStamina < accelerationStaminaCost)
+        {
+            AddLog($"体力不足，挂机加速需要 {accelerationStaminaCost} 点体力。");
+            StartCoroutine(RefreshBackendStamina(service));
+            return;
+        }
+
         staminaRequestPending = true;
         RefreshStaminaView();
         service.AccelerateIdleAdventure(result =>
@@ -3343,40 +3872,117 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             staminaRequestPending = false;
             if (result != null && result.Success && result.Data != null)
             {
-                int cycles = Mathf.Max(0, result.Data.acceleration_cycles);
-                AddLog(cycles > 0 ? $"挂机加速完成，结算 {cycles} 个周期。" : "挂机加速完成。");
+                ApplyAccelerationPolicy(result.Data.state ?? service.CurrentIdleAdventureAfkReward);
+                int cycles = Mathf.Max(0, result.Data.ResolvedAccelerationCycles);
+                if (result.Data.ResolvedIdempotentReplay)
+                {
+                    AddLog("已恢复上一次挂机加速结果，体力和奖励不会重复结算。");
+                }
+                else
+                {
+                    AddLog(cycles > 0 ? $"挂机加速完成，结算 {cycles} 个周期。" : "挂机加速完成。");
+                }
                 if (afkRewardSource != null) afkRewardSource.TryLoadServerState();
             }
             else
             {
-                AddLog("挂机加速失败：" + BackendResultMessage(result));
+                string failureMessage = "挂机加速失败：" + BackendResultMessage(result);
+                AddLog(failureMessage);
+                Debug.LogWarning(failureMessage, this);
+                if (result != null && result.Code == 6513)
+                {
+                    accelerationPolicyLoaded = true;
+                    accelerationEnabled = false;
+                    QueueBackendHomeLoad();
+                }
+                else if (result != null && result.Code == 6511)
+                {
+                    StartCoroutine(RefreshBackendStamina(service));
+                }
             }
             RefreshStaminaView();
         });
+    }
+
+    private void SyncAccelerationPolicyFromService()
+    {
+        BackendGameService service = BackendGameService.Instance;
+        IdleAdventureAfkRewardStateResponse state = service == null || !service.IsAuthenticated
+            ? null
+            : service.CurrentIdleAdventureAfkReward;
+        if (state != null && state.ResolvedPlayerId > 0 && state.ResolvedPlayerId != service.PlayerId)
+        {
+            state = null;
+        }
+        if (ReferenceEquals(accelerationPolicyState, state)) return;
+
+        ApplyAccelerationPolicy(state);
+        RefreshStaminaView();
+    }
+
+    private void ApplyAccelerationPolicy(IdleAdventureAfkRewardStateResponse state)
+    {
+        accelerationPolicyState = state;
+        int staminaCost = state == null ? 0 : state.ResolvedAccelerationStaminaCost;
+        accelerationPolicyLoaded = state != null;
+        accelerationEnabled = state != null && state.ResolvedAccelerationEnabled;
+        accelerationStaminaCost = Mathf.Max(0, staminaCost);
+    }
+
+    private void ResetAccelerationPolicy()
+    {
+        accelerationPolicyState = null;
+        accelerationPolicyLoaded = false;
+        accelerationEnabled = false;
+        accelerationStaminaCost = 0;
     }
 
     private void ApplyBackendHome(IdleAdventureHomeResponse home)
     {
         if (home == null) return;
 
-        if (home.stamina != null)
+        BackendGameService service = BackendGameService.Instance;
+        ApplyAccelerationPolicy(home.ResolvedAfkReward
+            ?? (service == null ? null : service.CurrentIdleAdventureAfkReward));
+        RefreshStaminaView();
+
+        int resolvedHighestStage = home.ResolvedHighestStage;
+        if (resolvedHighestStage <= 0 && home.progress != null)
         {
-            RefreshStaminaView();
+            resolvedHighestStage = home.progress.ResolvedHighestStage;
         }
 
-        backendHighestStage = Mathf.Max(0, home.highest_stage);
-        backendNextStage = Mathf.Max(1, home.next_stage > 0 ? home.next_stage : backendHighestStage + 1);
-        backendRunningSessionKey = home.has_running_session && !string.IsNullOrEmpty(home.running_session_key)
-            ? home.running_session_key
+        int resolvedNextStage = home.ResolvedNextStage;
+        if (resolvedNextStage <= 0 && home.progress != null)
+        {
+            resolvedNextStage = home.progress.ResolvedNextStage;
+        }
+        backendHighestStage = Mathf.Max(0, resolvedHighestStage);
+        backendNextStage = Mathf.Max(1, resolvedNextStage > 0 ? resolvedNextStage : backendHighestStage + 1);
+        SanitizeSelectedReplayStage();
+
+        IdleAdventureSessionSummaryResponse activeSession = home.ResolvedActiveSession;
+        string resolvedSessionKey = activeSession != null
+            ? activeSession.ResolvedSessionKey
+            : home.ResolvedRunningSessionKey;
+        bool hasRunningSession = home.ResolvedHasRunningSession;
+        backendRunningSessionKey = hasRunningSession && !string.IsNullOrEmpty(resolvedSessionKey)
+            ? resolvedSessionKey
             : string.Empty;
-        backendAvailableNpcs = home.available_npc_list ?? new IdleAdventurePlayerNpcResponse[0];
+        backendAvailableNpcs = home.available_npc_list;
+        if (backendAvailableNpcs == null || backendAvailableNpcs.Length == 0)
+        {
+            backendAvailableNpcs = ConvertAvailableNpcSummaries(home.ResolvedAvailableNpcs);
+        }
+        if (backendAvailableNpcs == null) backendAvailableNpcs = new IdleAdventurePlayerNpcResponse[0];
 
         if (stageProgress != null) stageProgress.SetProgressFromServer(backendHighestStage);
         if (afkRewardSource != null) afkRewardSource.SetHighestClearedStageFromProgress(backendHighestStage);
 
-        if (home.formation != null && !backendFormationDirty)
+        IdleAdventureFormationDataResponse resolvedFormation = home.ResolvedFormation;
+        if (resolvedFormation != null && !backendFormationDirty)
         {
-            ApplyBackendFormation(home.formation.slots);
+            ApplyBackendFormation(resolvedFormation.slots);
         }
         else if (backendFormationDirty)
         {
@@ -3385,15 +3991,178 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (startPanelView != null)
         {
-            string runningText = home.has_running_session && !string.IsNullOrEmpty(home.running_session_key)
+            string runningText = hasRunningSession && !string.IsNullOrEmpty(resolvedSessionKey)
                 ? "Running session can be resumed from backend"
-                : $"Next stage: {backendNextStage}";
+                : acquisitionRouteApplied && acquisitionRouteStage > 0
+                    ? $"Authoritative next stage: {backendNextStage}. Guide target: Stage {acquisitionRouteStage}."
+                    : $"Authoritative next stage: {backendNextStage}.";
             startPanelView.SetContent("Idle Adventure mode", runningText);
+        }
+
+        RefreshStartStageSelectionView();
+        RefreshFormationView();
+        if (!backendRequestPending) UpdateButtonStates();
+        if (backendFormationDirty) SaveBackendFormationIfAvailable();
+    }
+
+    private void ApplyBackendProgress(IdleAdventureProgressResponse progress)
+    {
+        if (progress == null) return;
+
+        int highestStage = Mathf.Max(0, progress.ResolvedHighestStage);
+        backendHighestStage = Mathf.Max(backendHighestStage, highestStage);
+        if (string.IsNullOrEmpty(backendRunningSessionKey))
+        {
+            int resolvedLastStage = progress.ResolvedLastStage;
+            backendNextStage = Mathf.Max(
+                1,
+                highestStage > 0
+                    ? highestStage + 1
+                    : resolvedLastStage > 0 ? resolvedLastStage + 1 : backendNextStage);
+        }
+
+        if (stageProgress != null) stageProgress.SetProgressFromServer(highestStage);
+        if (afkRewardSource != null) afkRewardSource.SetHighestClearedStageFromProgress(highestStage);
+        SanitizeSelectedReplayStage();
+        RefreshStartStageSelectionView();
+        RefreshStaminaView();
+    }
+
+    private void ApplyBackendReferenceData(
+        IdleAdventureReferenceDataResponse referenceData,
+        int requestedStage)
+    {
+        if (referenceData == null) return;
+
+        if (referenceData.config != null)
+        {
+            ApplyBackendModeConfig(referenceData.config);
+        }
+
+        if (referenceData.player_npcs != null)
+        {
+            backendAvailableNpcs = referenceData.player_npcs;
+            SanitizeCurrentFormationForBackend();
+        }
+
+        if (referenceData.stage_enemies != null)
+        {
+            backendEnemyPreview = referenceData.stage_enemies;
+            if (startPanelView != null && !battleStarted)
+            {
+                string preview = FormatBackendEnemyPreview(backendEnemyPreview, requestedStage);
+                if (!string.IsNullOrEmpty(preview))
+                {
+                    startPanelView.SetContent("Idle Adventure mode", preview);
+                }
+            }
         }
 
         RefreshFormationView();
         if (!backendRequestPending) UpdateButtonStates();
-        if (backendFormationDirty) SaveBackendFormationIfAvailable();
+    }
+
+    private void ApplyBackendModeConfig(IdleAdventureModeConfigResponse config)
+    {
+        if (config == null) return;
+
+        int resolvedStartingFriendlyCount = config.ResolvedStartingFriendlyCount;
+        int resolvedBaseEnemyCount = config.ResolvedBaseEnemyCount;
+        int resolvedAddEnemyEveryStages = config.ResolvedAddEnemyEveryStages;
+        float resolvedTurnInterval = config.ResolvedTurnInterval;
+        float resolvedAttackAnimationDuration = config.ResolvedAttackAnimationDuration;
+        float resolvedHitFlashDuration = config.ResolvedHitFlashDuration;
+
+        if (resolvedStartingFriendlyCount > 0)
+        {
+            startingFriendlyCount = Mathf.Clamp(resolvedStartingFriendlyCount, 1, MaxPartySize);
+        }
+        if (resolvedBaseEnemyCount > 0)
+        {
+            baseEnemyCount = Mathf.Clamp(resolvedBaseEnemyCount, 1, MaxPartySize);
+        }
+        if (resolvedAddEnemyEveryStages >= 0)
+        {
+            addEnemyEveryStages = resolvedAddEnemyEveryStages;
+        }
+        if (resolvedTurnInterval > 0f)
+        {
+            turnInterval = Mathf.Max(0.1f, resolvedTurnInterval);
+        }
+        if (resolvedAttackAnimationDuration > 0f)
+        {
+            attackAnimationDuration = Mathf.Max(0.05f, resolvedAttackAnimationDuration);
+        }
+        if (resolvedHitFlashDuration > 0f)
+        {
+            hitFlashDuration = Mathf.Max(0.05f, resolvedHitFlashDuration);
+        }
+    }
+
+    private static string FormatBackendEnemyPreview(
+        IdleAdventureStageEnemiesResponse preview,
+        int requestedStage)
+    {
+        if (preview == null) return string.Empty;
+
+        int previewStage = preview.stage > 0 ? preview.stage : requestedStage;
+        int enemyCount = preview.ResolvedEnemyCount;
+        if (enemyCount <= 0 && preview.slots != null)
+        {
+            for (int i = 0; i < preview.slots.Length; i++)
+            {
+                if (preview.slots[i] != null && preview.slots[i].enemy != null) enemyCount++;
+            }
+        }
+
+        List<string> names = new List<string>();
+        if (preview.slots != null)
+        {
+            for (int i = 0; i < preview.slots.Length; i++)
+            {
+                IdleAdventureEnemySlotResponse slot = preview.slots[i];
+                if (slot == null || slot.enemy == null) continue;
+                string name = slot.enemy.ResolvedCombatantName;
+                if (string.IsNullOrEmpty(name)) name = slot.enemy.ResolvedCombatantKey;
+                if (string.IsNullOrEmpty(name)) name = "Enemy";
+                if (slot.enemy.level > 0) name += " Lv." + slot.enemy.level;
+                names.Add(name);
+            }
+        }
+
+        string stageName = preview.ResolvedStageName;
+        string stageLabel = string.IsNullOrEmpty(stageName)
+            ? $"Next stage: {previewStage}"
+            : $"Next stage: {previewStage} - {stageName}";
+        string summary = stageLabel + $"\nEnemy preview: {enemyCount}";
+        return names.Count == 0 ? summary : summary + " (" + string.Join(", ", names.ToArray()) + ")";
+    }
+
+    private static IdleAdventurePlayerNpcResponse[] ConvertAvailableNpcSummaries(
+        IdleAdventureNpcSummaryResponse[] summaries)
+    {
+        if (summaries == null || summaries.Length == 0) return null;
+
+        List<IdleAdventurePlayerNpcResponse> converted = new List<IdleAdventurePlayerNpcResponse>(summaries.Length);
+        for (int i = 0; i < summaries.Length; i++)
+        {
+            IdleAdventureNpcSummaryResponse source = summaries[i];
+            if (source == null || source.ResolvedNpcId <= 0L) continue;
+            converted.Add(new IdleAdventurePlayerNpcResponse
+            {
+                definition_id = source.ResolvedNpcId,
+                combatant_key = source.ResolvedNpcCode,
+                combatant_name = source.name,
+                side = "FRIENDLY",
+                max_health = source.ResolvedTotalHealth > 0L ? source.ResolvedTotalHealth : source.ResolvedBaseHealth,
+                attack = source.ResolvedTotalAttack > 0L ? source.ResolvedTotalAttack : source.ResolvedBaseAttack,
+                defense = source.ResolvedTotalDefense > 0L ? source.ResolvedTotalDefense : source.ResolvedBaseDefense,
+                speed = source.speed,
+                attribute_type = source.ResolvedCombatAttribute,
+                assigned = false
+            });
+        }
+        return converted.ToArray();
     }
 
     private void ApplyBackendFormation(IdleAdventureFormationSlotResponse[] slots)
@@ -3408,10 +4177,14 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         for (int i = 0; i < slots.Length; i++)
         {
             IdleAdventureFormationSlotResponse slot = slots[i];
-            if (slot == null || slot.slot_index < 0 || slot.slot_index >= MaxPartySize || slot.definition_id <= 0) continue;
+            if (slot == null) continue;
 
-            int definitionIndex = FindBackendNpcIndex(slot.definition_id);
-            if (definitionIndex >= 0) friendlyFormation[slot.slot_index] = definitionIndex;
+            int slotIndex = slot.ResolvedSlotIndex;
+            long definitionId = slot.ResolvedDefinitionId;
+            if (slotIndex < 0 || slotIndex >= MaxPartySize || definitionId <= 0L) continue;
+
+            int definitionIndex = FindBackendNpcIndex(definitionId);
+            if (definitionIndex >= 0) friendlyFormation[slotIndex] = definitionIndex;
         }
     }
 
@@ -3430,7 +4203,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         for (int i = 0; i < backendAvailableNpcs.Length; i++)
         {
-            if (backendAvailableNpcs[i] != null && backendAvailableNpcs[i].definition_id == definitionId) return i;
+            if (backendAvailableNpcs[i] != null
+                && backendAvailableNpcs[i].ResolvedDefinitionId == definitionId)
+            {
+                return i;
+            }
         }
 
         return -1;
@@ -3544,7 +4321,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         if (backendAvailableNpcs == null || definitionIndex < 0 || definitionIndex >= backendAvailableNpcs.Length) return 0L;
         IdleAdventurePlayerNpcResponse npc = backendAvailableNpcs[definitionIndex];
-        return npc != null ? npc.definition_id : 0L;
+        return npc != null ? npc.ResolvedDefinitionId : 0L;
     }
 
     private bool HasBackendNpcDefinitionsReady()
@@ -3688,7 +4465,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         bool normalPausePending = battleStarted && paused && !stageChoicePending && !stageFailedPending && !modePausedByChoice;
         bool pausePanelOpen = pausePanelView != null && pausePanelView.IsVisible;
         if (pauseButton != null) pauseButton.interactable = battleStarted && !backendRequestPending && !stageChoicePending && !stageFailedPending && !modePausedByChoice && !pausePanelOpen;
-        if (startPanelView != null) startPanelView.SetInteractable(!backendRequestPending && !battleStarted && FormationDeployedCount() > 0);
+        if (startPanelView != null)
+        {
+            startPanelView.SetInteractable(!backendRequestPending && !battleStarted && FormationDeployedCount() > 0);
+            startPanelView.SetStageSelectionInteractable(!backendRequestPending && !battleStarted && backendHighestStage > 0);
+        }
         if (stageEndPanelView != null)
         {
             stageEndPanelView.SetContinueInteractable(!backendRequestPending && battleStarted && !modePausedByChoice && ((stageChoicePending && pendingNextStage > 0) || stageFailedPending));
@@ -4230,19 +5011,20 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         }
 
         BackendResult<IdleAdventureStageClearResponse> result = null;
-        yield return service.ClearIdleAdventureStage(sessionKey, clearedStage, Guid.NewGuid().ToString("D"), value => result = value);
+        yield return service.ClearIdleAdventureStage(sessionKey, clearedStage, value => result = value);
         if (result == null || !result.Success)
         {
             AddLog("关卡结算同步失败：" + BackendResultMessage(result));
             yield break;
         }
 
-        if (result.Data != null && result.Data.progress != null)
+        if (result.Data != null && result.Data.ResolvedProgress != null)
         {
-            backendHighestStage = Mathf.Max(backendHighestStage, result.Data.progress.highest_stage);
-            backendNextStage = Mathf.Max(1, result.Data.progress.highest_stage + 1);
-            if (stageProgress != null) stageProgress.SetProgressFromServer(result.Data.progress.highest_stage);
-            if (afkRewardSource != null) afkRewardSource.SetHighestClearedStageFromProgress(result.Data.progress.highest_stage);
+            int highestStage = result.Data.ResolvedProgress.ResolvedHighestStage;
+            backendHighestStage = Mathf.Max(backendHighestStage, highestStage);
+            backendNextStage = Mathf.Max(1, highestStage + 1);
+            if (stageProgress != null) stageProgress.SetProgressFromServer(highestStage);
+            if (afkRewardSource != null) afkRewardSource.SetHighestClearedStageFromProgress(highestStage);
         }
         RefreshStaminaView();
     }
@@ -4687,7 +5469,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         if (result == null) return "No backend response.";
         string message = string.IsNullOrEmpty(result.Message) ? "No backend message." : result.Message;
-        return $"HTTP {result.HttpStatus}: {message}";
+        string businessCode = result.Code > 0 ? $", code {result.Code}" : string.Empty;
+        return $"HTTP {result.HttpStatus}{businessCode}: {message}";
     }
 
     private int CalculateDamage(IdleAdventureCombatant attacker, IdleAdventureCombatant target, IdleAdventureSkillDefinition skill)

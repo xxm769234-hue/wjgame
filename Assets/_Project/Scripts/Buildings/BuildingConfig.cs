@@ -16,10 +16,20 @@ public sealed class BuildingConfig : ScriptableObject
 
     [Header("Build")]
     [Min(0)] public int cost;
+    [Min(0)] public long goldCost;
+    [Min(0)] public long woodCost;
+    [Min(0)] public long stoneCost;
+    [Min(0)] public long ironCost;
     [Min(0)] public int buildSeconds;
     public string buildingType = "Default";
+    [HideInInspector] public string requiredLandType;
     public bool canBuild = true;
     public string disabledReason;
+    public string singletonGroupCode;
+    [Min(0)] public int ownedCount;
+    [Min(0)] public int maxOwnedCount;
+    public bool hasOwnershipLimit;
+    public bool ownershipLimitMet = true;
 
     [Header("Upgrade")]
     [Min(1)] public int maxLevel = 3;

@@ -1,55 +1,54 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Text;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.Scripting;
 using UnityEngine.UI;
 
 public partial class HomePageUI
 {
+    private const int MaximumAvatarBytes = 2 * 1024 * 1024;
+    private const int MaximumSourceAvatarBytes = 16 * 1024 * 1024;
+    private const int MaximumPreparedAvatarDimension = 2048;
+    private const int MaximumServerAvatarDimension = 4096;
+    private const long MaximumServerAvatarPixels = 16000000L;
+    private const string DefaultAvatarCode = "AVATAR_001";
     private const string DefaultAvatarResourcePath = "Avatars/avatar_001";
-    private const string PlayerAvatarStateKeyPrefix = "PlayerAvatarState.";
-
-    private static readonly Dictionary<string, string> AvatarResourcePathByCode =
-        new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            { "AVATAR_001", "Avatars/avatar_001" },
-            { "AVATAR_002", "Avatars/avatar_002" },
-            { "AVATAR_003", "Avatars/avatar_003" }
-        };
-
-    private readonly Dictionary<string, Sprite> avatarSpriteCache = new Dictionary<string, Sprite>(StringComparer.Ordinal);
-    private readonly Dictionary<long, PlayerAvatarState> avatarByPlayerId = new Dictionary<long, PlayerAvatarState>();
+    private const string Avatar002ResourcePath = "UI/AvatarPresets/微信图片_20260812141117_70_71";
+    private const string Avatar003ResourcePath = "UI/AvatarPresets/微信图片_20260812141246_71_71";
+    private const string AvatarOwnerPlayerIdKey = "PlayerAvatarOwnerId";
+    private const string LocalAvatarResourcePathKey = "PlayerAvatarResourcePath";
+    private const string AvatarCodeKey = "PlayerAvatarCode";
+    private readonly Dictionary<string, Sprite> avatarSpriteCache = new Dictionary<string, Sprite>();
     private readonly Dictionary<Image, AvatarImageState> avatarImageStates = new Dictionary<Image, AvatarImageState>();
-    private readonly Dictionary<string, string> avatarResourceKeyByCode = new Dictionary<string, string>(StringComparer.Ordinal);
-    private readonly List<AvatarPresetData> avatarPresets = new List<AvatarPresetData>();
+    private readonly List<AvatarPresetOption> presetAvatarOptions = new List<AvatarPresetOption>();
+    private readonly HashSet<string> enabledPresetAvatarCodes = new HashSet<string>(StringComparer.Ordinal);
     private GameObject avatarPresetPickerObject;
     private bool avatarMutationRunning;
-    private bool avatarPresetsLoaded;
-    private bool avatarPresetsRequestRunning;
-    private bool avatarSelectionEnabled = true;
-    private bool avatarPickerPending;
-    private bool avatarCatalogRefreshPending;
-    private bool avatarDisplayForcedDefault;
+    private bool avatarPresetCatalogLoading;
+    private bool avatarPresetCatalogLoaded;
 
     private void ConfigureProfileAvatarControls(Transform root, bool isAuthenticated, string nickname)
     {
         Image avatar = FindSceneComponent<Image>(root, "ProfileAvatarBackground");
         if (avatar == null)
         {
-            Debug.LogWarning("[Avatar] ProfileAvatarBackground was not found.", this);
             return;
         }
 
-        Button avatarButton = avatar.GetComponent<Button>();
-        if (avatarButton == null)
+        Button avatarButtonComponent = avatar.GetComponent<Button>();
+        if (avatarButtonComponent == null)
         {
-            avatarButton = avatar.gameObject.AddComponent<Button>();
-            avatarButton.targetGraphic = avatar;
+            avatarButtonComponent = avatar.gameObject.AddComponent<Button>();
+            avatarButtonComponent.targetGraphic = avatar;
         }
-        avatarButton.interactable = isAuthenticated && avatarSelectionEnabled && !avatarMutationRunning;
-        BindSceneButton(avatarButton, BeginAvatarSelection);
+        avatarButtonComponent.interactable = !avatarMutationRunning;
+        BindSceneButton(avatarButtonComponent, BeginAvatarSelection);
 
         Transform parent = avatar.transform.parent;
         Button chooseButton = FindSceneComponent<Button>(parent, "ProfileChooseAvatarButton");
@@ -68,126 +67,40 @@ public partial class HomePageUI
             ShrinkButtonLabel(resetButton, 15);
         }
 
-        bool canChoose = isAuthenticated && avatarSelectionEnabled && !avatarMutationRunning;
-        chooseButton.gameObject.SetActive(canChoose);
-        chooseButton.interactable = canChoose;
+        chooseButton.gameObject.SetActive(true);
         resetButton.gameObject.SetActive(isAuthenticated);
-        resetButton.interactable = isAuthenticated && !avatarMutationRunning && !string.IsNullOrEmpty(GetCurrentAvatarCode());
+        chooseButton.interactable = !avatarMutationRunning;
+        resetButton.interactable = !avatarMutationRunning
+            && (!string.IsNullOrEmpty(GetCurrentAvatarUrl()) || !string.IsNullOrEmpty(GetCurrentAvatarCode()));
         SetSceneButtonText(chooseButton, avatarMutationRunning ? "处理中" : "选择头像");
         BindSceneButton(chooseButton, BeginAvatarSelection);
         BindSceneButton(resetButton, () => StartCoroutine(ResetCurrentAvatar()));
 
-        Component fallbackText = FindSceneComponent<TMP_Text>(root, "ProfileAvatarInitial");
-        if (avatarDisplayForcedDefault)
-        {
-            ApplyDefaultAvatarImage(avatar, fallbackText);
-        }
-        else
-        {
-            ApplyAvatarImage(avatar, fallbackText, GameSession.PlayerId, GetCurrentAvatarCode(), GetCurrentAvatarVersion());
-        }
+        ApplyAvatarImage(
+            avatar,
+            FindSceneComponent<TMP_Text>(root, "ProfileAvatarInitial"),
+            GameSession.PlayerId,
+            GetCurrentAvatarUrl(),
+            GetCurrentAvatarCode(),
+            GetCurrentAvatarVersion());
     }
 
     private void BeginAvatarSelection()
     {
-        if (avatarMutationRunning || !HasAuthSession())
+        if (avatarMutationRunning)
         {
             return;
         }
-
-        if (!avatarPresetsLoaded)
+        if (!HasAuthSession())
         {
-            avatarPickerPending = true;
-            if (!avatarPresetsRequestRunning)
-            {
-                StartCoroutine(RefreshAvatarPresets());
-            }
-            SetStatus("正在读取头像目录...");
+            Debug.LogWarning("[Avatar] Avatar selection rejected because there is no authenticated session.");
+            RefreshProfileAvatarPanel("请先登录账号后上传头像");
             return;
         }
 
+        Debug.Log("[Avatar] Opening avatar picker for player " + GameSession.PlayerId + ".");
+        RefreshProfileAvatarPanel("正在打开头像选择...");
         ShowPresetAvatarPicker();
-    }
-
-    private IEnumerator RefreshAvatarPresets()
-    {
-        if (avatarPresetsRequestRunning || !HasAuthSession())
-        {
-            yield break;
-        }
-
-        avatarPresetsRequestRunning = true;
-        if (!ApiRequestUtility.TryCreateGet("/user/avatar/presets", true, out UnityWebRequest request, out string error))
-        {
-            avatarPresetsRequestRunning = false;
-            avatarPresetsLoaded = false;
-            avatarPickerPending = false;
-            avatarCatalogRefreshPending = false;
-            MarkAvatarUnavailableAndShowDefault();
-            Debug.LogWarning("[Avatar] Could not create preset directory request: " + error, this);
-            SetStatus("头像目录暂时不可用，将使用默认头像");
-            yield break;
-        }
-
-        using (request)
-        {
-            yield return request.SendWebRequest();
-            AvatarPresetsApiResponse response = ParseJson<AvatarPresetsApiResponse>(request.downloadHandler.text);
-            bool success = request.result == UnityWebRequest.Result.Success
-                && response != null
-                && response.code == 200
-                && response.data != null;
-            if (!success)
-            {
-                avatarPresetsRequestRunning = false;
-                avatarPresetsLoaded = false;
-                avatarPickerPending = false;
-                avatarCatalogRefreshPending = false;
-                if (ApiRequestUtility.IsUnauthorized(request))
-                {
-                    HandleUnauthorizedResponse(request);
-                }
-                MarkAvatarUnavailableAndShowDefault();
-                Debug.LogWarning("[Avatar] Preset directory request failed: " + GetAvatarRequestError(request, response, "头像目录读取失败"), this);
-                SetStatus("头像目录暂时不可用，将使用默认头像");
-                yield break;
-            }
-
-            avatarPresets.Clear();
-            avatarResourceKeyByCode.Clear();
-            avatarSelectionEnabled = false;
-            for (int i = 0; i < response.data.Length; i++)
-            {
-                AvatarPresetData preset = response.data[i];
-                if (preset == null || string.IsNullOrEmpty(preset.avatarCode))
-                {
-                    continue;
-                }
-
-                avatarPresets.Add(preset);
-                if (!string.IsNullOrWhiteSpace(preset.resourceKey))
-                {
-                    avatarResourceKeyByCode[preset.avatarCode] = preset.resourceKey.Trim();
-                }
-                avatarSelectionEnabled |= CanSelectAvatarPreset(preset);
-            }
-            avatarPresetsLoaded = true;
-            avatarPresetsRequestRunning = false;
-            avatarDisplayForcedDefault = false;
-        }
-
-        RefreshCurrentAvatarVisuals();
-        if (avatarPickerPending)
-        {
-            avatarPickerPending = false;
-            ShowPresetAvatarPicker();
-        }
-
-        if (avatarCatalogRefreshPending)
-        {
-            avatarCatalogRefreshPending = false;
-            StartCoroutine(RefreshAvatarPresets());
-        }
     }
 
     private void ShowPresetAvatarPicker()
@@ -196,33 +109,29 @@ public partial class HomePageUI
         if (panel == null || panel.PanelRoot == null)
         {
             Debug.LogWarning("[Avatar] Account profile panel is unavailable; cannot show preset avatars.", this);
-            SetStatus("个人信息面板不可用");
-            return;
-        }
-
-        if (!avatarSelectionEnabled)
-        {
-            SetStatus("头像选择功能当前已关闭");
-            return;
-        }
-
-        if (avatarPresets.Count == 0)
-        {
-            SetStatus("服务器没有可用头像");
+            RefreshProfileAvatarPanel("个人信息面板未找到，无法选择头像");
             return;
         }
 
         avatarPresetPickerObject = EnsurePresetAvatarPicker(panel.PanelRoot);
         if (avatarPresetPickerObject == null)
         {
-            SetStatus("头像选择面板创建失败");
+            RefreshProfileAvatarPanel("头像选择面板创建失败");
             return;
         }
 
         BuildPresetAvatarOptions(avatarPresetPickerObject.transform);
         avatarPresetPickerObject.SetActive(true);
         avatarPresetPickerObject.transform.SetAsLastSibling();
-        SetStatus("请选择一个预置头像");
+        if (!avatarPresetCatalogLoaded && !avatarPresetCatalogLoading)
+        {
+            StartCoroutine(RefreshPresetAvatarCatalog(true));
+        }
+        else
+        {
+            RefreshPresetAvatarPickerTitle();
+        }
+        SetStatus(avatarPresetCatalogLoading ? "正在读取固定头像目录..." : "请选择固定头像或微信头像");
     }
 
     private GameObject EnsurePresetAvatarPicker(Transform profileRoot)
@@ -244,6 +153,7 @@ public partial class HomePageUI
         Image overlayImage = overlay.GetComponent<Image>();
         overlayImage.color = new Color(0.05f, 0.035f, 0.02f, 0.62f);
         overlayImage.raycastTarget = true;
+
         Button overlayButton = overlay.AddComponent<Button>();
         overlayButton.targetGraphic = overlayImage;
         BindSceneButton(overlayButton, HidePresetAvatarPicker);
@@ -266,7 +176,7 @@ public partial class HomePageUI
 
         GameObject gridObject = new GameObject("ProfileAvatarPickerGrid", typeof(RectTransform));
         gridObject.transform.SetParent(card.transform, false);
-        SetRect(gridObject.GetComponent<RectTransform>(), Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(0f, -16f), new Vector2(-56f, -98f));
+        SetRect(gridObject.GetComponent<RectTransform>(), Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(0f, 4f), new Vector2(-56f, -142f));
         GridLayoutGroup grid = gridObject.AddComponent<GridLayoutGroup>();
         grid.cellSize = new Vector2(100f, 100f);
         grid.spacing = new Vector2(18f, 18f);
@@ -274,6 +184,12 @@ public partial class HomePageUI
         grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
         grid.constraintCount = 4;
         grid.childAlignment = TextAnchor.UpperCenter;
+
+        Button weChatButton = CreateButton(card.transform, "ProfileWechatAvatarButton", "选择微信头像", new Color(0.25f, 0.58f, 0.42f, 1f), Color.white);
+        SetRect(weChatButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 18f), new Vector2(180f, 42f));
+        ShrinkButtonLabel(weChatButton, 16);
+        BindSceneButton(weChatButton, BeginWeChatAvatarSelection);
+
         return overlay;
     }
 
@@ -291,31 +207,31 @@ public partial class HomePageUI
             Destroy(grid.GetChild(i).gameObject);
         }
 
-        int optionIndex = 0;
-        for (int i = 0; i < avatarPresets.Count; i++)
+        for (int i = 0; i < presetAvatarOptions.Count; i++)
         {
-            AvatarPresetData preset = avatarPresets[i];
-            if (!CanSelectAvatarPreset(preset))
+            AvatarPresetOption preset = presetAvatarOptions[i];
+            if (preset == null || preset.sprite == null)
             {
                 continue;
             }
 
-            Sprite sprite = LoadAvatarSprite(preset.avatarCode, preset.resourceKey);
-            if (sprite == null)
-            {
-                Debug.LogWarning("[Avatar] No local resource mapping exists for " + preset.avatarCode + ".", this);
-                continue;
-            }
-
-            Image option = CreateImage("ProfileAvatarPreset" + optionIndex, grid, Color.white);
-            option.sprite = sprite;
+            Image option = CreateImage("ProfileAvatarPreset_" + preset.avatarCode, grid, Color.white);
+            option.sprite = preset.sprite;
             option.preserveAspect = true;
             option.raycastTarget = true;
             Button optionButton = option.gameObject.AddComponent<Button>();
             optionButton.targetGraphic = option;
-            string avatarCode = preset.avatarCode;
-            BindSceneButton(optionButton, () => SelectPresetAvatar(avatarCode));
-            optionIndex++;
+            AvatarPresetOption selectedPreset = preset;
+            BindSceneButton(optionButton, () => SelectPresetAvatar(selectedPreset));
+
+            TMP_Text label = CreatePresetAvatarText(
+                "Label",
+                option.transform,
+                string.IsNullOrWhiteSpace(preset.displayName) ? preset.avatarCode : preset.displayName,
+                12f,
+                new Color(0.28f, 0.14f, 0.06f, 1f),
+                TextAlignmentOptions.Bottom);
+            SetRect(label.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(-4f, -4f));
         }
     }
 
@@ -343,43 +259,175 @@ public partial class HomePageUI
         }
     }
 
-    private void SelectPresetAvatar(string avatarCode)
+    private void SelectPresetAvatar(AvatarPresetOption preset)
     {
-        if (avatarMutationRunning || string.IsNullOrEmpty(avatarCode) || !HasAuthSession())
+        if (avatarMutationRunning || preset == null || preset.sprite == null || !preset.enabled)
         {
             return;
         }
-
-        AvatarPresetData selected = FindAvatarPreset(avatarCode);
-        if (selected == null || !selected.enabled)
+        if (!HasAuthSession())
         {
-            Debug.LogWarning("[Avatar] Selected avatar is not enabled: " + avatarCode, this);
-            SetStatus("头像不可用，请刷新头像目录");
-            return;
-        }
-
-        if (!IsAvatarPresetClientVersionSupported(selected))
-        {
-            ShowAvatarClientUpdateRequired();
-            return;
-        }
-
-        if (LoadAvatarSprite(selected.avatarCode, selected.resourceKey) == null)
-        {
-            Debug.LogWarning("[Avatar] Selected avatar resource could not be loaded: " + avatarCode, this);
-            SetStatus("Avatar resource unavailable; using the default avatar.");
+            Debug.LogWarning("[Avatar] Preset avatar selection rejected because there is no authenticated session.", this);
+            HidePresetAvatarPicker();
+            RefreshProfileAvatarPanel("请先登录账号后上传头像");
             return;
         }
 
         avatarMutationRunning = true;
         HidePresetAvatarPicker();
-        RefreshProfileAvatarPanel("正在设置头像...");
-        StartCoroutine(SetPresetAvatar(avatarCode));
+        RefreshProfileAvatarPanel("正在选择固定头像...");
+        StartCoroutine(SelectServerPresetAvatar(preset.avatarCode));
     }
 
-    private IEnumerator SetPresetAvatar(string avatarCode)
+    private void BeginWeChatAvatarSelection()
     {
-        AvatarPresetRequest payload = new AvatarPresetRequest { avatarCode = avatarCode };
+        if (avatarMutationRunning || !HasAuthSession())
+        {
+            return;
+        }
+
+        avatarMutationRunning = true;
+        HidePresetAvatarPicker();
+        RefreshProfileAvatarPanel("正在打开微信头像选择...");
+        WeChatPlatformBridge.RequestAvatarSelection(this);
+    }
+
+    private IEnumerator RefreshPresetAvatarCatalog(bool refreshPicker)
+    {
+        if (avatarPresetCatalogLoading || !HasAuthSession())
+        {
+            yield break;
+        }
+
+        avatarPresetCatalogLoading = true;
+        int requestedPlayerId = GameSession.PlayerId;
+        if (refreshPicker)
+        {
+            RefreshPresetAvatarPickerTitle();
+        }
+
+        UnityWebRequest request = CreateAuthorizedGet("/user/avatar/presets");
+        if (request == null)
+        {
+            avatarPresetCatalogLoading = false;
+            if (refreshPicker)
+            {
+                RefreshPresetAvatarPickerTitle(requestCreationError);
+                RefreshProfileAvatarPanel(requestCreationError);
+            }
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (requestedPlayerId != GameSession.PlayerId)
+            {
+                avatarPresetCatalogLoading = false;
+                yield break;
+            }
+            if (HandleUnauthorizedResponse(request))
+            {
+                avatarPresetCatalogLoading = false;
+                yield break;
+            }
+
+            AvatarPresetCatalogApiResponse response = ParseJson<AvatarPresetCatalogApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+            {
+                avatarPresetCatalogLoading = false;
+                avatarPresetCatalogLoaded = false;
+                string message = response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "固定头像目录读取失败")
+                    : GetApiError(response);
+                if (refreshPicker)
+                {
+                    RefreshPresetAvatarPickerTitle(message);
+                    RefreshProfileAvatarPanel(message);
+                }
+                yield break;
+            }
+
+            RebuildPresetAvatarOptions(response.data);
+            avatarPresetCatalogLoaded = true;
+            avatarPresetCatalogLoading = false;
+        }
+
+        ReconcileCurrentPresetAvatar();
+        if (avatarPresetPickerObject != null && avatarPresetPickerObject.activeInHierarchy)
+        {
+            BuildPresetAvatarOptions(avatarPresetPickerObject.transform);
+            RefreshPresetAvatarPickerTitle();
+        }
+        if (refreshPicker)
+        {
+            SetStatus(presetAvatarOptions.Count > 0 ? "固定头像目录已同步" : "暂无可用固定头像，可继续选择微信头像");
+        }
+    }
+
+    private void RebuildPresetAvatarOptions(AvatarPresetCatalogEntry[] entries)
+    {
+        presetAvatarOptions.Clear();
+        enabledPresetAvatarCodes.Clear();
+        for (int i = 0; i < entries.Length; i++)
+        {
+            AvatarPresetCatalogEntry entry = entries[i];
+            if (entry == null || string.IsNullOrWhiteSpace(entry.avatarCode))
+            {
+                continue;
+            }
+
+            string avatarCode = entry.avatarCode.Trim();
+            string resourcePath = GetPresetAvatarResourcePath(avatarCode);
+            if (string.IsNullOrEmpty(resourcePath))
+            {
+                Debug.LogWarning("[Avatar] Ignoring unknown preset avatar code: " + avatarCode + ".", this);
+                continue;
+            }
+            if (!entry.enabled || enabledPresetAvatarCodes.Contains(avatarCode))
+            {
+                continue;
+            }
+
+            Sprite sprite = Resources.Load<Sprite>(resourcePath);
+            if (sprite == null)
+            {
+                Debug.LogWarning("[Avatar] Preset resource is missing: Resources/" + resourcePath + ".", this);
+                continue;
+            }
+
+            enabledPresetAvatarCodes.Add(avatarCode);
+            presetAvatarOptions.Add(new AvatarPresetOption
+            {
+                avatarCode = avatarCode,
+                displayName = entry.displayName,
+                enabled = true,
+                sprite = sprite
+            });
+        }
+    }
+
+    private void RefreshPresetAvatarPickerTitle(string error = null)
+    {
+        if (avatarPresetPickerObject == null)
+        {
+            return;
+        }
+
+        string title = !string.IsNullOrWhiteSpace(error)
+            ? "固定头像不可用"
+            : avatarPresetCatalogLoading
+                ? "正在读取固定头像目录..."
+                : presetAvatarOptions.Count > 0
+                    ? "选择固定头像"
+                    : "暂无可用固定头像";
+        SetSceneText(avatarPresetPickerObject.transform, "ProfileAvatarPickerTitle", title);
+    }
+
+    private IEnumerator SelectServerPresetAvatar(string avatarCode)
+    {
+        int requestedPlayerId = GameSession.PlayerId;
+        AvatarPresetSelectionRequest payload = new AvatarPresetSelectionRequest { avatarCode = avatarCode };
         if (!ApiRequestUtility.TryCreateJsonRequest(
                 "/user/avatar/preset",
                 UnityWebRequest.kHttpVerbPUT,
@@ -396,7 +444,445 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
+            if (requestedPlayerId != GameSession.PlayerId)
+            {
+                avatarMutationRunning = false;
+                yield break;
+            }
+            if (HandleUnauthorizedResponse(request))
+            {
+                avatarMutationRunning = false;
+                yield break;
+            }
+
             AvatarApiResponse response = ParseJson<AvatarApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+            {
+                avatarMutationRunning = false;
+                RefreshProfileAvatarPanel(response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "固定头像选择失败")
+                    : GetApiError(response));
+                yield break;
+            }
+
+            string responseAvatarCode = string.IsNullOrWhiteSpace(response.data.avatarCode)
+                ? avatarCode
+                : response.data.avatarCode;
+            SaveCurrentAvatarState(
+                response.data.avatarUrl,
+                response.data.avatarSource,
+                responseAvatarCode,
+                response.data.avatarVersion,
+                response.data.avatarUpdatedTime);
+        }
+
+        avatarMutationRunning = false;
+        RefreshCurrentAvatarVisuals();
+        RefreshProfileAvatarPanel("固定头像更新成功");
+    }
+
+    private void ReconcileCurrentPresetAvatar()
+    {
+        if (PlayerPrefs.GetInt(AvatarOwnerPlayerIdKey, 0) != GameSession.PlayerId)
+        {
+            return;
+        }
+
+        string resourcePath = string.Equals(GetCurrentAvatarSource(), "PRESET", StringComparison.Ordinal)
+            ? ResolvePresetAvatarResourcePathForDisplay(GetCurrentAvatarCode())
+            : string.Empty;
+        if (string.IsNullOrEmpty(resourcePath))
+        {
+            PlayerPrefs.DeleteKey(LocalAvatarResourcePathKey);
+        }
+        else
+        {
+            PlayerPrefs.SetString(LocalAvatarResourcePathKey, resourcePath);
+        }
+        PlayerPrefs.Save();
+        RefreshCurrentAvatarVisuals();
+    }
+
+    private static string GetPresetAvatarResourcePath(string avatarCode)
+    {
+        switch (avatarCode)
+        {
+            case DefaultAvatarCode:
+                return DefaultAvatarResourcePath;
+            case "AVATAR_002":
+                return Avatar002ResourcePath;
+            case "AVATAR_003":
+                return Avatar003ResourcePath;
+            default:
+                return string.Empty;
+        }
+    }
+
+    private string ResolvePresetAvatarResourcePathForDisplay(string avatarCode)
+    {
+        string resourcePath = GetPresetAvatarResourcePath(avatarCode);
+        if (string.IsNullOrEmpty(resourcePath)
+            || (avatarPresetCatalogLoaded && !enabledPresetAvatarCodes.Contains(avatarCode)))
+        {
+            return string.Empty;
+        }
+
+        return Resources.Load<Sprite>(resourcePath) == null ? string.Empty : resourcePath;
+    }
+
+    private static bool TryEncodePresetAvatar(Sprite preset, out byte[] imageBytes, out string error)
+    {
+        imageBytes = null;
+        error = "预置头像读取失败，请重新选择";
+        if (preset == null || preset.texture == null)
+        {
+            return false;
+        }
+
+        Texture source = preset.texture;
+        Rect sourceRect = preset.textureRect;
+        int width = Mathf.Max(1, Mathf.RoundToInt(sourceRect.width));
+        int height = Mathf.Max(1, Mathf.RoundToInt(sourceRect.height));
+        RenderTexture previous = RenderTexture.active;
+        RenderTexture target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32);
+        Texture2D cropped = null;
+        try
+        {
+            Graphics.Blit(
+                source,
+                target,
+                new Vector2(sourceRect.width / source.width, sourceRect.height / source.height),
+                new Vector2(sourceRect.x / source.width, sourceRect.y / source.height));
+            RenderTexture.active = target;
+            cropped = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            cropped.ReadPixels(new Rect(0f, 0f, width, height), 0, 0);
+            cropped.Apply(false, false);
+            imageBytes = cropped.EncodeToPNG();
+            if (imageBytes == null || imageBytes.Length == 0)
+            {
+                imageBytes = null;
+                return false;
+            }
+            return true;
+        }
+        catch (Exception exception)
+        {
+            error = "预置头像处理失败：" + exception.Message;
+            return false;
+        }
+        finally
+        {
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+            if (cropped != null)
+            {
+                UnityEngine.Object.Destroy(cropped);
+            }
+        }
+    }
+
+    [Preserve]
+    public void OnAvatarSelected(string payloadJson)
+    {
+        AvatarSelectionPayload payload = null;
+        try
+        {
+            payload = JsonUtility.FromJson<AvatarSelectionPayload>(payloadJson);
+        }
+        catch (ArgumentException)
+        {
+            payload = null;
+        }
+
+        if (!TryReadAvatarSelection(payload, out byte[] imageBytes, out string readError))
+        {
+            avatarMutationRunning = false;
+            Debug.LogWarning("[Avatar] Selected image could not be read: " + readError);
+            RefreshProfileAvatarPanel(readError);
+            return;
+        }
+        Debug.Log("[Avatar] Selected image bytes: " + imageBytes.Length + ".");
+
+        if (!TryPrepareAvatarUpload(imageBytes, out byte[] uploadBytes, out string fileName, out string mimeType, out string prepareError))
+        {
+            avatarMutationRunning = false;
+            Debug.LogWarning("[Avatar] Selected image could not be prepared: " + prepareError);
+            RefreshProfileAvatarPanel(prepareError);
+            return;
+        }
+
+        Debug.Log("[Avatar] Prepared upload bytes: " + uploadBytes.Length + ", mimeType=" + mimeType + ".");
+        RefreshProfileAvatarPanel(uploadBytes.Length == imageBytes.Length ? "正在上传头像..." : "图片已自动压缩，正在上传头像...");
+        StartCoroutine(UploadCurrentAvatar(uploadBytes, fileName, mimeType));
+    }
+
+    [Preserve]
+    public void OnAvatarSelectionFailed(string message)
+    {
+        avatarMutationRunning = false;
+        string resolvedMessage = string.IsNullOrWhiteSpace(message) ? "头像选择已取消" : message;
+        Debug.LogWarning("[Avatar] Avatar selection did not complete: " + resolvedMessage);
+        RefreshProfileAvatarPanel(resolvedMessage);
+    }
+
+    [Preserve]
+    public void OnWeChatAvatarSelected(string payloadJson)
+    {
+        OnAvatarSelected(payloadJson);
+    }
+
+    [Preserve]
+    public void OnWeChatAvatarSelectionFailed(string message)
+    {
+        OnAvatarSelectionFailed(message);
+    }
+
+    private static bool TryReadAvatarSelection(AvatarSelectionPayload payload, out byte[] imageBytes, out string error)
+    {
+        imageBytes = null;
+        error = "头像文件读取失败，请重新选择";
+        if (payload == null)
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrEmpty(payload.base64Data))
+        {
+            try
+            {
+                imageBytes = Convert.FromBase64String(payload.base64Data);
+            }
+            catch (FormatException)
+            {
+                imageBytes = null;
+            }
+            if (imageBytes == null || imageBytes.Length == 0)
+            {
+                return false;
+            }
+            if (imageBytes.Length > MaximumSourceAvatarBytes)
+            {
+                imageBytes = null;
+                error = "头像源文件超过 16 MB，请重新选择较小图片";
+                return false;
+            }
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(payload.filePath))
+        {
+            return false;
+        }
+
+        try
+        {
+            FileInfo file = new FileInfo(payload.filePath);
+            if (!file.Exists)
+            {
+                error = "所选头像文件不存在，请重新选择";
+                return false;
+            }
+            if (file.Length > MaximumSourceAvatarBytes)
+            {
+                error = "头像源文件超过 16 MB，请重新选择较小图片";
+                return false;
+            }
+
+            imageBytes = File.ReadAllBytes(file.FullName);
+            return imageBytes.Length > 0;
+        }
+        catch (Exception exception)
+        {
+            error = "头像文件读取失败：" + exception.Message;
+            return false;
+        }
+        finally
+        {
+            if (payload.temporaryFile)
+            {
+                try
+                {
+                    File.Delete(payload.filePath);
+                }
+                catch (Exception)
+                {
+                }
+            }
+        }
+    }
+
+    private static bool TryDetectAvatarImageType(byte[] imageBytes, out string fileName, out string mimeType)
+    {
+        bool isPng = imageBytes != null
+            && imageBytes.Length >= 8
+            && imageBytes[0] == 0x89
+            && imageBytes[1] == 0x50
+            && imageBytes[2] == 0x4E
+            && imageBytes[3] == 0x47
+            && imageBytes[4] == 0x0D
+            && imageBytes[5] == 0x0A
+            && imageBytes[6] == 0x1A
+            && imageBytes[7] == 0x0A;
+        if (isPng)
+        {
+            fileName = "avatar.png";
+            mimeType = "image/png";
+            return true;
+        }
+
+        bool isJpeg = imageBytes != null
+            && imageBytes.Length >= 3
+            && imageBytes[0] == 0xFF
+            && imageBytes[1] == 0xD8
+            && imageBytes[2] == 0xFF;
+        fileName = "avatar.jpg";
+        mimeType = "image/jpeg";
+        return isJpeg;
+    }
+
+    private static bool TryPrepareAvatarUpload(
+        byte[] sourceBytes,
+        out byte[] uploadBytes,
+        out string fileName,
+        out string mimeType,
+        out string error)
+    {
+        uploadBytes = null;
+        fileName = string.Empty;
+        mimeType = string.Empty;
+        error = "头像图片处理失败，请重新选择";
+        if (!TryDetectAvatarImageType(sourceBytes, out fileName, out mimeType))
+        {
+            error = "只支持 JPG 或 PNG 格式的头像图片";
+            return false;
+        }
+
+        Texture2D sourceTexture = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+        try
+        {
+            if (!ImageConversion.LoadImage(sourceTexture, sourceBytes, false)
+                || sourceTexture.width <= 0
+                || sourceTexture.height <= 0)
+            {
+                error = "所选文件不是可读取的 JPG 或 PNG 图片";
+                return false;
+            }
+
+            bool serverDimensionsAccepted = sourceTexture.width <= MaximumServerAvatarDimension
+                && sourceTexture.height <= MaximumServerAvatarDimension
+                && sourceTexture.width * (long)sourceTexture.height <= MaximumServerAvatarPixels;
+            if (sourceBytes.Length <= MaximumAvatarBytes && serverDimensionsAccepted)
+            {
+                uploadBytes = sourceBytes;
+                return true;
+            }
+
+            float scale = Mathf.Min(
+                1f,
+                MaximumPreparedAvatarDimension / (float)Mathf.Max(sourceTexture.width, sourceTexture.height));
+            int targetWidth = Mathf.Max(1, Mathf.RoundToInt(sourceTexture.width * scale));
+            int targetHeight = Mathf.Max(1, Mathf.RoundToInt(sourceTexture.height * scale));
+            int[] qualityLevels = { 85, 75, 65, 55, 45 };
+
+            while (true)
+            {
+                Texture2D candidate = targetWidth == sourceTexture.width && targetHeight == sourceTexture.height
+                    ? sourceTexture
+                    : ResizeAvatarTexture(sourceTexture, targetWidth, targetHeight);
+                try
+                {
+                    for (int index = 0; index < qualityLevels.Length; index++)
+                    {
+                        byte[] encoded = ImageConversion.EncodeToJPG(candidate, qualityLevels[index]);
+                        if (encoded != null && encoded.Length > 0 && encoded.Length <= MaximumAvatarBytes)
+                        {
+                            uploadBytes = encoded;
+                            fileName = "avatar.jpg";
+                            mimeType = "image/jpeg";
+                            return true;
+                        }
+                    }
+                }
+                finally
+                {
+                    if (candidate != sourceTexture)
+                    {
+                        UnityEngine.Object.Destroy(candidate);
+                    }
+                }
+
+                if (targetWidth <= 256 && targetHeight <= 256)
+                {
+                    break;
+                }
+                targetWidth = Mathf.Max(256, targetWidth / 2);
+                targetHeight = Mathf.Max(256, targetHeight / 2);
+            }
+
+            error = "头像压缩后仍超过 2 MB，请重新选择其他图片";
+            return false;
+        }
+        catch (Exception exception)
+        {
+            error = "头像图片处理失败：" + exception.Message;
+            return false;
+        }
+        finally
+        {
+            UnityEngine.Object.Destroy(sourceTexture);
+        }
+    }
+
+    private static Texture2D ResizeAvatarTexture(Texture2D source, int width, int height)
+    {
+        RenderTexture previous = RenderTexture.active;
+        RenderTexture target = RenderTexture.GetTemporary(width, height, 0, RenderTextureFormat.ARGB32);
+        try
+        {
+            source.filterMode = FilterMode.Bilinear;
+            Graphics.Blit(source, target);
+            RenderTexture.active = target;
+            Texture2D resized = new Texture2D(width, height, TextureFormat.RGB24, false);
+            resized.ReadPixels(new Rect(0f, 0f, width, height), 0, 0);
+            resized.Apply(false, false);
+            return resized;
+        }
+        finally
+        {
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(target);
+        }
+    }
+
+    private IEnumerator UploadCurrentAvatar(byte[] imageBytes, string fileName, string mimeType)
+    {
+        if (!ApiRuntimeConfig.TryBuildUrl("/user/avatar", out string url, out string error))
+        {
+            avatarMutationRunning = false;
+            RefreshProfileAvatarPanel(error);
+            yield break;
+        }
+
+        Debug.Log("[Avatar] Uploading " + imageBytes.Length + " bytes to " + url + ".");
+
+        List<IMultipartFormSection> sections = new List<IMultipartFormSection>
+        {
+            new MultipartFormFileSection("file", imageBytes, fileName, mimeType)
+        };
+        byte[] boundary = UnityWebRequest.GenerateBoundary();
+        byte[] body = UnityWebRequest.SerializeFormSections(sections, boundary);
+        using (UnityWebRequest request = new UnityWebRequest(url, UnityWebRequest.kHttpVerbPUT))
+        {
+            request.uploadHandler = new UploadHandlerRaw(body);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.timeout = 20;
+            request.SetRequestHeader("Authorization", "Bearer " + GameSession.Token);
+            request.SetRequestHeader("X-Client-Channel", ApiRuntimeConfig.GetClientChannel());
+            request.SetRequestHeader("X-Client-Version-Code", ApiRuntimeConfig.GetClientVersionCode().ToString(CultureInfo.InvariantCulture));
+            request.SetRequestHeader("Content-Type", "multipart/form-data; boundary=" + Encoding.UTF8.GetString(boundary));
+            yield return request.SendWebRequest();
+
+            Debug.Log("[Avatar] Upload response: " + GetAvatarRequestDiagnostics(request));
             if (ApiRequestUtility.IsUnauthorized(request))
             {
                 avatarMutationRunning = false;
@@ -404,48 +890,23 @@ public partial class HomePageUI
                 yield break;
             }
 
-            bool success = request.result == UnityWebRequest.Result.Success
-                && response != null
-                && response.code == 200
-                && response.data != null;
-            if (!success)
+            AvatarApiResponse response = ParseJson<AvatarApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
                 avatarMutationRunning = false;
-                if ((response != null && response.code == 7307) || request.responseCode == 409)
-                {
-                    HomePageScenePanel profilePanel = GetRegisteredScenePanel(HomePageScenePanelType.AccountProfile);
-                    if (profilePanel != null && profilePanel.PanelRoot != null)
-                    {
-                        StartCoroutine(RefreshCurrentUserProfile(profilePanel.PanelRoot));
-                    }
-                }
-                if ((response != null && response.code == 400) || request.responseCode == 400)
-                {
-                    avatarPresetsLoaded = false;
-                    if (!avatarPresetsRequestRunning)
-                    {
-                        StartCoroutine(RefreshAvatarPresets());
-                    }
-                }
-                if ((response != null && response.code == 7310) || request.responseCode == 426)
-                {
-                    ShowAvatarClientUpdateRequired();
-                }
-                if ((response != null && response.code == 7308) || request.responseCode == 503)
-                {
-                    avatarSelectionEnabled = false;
-                    MarkAvatarUnavailableAndShowDefault();
-                }
-                RefreshProfileAvatarPanel(GetAvatarRequestError(request, response, "头像设置失败"));
+                RefreshProfileAvatarPanel(response != null && !string.IsNullOrWhiteSpace(response.message)
+                    ? response.message
+                    : ApiRequestUtility.GetErrorMessage(request, "头像上传失败"));
                 yield break;
             }
 
             SaveCurrentAvatarState(
-                response.data.avatarCode,
+                response.data.avatarUrl,
                 response.data.avatarSource,
+                response.data.avatarCode,
                 response.data.avatarVersion,
                 response.data.avatarUpdatedTime);
-            avatarDisplayForcedDefault = false;
+            Debug.Log("[Avatar] Upload succeeded. avatarVersion=" + response.data.avatarVersion + ".");
         }
 
         avatarMutationRunning = false;
@@ -478,33 +939,31 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
-            AvatarApiResponse response = ParseJson<AvatarApiResponse>(request.downloadHandler.text);
             if (ApiRequestUtility.IsUnauthorized(request))
             {
                 avatarMutationRunning = false;
                 HandleUnauthorizedResponse(request);
                 yield break;
             }
-
-            bool success = request.result == UnityWebRequest.Result.Success
-                && response != null
-                && response.code == 200
-                && response.data != null;
-            if (!success)
+            AvatarApiResponse response = ParseJson<AvatarApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
                 avatarMutationRunning = false;
-                RefreshProfileAvatarPanel(GetAvatarRequestError(request, response, "恢复默认头像失败"));
+                RefreshProfileAvatarPanel(response != null && !string.IsNullOrWhiteSpace(response.message)
+                    ? response.message
+                    : ApiRequestUtility.GetErrorMessage(request, "恢复默认头像失败"));
                 yield break;
             }
 
             SaveCurrentAvatarState(
-                response.data.avatarCode,
+                response.data.avatarUrl,
                 response.data.avatarSource,
+                response.data.avatarCode,
                 response.data.avatarVersion,
                 response.data.avatarUpdatedTime);
-            avatarDisplayForcedDefault = false;
         }
 
+        ClearLocalPresetAvatar();
         avatarMutationRunning = false;
         RefreshCurrentAvatarVisuals();
         RefreshProfileAvatarPanel("已恢复默认头像");
@@ -520,116 +979,133 @@ public partial class HomePageUI
         SetStatus(status);
     }
 
-    private void SaveCurrentAvatarState(string avatarCode, string avatarSource, long avatarVersion, string avatarUpdatedTime)
+    private void SaveCurrentAvatarState(
+        string avatarUrl,
+        string avatarSource,
+        string avatarCode,
+        long avatarVersion,
+        string avatarUpdatedTime)
     {
-        SavePlayerAvatarState(GameSession.PlayerId, avatarCode, avatarSource, avatarVersion, avatarUpdatedTime, false);
-    }
-
-    private bool SavePlayerAvatarState(long playerId, string avatarCode, string avatarSource, long avatarVersion, string avatarUpdatedTime, bool onlyIfNewer)
-    {
-        if (playerId <= 0)
+        int playerId = GameSession.PlayerId;
+        bool belongsToCurrentPlayer = playerId > 0
+            && PlayerPrefs.GetInt(AvatarOwnerPlayerIdKey, 0) == playerId;
+        long currentVersion = GetCurrentAvatarVersion();
+        if (belongsToCurrentPlayer && avatarVersion < currentVersion)
         {
-            Debug.LogWarning("[Avatar] Cannot cache avatar state without a valid player ID.", this);
-            return false;
+            Debug.LogWarning("[Avatar] Ignored stale avatar response version " + avatarVersion + ", current version is " + currentVersion + ".");
+            return;
         }
 
-        PlayerAvatarState current = GetPlayerAvatarState(playerId);
-        long normalizedVersion = Math.Max(0L, avatarVersion);
-        if (onlyIfNewer && normalizedVersion <= current.avatarVersion)
+        string resolvedSource = string.IsNullOrWhiteSpace(avatarSource) ? "DEFAULT" : avatarSource.Trim();
+        string resolvedCode = string.Equals(resolvedSource, "PRESET", StringComparison.Ordinal)
+            ? (avatarCode ?? string.Empty).Trim()
+            : string.Empty;
+        PlayerPrefs.SetInt(AvatarOwnerPlayerIdKey, playerId);
+        PlayerPrefs.SetString("PlayerAvatarUrl", avatarUrl ?? string.Empty);
+        PlayerPrefs.SetString("PlayerAvatarSource", resolvedSource);
+        PlayerPrefs.SetString(AvatarCodeKey, resolvedCode);
+        PlayerPrefs.SetString("PlayerAvatarVersion", Math.Max(0L, avatarVersion).ToString(CultureInfo.InvariantCulture));
+        PlayerPrefs.SetString("PlayerAvatarUpdatedTime", avatarUpdatedTime ?? string.Empty);
+        string resourcePath = string.Equals(resolvedSource, "PRESET", StringComparison.Ordinal)
+            ? ResolvePresetAvatarResourcePathForDisplay(resolvedCode)
+            : string.Empty;
+        if (string.IsNullOrEmpty(resourcePath))
         {
-            return false;
+            PlayerPrefs.DeleteKey(LocalAvatarResourcePathKey);
         }
-        if (!onlyIfNewer && normalizedVersion < current.avatarVersion)
+        else
         {
-            Debug.LogWarning("[Avatar] Ignored stale avatar response version " + normalizedVersion + ".", this);
-            return false;
+            PlayerPrefs.SetString(LocalAvatarResourcePathKey, resourcePath);
         }
-
-        current.avatarCode = NormalizeAvatarCode(avatarCode);
-        current.avatarSource = string.IsNullOrEmpty(avatarSource)
-            ? (string.IsNullOrEmpty(current.avatarCode) ? "DEFAULT" : "PRESET")
-            : avatarSource;
-        current.avatarVersion = normalizedVersion;
-        current.avatarUpdatedTime = avatarUpdatedTime ?? string.Empty;
-        current.hasServerState = true;
-        SavePlayerAvatarStateToPrefs(playerId, current);
-        return true;
-    }
-
-    private PlayerAvatarState GetPlayerAvatarState(long playerId)
-    {
-        if (playerId <= 0)
-        {
-            return new PlayerAvatarState();
-        }
-        if (avatarByPlayerId.TryGetValue(playerId, out PlayerAvatarState cached))
-        {
-            return cached;
-        }
-
-        string keyPrefix = GetPlayerAvatarStateKeyPrefix(playerId);
-        PlayerAvatarState state = new PlayerAvatarState
-        {
-            avatarCode = NormalizeAvatarCode(PlayerPrefs.GetString(keyPrefix + "Code", string.Empty)),
-            avatarSource = PlayerPrefs.GetString(keyPrefix + "Source", string.Empty),
-            avatarUpdatedTime = PlayerPrefs.GetString(keyPrefix + "UpdatedTime", string.Empty),
-            hasServerState = PlayerPrefs.GetInt(keyPrefix + "HasState", 0) == 1
-        };
-        if (!long.TryParse(PlayerPrefs.GetString(keyPrefix + "Version", "0"), out state.avatarVersion))
-        {
-            state.avatarVersion = 0L;
-        }
-        state.avatarVersion = Math.Max(0L, state.avatarVersion);
-        avatarByPlayerId[playerId] = state;
-        return state;
-    }
-
-    private static string GetPlayerAvatarStateKeyPrefix(long playerId)
-    {
-        return PlayerAvatarStateKeyPrefix + playerId + ".";
-    }
-
-    private static void SavePlayerAvatarStateToPrefs(long playerId, PlayerAvatarState state)
-    {
-        string keyPrefix = GetPlayerAvatarStateKeyPrefix(playerId);
-        PlayerPrefs.SetString(keyPrefix + "Code", state.avatarCode ?? string.Empty);
-        PlayerPrefs.SetString(keyPrefix + "Source", state.avatarSource ?? string.Empty);
-        PlayerPrefs.SetString(keyPrefix + "Version", state.avatarVersion.ToString());
-        PlayerPrefs.SetString(keyPrefix + "UpdatedTime", state.avatarUpdatedTime ?? string.Empty);
-        PlayerPrefs.SetInt(keyPrefix + "HasState", state.hasServerState ? 1 : 0);
         PlayerPrefs.Save();
+        RefreshCurrentAvatarVisuals();
+        if (string.Equals(resolvedSource, "PRESET", StringComparison.Ordinal)
+            && !avatarPresetCatalogLoaded
+            && !avatarPresetCatalogLoading
+            && isActiveAndEnabled)
+        {
+            StartCoroutine(RefreshPresetAvatarCatalog(false));
+        }
+    }
+
+    private void ClearLocalPresetAvatar()
+    {
+        PlayerPrefs.DeleteKey(LocalAvatarResourcePathKey);
+        PlayerPrefs.Save();
+    }
+
+    private string GetCurrentAvatarResourcePath()
+    {
+        if (PlayerPrefs.GetInt(AvatarOwnerPlayerIdKey, 0) != GameSession.PlayerId)
+        {
+            return string.Empty;
+        }
+
+        return string.Equals(GetCurrentAvatarSource(), "LOCAL_PRESET", StringComparison.Ordinal)
+            ? PlayerPrefs.GetString(LocalAvatarResourcePathKey, string.Empty)
+            : string.Empty;
+    }
+
+    private string GetCurrentAvatarUrl()
+    {
+        if (PlayerPrefs.GetInt(AvatarOwnerPlayerIdKey, 0) != GameSession.PlayerId)
+        {
+            return string.Empty;
+        }
+        return PlayerPrefs.GetString("PlayerAvatarUrl", string.Empty);
+    }
+
+    private string GetCurrentAvatarSource()
+    {
+        if (PlayerPrefs.GetInt(AvatarOwnerPlayerIdKey, 0) != GameSession.PlayerId)
+        {
+            return "DEFAULT";
+        }
+        return PlayerPrefs.GetString("PlayerAvatarSource", "DEFAULT");
     }
 
     private string GetCurrentAvatarCode()
     {
-        return GetPlayerAvatarState(GameSession.PlayerId).avatarCode;
+        if (PlayerPrefs.GetInt(AvatarOwnerPlayerIdKey, 0) != GameSession.PlayerId)
+        {
+            return string.Empty;
+        }
+        return PlayerPrefs.GetString(AvatarCodeKey, string.Empty);
     }
 
     private long GetCurrentAvatarVersion()
     {
-        return GetPlayerAvatarState(GameSession.PlayerId).avatarVersion;
+        if (PlayerPrefs.GetInt(AvatarOwnerPlayerIdKey, 0) != GameSession.PlayerId)
+        {
+            return 0L;
+        }
+        return long.TryParse(PlayerPrefs.GetString("PlayerAvatarVersion", "0"), NumberStyles.Integer, CultureInfo.InvariantCulture, out long version)
+            ? Math.Max(0L, version)
+            : 0L;
     }
 
     private void RefreshCurrentAvatarVisuals()
     {
         if (mainPageTransform != null)
         {
-            Transform headTransform = mainPageTransform.Find("BookAvatarFrame/BookAvatarPortrait/Image/BookAvatarHead");
+            Transform headTransform = mainPageTransform.Find(
+                "BookAvatarFrame/BookAvatarPortrait/BookAvatarHead");
             Image head = headTransform != null ? headTransform.GetComponent<Image>() : null;
             if (head != null)
             {
-                if (avatarDisplayForcedDefault)
-                {
-                    ApplyDefaultAvatarImage(head, null);
-                }
-                else
-                {
-                    ApplyAvatarImage(head, null, GameSession.PlayerId, GetCurrentAvatarCode(), GetCurrentAvatarVersion());
-                }
+                ApplyAvatarImage(
+                    head,
+                    null,
+                    GameSession.PlayerId,
+                    GetCurrentAvatarUrl(),
+                    GetCurrentAvatarCode(),
+                    GetCurrentAvatarVersion());
             }
             else
             {
-                Debug.LogWarning("[Avatar] Home avatar target BookAvatarHead was not found.", this);
+                Debug.LogWarning(
+                    "[Avatar] Home avatar target BookAvatarFrame/BookAvatarPortrait/BookAvatarHead was not found.",
+                    this);
             }
         }
 
@@ -657,9 +1133,12 @@ public partial class HomePageUI
             payload.playerIds[i] = v37Friends[i].playerId;
         }
 
-        if (!TryCreateAuthorizedPost("/friends/avatars/batch", JsonUtility.ToJson(payload), out UnityWebRequest request, out string error))
+        if (!TryCreateAuthorizedPost(
+                "/friends/avatars/batch",
+                JsonUtility.ToJson(payload),
+                out UnityWebRequest request,
+                out string error))
         {
-            Debug.LogWarning("[Avatar] Could not create friend avatar batch request: " + error, this);
             yield break;
         }
 
@@ -674,7 +1153,6 @@ public partial class HomePageUI
             FriendAvatarBatchApiResponse response = ParseJson<FriendAvatarBatchApiResponse>(request.downloadHandler.text);
             if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
-                Debug.LogWarning("[Avatar] Friend avatar batch request failed: " + ApiRequestUtility.GetErrorMessage(request, "好友头像同步失败"), this);
                 yield break;
             }
 
@@ -687,201 +1165,140 @@ public partial class HomePageUI
                     continue;
                 }
 
-                friend.avatarCode = NormalizeAvatarCode(snapshot.avatarCode);
-                friend.avatarVersion = Math.Max(0L, snapshot.avatarVersion);
-                SavePlayerAvatarState(friend.playerId, friend.avatarCode, snapshot.avatarSource, friend.avatarVersion, string.Empty, true);
+                friend.avatarUrl = snapshot.avatarUrl;
+                friend.avatarCode = snapshot.avatarCode;
+                friend.avatarVersion = snapshot.avatarVersion;
             }
         }
     }
 
-    private void RefreshAvatarCatalogFromRealtime()
-    {
-        avatarPresetsLoaded = false;
-        avatarCatalogRefreshPending = true;
-        if (avatarPresetPickerObject != null && avatarPresetPickerObject.activeInHierarchy)
-        {
-            avatarPickerPending = true;
-        }
-        if (!avatarPresetsRequestRunning)
-        {
-            avatarCatalogRefreshPending = false;
-            StartCoroutine(RefreshAvatarPresets());
-        }
-    }
-
-    private void ApplyAvatarImage(Image image, Component fallbackText, long playerId, string avatarCode, long avatarVersion)
+    private void ApplyAvatarImage(
+        Image image,
+        Component fallbackText,
+        int playerId,
+        string avatarUrl,
+        string avatarCode,
+        long avatarVersion)
     {
         if (image == null)
         {
             return;
         }
 
-        PlayerAvatarState state = GetPlayerAvatarState(playerId);
-        string suppliedCode = NormalizeAvatarCode(avatarCode);
-        long suppliedVersion = Math.Max(0L, avatarVersion);
-        if (playerId > 0 && suppliedVersion > state.avatarVersion)
+        AvatarImageState state = GetAvatarImageState(image);
+        if (!string.IsNullOrWhiteSpace(avatarCode))
         {
-            SavePlayerAvatarState(playerId, suppliedCode, "", suppliedVersion, string.Empty, false);
-            state = GetPlayerAvatarState(playerId);
-        }
-
-        string effectiveCode = state.avatarVersion > suppliedVersion ? state.avatarCode : suppliedCode;
-        long effectiveVersion = Math.Max(state.avatarVersion, suppliedVersion);
-        Sprite sprite = LoadAvatarSprite(effectiveCode, GetAvatarResourceKey(effectiveCode));
-        AvatarImageState imageState = GetAvatarImageState(image);
-        imageState.requestKey = playerId + ":" + effectiveVersion + ":" + effectiveCode;
-        if (sprite != null)
-        {
-            SetLoadedAvatar(image, fallbackText, sprite);
-            return;
-        }
-
-        Sprite defaultSprite = LoadAvatarSprite(string.Empty);
-        if (defaultSprite != null)
-        {
-            SetLoadedAvatar(image, fallbackText, defaultSprite);
-            return;
-        }
-
-        image.sprite = imageState.defaultSprite;
-        image.color = imageState.defaultColor;
-        image.preserveAspect = imageState.defaultPreserveAspect;
-        if (fallbackText != null)
-        {
-            fallbackText.gameObject.SetActive(true);
-        }
-    }
-
-    private Sprite LoadAvatarSprite(string avatarCode, string resourceKey = null)
-    {
-        string normalizedCode = NormalizeAvatarCode(avatarCode);
-        if (string.IsNullOrEmpty(normalizedCode))
-        {
-            resourceKey = DefaultAvatarResourcePath;
-        }
-        else if (string.IsNullOrWhiteSpace(resourceKey))
-        {
-            resourceKey = GetAvatarResourceKey(normalizedCode);
-        }
-
-        if (string.IsNullOrWhiteSpace(resourceKey))
-        {
-            Debug.LogWarning("[Avatar] No resource key exists for " + normalizedCode + ".", this);
-            return null;
-        }
-
-        string resourcePath = resourceKey.Trim();
-
-        string cacheKey = string.IsNullOrEmpty(normalizedCode) ? "DEFAULT" : resourcePath;
-        if (avatarSpriteCache.TryGetValue(cacheKey, out Sprite cachedSprite) && cachedSprite != null)
-        {
-            return cachedSprite;
-        }
-
-        Sprite sprite = Resources.Load<Sprite>(resourcePath);
-        if (sprite == null)
-        {
-            Debug.LogWarning("[Avatar] Avatar resource was not found: Resources/" + resourcePath + ".", this);
-            return null;
-        }
-
-        avatarSpriteCache[cacheKey] = sprite;
-        return sprite;
-    }
-
-    private string GetAvatarResourceKey(string avatarCode)
-    {
-        string normalizedCode = NormalizeAvatarCode(avatarCode);
-        if (string.IsNullOrEmpty(normalizedCode))
-        {
-            return DefaultAvatarResourcePath;
-        }
-
-        if (avatarResourceKeyByCode.TryGetValue(normalizedCode, out string resourceKey)
-            && !string.IsNullOrWhiteSpace(resourceKey))
-        {
-            return resourceKey;
-        }
-
-        if (AvatarResourcePathByCode.TryGetValue(normalizedCode, out string legacyResourcePath))
-        {
-            return legacyResourcePath;
-        }
-
-        return string.Empty;
-    }
-
-    private bool CanSelectAvatarPreset(AvatarPresetData preset)
-    {
-        if (preset == null || !preset.enabled || !IsAvatarPresetClientVersionSupported(preset))
-        {
-            return false;
-        }
-
-        return LoadAvatarSprite(preset.avatarCode, preset.resourceKey) != null;
-    }
-
-    private bool IsAvatarPresetClientVersionSupported(AvatarPresetData preset)
-    {
-        return preset != null
-            && Math.Max(0L, preset.minimumClientVersionCode) <= ApiRuntimeConfig.GetClientVersionCode();
-    }
-
-    private void ShowAvatarClientUpdateRequired()
-    {
-        SetStatus("This client version does not support this avatar. Please update.");
-    }
-
-    private void MarkAvatarUnavailableAndShowDefault()
-    {
-        avatarSelectionEnabled = false;
-        avatarDisplayForcedDefault = true;
-        RefreshCurrentAvatarVisuals();
-    }
-
-    private void ApplyDefaultAvatarImage(Image image, Component fallbackText)
-    {
-        if (image == null)
-        {
-            return;
-        }
-
-        AvatarImageState imageState = GetAvatarImageState(image);
-        Sprite defaultSprite = LoadAvatarSprite(string.Empty);
-        if (defaultSprite != null)
-        {
-            SetLoadedAvatar(image, fallbackText, defaultSprite);
-            return;
-        }
-
-        image.sprite = imageState.defaultSprite;
-        image.color = imageState.defaultColor;
-        image.preserveAspect = imageState.defaultPreserveAspect;
-        if (fallbackText != null)
-        {
-            fallbackText.gameObject.SetActive(true);
-        }
-    }
-
-    private static string NormalizeAvatarCode(string avatarCode)
-    {
-        if (string.IsNullOrEmpty(avatarCode) || string.Equals(avatarCode, "DEFAULT", StringComparison.Ordinal))
-        {
-            return string.Empty;
-        }
-        return avatarCode;
-    }
-
-    private AvatarPresetData FindAvatarPreset(string avatarCode)
-    {
-        for (int i = 0; i < avatarPresets.Count; i++)
-        {
-            if (avatarPresets[i] != null && string.Equals(avatarPresets[i].avatarCode, avatarCode, StringComparison.Ordinal))
+            string presetResourcePath = ResolvePresetAvatarResourcePathForDisplay(avatarCode.Trim());
+            if (!string.IsNullOrEmpty(presetResourcePath))
             {
-                return avatarPresets[i];
+                Sprite presetSprite = Resources.Load<Sprite>(presetResourcePath);
+                if (presetSprite != null)
+                {
+                    state.requestKey = "preset:" + avatarCode;
+                    SetLoadedAvatar(image, fallbackText, presetSprite);
+                    return;
+                }
+            }
+
+            ApplyBundledDefaultAvatar(image, fallbackText, state);
+            return;
+        }
+
+        string localResourcePath = playerId == GameSession.PlayerId
+            ? GetCurrentAvatarResourcePath()
+            : string.Empty;
+        if (!string.IsNullOrEmpty(localResourcePath))
+        {
+            Sprite localSprite = Resources.Load<Sprite>(localResourcePath);
+            if (localSprite != null)
+            {
+                state.requestKey = "local:" + localResourcePath;
+                SetLoadedAvatar(image, fallbackText, localSprite);
+                return;
+            }
+
+            Debug.LogWarning("[Avatar] Local avatar resource was not found: Resources/" + localResourcePath + ".", this);
+        }
+
+        string resolvedUrl = ResolveAvatarUrl(avatarUrl);
+        if (string.IsNullOrEmpty(resolvedUrl))
+        {
+            ApplyBundledDefaultAvatar(image, fallbackText, state);
+            return;
+        }
+
+        string key = playerId + ":" + avatarVersion.ToString(CultureInfo.InvariantCulture) + ":" + resolvedUrl;
+        state.requestKey = key;
+        if (avatarSpriteCache.TryGetValue(key, out Sprite cachedSprite) && cachedSprite != null)
+        {
+            SetLoadedAvatar(image, fallbackText, cachedSprite);
+            return;
+        }
+
+        StartCoroutine(DownloadAvatarSprite(image, fallbackText, key, resolvedUrl));
+    }
+
+    private static void ApplyBundledDefaultAvatar(Image image, Component fallbackText, AvatarImageState state)
+    {
+        Sprite defaultAvatar = Resources.Load<Sprite>(DefaultAvatarResourcePath);
+        if (defaultAvatar != null)
+        {
+            state.requestKey = "default:" + DefaultAvatarCode;
+            SetLoadedAvatar(image, fallbackText, defaultAvatar);
+            return;
+        }
+
+        state.requestKey = string.Empty;
+        image.sprite = state.defaultSprite;
+        image.color = state.defaultColor;
+        image.preserveAspect = state.defaultPreserveAspect;
+        if (fallbackText != null)
+        {
+            fallbackText.gameObject.SetActive(true);
+        }
+    }
+
+    private IEnumerator DownloadAvatarSprite(Image image, Component fallbackText, string requestKey, string url)
+    {
+        using (UnityWebRequest request = UnityWebRequestTexture.GetTexture(url, true))
+        {
+            request.timeout = 15;
+            yield return request.SendWebRequest();
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogWarning("[Avatar] Avatar image download failed: " + GetAvatarRequestDiagnostics(request));
+                yield break;
+            }
+
+            Texture2D texture = DownloadHandlerTexture.GetContent(request);
+            if (texture == null)
+            {
+                yield break;
+            }
+
+            Sprite sprite = Sprite.Create(
+                texture,
+                new Rect(0f, 0f, texture.width, texture.height),
+                new Vector2(0.5f, 0.5f),
+                100f);
+            if (avatarSpriteCache.TryGetValue(requestKey, out Sprite existing) && existing != null)
+            {
+                Destroy(sprite);
+                Destroy(texture);
+                sprite = existing;
+            }
+            else
+            {
+                avatarSpriteCache[requestKey] = sprite;
+            }
+
+            if (image != null
+                && avatarImageStates.TryGetValue(image, out AvatarImageState state)
+                && state.requestKey == requestKey)
+            {
+                SetLoadedAvatar(image, fallbackText, sprite);
             }
         }
-        return null;
     }
 
     private AvatarImageState GetAvatarImageState(Image image)
@@ -910,116 +1327,100 @@ public partial class HomePageUI
         }
     }
 
-    private static string GetAvatarRequestError(UnityWebRequest request, BasicApiResponse response, string fallback)
+    private static string ResolveAvatarUrl(string avatarUrl)
     {
-        if (response != null && !string.IsNullOrWhiteSpace(response.message))
+        if (string.IsNullOrWhiteSpace(avatarUrl))
         {
-            return response.message;
+            return string.Empty;
         }
-        return ApiRequestUtility.GetErrorMessage(request, fallback);
+        if (Uri.TryCreate(avatarUrl, UriKind.Absolute, out Uri absolute)
+            && (absolute.Scheme == Uri.UriSchemeHttp || absolute.Scheme == Uri.UriSchemeHttps))
+        {
+            return absolute.AbsoluteUri;
+        }
+        if (!ApiRuntimeConfig.TryGetBaseUrl(out string baseUrl, out string error)
+            || !Uri.TryCreate(baseUrl, UriKind.Absolute, out Uri apiUri))
+        {
+            return string.Empty;
+        }
+
+        Uri origin = new Uri(apiUri.GetLeftPart(UriPartial.Authority) + "/");
+        return Uri.TryCreate(origin, avatarUrl, out Uri resolved) ? resolved.AbsoluteUri : string.Empty;
     }
 
-    private void ApplyAvatarChangedRealtime(AvatarChangedRealtimeData message)
+    private static string GetAvatarRequestDiagnostics(UnityWebRequest request)
     {
-        if (message == null || message.playerId <= 0 || message.avatarVersion <= 0)
+        if (request == null)
         {
-            return;
+            return "request is null";
         }
 
-        if (!SavePlayerAvatarState(
-                message.playerId,
-                message.avatarCode,
-                message.avatarSource,
-                message.avatarVersion,
-                message.avatarUpdatedTime,
-                true))
+        string body = request.downloadHandler == null ? string.Empty : request.downloadHandler.text;
+        if (body.Length > 500)
         {
-            return;
+            body = body.Substring(0, 500) + "...";
         }
-
-        ServerFriendResponse friend = message.playerId <= int.MaxValue ? FindV37Friend((int)message.playerId) : null;
-        if (friend != null)
-        {
-            friend.avatarCode = NormalizeAvatarCode(message.avatarCode);
-            friend.avatarVersion = message.avatarVersion;
-        }
-        if (v37FriendSearchResult != null && v37FriendSearchResult.playerId == message.playerId)
-        {
-            v37FriendSearchResult.avatarCode = NormalizeAvatarCode(message.avatarCode);
-            v37FriendSearchResult.avatarVersion = message.avatarVersion;
-        }
-        UpdateAvatarCodeInFriendRequests(message);
-
-        if (message.playerId == GameSession.PlayerId)
-        {
-            RefreshCurrentAvatarVisuals();
-        }
-
-        HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.Friends);
-        if (panel != null && panel.PanelRoot != null && panel.gameObject.activeInHierarchy)
-        {
-            RefreshServerFriendRequestPanel(panel.PanelRoot, "好友头像已更新");
-        }
-    }
-
-    private void UpdateAvatarCodeInFriendRequests(AvatarChangedRealtimeData message)
-    {
-        for (int i = 0; i < v37IncomingRequests.Count; i++)
-        {
-            UpdateAvatarCodeInRequest(v37IncomingRequests[i], message);
-        }
-        for (int i = 0; i < v37OutgoingRequests.Count; i++)
-        {
-            UpdateAvatarCodeInRequest(v37OutgoingRequests[i], message);
-        }
-    }
-
-    private static void UpdateAvatarCodeInRequest(ServerFriendRequestResponse request, AvatarChangedRealtimeData message)
-    {
-        if (request == null || message == null)
-        {
-            return;
-        }
-        if (request.requesterPlayerId == message.playerId && request.requesterAvatarVersion < message.avatarVersion)
-        {
-            request.requesterAvatarCode = message.avatarCode;
-            request.requesterAvatarVersion = message.avatarVersion;
-        }
-        if (request.recipientPlayerId == message.playerId && request.recipientAvatarVersion < message.avatarVersion)
-        {
-            request.recipientAvatarCode = message.avatarCode;
-            request.recipientAvatarVersion = message.avatarVersion;
-        }
+        return "HTTP " + request.responseCode
+            + ", result=" + request.result
+            + ", error=" + (request.error ?? string.Empty)
+            + ", body=" + body;
     }
 
     private void DisposeAvatarCache()
     {
+        foreach (Sprite sprite in avatarSpriteCache.Values)
+        {
+            if (sprite == null)
+            {
+                continue;
+            }
+            Texture texture = sprite.texture;
+            Destroy(sprite);
+            if (texture != null)
+            {
+                Destroy(texture);
+            }
+        }
         avatarSpriteCache.Clear();
-        avatarResourceKeyByCode.Clear();
         avatarImageStates.Clear();
-        avatarByPlayerId.Clear();
     }
 
     [Serializable]
-    private class AvatarPresetRequest
+    private class AvatarPresetCatalogApiResponse : BasicApiResponse
     {
-        public string avatarCode;
+        public AvatarPresetCatalogEntry[] data;
     }
 
     [Serializable]
-    private class AvatarPresetsApiResponse : BasicApiResponse
-    {
-        public AvatarPresetData[] data;
-    }
-
-    [Serializable]
-    private class AvatarPresetData
+    private class AvatarPresetCatalogEntry
     {
         public string avatarCode;
         public string displayName;
-        public string resourceKey;
         public bool enabled;
-        public long minimumClientVersionCode;
+    }
+
+    [Serializable]
+    private class AvatarPresetSelectionRequest
+    {
+        public string avatarCode;
+    }
+
+    private sealed class AvatarPresetOption
+    {
+        public string avatarCode;
+        public string displayName;
+        public bool enabled;
+        public Sprite sprite;
+    }
+
+    [Serializable]
+    private class AvatarSelectionPayload
+    {
+        public string filePath;
+        public string fileName;
+        public string mimeType;
+        public string base64Data;
+        public bool temporaryFile;
     }
 
     [Serializable]
@@ -1054,28 +1455,9 @@ public partial class HomePageUI
     private class FriendAvatarSnapshot
     {
         public int playerId;
-        public string avatarSource;
+        public string avatarUrl;
         public string avatarCode;
         public long avatarVersion;
-    }
-
-    [Serializable]
-    private class AvatarChangedRealtimeData
-    {
-        public long playerId;
-        public string avatarSource;
-        public string avatarCode;
-        public long avatarVersion;
-        public string avatarUpdatedTime;
-    }
-
-    private sealed class PlayerAvatarState
-    {
-        public string avatarCode = string.Empty;
-        public string avatarSource = "DEFAULT";
-        public long avatarVersion;
-        public string avatarUpdatedTime = string.Empty;
-        public bool hasServerState;
     }
 
     private sealed class AvatarImageState

@@ -4,9 +4,6 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
-using TMPro;
-using Text = TMPro.TMP_Text;
-using InputField = TMPro.TMP_InputField;
 
 public partial class HomePageUI
 {
@@ -21,7 +18,9 @@ public partial class HomePageUI
     private readonly List<ServerFriendResponse> v37Friends = new List<ServerFriendResponse>();
     private readonly List<ServerFriendRequestResponse> v37IncomingRequests = new List<ServerFriendRequestResponse>();
     private readonly List<ServerFriendRequestResponse> v37OutgoingRequests = new List<ServerFriendRequestResponse>();
+    private readonly Dictionary<string, string> v34DailyGiftPendingKeys = new Dictionary<string, string>();
     private ServerFriendRequestSummary v37FriendRequestSummary;
+    private ServerDailyGiftStatus serverDailyStaminaGiftStatus;
     private ServerFriendSearchResponse v37FriendSearchResult;
     private int v37FriendSearchPlayerId;
     private int v37SelectedFriendPlayerId;
@@ -42,7 +41,10 @@ public partial class HomePageUI
         v37Friends.Clear();
         v37IncomingRequests.Clear();
         v37OutgoingRequests.Clear();
+        v34DailyGiftPendingKeys.Clear();
         v37FriendRequestSummary = null;
+        serverDailyGiftStatus = null;
+        serverDailyStaminaGiftStatus = null;
         v37FriendSearchResult = null;
         v37FriendSearchPlayerId = 0;
         v37SelectedFriendPlayerId = 0;
@@ -180,6 +182,10 @@ public partial class HomePageUI
                 if (response.data.dailyGift != null)
                 {
                     serverDailyGiftStatus = response.data.dailyGift;
+                }
+                if (response.data.dailyStaminaGift != null)
+                {
+                    serverDailyStaminaGiftStatus = response.data.dailyStaminaGift;
                 }
 
                 hasMore = response.data.hasMore && response.data.nextCursor != null;
@@ -379,7 +385,7 @@ public partial class HomePageUI
         });
         BindSceneButton(FindSceneComponent<Button>(root, "FriendsAddButton"), () => HandleV37SearchOrRequest(root));
         BindSceneButton(FindSceneComponent<Button>(root, "FriendsCloseButton"), HideFriendsPanel);
-        SetSceneObjectActive(root, "FriendsWeChatGiftButton", false);
+        ConfigureWeChatFriendGiftButton(root);
 
         Button addButton = FindSceneComponent<Button>(root, "FriendsAddButton");
         ConfigureV37SearchButton(addButton, interactionLocked);
@@ -516,6 +522,7 @@ public partial class HomePageUI
                 selected,
                 friend.playerId,
                 friend.nickname,
+                friend.avatarUrl,
                 friend.avatarCode,
                 friend.avatarVersion,
                 BuildV38FriendRowMetadata(friend),
@@ -564,6 +571,7 @@ public partial class HomePageUI
             int otherPlayerId = incoming ? request.requesterPlayerId : request.recipientPlayerId;
             string otherName = incoming ? request.requesterNickname : request.recipientNickname;
             int otherLevel = incoming ? request.requesterLevel : request.recipientLevel;
+            string otherAvatarUrl = incoming ? request.requesterAvatarUrl : request.recipientAvatarUrl;
             string otherAvatarCode = incoming ? request.requesterAvatarCode : request.recipientAvatarCode;
             long otherAvatarVersion = incoming ? request.requesterAvatarVersion : request.recipientAvatarVersion;
             RenderV37Row(
@@ -572,6 +580,7 @@ public partial class HomePageUI
                 request.requestId == v37SelectedRequestId,
                 otherPlayerId,
                 otherName,
+                otherAvatarUrl,
                 otherAvatarCode,
                 otherAvatarVersion,
                 $"Lv.{Mathf.Max(1, otherLevel)}    {FormatV37RequestTime(request.createTime)}",
@@ -593,6 +602,7 @@ public partial class HomePageUI
         bool selected,
         int playerId,
         string nickname,
+        string avatarUrl,
         string avatarCode,
         long avatarVersion,
         string metadata,
@@ -614,7 +624,7 @@ public partial class HomePageUI
         {
             avatar.color = GetFriendAvatarColor(playerId.ToString());
             Text avatarInitial = FindSceneComponent<Text>(row, "FriendRowAvatar" + rowIndex);
-            ApplyAvatarImage(avatar, avatarInitial, playerId, avatarCode, avatarVersion);
+            ApplyAvatarImage(avatar, avatarInitial, playerId, avatarUrl, avatarCode, avatarVersion);
         }
 
         Image mark = FindSceneComponent<Image>(row, "FriendRowOnlineMark" + rowIndex);
@@ -655,6 +665,7 @@ public partial class HomePageUI
             friend.playerId,
             friend.nickname,
             friend.level,
+            friend.avatarUrl,
             friend.avatarCode,
             friend.avatarVersion,
             GetV38FriendPresenceLabel(friend),
@@ -663,26 +674,40 @@ public partial class HomePageUI
         SetV38FriendPresenceDetailColor(root, friend);
 
         bool giftedToday = friend.dailyStaminaGiftSent;
-        bool giftEnabled = serverDailyGiftStatus != null && serverDailyGiftStatus.enabled && !giftedToday && !interactionLocked;
+        ServerDailyGiftStatus staminaGiftStatus = GetServerStaminaGiftStatus();
+        bool giftEnabled = staminaGiftStatus != null && staminaGiftStatus.enabled && !giftedToday && !interactionLocked;
         string giftHint = BuildServerStaminaGiftHint(friend);
+        giftHint += "    " + BuildServerDailyGiftHint(friend);
         SetSceneText(root, "FriendGiftHint", giftHint);
         SetSceneObjectActive(root, "FriendsGiftButton", true);
+        SetSceneObjectActive(root, "FriendsDailyGiftButton", true);
         SetSceneObjectActive(root, "FriendsDeleteButton", true);
         SetSceneObjectActive(root, "FriendsRequestPrimaryButton", false);
         SetSceneObjectActive(root, "FriendsRequestSecondaryButton", false);
         Button giftButton = FindSceneComponent<Button>(root, "FriendsGiftButton");
+        Button dailyGiftButton = FindSceneComponent<Button>(root, "FriendsDailyGiftButton");
         Button deleteButton = FindSceneComponent<Button>(root, "FriendsDeleteButton");
         if (giftButton != null) giftButton.interactable = giftEnabled;
+        bool dailyGiftedToday = friend.dailyGiftSent;
+        bool dailyGiftEnabled = serverDailyGiftStatus != null
+            && serverDailyGiftStatus.enabled
+            && serverDailyGiftStatus.remainingSendCount > 0L
+            && !dailyGiftedToday
+            && !interactionLocked;
+        if (dailyGiftButton != null) dailyGiftButton.interactable = dailyGiftEnabled;
         if (deleteButton != null) deleteButton.interactable = !interactionLocked;
         SetSceneButtonText(giftButton, giftedToday ? "今日已赠体力" : "赠送体力");
         SetSceneButtonText(deleteButton, friendDeleteConfirmation ? "确认删除" : "删除好友");
+        SetSceneButtonText(dailyGiftButton, dailyGiftedToday ? "今日已赠物品" : "赠送物品");
         BindSceneButton(giftButton, () => StartCoroutine(SendV37StaminaGift(root, friend.playerId)));
+        BindSceneButton(dailyGiftButton, () => StartCoroutine(SendV34DailyGift(root, friend.playerId)));
         BindSceneButton(deleteButton, () => RequestV37FriendDeletion(root, friend));
     }
 
     private string BuildServerStaminaGiftHint(ServerFriendResponse friend)
     {
-        if (serverDailyGiftStatus == null || !serverDailyGiftStatus.enabled)
+        ServerDailyGiftStatus staminaGiftStatus = GetServerStaminaGiftStatus();
+        if (staminaGiftStatus == null || !staminaGiftStatus.enabled)
         {
             return "好友体力赠送当前未开启";
         }
@@ -692,7 +717,38 @@ public partial class HomePageUI
             return "今天已经向该好友赠送过体力";
         }
 
-        return "今日可赠送 " + Mathf.Max(0, serverDailyGiftStatus.quantity) + " 点体力";
+        return "今日可赠送 " + Math.Max(0L, staminaGiftStatus.quantity) + " 点体力";
+    }
+
+    private string BuildServerDailyGiftHint(ServerFriendResponse friend)
+    {
+        if (serverDailyGiftStatus == null || !serverDailyGiftStatus.enabled)
+        {
+            return "每日物品赠礼当前未开启";
+        }
+
+        if (friend != null && friend.dailyGiftSent)
+        {
+            return "今日已向该好友赠送过物品礼";
+        }
+
+        return "今日可赠送 "
+            + Math.Max(0L, serverDailyGiftStatus.quantity)
+            + " "
+            + FormatGiftItemKey(serverDailyGiftStatus.itemKey)
+            + "；剩"
+            + Math.Max(0L, serverDailyGiftStatus.remainingSendCount)
+            + " 次";
+    }
+
+    private static string FormatGiftItemKey(string itemKey)
+    {
+        return string.IsNullOrWhiteSpace(itemKey) ? "物品" : itemKey.Trim();
+    }
+
+    private ServerDailyGiftStatus GetServerStaminaGiftStatus()
+    {
+        return serverDailyStaminaGiftStatus;
     }
 
     private void RefreshV37SearchDetail(Transform root, bool interactionLocked)
@@ -709,12 +765,14 @@ public partial class HomePageUI
             result.playerId,
             result.nickname,
             result.level,
+            result.avatarUrl,
             result.avatarCode,
             result.avatarVersion,
             "搜索结果",
             "当前关系：" + GetV37RelationshipLabel(result.relationshipStatus),
             result.pendingRequestId > 0 ? "关联申请 #" + result.pendingRequestId : "可根据服务器关系状态继续操作");
         SetSceneObjectActive(root, "FriendsGiftButton", false);
+        SetSceneObjectActive(root, "FriendsDailyGiftButton", false);
         SetSceneObjectActive(root, "FriendsDeleteButton", false);
 
         Action primaryAction = null;
@@ -763,6 +821,7 @@ public partial class HomePageUI
         int otherPlayerId = incoming ? request.requesterPlayerId : request.recipientPlayerId;
         string otherName = incoming ? request.requesterNickname : request.recipientNickname;
         int otherLevel = incoming ? request.requesterLevel : request.recipientLevel;
+        string otherAvatarUrl = incoming ? request.requesterAvatarUrl : request.recipientAvatarUrl;
         string otherAvatarCode = incoming ? request.requesterAvatarCode : request.recipientAvatarCode;
         long otherAvatarVersion = incoming ? request.requesterAvatarVersion : request.recipientAvatarVersion;
         SetV37DetailBase(
@@ -770,12 +829,14 @@ public partial class HomePageUI
             otherPlayerId,
             otherName,
             otherLevel,
+            otherAvatarUrl,
             otherAvatarCode,
             otherAvatarVersion,
             incoming ? "收到的好友申请" : "发出的好友申请",
             "申请状态：" + request.status,
             "过期时间：" + FormatV37RequestTime(request.expireTime));
         SetSceneObjectActive(root, "FriendsGiftButton", false);
+        SetSceneObjectActive(root, "FriendsDailyGiftButton", false);
         SetSceneObjectActive(root, "FriendsDeleteButton", false);
 
         if (incoming)
@@ -805,6 +866,7 @@ public partial class HomePageUI
         int playerId,
         string nickname,
         int level,
+        string avatarUrl,
         string avatarCode,
         long avatarVersion,
         string title,
@@ -821,6 +883,7 @@ public partial class HomePageUI
                 avatar,
                 FindSceneComponent<Text>(root, "FriendDetailAvatar"),
                 playerId,
+                avatarUrl,
                 avatarCode,
                 avatarVersion);
         }
@@ -1185,6 +1248,90 @@ public partial class HomePageUI
         v37MutationRunning = false;
         string replay = gift.replayed ? "（今日已赠送，返回原结果）" : string.Empty;
         yield return RefreshServerFriendRequestState(root, true, "已为好友赠送 " + gift.quantity + " 点体力" + replay);
+    }
+
+    private IEnumerator SendV34DailyGift(Transform root, int friendPlayerId)
+    {
+        if (v37MutationRunning || friendPlayerId <= 0)
+        {
+            yield break;
+        }
+
+        ServerDailyGiftStatus status = serverDailyGiftStatus;
+        if (status == null || !status.enabled || status.remainingSendCount <= 0L)
+        {
+            RefreshServerFriendRequestPanel(root, "每日物品赠礼当前不可用");
+            yield break;
+        }
+
+        ServerFriendResponse friend = FindV37Friend(friendPlayerId);
+        if (friend != null && friend.dailyGiftSent)
+        {
+            RefreshServerFriendRequestPanel(root, "今日已向该好友发送过物品赠礼");
+            yield break;
+        }
+
+        v37MutationRunning = true;
+        RefreshServerFriendRequestPanel(root, "正在赠送好友每日物品礼...");
+
+        string periodKey = string.IsNullOrWhiteSpace(status.periodKey) ? "unknown" : status.periodKey.Trim();
+        string requestSignature = GameSession.PlayerId + ":" + friendPlayerId + ":" + periodKey;
+        if (!v34DailyGiftPendingKeys.TryGetValue(requestSignature, out string idempotencyKey)
+            || !Guid.TryParse(idempotencyKey, out _))
+        {
+            idempotencyKey = Guid.NewGuid().ToString("D");
+            v34DailyGiftPendingKeys[requestSignature] = idempotencyKey;
+        }
+
+        if (!TryCreateAuthorizedPost(
+                "/friends/" + friendPlayerId + "/gifts/daily",
+                string.Empty,
+                out UnityWebRequest request,
+                out string error))
+        {
+            v37MutationRunning = false;
+            RefreshServerFriendRequestPanel(root, error);
+            yield break;
+        }
+
+        ApiRequestUtility.SetIdempotencyKey(request, idempotencyKey);
+        ServerFriendDailyGiftResponse gift = null;
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (HandleUnauthorizedResponse(request))
+            {
+                v34DailyGiftPendingKeys.Remove(requestSignature);
+                v37MutationRunning = false;
+                yield break;
+            }
+
+            ServerFriendDailyGiftApiResponse response = ParseJson<ServerFriendDailyGiftApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+            {
+                bool keepPendingKey = request.responseCode <= 0
+                    || request.responseCode == 408
+                    || request.responseCode == 429
+                    || request.responseCode >= 500;
+                if (!keepPendingKey) v34DailyGiftPendingKeys.Remove(requestSignature);
+                v37MutationRunning = false;
+                RefreshServerFriendRequestPanel(root, GetV37RequestError(request, response, "每日物品赠礼发送失败"));
+                yield break;
+            }
+            gift = response.data;
+        }
+
+        v34DailyGiftPendingKeys.Remove(requestSignature);
+        v37MutationRunning = false;
+        string replay = gift.replayed ? "（今日已赠送，返回原结果）" : string.Empty;
+        yield return RefreshServerFriendRequestState(
+            root,
+            true,
+            "已为好友赠送每日物品礼：还剩"
+            + Math.Max(0L, gift.quantity)
+            + " "
+            + FormatGiftItemKey(status.itemKey)
+            + replay);
     }
 
     private List<ServerFriendResponse> GetFilteredV37Friends()
@@ -1592,6 +1739,12 @@ public partial class HomePageUI
             SetV37ControlRect(secondary.GetComponent<RectTransform>(), new Vector2(276f, -416f), new Vector2(174f, 50f));
             ShrinkButtonLabel(secondary, 18);
         }
+        if (FindSceneComponent<Button>(root, "FriendsDailyGiftButton") == null)
+        {
+            Button dailyGift = CreateButton(detail, "FriendsDailyGiftButton", "赠送物品", new Color(0.30f, 0.52f, 0.76f, 1f), Color.white);
+            SetV37ControlRect(dailyGift.GetComponent<RectTransform>(), new Vector2(72f, -468f), new Vector2(174f, 46f));
+            ShrinkButtonLabel(dailyGift, 17);
+        }
     }
 
     private void SetV37ControlRect(RectTransform rect, Vector2 position, Vector2 size)
@@ -1616,6 +1769,7 @@ public partial class HomePageUI
         public ServerFriendCursor nextCursor;
         public bool hasMore;
         public ServerDailyGiftStatus dailyGift;
+        public ServerDailyGiftStatus dailyStaminaGift;
     }
 
     [Serializable]
@@ -1632,6 +1786,7 @@ public partial class HomePageUI
         public int level;
         public string relationshipStatus;
         public long pendingRequestId;
+        public string avatarUrl;
         public string avatarCode;
         public long avatarVersion;
     }
@@ -1673,8 +1828,10 @@ public partial class HomePageUI
         public int recipientPlayerId;
         public string recipientNickname;
         public int recipientLevel;
+        public string requesterAvatarUrl;
         public string requesterAvatarCode;
         public long requesterAvatarVersion;
+        public string recipientAvatarUrl;
         public string recipientAvatarCode;
         public long recipientAvatarVersion;
         public string status;
@@ -1710,6 +1867,28 @@ public partial class HomePageUI
         public int resendCooldownHours;
         public int requestExpirationDays;
         public int configVersion;
+    }
+
+    [Serializable]
+    private class ServerFriendDailyGiftApiResponse : BasicApiResponse
+    {
+        public ServerFriendDailyGiftResponse data;
+    }
+
+    [Serializable]
+    private class ServerFriendDailyGiftResponse
+    {
+        public long recordId;
+        public long senderPlayerId;
+        public long receiverPlayerId;
+        public string periodKey;
+        public long itemId;
+        public string itemKey;
+        public long quantity;
+        public long receiverBalanceAfter;
+        public long configVersion;
+        public string sentTime;
+        public bool replayed;
     }
 #pragma warning restore 0649
 }

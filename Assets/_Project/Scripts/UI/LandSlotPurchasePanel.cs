@@ -134,18 +134,47 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
         bool requestedPurification = purificationMode;
         statusText.text = requestedPurification ? "Purifying..." : "Purchasing...";
         LandSlotController requestedSlot = currentSlot;
-        System.Action<bool, string, LandSlotStateResponse> onComplete = (success, message, state) =>
+        System.Action<BackendResult<LandSlotStateResponse>> onComplete = result =>
         {
             purchasePending = false;
+            bool success = result != null && result.Success && result.Data != null;
             if (success)
             {
-                if (state != null) requestedSlot.ApplyRemoteUnlockState(state);
+                requestedSlot.ApplyRemoteUnlockState(result.Data);
                 currentSlot = null;
                 gameObject.SetActive(false);
                 return;
             }
 
-            purchaseButton.interactable = true;
+            string message = result == null ? string.Empty : result.Message;
+            if (!requestedPurification && result != null && result.Code == 7601)
+            {
+                purchasePending = true;
+                statusText.text = "The server price changed. Refreshing the authoritative quote...";
+                service.SyncMap((refreshSuccess, refreshMessage) =>
+                {
+                    purchasePending = false;
+                    if (currentSlot != requestedSlot) return;
+                    RefreshFromAuthoritativeSlot(
+                        requestedSlot,
+                        refreshSuccess
+                            ? "The price changed. Review the new cost and confirm again."
+                            : "Price refresh failed: " + refreshMessage,
+                        refreshSuccess);
+                });
+                return;
+            }
+            if (!requestedPurification && result != null && result.Code == 7602)
+            {
+                purchaseButton.interactable = false;
+                statusText.text = "The server purchase policy is temporarily unavailable. Refreshing shortly...";
+                StartCoroutine(RefreshPurchasePolicyAfterDelay(service, requestedSlot));
+                return;
+            }
+
+            purchaseButton.interactable = requestedPurification
+                ? requestedSlot.IsPurificationAvailable
+                : requestedSlot.IsPurchaseAvailable;
             statusText.text = string.IsNullOrEmpty(message)
                 ? requestedPurification ? "Purification failed." : "Purchase failed."
                 : message;
@@ -156,10 +185,46 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
         else service.PurchaseLandSlot(requestedSlot, onComplete);
     }
 
+    private IEnumerator RefreshPurchasePolicyAfterDelay(BackendGameService service, LandSlotController slot)
+    {
+        yield return new WaitForSecondsRealtime(5f);
+        if (service == null || !service.IsAuthenticated || currentSlot != slot) yield break;
+
+        purchasePending = true;
+        service.SyncMap((success, message) =>
+        {
+            purchasePending = false;
+            if (currentSlot != slot) return;
+            RefreshFromAuthoritativeSlot(
+                slot,
+                success
+                    ? "The server purchase policy was refreshed."
+                    : "Purchase policy refresh failed: " + message,
+                success);
+        });
+    }
+
+    private void RefreshFromAuthoritativeSlot(LandSlotController slot, string message, bool allowInteraction)
+    {
+        if (slot == null || currentSlot != slot) return;
+
+        purificationMode = slot.IsPurificationAvailable;
+        titleText.text = purificationMode ? "Purify Land" : "Unlock Land";
+        purchaseButtonText.text = purificationMode ? "Purify" : "Purchase";
+        costText.text = purificationMode
+            ? BuildPurificationCostText(slot)
+            : $"{slot.PurchaseGoldCost:N0} Gold";
+        balanceText.gameObject.SetActive(!purificationMode);
+        if (!purificationMode) RefreshBalance();
+        purchaseButton.interactable = allowInteraction
+            && (purificationMode ? slot.IsPurificationAvailable : slot.IsPurchaseAvailable);
+        statusText.text = message ?? string.Empty;
+    }
+
     private void RefreshBalance()
     {
         BackendGameService service = BackendGameService.Instance;
-        int gold = service != null && service.CurrentUser != null ? service.CurrentUser.gold : 0;
+        long gold = service != null && service.CurrentUser != null ? service.CurrentUser.gold : 0L;
         balanceText.text = $"Balance: {gold:N0} Gold";
     }
 

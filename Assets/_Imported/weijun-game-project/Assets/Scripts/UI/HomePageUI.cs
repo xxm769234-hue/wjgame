@@ -163,7 +163,7 @@ public partial class HomePageUI : MonoBehaviour
             AttachGeneratedBookView(view);
         }
 
-        SelectArea(GetLastArea());
+        SelectArea(GetLastArea(), PlayerPrefs.HasKey("OpenAreaLandType"));
     }
 
     private void BindBookView(HomePageBookView view)
@@ -1420,7 +1420,17 @@ public partial class HomePageUI : MonoBehaviour
 
     private void ShowMailContent()
     {
+        ShowMailContent(0L);
+    }
+
+    private void ShowMailContent(long targetMailId)
+    {
         MarkTaskProgress("TaskMailOpened", "TaskMailDate");
+        if (targetMailId > 0L)
+        {
+            selectedMailId = targetMailId;
+            pendingMailRouteId = targetMailId;
+        }
         mailShowingNotifications = false;
 
         SetLeftContent("邮件", "正在读取服务器邮件...", "正在请求邮件接口");
@@ -1479,10 +1489,15 @@ public partial class HomePageUI : MonoBehaviour
 
     private void ShowLotteryContent()
     {
+        ShowLotteryContent(string.Empty, 0);
+    }
+
+    private void ShowLotteryContent(string poolCode, int highlightNpcId)
+    {
         MarkTaskProgress("TaskLotteryOpened");
         if (HasAuthSession())
         {
-            OpenServerLottery();
+            OpenServerLottery(poolCode, highlightNpcId);
             return;
         }
 
@@ -2000,6 +2015,7 @@ public partial class HomePageUI : MonoBehaviour
 
         PlayerPrefs.Save();
         RefreshHomeResourceMetrics();
+        QueueBackendInventoryRefresh();
     }
 
     private void RenderInventoryPanel()
@@ -4369,7 +4385,8 @@ public partial class HomePageUI : MonoBehaviour
             card.onClick.AddListener(() => UpdateMailDetail(capturedMail, detailTitle, detailBody));
         }
 
-        UpdateMailDetail(mails[initialIndex], detailTitle, detailBody);
+        MailResponse selectedMail = FindCurrentMail(selectedMailId);
+        UpdateMailDetail(selectedMail ?? mails[initialIndex], detailTitle, detailBody);
     }
 
     private void UpdateMailDetail(MailResponse mail, Text detailTitle, Text detailBody)
@@ -4799,6 +4816,7 @@ public partial class HomePageUI : MonoBehaviour
             }
 
             ShowSystemMailPanel(response.data, null);
+            TryConsumePendingMailRoute();
         }
     }
 
@@ -5409,11 +5427,14 @@ public partial class HomePageUI : MonoBehaviour
         SetLayout(hint.gameObject, 0f, 26f);
     }
 
-    private void SelectArea(AreaInfo area)
+    private void SelectArea(AreaInfo area, bool rememberSelection = true)
     {
         selectedArea = area;
-        PlayerPrefs.SetString("OpenAreaLandType", area.landType);
-        PlayerPrefs.Save();
+        if (rememberSelection)
+        {
+            PlayerPrefs.SetString("OpenAreaLandType", area.landType);
+            PlayerPrefs.Save();
+        }
 
         if (selectedAreaTitle == null)
         {
@@ -5431,7 +5452,7 @@ public partial class HomePageUI : MonoBehaviour
     private void SelectAreaAndEnter(AreaInfo area)
     {
         SelectArea(area);
-        EnterSelectedArea();
+        EnterArea(area.landType);
     }
 
     private AreaInfo GetLastArea()
@@ -5450,13 +5471,12 @@ public partial class HomePageUI : MonoBehaviour
 
     private void ContinueGame()
     {
-        AreaInfo area = GetLastArea();
-        EnterArea(area.landType);
+        EnterArea(string.Empty);
     }
 
     private void EnterSelectedArea()
     {
-        EnterArea(selectedArea == null ? "grass" : selectedArea.landType);
+        EnterArea(string.Empty);
     }
 
     private void EnterArea(string landType)
@@ -5468,7 +5488,7 @@ public partial class HomePageUI : MonoBehaviour
 
         if (HasAuthSession())
         {
-            StartCoroutine(GetMapDataAndEnter(landType));
+            StartCoroutine(LoadLandSceneAndEnter(landType));
             return;
         }
 
