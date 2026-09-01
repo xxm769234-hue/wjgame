@@ -5,6 +5,8 @@ using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using TMPro;
+using Text = TMPro.TMP_Text;
 
 public partial class HomePageUI
 {
@@ -125,8 +127,8 @@ public partial class HomePageUI
             SetRect(areaTitle.rectTransform, TopLeftAnchor(), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -30f), new Vector2(-20f, 42f));
 
             Text description = CreateText("AreaDescription", card.transform, area.description, 15, FontStyle.Normal, new Color(0.32f, 0.25f, 0.19f, 1f), TextAnchor.UpperCenter);
-            description.horizontalOverflow = HorizontalWrapMode.Wrap;
-            description.verticalOverflow = VerticalWrapMode.Truncate;
+            description.enableWordWrapping = true;
+            description.overflowMode = TextOverflowModes.Truncate;
             SetRect(description.rectTransform, TopLeftAnchor(), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -78f), new Vector2(-24f, 82f));
 
             Text hint = CreateText("AreaHint", card.transform, area.unlockHint, 14, FontStyle.Bold, area.color, TextAnchor.MiddleCenter);

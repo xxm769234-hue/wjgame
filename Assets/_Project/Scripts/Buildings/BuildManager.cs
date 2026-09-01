@@ -40,6 +40,12 @@ public sealed class BuildManager : MonoBehaviour
 
     public void OnClickBuildButton()
     {
+        if (!PlayerOnboardingInputLock.IsTargetAllowed("BUILDING_FARM_CARD"))
+        {
+            Debug.LogWarning("Onboarding currently blocks this building entry.", this);
+            return;
+        }
+
         if (panelController == null) { Debug.LogError("BuildPanelController is not assigned.", this); return; }
         panelController.TogglePanel();
     }
@@ -47,7 +53,7 @@ public sealed class BuildManager : MonoBehaviour
     /// <summary>Called by a UI drag item. Replaces an unfinished preview safely.</summary>
     public LandPreview BeginDrag(LandConfig config)
     {
-        if (PlayerOnboardingInputLock.IsLocked)
+        if (!PlayerOnboardingInputLock.IsInputAllowed("PLACE_FARM_LAND", "FREE_LAND"))
         {
             Debug.LogWarning("Onboarding currently locks build input.", this);
             return null;

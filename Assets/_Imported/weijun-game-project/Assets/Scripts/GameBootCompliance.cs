@@ -1076,6 +1076,7 @@ public partial class GameBoot
     private void ClearClosedAccountLocalState()
     {
         complianceToken = string.Empty;
+        int playerId = GameSession.PlayerId;
         GameSession.Clear();
         string[] accountStateKeys =
         {
@@ -1109,6 +1110,16 @@ public partial class GameBoot
         for (int index = 0; index < accountStateKeys.Length; index++)
         {
             PlayerPrefs.DeleteKey(accountStateKeys[index]);
+        }
+
+        if (playerId > 0)
+        {
+            string avatarStateKeyPrefix = "PlayerAvatarState." + playerId + ".";
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "Code");
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "Source");
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "Version");
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "UpdatedTime");
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "HasState");
         }
 
         PlayerPrefs.Save();

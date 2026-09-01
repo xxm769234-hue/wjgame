@@ -8,7 +8,7 @@ public sealed class HomePageBookView : MonoBehaviour
 {
     [Header("Page")]
     [SerializeField] private RectTransform mainPage;
-    [SerializeField] private Text statusText;
+    [SerializeField] private TMP_Text statusText;
 
     [Header("Player Summary")]
     [SerializeField] private Button avatarButton;
@@ -43,9 +43,9 @@ public sealed class HomePageBookView : MonoBehaviour
     [SerializeField] private Button enterMapButton;
     [SerializeField] private Button mapEnterStampButton;
     [SerializeField] private Button[] areaButtons = new Button[0];
-    [SerializeField] private Text selectedAreaTitle;
-    [SerializeField] private Text selectedAreaDescription;
-    [SerializeField] private Text selectedAreaHint;
+    [SerializeField] private TMP_Text selectedAreaTitle;
+    [SerializeField] private TMP_Text selectedAreaDescription;
+    [SerializeField] private TMP_Text selectedAreaHint;
 
     [Header("Bottom Tabs")]
     [SerializeField] private Button bottomMailTab;
@@ -57,7 +57,7 @@ public sealed class HomePageBookView : MonoBehaviour
     [SerializeField] private Button bottomNoticeTab;
 
     public RectTransform MainPage => mainPage;
-    public Text StatusText => statusText;
+    public TMP_Text StatusText => statusText;
     public Button AvatarButton => avatarButton;
     public TMP_Text AvatarNameText => avatarNameText;
     public TMP_Text AvatarLevelText => avatarLevelText;
@@ -84,9 +84,9 @@ public sealed class HomePageBookView : MonoBehaviour
     public Button EnterMapButton => enterMapButton;
     public Button MapEnterStampButton => mapEnterStampButton;
     public Button[] AreaButtons => areaButtons;
-    public Text SelectedAreaTitle => selectedAreaTitle;
-    public Text SelectedAreaDescription => selectedAreaDescription;
-    public Text SelectedAreaHint => selectedAreaHint;
+    public TMP_Text SelectedAreaTitle => selectedAreaTitle;
+    public TMP_Text SelectedAreaDescription => selectedAreaDescription;
+    public TMP_Text SelectedAreaHint => selectedAreaHint;
     public Button BottomMailTab => bottomMailTab;
     public Button BottomSignTab => bottomSignTab;
     public Button BottomLotteryTab => bottomLotteryTab;
@@ -149,7 +149,7 @@ public sealed class HomePageBookView : MonoBehaviour
     public void CaptureReferences()
     {
         mainPage = FindComponent<RectTransform>("MainBookPage");
-        statusText = FindComponent<Text>("MainBookPage/Status");
+        statusText = FindComponent<TMP_Text>("MainBookPage/Status");
         avatarButton = FindComponent<Button>("MainBookPage/BookAvatarFrame/AvatarButton");
         avatarNameText = FindComponent<TMP_Text>("MainBookPage/BookAvatarFrame/BookAvatarName");
         avatarLevelText = FindComponent<TMP_Text>("MainBookPage/BookAvatarFrame/BookAvatarLevel");
