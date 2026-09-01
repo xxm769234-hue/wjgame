@@ -2,7 +2,6 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
 using TMPro;
-using LegacyText = UnityEngine.UI.Text;
 
 [DisallowMultipleComponent]
 public sealed class InventorySlotView : MonoBehaviour
@@ -29,7 +28,6 @@ public sealed class InventorySlotView : MonoBehaviour
 
     private void Awake()
     {
-        UpgradeFontAsset();
         UpgradeLegacyTextComponents();
         ResolveTextReferences();
         if (itemIconImage != null)
@@ -125,25 +123,12 @@ public sealed class InventorySlotView : MonoBehaviour
         }
     }
 
-    private void UpgradeFontAsset()
-    {
-        if (fallbackText != null && fallbackText.font == null)
-        {
-            fallbackText.font = RuntimeFontAssetProvider.Resolve();
-        }
-
-        if (quantityText != null && quantityText.font == null)
-        {
-            quantityText.font = RuntimeFontAssetProvider.Resolve();
-        }
-    }
-
     private void UpgradeLegacyTextComponents()
     {
-        LegacyText[] legacyTexts = GetComponentsInChildren<LegacyText>(true);
+        Text[] legacyTexts = GetComponentsInChildren<Text>(true);
         for (int i = 0; i < legacyTexts.Length; i++)
         {
-            LegacyText legacy = legacyTexts[i];
+            Text legacy = legacyTexts[i];
             if (legacy == null || legacy.GetComponent<TMP_Text>() != null)
             {
                 continue;

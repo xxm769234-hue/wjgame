@@ -5,9 +5,6 @@ using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
-using TMPro;
-using Text = TMPro.TMP_Text;
-using InputField = TMPro.TMP_InputField;
 
 public partial class HomePageUI
 {

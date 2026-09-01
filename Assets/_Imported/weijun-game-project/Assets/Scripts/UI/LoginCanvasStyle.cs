@@ -1,7 +1,5 @@
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
-using Font = TMPro.TMP_FontAsset;
 
 [DisallowMultipleComponent]
 public sealed class LoginCanvasStyle : MonoBehaviour
@@ -85,19 +83,19 @@ public sealed class LoginCanvasStyle : MonoBehaviour
         return Mathf.Max(8, Mathf.RoundToInt(defaultSize * fontSizeMultiplier));
     }
 
-    public FontStyles ResolveFontStyle(string objectName, FontStyle fallbackStyle)
+    public FontStyle ResolveFontStyle(string objectName, FontStyle fallbackStyle)
     {
         if (font != null)
         {
-            return FontStyles.Normal;
+            return FontStyle.Normal;
         }
 
         if (!overrideFontStyles)
         {
-            return ConvertFontStyle(fallbackStyle);
+            return fallbackStyle;
         }
 
-        return ConvertFontStyle(IsTitle(objectName) ? titleFontStyle : bodyFontStyle);
+        return IsTitle(objectName) ? titleFontStyle : bodyFontStyle;
     }
 
     public Color ResolveTextColor(string objectName, Color fallbackColor)
@@ -190,21 +188,6 @@ public sealed class LoginCanvasStyle : MonoBehaviour
             || objectName == "FormTitle"
             || objectName == "FormSubtitle"
             || objectName == "Title";
-    }
-
-    private static FontStyles ConvertFontStyle(FontStyle style)
-    {
-        switch (style)
-        {
-            case FontStyle.Bold:
-                return FontStyles.Bold;
-            case FontStyle.Italic:
-                return FontStyles.Italic;
-            case FontStyle.BoldAndItalic:
-                return FontStyles.Bold | FontStyles.Italic;
-            default:
-                return FontStyles.Normal;
-        }
     }
 
     private static void ApplyImage(Image image, Sprite sprite, Color fallbackColor)

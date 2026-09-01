@@ -73,7 +73,7 @@ public sealed class ResourceCollectionManager : MonoBehaviour
 
     public void OnClickCollectAll()
     {
-        if (PlayerOnboardingInputLock.IsGameplayInputBlocked)
+        if (PlayerOnboardingInputLock.IsLocked)
         {
             Debug.LogWarning("Onboarding currently locks resource collection input.", this);
             return;

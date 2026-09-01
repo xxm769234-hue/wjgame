@@ -1,8 +1,5 @@
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
-using Text = TMPro.TMP_Text;
-using InputField = TMPro.TMP_InputField;
 
 [DisallowMultipleComponent]
 public sealed class LoginContentView : MonoBehaviour

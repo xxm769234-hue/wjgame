@@ -3,7 +3,6 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
 using TMPro;
-using LegacyText = UnityEngine.UI.Text;
 
 [DisallowMultipleComponent]
 public sealed class InventoryPanelView : MonoBehaviour
@@ -115,10 +114,6 @@ public sealed class InventoryPanelView : MonoBehaviour
 
     private void Awake()
     {
-        if (fontAsset == null)
-        {
-            fontAsset = RuntimeFontAssetProvider.Resolve();
-        }
         UpgradeLegacyTextComponents();
         ResolveReferences();
         SetCategoriesVisible(false);
@@ -552,10 +547,10 @@ public sealed class InventoryPanelView : MonoBehaviour
 
     private void UpgradeLegacyTextComponents()
     {
-        LegacyText[] legacyTexts = GetComponentsInChildren<LegacyText>(true);
+        Text[] legacyTexts = GetComponentsInChildren<Text>(true);
         for (int i = 0; i < legacyTexts.Length; i++)
         {
-            LegacyText legacy = legacyTexts[i];
+            Text legacy = legacyTexts[i];
             if (legacy == null || legacy.GetComponent<TMP_Text>() != null)
             {
                 continue;

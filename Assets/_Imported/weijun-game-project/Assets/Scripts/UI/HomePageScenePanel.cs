@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro;
 
 public enum HomePageScenePanelType
 {
@@ -44,9 +43,9 @@ public sealed class HomePageScenePanel : MonoBehaviour
         return null;
     }
 
-    public TMP_Text FindText(string objectName)
+    public Text FindText(string objectName)
     {
-        TMP_Text[] labels = GetComponentsInChildren<TMP_Text>(true);
+        Text[] labels = GetComponentsInChildren<Text>(true);
         for (int i = 0; i < labels.Length; i++)
         {
             if (labels[i].name == objectName)
