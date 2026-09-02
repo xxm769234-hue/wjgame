@@ -71,7 +71,7 @@ public partial class HomePageUI
         ShowEquipmentScenePanel(
             new InventoryItemResponse[0],
             true,
-            "正在读取服务器 NPC 与装备仓库...");
+            "正在读取服务器居民与装备仓库...");
         StartCoroutine(GetEquipmentInventoryList());
     }
 
@@ -129,7 +129,7 @@ public partial class HomePageUI
             if (npcRequest.result != UnityWebRequest.Result.Success || response == null || response.code != 200)
             {
                 equipmentRefreshRunning = false;
-                equipmentStatusMessage = "NPC 列表读取失败：" + (response == null
+                equipmentStatusMessage = "居民列表读取失败：" + (response == null
                     ? ApiRequestUtility.GetErrorMessage(npcRequest, "服务器连接失败")
                     : GetApiError(response));
                 RenderEquipmentScenePanel(GetEquipmentPanelRoot());
@@ -172,8 +172,8 @@ public partial class HomePageUI
         RebuildServerEquipmentItems();
         equipmentRefreshRunning = false;
         equipmentStatusMessage = serverPlayerNpcs.Length == 0
-            ? "装备仓库已刷新；当前账号还没有可穿戴装备的 NPC"
-            : "服务器 NPC、装备仓库与穿戴数据已刷新";
+            ? "装备仓库已刷新；当前账号还没有可穿戴装备的居民"
+            : "服务器居民、装备仓库与穿戴数据已刷新";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
     }
 
@@ -246,7 +246,7 @@ public partial class HomePageUI
             if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
                 equipmentRefreshRunning = false;
-                equipmentStatusMessage = "NPC 装备读取失败：" + (response == null
+                equipmentStatusMessage = "居民装备读取失败：" + (response == null
                     ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
                     : GetApiError(response));
                 yield break;
@@ -601,7 +601,7 @@ public partial class HomePageUI
             root,
             "EquipmentModeText",
             equipmentServerBacked
-                ? (selectedNpc == null ? "服务器装备 · 暂无 NPC" : $"{selectedNpc.name}  Lv.{selectedNpc.level}  {selectedEquipmentNpcIndex + 1}/{serverPlayerNpcs.Length}")
+                ? (selectedNpc == null ? "服务器装备 · 暂无居民" : $"{selectedNpc.name}  等级 {selectedNpc.level}  {selectedEquipmentNpcIndex + 1}/{serverPlayerNpcs.Length}")
                 : "本地奖励库存 · 可穿戴");
         SetSceneText(root, "EquipmentPowerText", $"总战力  {totalStats.Power}");
         SetSceneText(root, "EquipmentCount", $"装备 {allVisibleItems.Count} 件");
@@ -754,8 +754,8 @@ public partial class HomePageUI
                 row,
                 "EquipmentRowMeta" + i,
                 equipmentServerBacked
-                    ? $"{GetEquipmentTypeLabel(item)}  Lv.{item.level}  {GetEquipmentQualityLabel(item.quality)}"
-                    : $"{GetEquipmentTypeLabel(item)}  x{item.quantity}");
+                    ? $"{GetEquipmentTypeLabel(item)}  等级 {item.level}  {GetEquipmentQualityLabel(item.quality)}"
+                    : $"{GetEquipmentTypeLabel(item)}  ×{item.quantity}");
             SetSceneText(
                 row,
                 "EquipmentRowEquipped" + i,
@@ -787,8 +787,8 @@ public partial class HomePageUI
             root,
             "EquipmentDetailType",
             equipmentServerBacked
-                ? $"{GetEquipmentTypeLabel(item)} · Lv.{item.level} · {GetEquipmentQualityLabel(item.quality)}"
-                : $"{GetEquipmentTypeLabel(item)}  ·  数量 x{item.quantity}");
+                ? $"{GetEquipmentTypeLabel(item)} · 等级 {item.level} · {GetEquipmentQualityLabel(item.quality)}"
+                : $"{GetEquipmentTypeLabel(item)}  ·  数量 ×{item.quantity}");
         Text descriptionText = FindSceneComponent<Text>(root, "EquipmentDetailDescription");
         if (descriptionText != null)
         {
@@ -830,7 +830,7 @@ public partial class HomePageUI
             root,
             "EquipmentDetailStatus",
             equipmentServerBacked
-                ? $"实例 ID {item.playerEquipmentId} · {(equipped ? "当前 NPC 已穿戴" : "当前位于仓库")} · {(item.locked ? "已锁定" : "未锁定")}"
+                ? $"实例编号 {item.playerEquipmentId} · {(equipped ? "当前居民已穿戴" : "当前位于仓库")} · {(item.locked ? "已锁定" : "未锁定")}"
                 : (equipped ? "当前已穿戴" : "选择穿戴后会替换同一栏位的装备"));
     }
 
@@ -867,7 +867,7 @@ public partial class HomePageUI
             PlayerNpcResponse npc = GetCurrentEquipmentNpc();
             if (npc == null)
             {
-                equipmentStatusMessage = "当前没有可穿戴装备的 NPC";
+                equipmentStatusMessage = "当前没有可穿戴装备的居民";
                 RenderEquipmentScenePanel(root);
                 return;
             }
@@ -915,7 +915,7 @@ public partial class HomePageUI
             InventoryItemResponse item = FindEquipmentItem(currentKey);
             if (npc == null || item == null)
             {
-                equipmentStatusMessage = "当前 NPC 的装备状态已变化，请刷新";
+                equipmentStatusMessage = "当前居民的装备状态已变化，请刷新";
                 RenderEquipmentScenePanel(root);
                 return;
             }
@@ -1295,12 +1295,12 @@ public partial class HomePageUI
         }
         if (equipmentUpgradePreview.maxLevelReached)
         {
-            return description + $"\n已达到最高等级 Lv.{equipmentUpgradePreview.maxLevel}";
+            return description + $"\n已达到最高等级 {equipmentUpgradePreview.maxLevel}";
         }
 
         List<string> costs = new List<string>
         {
-            $"金币 x{equipmentUpgradePreview.goldCost}（持有 {equipmentUpgradePreview.availableGold}）"
+            $"金币 ×{equipmentUpgradePreview.goldCost}（持有 {equipmentUpgradePreview.availableGold}）"
         };
         EquipmentUpgradeResourceCostPreviewData[] resourceCosts = equipmentUpgradePreview.resourceCosts
             ?? new EquipmentUpgradeResourceCostPreviewData[0];
@@ -1314,14 +1314,14 @@ public partial class HomePageUI
             string displayName = string.IsNullOrWhiteSpace(resourceCost.itemName)
                 ? resourceCost.itemKey
                 : resourceCost.itemName;
-            costs.Add($"{displayName} x{resourceCost.amount}（持有 {resourceCost.availableAmount}）");
+            costs.Add($"{displayName} ×{resourceCost.amount}（持有 {resourceCost.availableAmount}）");
         }
         if (equipmentUpgradePreview.sameEquipmentCount > 0)
         {
-            costs.Add($"同款1级装备 x{equipmentUpgradePreview.sameEquipmentCount}");
+            costs.Add($"同款1级装备 ×{equipmentUpgradePreview.sameEquipmentCount}");
         }
         return description
-            + $"\n升至 Lv.{equipmentUpgradePreview.targetLevel}：{string.Join("，", costs)}";
+            + $"\n升至等级 {equipmentUpgradePreview.targetLevel}：{string.Join("，", costs)}";
     }
 
     private void ResetEquipmentUpgradePreview()
@@ -1420,7 +1420,7 @@ public partial class HomePageUI
         if (string.Equals(quality, "RARE", StringComparison.OrdinalIgnoreCase)) return "稀有";
         if (string.Equals(quality, "EPIC", StringComparison.OrdinalIgnoreCase)) return "史诗";
         if (string.Equals(quality, "LEGENDARY", StringComparison.OrdinalIgnoreCase)) return "传说";
-        return string.IsNullOrEmpty(quality) ? "装备" : quality;
+        return string.IsNullOrEmpty(quality) ? "装备" : (FrontendTextLocalization.ContainsAsciiLetter(quality) ? "装备" : quality);
     }
 
     private static string GetEquipmentSlotLabel(string slotId)
@@ -1507,7 +1507,7 @@ public partial class HomePageUI
         }
         if (upgrade == null)
         {
-            upgrade = CreateButton(panel, "EquipmentNpcUpgradeButton", "NPC升级", new Color(0.86f, 0.48f, 0.20f, 1f), Color.white);
+            upgrade = CreateButton(panel, "EquipmentNpcUpgradeButton", "居民升级", new Color(0.86f, 0.48f, 0.20f, 1f), Color.white);
             SetRect(upgrade.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(664f, -40f), new Vector2(104f, 42f));
             ConfigureClearButtonLabel(upgrade, 16);
         }
@@ -1542,7 +1542,7 @@ public partial class HomePageUI
             && !autoLoading
             && !autoUnavailable
             && !npcMaxLevelReached;
-        SetSceneButtonText(upgrade, npcMaxLevelReached ? "已满级" : autoLoading ? "读取中..." : autoUnavailable ? "无法升级" : autoReady ? "一键升级" : "NPC升级");
+        SetSceneButtonText(upgrade, npcMaxLevelReached ? "已满级" : autoLoading ? "读取中..." : autoUnavailable ? "无法升级" : autoReady ? "一键升级" : "居民升级");
         BindSceneButton(previous, () => ChangeEquipmentNpc(-1));
         BindSceneButton(next, () => ChangeEquipmentNpc(1));
         Action upgradeAction = autoReady
@@ -1562,7 +1562,7 @@ public partial class HomePageUI
         selectedEquipmentItemKey = string.Empty;
         equipmentPageIndex = 0;
         equipmentRefreshRunning = true;
-        equipmentStatusMessage = "正在读取所选 NPC 的装备...";
+        equipmentStatusMessage = "正在读取所选居民的装备...";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
         StartCoroutine(ChangeSelectedNpcLoadout());
     }
@@ -1580,7 +1580,7 @@ public partial class HomePageUI
         RebuildServerEquipmentItems();
         equipmentRefreshRunning = false;
         PlayerNpcResponse npc = GetCurrentEquipmentNpc();
-        equipmentStatusMessage = npc == null ? "当前没有 NPC" : $"已切换到 {npc.name}";
+        equipmentStatusMessage = npc == null ? "当前没有居民" : $"已切换到 {npc.name}";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
     }
 
@@ -1746,7 +1746,7 @@ public partial class HomePageUI
             npcAutoUpgradePreview = null;
             npcAutoUpgradePreviewId = npc.playerNpcId;
             npcAutoUpgradePreviewRunning = false;
-            npcAutoUpgradePreviewError = "NPC 已满级";
+            npcAutoUpgradePreviewError = "居民已满级";
             return;
         }
 
@@ -1821,13 +1821,13 @@ public partial class HomePageUI
         }
         if (npcAutoUpgradePreview.payableTargetLevel <= npcAutoUpgradePreview.currentLevel)
         {
-            equipmentStatusMessage = "当前资源不足或 NPC 已无法继续升级";
+            equipmentStatusMessage = "当前资源不足或居民已无法继续升级";
             RenderEquipmentScenePanel(GetEquipmentPanelRoot());
             yield break;
         }
 
         equipmentMutationRunning = true;
-        equipmentStatusMessage = "正在执行 NPC 一键升级...";
+        equipmentStatusMessage = "正在执行居民一键升级...";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
         AutoUpgradeRequestPayload payload = new AutoUpgradeRequestPayload
         {
@@ -1983,7 +1983,7 @@ public partial class HomePageUI
                     && request.responseCode > 0
                     && request.responseCode < 500;
                 equipmentMutationRunning = false;
-                equipmentStatusMessage = (npc ? "NPC" : "装备") + "一键升级失败：" + (response == null
+                equipmentStatusMessage = (npc ? "居民" : "装备") + "一键升级失败：" + (response == null
                     ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
                     : GetApiError(response));
                 if (definitiveRejection)
@@ -2013,7 +2013,7 @@ public partial class HomePageUI
             }
 
             autoUpgradePendingKeys.Remove(requestSignature);
-            equipmentStatusMessage = (npc ? "NPC" : "装备") + $"已升级到 Lv.{response.data.reachedLevel}，资源已由服务器结算";
+            equipmentStatusMessage = (npc ? "居民" : "装备") + $"已升级到等级 {response.data.reachedLevel}，资源已由服务器结算";
         }
 
         equipmentMutationRunning = false;
@@ -2148,7 +2148,7 @@ public partial class HomePageUI
         string materialCost = result.sameEquipmentCount > 0
             ? $"，消耗同款装备 {result.sameEquipmentCount} 件"
             : string.Empty;
-        equipmentStatusMessage = $"{result.name} 已升级到 Lv.{result.level}，消耗金币 {result.goldCost}{resourceCost}{materialCost}";
+        equipmentStatusMessage = $"{result.name} 已升级到等级 {result.level}，消耗金币 {result.goldCost}{resourceCost}{materialCost}";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
     }
 
@@ -2201,7 +2201,7 @@ public partial class HomePageUI
             string displayName = string.IsNullOrWhiteSpace(resourceCost.itemName)
                 ? resourceCost.itemKey
                 : resourceCost.itemName;
-            descriptions.Add($"{displayName} x{resourceCost.amount}");
+            descriptions.Add($"{displayName} ×{resourceCost.amount}");
         }
         return descriptions.Count == 0
             ? string.Empty
@@ -2269,7 +2269,7 @@ public partial class HomePageUI
     private IEnumerator UpgradeServerNpcRequest(long playerNpcId)
     {
         equipmentMutationRunning = true;
-        equipmentStatusMessage = "正在升级 NPC...";
+        equipmentStatusMessage = "正在升级居民...";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
         PlayerNpcInstanceRequest payload = new PlayerNpcInstanceRequest { playerNpcId = playerNpcId };
         if (!TryCreateAuthorizedPost("/npc/upgrade", JsonUtility.ToJson(payload), out UnityWebRequest request, out string error))
@@ -2294,7 +2294,7 @@ public partial class HomePageUI
             if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
                 equipmentMutationRunning = false;
-                equipmentStatusMessage = "NPC 升级失败：" + (response == null
+            equipmentStatusMessage = "居民升级失败：" + (response == null
                     ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
                     : GetApiError(response));
                 RenderEquipmentScenePanel(GetEquipmentPanelRoot());
@@ -2311,7 +2311,7 @@ public partial class HomePageUI
         equipmentRefreshRunning = true;
         yield return RefreshGeneralInventoryAfterEquipmentMutation();
         yield return GetEquipmentInventoryList();
-        equipmentStatusMessage = $"{result.name} 已升级到 Lv.{result.level}，消耗金币 {result.goldCost}";
+        equipmentStatusMessage = $"{result.name} 已升级到等级 {result.level}，消耗金币 {result.goldCost}";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
     }
 
@@ -2337,7 +2337,7 @@ public partial class HomePageUI
         string text = "装备列表\n\n";
         for (int i = 0; i < equipment.Count; i++)
         {
-            text += $"{i + 1}. {equipment[i].name}  x{equipment[i].quantity}\n";
+            text += $"{i + 1}. {equipment[i].name}  ×{equipment[i].quantity}\n";
         }
         return text;
     }

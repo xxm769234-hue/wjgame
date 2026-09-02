@@ -13,6 +13,8 @@ public partial class GameBoot
     private Button privacyPolicyButton;
     private TMP_Text privacyConsentLabel;
     private GameObject privacyPolicyOverlay;
+    private TMP_Text privacyPolicyBody;
+    private RectTransform privacyPolicyContentRect;
     private GameObject accountManagementPanel;
     private GameObject realNamePanel;
     private TMP_Text accountManagementStatus;
@@ -88,7 +90,7 @@ public partial class GameBoot
             privacyConsentLabel = CreateComplianceText(
                 "Label",
                 toggleObject.transform,
-                "我已阅读并同意当前隐私政策",
+                "我已阅读并同意当前隐私协议",
                 15,
                 FontStyle.Normal,
                 FieldTextColor,
@@ -107,7 +109,7 @@ public partial class GameBoot
             privacyPolicyButton = CreateComplianceButton(
                 root,
                 "PrivacyPolicyButton",
-                "查看隐私政策",
+                "查看隐私协议",
                 new Vector2(250f, -332f),
                 new Vector2(170f, 38f),
                 SecondaryButtonColor,
@@ -126,11 +128,13 @@ public partial class GameBoot
     private IEnumerator LoadPrivacyPolicies()
     {
         privacyPolicyLoaded = false;
+        currentPolicyContent = string.Empty;
+        currentPolicyContentSha256 = string.Empty;
         PolicyMetadataResponse metadataResponse = null;
         yield return RequestPolicyMetadata(value => metadataResponse = value);
         if (!IsValidPolicyMetadata(metadataResponse))
         {
-            BlockForPolicyFailure("隐私政策读取失败，请稍后重试。");
+            BlockForPolicyFailure("隐私协议读取失败，请稍后重试。");
             yield break;
         }
 
@@ -143,7 +147,7 @@ public partial class GameBoot
         if (!IsValidPolicyContent(contentResponse)
             || !string.Equals(currentPolicyVersion, contentResponse.data.policyVersion, StringComparison.Ordinal))
         {
-            BlockForPolicyFailure("隐私政策版本校验失败，请稍后重试。");
+            BlockForPolicyFailure("隐私协议版本校验失败，请稍后重试。");
             yield break;
         }
 
@@ -153,7 +157,7 @@ public partial class GameBoot
             && !string.IsNullOrWhiteSpace(currentPolicyContentSha256)
             && !string.Equals(metadataContentSha256, currentPolicyContentSha256, StringComparison.OrdinalIgnoreCase))
         {
-            BlockForPolicyFailure("隐私政策元数据与正文校验值不一致，请稍后重试。");
+            BlockForPolicyFailure("隐私协议元数据与正文校验值不一致，请稍后重试。");
             yield break;
         }
 
@@ -168,15 +172,16 @@ public partial class GameBoot
                 currentPolicyContentSha256,
                 StringComparison.OrdinalIgnoreCase))
         {
-            BlockForPolicyFailure("隐私政策完整性校验失败，请稍后重试。");
+            BlockForPolicyFailure("隐私协议完整性校验失败，请稍后重试。");
             yield break;
         }
 
         privacyPolicyLoaded = true;
         if (privacyConsentLabel != null)
         {
-            privacyConsentLabel.text = "我已阅读并同意《隐私政策 " + currentPolicyVersion + "》";
+            privacyConsentLabel.text = "我已阅读并同意《隐私协议》";
         }
+        RefreshPrivacyPolicyOverlayContent();
     }
 
     private IEnumerator RequestPolicyMetadata(Action<PolicyMetadataResponse> completed)
@@ -187,7 +192,7 @@ public partial class GameBoot
                 out UnityWebRequest request,
                 out string error))
         {
-            Debug.LogWarning("隐私政策元数据请求未创建：" + error);
+            Debug.LogWarning("隐私协议元数据请求未创建：" + error);
             completed(null);
             yield break;
         }
@@ -214,7 +219,7 @@ public partial class GameBoot
                 out UnityWebRequest request,
                 out string error))
         {
-            Debug.LogWarning("隐私政策正文请求未创建：" + error);
+            Debug.LogWarning("隐私协议正文请求未创建：" + error);
             completed(null);
             yield break;
         }
@@ -237,13 +242,14 @@ public partial class GameBoot
     {
         runtimePolicyBlocked = true;
         SetBusyState(false, message);
-        ShowRuntimePolicyOverlay("隐私政策不可用", message, currentPolicyContentUrl);
+        ShowRuntimePolicyOverlay("隐私协议不可用", message, currentPolicyContentUrl);
     }
 
     private void ShowPrivacyPolicyOverlay()
     {
         if (privacyPolicyOverlay != null)
         {
+            RefreshPrivacyPolicyOverlayContent();
             privacyPolicyOverlay.SetActive(true);
             privacyPolicyOverlay.transform.SetAsLastSibling();
             return;
@@ -252,7 +258,7 @@ public partial class GameBoot
         RectTransform root = loginCanvasView != null ? loginCanvasView.PrepareContentRoot() : null;
         if (root == null)
         {
-            ShowError("隐私政策界面创建失败");
+            ShowError("隐私协议界面创建失败");
             return;
         }
 
@@ -262,21 +268,11 @@ public partial class GameBoot
 
         Image card = CreateImage("PrivacyPolicyCard", overlay.transform, new Color(1f, 1f, 1f, 0.98f));
         SetRect(card.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), Vector2.zero, new Vector2(860f, 720f));
-        TMP_Text title = CreateComplianceText("Title", card.transform, "隐私政策", 30, FontStyle.Bold, BrandColor, TextAnchor.MiddleCenter);
+        TMP_Text title = CreateComplianceText("Title", card.transform, "隐私协议", 30, FontStyle.Bold, BrandColor, TextAnchor.MiddleCenter);
         SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(-70f, 54f));
 
-        TMP_Text metadata = CreateComplianceText(
-            "Metadata",
-            card.transform,
-            "版本：" + (currentPolicyVersion ?? "未获取") + "\n正文校验：" + (string.IsNullOrEmpty(currentPolicyContentSha256) ? "未提供" : "已校验"),
-            15,
-            FontStyle.Normal,
-            MutedTextColor,
-            TextAnchor.MiddleLeft);
-        SetRect(metadata.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -84f), new Vector2(-70f, 48f));
-
         Image viewport = CreateImage("Viewport", card.transform, new Color(0f, 0f, 0f, 0.04f));
-        SetRect(viewport.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -150f), new Vector2(-70f, -250f));
+        SetRect(viewport.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -112f), new Vector2(-70f, 470f));
         Mask mask = viewport.gameObject.AddComponent<Mask>();
         mask.showMaskGraphic = false;
 
@@ -289,12 +285,11 @@ public partial class GameBoot
         contentRect.anchoredPosition = Vector2.zero;
         contentRect.sizeDelta = new Vector2(-28f, 500f);
 
-        TMP_Text body = CreateComplianceText("Body", contentObject.transform, currentPolicyContent ?? "暂未获取隐私政策正文。", 17, FontStyle.Normal, FieldTextColor, TextAnchor.UpperLeft);
-        body.enableWordWrapping = true;
-        body.overflowMode = TextOverflowModes.Overflow;
-        SetRect(body.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
-        Canvas.ForceUpdateCanvases();
-        contentRect.sizeDelta = new Vector2(-28f, Mathf.Max(500f, body.preferredHeight + 24f));
+        privacyPolicyBody = CreateComplianceText("Body", contentObject.transform, string.Empty, 17, FontStyle.Normal, FieldTextColor, TextAnchor.UpperLeft);
+        privacyPolicyBody.enableWordWrapping = true;
+        privacyPolicyBody.overflowMode = TextOverflowModes.Overflow;
+        SetRect(privacyPolicyBody.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
+        privacyPolicyContentRect = contentRect;
 
         ScrollRect scrollRect = viewport.gameObject.AddComponent<ScrollRect>();
         scrollRect.content = contentRect;
@@ -302,6 +297,8 @@ public partial class GameBoot
         scrollRect.horizontal = false;
         scrollRect.vertical = true;
         scrollRect.movementType = ScrollRect.MovementType.Clamped;
+
+        RefreshPrivacyPolicyOverlayContent();
 
         Button closeButton = CreateComplianceButton(
             card.transform,
@@ -328,6 +325,20 @@ public partial class GameBoot
         privacyPolicyOverlay.transform.SetAsLastSibling();
     }
 
+    private void RefreshPrivacyPolicyOverlayContent()
+    {
+        if (privacyPolicyBody == null) return;
+
+        privacyPolicyBody.text = FrontendTextLocalization.Normalize(string.IsNullOrEmpty(currentPolicyContent)
+            ? "暂未获取隐私协议正文。"
+            : currentPolicyContent);
+        Canvas.ForceUpdateCanvases();
+        if (privacyPolicyContentRect != null)
+        {
+            privacyPolicyContentRect.sizeDelta = new Vector2(-28f, Mathf.Max(500f, privacyPolicyBody.preferredHeight + 24f));
+        }
+    }
+
     private void HidePrivacyPolicyOverlay()
     {
         if (privacyPolicyOverlay != null)
@@ -351,11 +362,11 @@ public partial class GameBoot
 
         if (accountManagementPanel != null && accountManagementPanel.activeSelf)
         {
-            SetManagementStatus("已确认隐私政策，请再次点击同意授权。", MutedTextColor);
+            SetManagementStatus("已确认隐私协议，请再次点击同意授权。", MutedTextColor);
             return;
         }
 
-        SetStatus("已同意隐私政策，请重新点击登录。", MutedTextColor);
+        SetStatus("已同意隐私协议，请重新点击登录。", MutedTextColor);
     }
 
     private void OpenAccountManagementScreen(LoginData data, bool fromWeChat)
@@ -412,7 +423,7 @@ public partial class GameBoot
         accountManagementStatus = CreateComplianceText("Status", card.transform, string.Empty, 16, FontStyle.Normal, ErrorColor, TextAnchor.MiddleCenter);
         SetRect(accountManagementStatus.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -222f), new Vector2(-90f, 42f));
 
-        accountConsentButton = CreateComplianceButton(card.transform, "ConsentButton", "同意隐私政策", new Vector2(-225f, -292f), new Vector2(210f, 52f), PrimaryColor, Color.white, 17);
+        accountConsentButton = CreateComplianceButton(card.transform, "ConsentButton", "同意隐私协议", new Vector2(-225f, -292f), new Vector2(210f, 52f), PrimaryColor, Color.white, 17);
         accountConsentButton.onClick.AddListener(BeginPrivacyConsent);
         accountWithdrawButton = CreateComplianceButton(card.transform, "WithdrawButton", "撤回隐私授权", new Vector2(0f, -292f), new Vector2(210f, 52f), SecondaryButtonColor, FieldTextColor, 17);
         accountWithdrawButton.onClick.AddListener(BeginWithdrawConsent);
@@ -531,7 +542,7 @@ public partial class GameBoot
     {
         if (accountManagementCompliance != null)
         {
-            accountManagementCompliance.text = BuildComplianceSummary(managementCompliance);
+            accountManagementCompliance.text = FrontendTextLocalization.Normalize(BuildComplianceSummary(managementCompliance));
         }
 
         if (accountConsentButton != null)
@@ -603,14 +614,14 @@ public partial class GameBoot
     {
         if (privacyConsentToggle == null || !privacyConsentToggle.isOn)
         {
-            SetManagementStatus("请先阅读隐私政策并确认同意。", ErrorColor);
+            SetManagementStatus("请先阅读隐私协议并确认同意。", ErrorColor);
             ShowPrivacyPolicyOverlay();
             return;
         }
 
         if (!privacyPolicyLoaded || string.IsNullOrEmpty(currentPolicyVersion) || string.IsNullOrEmpty(complianceToken))
         {
-            SetManagementStatus("当前隐私政策不可用，暂时无法授权。", ErrorColor);
+            SetManagementStatus("当前隐私协议不可用，暂时无法授权。", ErrorColor);
             return;
         }
 
@@ -658,7 +669,7 @@ public partial class GameBoot
                 if (response != null && response.code == 7703)
                 {
                     privacyConsentRequestId = NewRequestId();
-                    SetBusyState(false, "隐私政策已更新，请重新阅读并确认。");
+                    SetBusyState(false, "隐私协议已更新，请重新阅读并确认。");
                     yield return LoadPrivacyPolicies();
                     if (!runtimePolicyBlocked)
                     {
@@ -996,7 +1007,7 @@ public partial class GameBoot
         textObject.transform.SetParent(parent, false);
         TMP_Text text = textObject.GetComponent<TMP_Text>();
         text.font = RuntimeFontAssetProvider.Resolve();
-        text.text = value ?? string.Empty;
+        text.text = FrontendTextLocalization.Normalize(value);
         text.fontSize = fontSize;
         text.fontStyle = fontStyle == FontStyle.Bold
             ? FontStyles.Bold
@@ -1119,7 +1130,7 @@ public partial class GameBoot
         if (accountManagementStatus != null)
         {
             accountManagementStatus.color = color;
-            accountManagementStatus.text = message ?? string.Empty;
+            accountManagementStatus.text = FrontendTextLocalization.Normalize(message ?? string.Empty);
         }
     }
 
@@ -1128,7 +1139,7 @@ public partial class GameBoot
         if (realNameStatus != null)
         {
             realNameStatus.color = color;
-            realNameStatus.text = message ?? string.Empty;
+            realNameStatus.text = FrontendTextLocalization.Normalize(message ?? string.Empty);
         }
     }
 

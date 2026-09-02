@@ -909,7 +909,7 @@ public partial class HomePageUI
         }
 
         nextPaymentRecoveryCheckTime = 0f;
-        SetStatus("Payment delivered, but the account refresh failed; the order will be retried.");
+            SetStatus("支付已到账，但账号刷新失败；稍后将重试该订单。");
     }
 
     private bool TryCreateAuthorizedPost(string path, string json, out UnityWebRequest request, out string error)

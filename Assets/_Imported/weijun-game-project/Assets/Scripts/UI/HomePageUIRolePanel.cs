@@ -58,7 +58,7 @@ public partial class HomePageUI
         HomePageScenePanel panel = OpenRegisteredScenePanel(HomePageScenePanelType.Role);
         if (panel == null)
         {
-            SetLeftContent("角色中心", "角色面板场景节点不存在，请在 Unity 中执行 Tools/WeiJun UI/Rebuild Home Scene Panels。", "角色面板未找到");
+            SetLeftContent("角色中心", "角色面板场景节点不存在，请重新生成首页面板。", "角色面板未找到");
             return;
         }
 
@@ -298,7 +298,7 @@ public partial class HomePageUI
     {
         SetSceneText(row, "RoleListRowName" + GetRoleRowIndex(row), entry.catalog.name ?? "未命名角色");
         SetSceneText(row, "RoleListRowQuality" + GetRoleRowIndex(row), "品质  " + FormatRoleQuality(entry.catalog.quality));
-        SetSceneText(row, "RoleListRowLevel" + GetRoleRowIndex(row), entry.player == null ? "待获得" : $"Lv.{Mathf.Max(1, entry.player.level)}");
+        SetSceneText(row, "RoleListRowLevel" + GetRoleRowIndex(row), entry.player == null ? "待获得" : $"等级 {Mathf.Max(1, entry.player.level)}");
         SetSceneText(row, "RoleListRowStatus" + GetRoleRowIndex(row), GetRoleStatusLabel(entry));
 
         Image icon = FindSceneComponent<Image>(row, "RoleListRowIcon" + GetRoleRowIndex(row));
@@ -351,7 +351,7 @@ public partial class HomePageUI
         SetSceneText(root, "RoleDetailStatus", "状态  " + GetRoleStatusLabel(entry));
         SetSceneText(root, "RoleDetailLevel", entry.player == null
             ? "等级  待获得"
-            : $"等级  Lv.{Mathf.Max(1, entry.player.level)} / {Mathf.Max(1, entry.catalog.maxLevel)}");
+            : $"等级  {Mathf.Max(1, entry.player.level)} / {Mathf.Max(1, entry.catalog.maxLevel)}");
         SetSceneText(root, "RoleDetailAttribute", "战斗属性  " + (string.IsNullOrEmpty(entry.catalog.combatAttribute) ? "暂无" : entry.catalog.combatAttribute));
         SetSceneText(root, "RoleDetailProduction", $"产出加成  {entry.catalog.produceBonusRate * 100f:0.##}%");
         SetSceneText(root, "RoleDetailDescription", string.IsNullOrEmpty(entry.catalog.description) ? "暂无角色描述" : entry.catalog.description);
@@ -377,7 +377,7 @@ public partial class HomePageUI
                 : previewLoading
                     ? "读取中..."
                     : useAutoUpgrade
-                        ? $"一键升至 Lv.{roleAutoUpgradePreview.payableTargetLevel}"
+                        ? $"一键升至等级 {roleAutoUpgradePreview.payableTargetLevel}"
                         : "升级");
             Action upgradeAction = null;
             if (entry.player != null && !roleUpgradeRunning && !previewLoading)
@@ -447,7 +447,7 @@ public partial class HomePageUI
                 yield break;
             }
 
-            roleStatusMessage = $"{response.data.name} 已升级到 Lv.{response.data.level}，资源已由服务器结算";
+            roleStatusMessage = $"{response.data.name} 已升级到等级 {response.data.level}，资源已由服务器结算";
         }
 
         roleUpgradeRunning = false;
@@ -462,7 +462,7 @@ public partial class HomePageUI
         yield return RefreshCardDrawInventoryState(syncedCategories, failedCategories);
         if (failedCategories.Count > 0)
         {
-            roleStatusMessage = "Upgrade succeeded, but inventory refresh failed: "
+            roleStatusMessage = "升级成功，但背包刷新失败："
                 + string.Join(", ", failedCategories.ToArray());
         }
     }
@@ -655,7 +655,7 @@ public partial class HomePageUI
             }
 
             roleAutoUpgradePendingKeys.Remove(requestSignature);
-            roleStatusMessage = $"角色已升级到 Lv.{response.data.reachedLevel}，服务器已同步资源";
+            roleStatusMessage = $"角色已升级到等级 {response.data.reachedLevel}，服务器已同步资源";
         }
 
         roleUpgradeRunning = false;
@@ -734,7 +734,7 @@ public partial class HomePageUI
         ClearPendingRoleAcquisitionRoute();
         if (guide == null)
         {
-            roleStatusMessage = "Acquisition route is unavailable.";
+            roleStatusMessage = "获取途径不可用。";
             RenderRolePanel();
             return;
         }
@@ -743,7 +743,7 @@ public partial class HomePageUI
             && !string.Equals(guide.status, "AVAILABLE", StringComparison.OrdinalIgnoreCase))
         {
             roleStatusMessage = string.IsNullOrEmpty(guide.message)
-                ? "This acquisition route is no longer available."
+                ? "该获取途径已失效。"
                 : guide.message;
             RenderRolePanel();
             return;
@@ -1026,7 +1026,7 @@ public partial class HomePageUI
         if (fallback != null)
         {
             fallback.gameObject.SetActive(sprite == null);
-            fallback.text = string.IsNullOrEmpty(roleName) ? "NPC" : roleName.Substring(0, 1);
+            fallback.text = FrontendTextLocalization.Normalize(string.IsNullOrEmpty(roleName) ? "角" : roleName.Substring(0, 1));
         }
     }
 

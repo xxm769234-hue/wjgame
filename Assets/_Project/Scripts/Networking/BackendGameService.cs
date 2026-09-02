@@ -185,7 +185,7 @@ public sealed partial class BackendGameService : MonoBehaviour
             }
             catch (Exception exception)
             {
-                error = "ApiConfig.json 解析失败：" + exception.Message;
+                error = "接口配置解析失败：" + exception.Message;
                 configuredBaseUrl = string.Empty;
                 return false;
             }
@@ -203,9 +203,9 @@ public sealed partial class BackendGameService : MonoBehaviour
 
         configuredBaseUrl = string.Empty;
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-        error = "开发接口地址无效，请检查 Resources/ApiConfig.json。";
+        error = "开发接口地址无效，请检查接口配置。";
 #else
-        error = "尚未配置生产接口地址，请设置 ApiConfig.json 的 productionBaseUrl。";
+        error = "尚未配置生产接口地址，请设置生产环境接口配置。";
 #endif
         return false;
     }
@@ -3024,12 +3024,12 @@ public sealed partial class BackendGameService : MonoBehaviour
 
     private static string ResultMessage<T>(BackendResult<T> result)
     {
-        if (result == null) return "No backend response.";
+        if (result == null) return FrontendTextLocalization.Normalize("No backend response.");
         if (!string.IsNullOrEmpty(result.Message))
         {
-            return result.Code > 0 ? $"[{result.Code}] {result.Message}" : result.Message;
+            return FrontendTextLocalization.Normalize(result.Code > 0 ? $"[{result.Code}] {result.Message}" : result.Message);
         }
-        return result.Code > 0 ? $"code={result.Code}, HTTP {result.HttpStatus}" : $"HTTP {result.HttpStatus}";
+        return FrontendTextLocalization.Normalize(result.Code > 0 ? $"code={result.Code}, HTTP {result.HttpStatus}" : $"HTTP {result.HttpStatus}");
     }
 
     private static void SyncWeChatFriendLevel(int level)

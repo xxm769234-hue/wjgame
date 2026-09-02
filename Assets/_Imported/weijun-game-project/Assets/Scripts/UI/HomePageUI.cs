@@ -190,8 +190,8 @@ public partial class HomePageUI : MonoBehaviour
 
         if (view.AvatarNameText != null)
         {
-            string fallbackName = string.IsNullOrEmpty(view.AvatarNameText.text) ? "Player" : view.AvatarNameText.text;
-            view.AvatarNameText.text = PlayerPrefs.GetString("PlayerNickname", fallbackName);
+            string fallbackName = string.IsNullOrEmpty(view.AvatarNameText.text) ? "玩家" : view.AvatarNameText.text;
+            view.AvatarNameText.text = FrontendTextLocalization.Normalize(PlayerPrefs.GetString("PlayerNickname", fallbackName));
         }
 
         bookAvatarLevelText = view.AvatarLevelText;
@@ -276,9 +276,9 @@ public partial class HomePageUI : MonoBehaviour
 
         TMP_Text metricText = metricTexts[index];
         int separatorIndex = metricText.text.IndexOf(' ');
-        metricText.text = separatorIndex >= 0
+        metricText.text = FrontendTextLocalization.Normalize(separatorIndex >= 0
             ? metricText.text.Substring(0, separatorIndex + 1) + value
-            : value;
+            : value);
     }
 
     private static int GetHomePurificationAgent()
@@ -347,7 +347,7 @@ public partial class HomePageUI : MonoBehaviour
         int level = Mathf.Max(1, PlayerPrefs.GetInt("PlayerLv", 1));
         if (bookAvatarLevelText != null)
         {
-            bookAvatarLevelText.text = $"Lv.{level}";
+            bookAvatarLevelText.text = $"等级 {level}";
         }
 
         int currentExperience = Mathf.Max(0, PlayerPrefs.GetInt("PlayerCurrentLevelExperience", 0));
@@ -374,7 +374,7 @@ public partial class HomePageUI : MonoBehaviour
         if (bookAvatarExperienceText != null)
         {
             bookAvatarExperienceText.text = PlayerPrefs.GetInt("PlayerMaxLevel", 0) == 1
-                ? "MAX"
+                ? "满级"
                 : requiredExperience > 0
                     ? $"{currentExperience}/{requiredExperience}"
                     : currentExperience.ToString();
@@ -443,9 +443,9 @@ public partial class HomePageUI : MonoBehaviour
         selectedArea = previewArea;
         if (selectedAreaTitle != null)
         {
-            selectedAreaTitle.text = previewArea.name;
-            selectedAreaDescription.text = previewArea.description;
-            selectedAreaHint.text = previewArea.unlockHint;
+            selectedAreaTitle.text = FrontendTextLocalization.Normalize(previewArea.name);
+            selectedAreaDescription.text = FrontendTextLocalization.Normalize(previewArea.description);
+            selectedAreaHint.text = FrontendTextLocalization.Normalize(previewArea.unlockHint);
             selectedAreaHint.color = previewArea.color;
         }
 
@@ -845,7 +845,7 @@ public partial class HomePageUI : MonoBehaviour
         Text name = CreateText("BookAvatarName", frame.transform, PlayerPrefs.GetString("PlayerNickname", "玩家"), 15, FontStyle.Bold, InkColor, TextAnchor.MiddleCenter);
         SetRect(name.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(8f, -54f), new Vector2(80f, 18f));
 
-        Text level = CreateText("BookAvatarLevel", frame.transform, $"Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}", 11, FontStyle.Normal, InkColor, TextAnchor.MiddleCenter);
+        Text level = CreateText("BookAvatarLevel", frame.transform, $"等级 {PlayerPrefs.GetInt("PlayerLv", 1)}", 11, FontStyle.Normal, InkColor, TextAnchor.MiddleCenter);
         SetRect(level.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(56f, -8f), new Vector2(30f, 16f));
 
         Image experienceBackground = CreateImage("BookAvatarExperienceBackground", frame.transform, new Color(0.22f, 0.16f, 0.10f, 0.55f));
@@ -906,7 +906,7 @@ public partial class HomePageUI : MonoBehaviour
             GameObject titleObject = new GameObject("Title", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
             titleObject.transform.SetParent(editableButton.transform, false);
             TextMeshProUGUI editableTitle = titleObject.GetComponent<TextMeshProUGUI>();
-            editableTitle.text = title;
+            editableTitle.text = FrontendTextLocalization.Normalize(title);
             editableTitle.raycastTarget = false;
             ApplyBookSmallIcon(editableButton, ResolveBookSmallIconName(name));
             return editableButton;
@@ -1249,8 +1249,8 @@ public partial class HomePageUI : MonoBehaviour
         SetRect(avatarButton.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(20f, -10f), new Vector2(80f, 80f));
         ShrinkButtonLabel(avatarButton, 22);
 
-        CreateTopStatBox(page, "Gold:1000", new Vector2(290f, -20f));
-        CreateTopStatBox(page, $"Level:{PlayerPrefs.GetInt("PlayerLv", 1)}", new Vector2(530f, -20f));
+        CreateTopStatBox(page, "金币：1000", new Vector2(290f, -20f));
+        CreateTopStatBox(page, $"等级：{PlayerPrefs.GetInt("PlayerLv", 1)}", new Vector2(530f, -20f));
 
         Button mailButton = CreateLeftShortcutButton(page, "MailButton", "邮件", new Vector2(20f, -140f), new Color(0.23f, 0.67f, 0.22f, 1f));
         mailButton.onClick.AddListener(ShowMailContent);
@@ -1271,7 +1271,7 @@ public partial class HomePageUI : MonoBehaviour
         contentTitleText = CreateText("ContentTitle", contentPanel.transform, string.Empty, 24, FontStyle.Bold, InkColor, TextAnchor.MiddleLeft);
         SetRect(contentTitleText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -18f), new Vector2(-70f, 32f));
 
-        Button closeButton = CreateButton(contentPanel.transform, "ContentCloseButton", "X", new Color(0.55f, 0.34f, 0.18f, 0.92f), Color.white);
+        Button closeButton = CreateButton(contentPanel.transform, "ContentCloseButton", "×", new Color(0.55f, 0.34f, 0.18f, 0.92f), Color.white);
         closeButton.onClick.AddListener(HideContentPanel);
         SetRect(closeButton.GetComponent<RectTransform>(), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-12f, -12f), new Vector2(24f, 24f));
         ShrinkButtonLabel(closeButton, 14);
@@ -1302,8 +1302,8 @@ public partial class HomePageUI : MonoBehaviour
         AddWoodLine(page, new Vector2(0f, -526f), new Vector2(150f, 5f));
         AddWoodLine(page, new Vector2(0f, -818f), new Vector2(590f, 5f));
 
-        CreateTopStatBox(page, "Gold:1000", new Vector2(310f, -20f));
-        CreateTopStatBox(page, $"Level:{PlayerPrefs.GetInt("PlayerLv", 1)}", new Vector2(560f, -20f));
+        CreateTopStatBox(page, "金币：1000", new Vector2(310f, -20f));
+        CreateTopStatBox(page, $"等级：{PlayerPrefs.GetInt("PlayerLv", 1)}", new Vector2(560f, -20f));
 
         Button mailButton = CreatePanelSideButton(page, "MailButton", "邮件", new Vector2(0f, -88f), new Color(1f, 0.74f, 0.42f, 1f));
         mailButton.onClick.AddListener(ShowMailContent);
@@ -1350,7 +1350,7 @@ public partial class HomePageUI : MonoBehaviour
         contentTitleText = CreateText("ContentTitle", contentPanel.transform, string.Empty, 24, FontStyle.Bold, InkColor, TextAnchor.MiddleLeft);
         SetRect(contentTitleText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, 1f), new Vector2(20f, -18f), new Vector2(-70f, 32f));
 
-        Button closeButton = CreateButton(contentPanel.transform, "ContentCloseButton", "X", new Color(0.55f, 0.34f, 0.18f, 0.92f), Color.white);
+        Button closeButton = CreateButton(contentPanel.transform, "ContentCloseButton", "×", new Color(0.55f, 0.34f, 0.18f, 0.92f), Color.white);
         closeButton.onClick.AddListener(HideContentPanel);
         SetRect(closeButton.GetComponent<RectTransform>(), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-12f, -12f), new Vector2(24f, 24f));
         ShrinkButtonLabel(closeButton, 14);
@@ -1477,8 +1477,8 @@ public partial class HomePageUI : MonoBehaviour
         resourceLayout.childForceExpandHeight = false;
         resourceLayout.childForceExpandWidth = false;
 
-        AddTopStat(resourceBlock.transform, $"Gold:{PlayerPrefs.GetInt("Gold", 1000)}");
-        AddTopStat(resourceBlock.transform, $"Level:{PlayerPrefs.GetInt("PlayerLv", 1)}");
+        AddTopStat(resourceBlock.transform, $"金币：{PlayerPrefs.GetInt("Gold", 1000)}");
+        AddTopStat(resourceBlock.transform, $"等级：{PlayerPrefs.GetInt("PlayerLv", 1)}");
     }
 
     private void AddTopStat(Transform parent, string value)
@@ -1621,7 +1621,7 @@ public partial class HomePageUI : MonoBehaviour
             $"音效：{(GameSettingsRuntime.SoundEnabled ? "开启" : "关闭")}  {GameSettingsRuntime.SoundVolume}%\n" +
             $"画质：{QualitySettings.names[GameSettingsRuntime.QualityLevel]}\n" +
             $"全屏：{(GameSettingsRuntime.FullScreen ? "开启" : "关闭")}\n" +
-            $"帧率：{GameSettingsRuntime.TargetFrameRate} FPS",
+            $"帧率：{GameSettingsRuntime.TargetFrameRate} 帧",
             "设置面板暂不可用"
         );
     }
@@ -1731,7 +1731,7 @@ public partial class HomePageUI : MonoBehaviour
         AddLocalResource(finalRewardKey, finalRewardValue);
         PlayerPrefs.SetString("TaskLotteryDate", GetTaskDate());
         PlayerPrefs.Save();
-        ShowLotteryPanel($"获得：{finalRewardName} x{finalRewardValue}", finalRewardName, finalRewardValue, true);
+        ShowLotteryPanel($"获得：{finalRewardName} ×{finalRewardValue}", finalRewardName, finalRewardValue, true);
     }
 
     private void ShowDailySignContent()
@@ -1832,7 +1832,7 @@ public partial class HomePageUI : MonoBehaviour
         Text totalProgress = CreateMailText("TaskTotalProgress", panel.transform, $"本页进度  {completedCount}/{tasks.Length}", 20, FontStyle.Bold, new Color(1f, 0.88f, 0.58f, 1f), TextAnchor.MiddleRight);
         SetRect(totalProgress.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(970f, -38f), new Vector2(300f, 34f));
 
-        Button close = CreateButton(panel.transform, "TaskCloseButton", "X", new Color(0.78f, 0.27f, 0.16f, 1f), Color.white);
+        Button close = CreateButton(panel.transform, "TaskCloseButton", "×", new Color(0.78f, 0.27f, 0.16f, 1f), Color.white);
         close.onClick.AddListener(HideTaskPanel);
         SetRect(close.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1322f, -30f), new Vector2(50f, 50f));
         ConfigureClearButtonLabel(close, 24);
@@ -1939,7 +1939,7 @@ public partial class HomePageUI : MonoBehaviour
         Image reward = CreateImage("TaskReward", row.transform, new Color(0.99f, 0.79f, 0.37f, 0.88f));
         SetRect(reward.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(704f, -18f), new Vector2(188f, 82f));
         AddTaskRewardIcon(reward.transform, task.rewardKey, new Vector2(12f, -20f), new Vector2(40f, 40f));
-        Text rewardText = CreateMailText("TaskRewardText", reward.transform, string.IsNullOrEmpty(task.rewardSummary) ? $"{task.rewardName}\nx{task.rewardAmount}" : task.rewardSummary, 16, FontStyle.Bold, new Color(0.38f, 0.17f, 0.06f, 1f), TextAnchor.MiddleLeft);
+        Text rewardText = CreateMailText("TaskRewardText", reward.transform, string.IsNullOrEmpty(task.rewardSummary) ? $"{task.rewardName}\n×{task.rewardAmount}" : task.rewardSummary, 16, FontStyle.Bold, new Color(0.38f, 0.17f, 0.06f, 1f), TextAnchor.MiddleLeft);
         SetRect(rewardText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(62f, -10f), new Vector2(116f, 62f));
 
         string buttonLabel = claimed ? "已领取" : task.IsComplete ? "领取" : task.goAction != null ? "前往" : "进行中";
@@ -2025,7 +2025,7 @@ public partial class HomePageUI : MonoBehaviour
         {
             return new[]
             {
-                new TaskDisplayItem("growth_level", "领主等级达到 Lv.2", "通过经营与对战积累成长经验。", PlayerPrefs.GetInt("PlayerLv", 1), 2, "Gold", "金币", 300, false, ShowBattleContent),
+                new TaskDisplayItem("growth_level", "领主等级达到 2 级", "通过经营与对战积累成长经验。", PlayerPrefs.GetInt("PlayerLv", 1), 2, "Gold", "金币", 300, false, ShowBattleContent),
                 new TaskDisplayItem("growth_chest", "获得 1 个装备宝箱", "完成签到或主线任务获得宝箱。", PlayerPrefs.GetInt("EquipmentChest", 0), 1, "LotteryTicket", "抽奖券", 1, false, ShowBagContent)
             };
         }
@@ -2097,7 +2097,7 @@ public partial class HomePageUI : MonoBehaviour
         AddLocalResource(task.rewardKey, task.rewardAmount);
         PlayerPrefs.SetInt(GetTaskClaimKey(task), 1);
         PlayerPrefs.Save();
-        ShowTaskPanel(activeTaskCategory, $"领取成功：{task.rewardName} x{task.rewardAmount}");
+        ShowTaskPanel(activeTaskCategory, $"领取成功：{task.rewardName} ×{task.rewardAmount}");
     }
 
     private void MarkTaskProgress(string permanentKey, string dailyKey = null)
@@ -2253,7 +2253,7 @@ public partial class HomePageUI : MonoBehaviour
         AddInventoryResourceBadge(panel.transform, new Vector2(620f, -24f), "金币", "Gold", new Color(1f, 0.74f, 0.14f, 1f));
         AddInventoryResourceBadge(panel.transform, new Vector2(900f, -24f), "钻石", "Crystal", new Color(0.26f, 0.70f, 1f, 1f));
 
-        Button close = CreateButton(panel.transform, "InventoryCloseButton", "X", new Color(0.72f, 0.22f, 0.12f, 1f), Color.white);
+        Button close = CreateButton(panel.transform, "InventoryCloseButton", "×", new Color(0.72f, 0.22f, 0.12f, 1f), Color.white);
         close.onClick.AddListener(HideInventoryPanel);
         SetRect(close.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1636f, -26f), new Vector2(48f, 48f));
         ConfigureClearButtonLabel(close, 23);
@@ -2412,7 +2412,7 @@ public partial class HomePageUI : MonoBehaviour
         view.ShowContextMenu(
             menuPosition,
             selectedItem.name,
-            $"{GetInventoryTypeLabel(selectedItem)}  x{selectedItem.quantity}",
+            $"{GetInventoryTypeLabel(selectedItem)}  ×{selectedItem.quantity}",
             primaryLabel,
             contextHint,
             HandlePrimaryInventoryAction,
@@ -3096,7 +3096,7 @@ public partial class HomePageUI : MonoBehaviour
         Text name = CreateMailText("InventoryContextName", menu.transform, item.name ?? "物品", 17, FontStyle.Bold, new Color(1f, 0.90f, 0.62f, 1f), TextAnchor.MiddleLeft);
         SetRect(name.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(12f, -8f), new Vector2(136f, 28f));
 
-        Text type = CreateMailText("InventoryContextType", menu.transform, $"{GetInventoryTypeLabel(item)}  x{item.quantity}", 14, FontStyle.Normal, new Color(1f, 0.77f, 0.45f, 0.90f), TextAnchor.MiddleLeft);
+        Text type = CreateMailText("InventoryContextType", menu.transform, $"{GetInventoryTypeLabel(item)}  ×{item.quantity}", 14, FontStyle.Normal, new Color(1f, 0.77f, 0.45f, 0.90f), TextAnchor.MiddleLeft);
         SetRect(type.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(12f, -34f), new Vector2(160f, 24f));
 
         Button primary = CreateButton(menu.transform, "InventoryPrimaryAction", GetInventoryActionLabel(item), new Color(0.30f, 0.68f, 0.14f, 1f), Color.white);
@@ -3112,7 +3112,7 @@ public partial class HomePageUI : MonoBehaviour
         Text hint = CreateMailText("InventoryContextHint", menu.transform, GetInventorySaleContextHint(item), 12, FontStyle.Normal, new Color(1f, 0.82f, 0.57f, 0.86f), TextAnchor.MiddleCenter);
         SetRect(hint.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(10f, -112f), new Vector2(164f, 22f));
 
-        Button dismiss = CreateButton(menu.transform, "InventoryContextDismiss", "x", new Color(0.52f, 0.24f, 0.09f, 1f), Color.white);
+        Button dismiss = CreateButton(menu.transform, "InventoryContextDismiss", "×", new Color(0.52f, 0.24f, 0.09f, 1f), Color.white);
         dismiss.onClick.AddListener(() => { selectedInventoryItemKey = string.Empty; RenderInventoryPanel(); });
         SetRect(dismiss.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(158f, -8f), new Vector2(20f, 20f));
         ConfigureClearButtonLabel(dismiss, 13);
@@ -3145,7 +3145,7 @@ public partial class HomePageUI : MonoBehaviour
         }
 
         selectedInventoryItemKey = itemKey;
-        inventoryStatusMessage = $"已选择：{item.name}  x{item.quantity}";
+        inventoryStatusMessage = $"已选择：{item.name}  ×{item.quantity}";
         RenderInventoryPanel();
     }
 
@@ -3192,17 +3192,17 @@ public partial class HomePageUI : MonoBehaviour
             if (key.Contains("equipment"))
             {
                 ChangeLocalQuantity("BeginnerSword", 1, 1);
-                inventoryStatusMessage = "打开装备宝箱，获得新手短剑 x1";
+        inventoryStatusMessage = "打开装备宝箱，获得新手短剑 ×1";
             }
             else if (key.Contains("advanced"))
             {
                 AddLocalResource("Gold", 500);
-                inventoryStatusMessage = "打开高级英雄箱，获得金币 x500";
+        inventoryStatusMessage = "打开高级英雄箱，获得金币 ×500";
             }
             else
             {
                 AddLocalResource("Gold", 300);
-                inventoryStatusMessage = "打开英雄宝箱，获得金币 x300";
+        inventoryStatusMessage = "打开英雄宝箱，获得金币 ×300";
             }
         }
         else if (key.Contains("lottery") || key.Contains("ticket"))
@@ -3314,7 +3314,7 @@ public partial class HomePageUI : MonoBehaviour
         int gold = GetInventoryResourceValue("Gold");
         if (gold < cost)
         {
-            inventoryStatusMessage = $"扩充需要金币 x{cost}，当前金币不足";
+            inventoryStatusMessage = $"扩充需要金币 ×{cost}，当前金币不足";
             RenderInventoryPanel();
             return;
         }
@@ -3332,7 +3332,7 @@ public partial class HomePageUI : MonoBehaviour
         SelectHomeMode(
             "battle",
             "对战模式",
-            "已选择对战模式。\n\n当前状态：准备进入对战玩法\n\n功能内容\n1. 竞技场入口\n2. 匹配入口\n3. 防守阵容\n4. 赛季奖励\n\n说明：当前项目还没有独立对战场景和对战接口，这里先完成首页模式选择，后续可根据 HomeSelectedMode=battle 跳转到对战场景。"
+            "已选择对战模式。\n\n当前状态：准备进入对战玩法\n\n功能内容\n1. 竞技场入口\n2. 匹配入口\n3. 防守阵容\n4. 赛季奖励\n\n说明：当前项目还没有独立对战场景和对战接口，这里先完成首页模式选择，后续可接入对战场景。"
         );
     }
 
@@ -3345,7 +3345,7 @@ public partial class HomePageUI : MonoBehaviour
         {
             if (!HasAuthSession())
             {
-                SetStatus("Please sign in before entering battle mode.");
+                SetStatus("进入闯关模式前请先登录。");
                 return;
             }
 
@@ -3444,7 +3444,7 @@ public partial class HomePageUI : MonoBehaviour
             "---------- 优化与修复 ----------",
             "1. 优化书页背景、按钮尺寸和文字清晰度。",
             "2. 修复部分面板重叠、内容超出边框和关闭按钮不可见的问题。",
-            "3. 背包界面已改为 Unity Prefab 组件，后续可直接替换图片和样式。",
+            "3. 背包界面已改为预制体组件，后续可直接替换图片和样式。",
             string.Empty,
             "温馨提示：",
             "账号模式会读取服务器数据；本地任务、活动任务和抽奖记录仅用于对应功能的本地流程。",
@@ -3566,7 +3566,7 @@ public partial class HomePageUI : MonoBehaviour
 
         Image header = CreateImage("ProductHeader", card.transform, new Color(0.72f, 0.56f, 0.31f, 1f));
         SetRect(header.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), Vector2.zero, new Vector2(250f, 38f));
-        Text headerText = CreateMailText("HeaderText", header.transform, $"{rewardName}x{rewardQuantity}", 20, FontStyle.Bold, new Color(0.30f, 0.17f, 0.08f, 1f), TextAnchor.MiddleCenter);
+        Text headerText = CreateMailText("HeaderText", header.transform, $"{rewardName}×{rewardQuantity}", 20, FontStyle.Bold, new Color(0.30f, 0.17f, 0.08f, 1f), TextAnchor.MiddleCenter);
         Stretch(headerText.rectTransform);
 
         Image shine = CreateImage("ProductShine", card.transform, new Color(1f, 0.86f, 0.42f, 0.18f));
@@ -3601,7 +3601,7 @@ public partial class HomePageUI : MonoBehaviour
             return;
         }
 
-        SetStatus($"已选择 {productName}：{rewardName} x{rewardQuantity}，正在创建支付订单。");
+        SetStatus($"已选择 {productName}：{rewardName} ×{rewardQuantity}，正在创建支付订单。");
         BeginPaymentOrder(product, productName);
     }
 
@@ -3877,7 +3877,7 @@ public partial class HomePageUI : MonoBehaviour
         AddLotteryDoodle(panel.transform, new Vector2(118f, -70f), "?", new Color(0.93f, 0.24f, 0.28f, 1f));
         AddLotteryDoodle(panel.transform, new Vector2(606f, -94f), "!", new Color(0.16f, 0.42f, 0.76f, 1f));
 
-        Button close = CreateButton(panel.transform, "LotteryCloseButton", "X", new Color(0.91f, 0.39f, 0.16f, 1f), Color.white);
+        Button close = CreateButton(panel.transform, "LotteryCloseButton", "×", new Color(0.91f, 0.39f, 0.16f, 1f), Color.white);
         if (isRolling)
         {
             close.interactable = false;
@@ -3901,10 +3901,10 @@ public partial class HomePageUI : MonoBehaviour
         SetRect(screen.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(54f, -74f), new Vector2(482f, 184f));
 
         string centerName = hasResult ? rewardName : "折扣券";
-        string centerAmount = hasResult ? "x" + rewardValue : "10%";
-        AddLotteryPrizeCell(screen.transform, new Vector2(12f, -12f), new Vector2(150f, 160f), hasResult ? "木材" : "宝石", hasResult ? "x80" : "x?", false);
+        string centerAmount = hasResult ? "×" + rewardValue : "10%";
+        AddLotteryPrizeCell(screen.transform, new Vector2(12f, -12f), new Vector2(150f, 160f), hasResult ? "木材" : "宝石", hasResult ? "×80" : "×?", false);
         AddLotteryPrizeCell(screen.transform, new Vector2(166f, -12f), new Vector2(150f, 160f), centerName, centerAmount, hasResult);
-        AddLotteryPrizeCell(screen.transform, new Vector2(320f, -12f), new Vector2(150f, 160f), hasResult ? "金币" : "闹钟", hasResult ? "x60" : "x1", false);
+        AddLotteryPrizeCell(screen.transform, new Vector2(320f, -12f), new Vector2(150f, 160f), hasResult ? "金币" : "闹钟", hasResult ? "×60" : "×1", false);
 
         Image chanceBox = CreateImage("LotteryChanceBox", machine.transform, Color.white);
         SetRect(chanceBox.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(190f, -300f), new Vector2(226f, 42f));
@@ -4132,7 +4132,7 @@ public partial class HomePageUI : MonoBehaviour
         Text subTitle = CreateMailText("SubTitle", panel.transform, "两周签到奖励", 22, FontStyle.Bold, new Color(0.38f, 0.24f, 0.11f, 1f), TextAnchor.MiddleCenter);
         SetRect(subTitle.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(486f, -92f), new Vector2(240f, 34f));
 
-        Button close = CreateButton(panel.transform, "SignCloseButton", "X", new Color(0.91f, 0.39f, 0.16f, 1f), Color.white);
+        Button close = CreateButton(panel.transform, "SignCloseButton", "×", new Color(0.91f, 0.39f, 0.16f, 1f), Color.white);
         close.onClick.AddListener(HideSignPanel);
         SetRect(close.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1128f, -28f), new Vector2(58f, 58f));
         ConfigureClearButtonLabel(close, 27);
@@ -4197,13 +4197,13 @@ public partial class HomePageUI : MonoBehaviour
         titleOutline.effectColor = new Color(0.10f, 0.35f, 0.32f, 0.95f);
         titleOutline.effectDistance = new Vector2(2f, -2f);
 
-        Button close = CreateButton(panel.transform, "SignCloseButton", "X", new Color(0.91f, 0.39f, 0.16f, 1f), Color.white);
+        Button close = CreateButton(panel.transform, "SignCloseButton", "×", new Color(0.91f, 0.39f, 0.16f, 1f), Color.white);
         close.onClick.AddListener(HideSignPanel);
         SetRect(close.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(930f, -28f), new Vector2(56f, 56f));
         ConfigureClearButtonLabel(close, 27);
 
         string[] names = { "金币", "木材 石材", "装备宝箱" };
-        string[] amounts = { "x300", "x300", "x1" };
+        string[] amounts = { "×300", "×300", "×1" };
         for (int i = 0; i < 3; i++)
         {
             Vector2 position = new Vector2(76f + i * 300f, -130f);
@@ -4343,8 +4343,8 @@ public partial class HomePageUI : MonoBehaviour
     {
         return new[]
         {
-            "x100", "x120", "x120", "x1", "x80", "x200", "x1",
-            "x180", "x180", "x120", "x260", "x1", "x2", "x1"
+            "×100", "×120", "×120", "×1", "×80", "×200", "×1",
+            "×180", "×180", "×120", "×260", "×1", "×2", "×1"
         };
     }
 
@@ -4439,7 +4439,7 @@ public partial class HomePageUI : MonoBehaviour
         Text title = CreateMailText("MailTitle", panel.transform, "系统邮件", 42, FontStyle.Bold, new Color(0.34f, 0.17f, 0.10f, 1f), TextAnchor.MiddleLeft);
         SetRect(title.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(112f, -42f), new Vector2(280f, 56f));
 
-        Button close = CreateButton(panel.transform, "SystemMailCloseButton", "X", new Color(0.92f, 0.26f, 0.36f, 1f), Color.white);
+        Button close = CreateButton(panel.transform, "SystemMailCloseButton", "×", new Color(0.92f, 0.26f, 0.36f, 1f), Color.white);
         close.onClick.AddListener(HideSystemMailPanel);
         SetRect(close.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1218f, -34f), new Vector2(52f, 52f));
         ConfigureClearButtonLabel(close, 24);
@@ -4474,9 +4474,9 @@ public partial class HomePageUI : MonoBehaviour
         Text rewardTitle = CreateMailText("RewardTitle", detail.transform, "奖励", 24, FontStyle.Bold, new Color(0.76f, 0.22f, 0.15f, 1f), TextAnchor.MiddleLeft);
         SetRect(rewardTitle.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(32f, -350f), new Vector2(140f, 38f));
 
-        AddRewardSlot(detail.transform, new Vector2(32f, -400f), "金币", "x100");
-        AddRewardSlot(detail.transform, new Vector2(154f, -400f), "木材", "x80");
-        AddRewardSlot(detail.transform, new Vector2(276f, -400f), "石材", "x80");
+        AddRewardSlot(detail.transform, new Vector2(32f, -400f), "金币", "×100");
+        AddRewardSlot(detail.transform, new Vector2(154f, -400f), "木材", "×80");
+        AddRewardSlot(detail.transform, new Vector2(276f, -400f), "石材", "×80");
 
         Button claim = CreateButton(detail.transform, "ClaimMailButton", "领取", new Color(0.83f, 0.30f, 0.23f, 1f), Color.white);
         SetRect(claim.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(446f, -475f), new Vector2(126f, 48f));
@@ -4501,10 +4501,10 @@ public partial class HomePageUI : MonoBehaviour
             Text empty = CreateMailText("Text", emptyCard.transform, "暂无邮件", 24, FontStyle.Bold, MutedColor, TextAnchor.MiddleCenter);
             Stretch(empty.rectTransform);
 
-            detailTitle.text = "系统提示";
-            detailBody.text = string.IsNullOrEmpty(message)
+            detailTitle.text = FrontendTextLocalization.Normalize("系统提示");
+            detailBody.text = FrontendTextLocalization.Normalize(string.IsNullOrEmpty(message)
                 ? "当前没有可展示的系统邮件。\n\n收到活动奖励、补偿奖励或系统通知后，会在这里显示。"
-                : message;
+                : message);
             return;
         }
 
@@ -4555,8 +4555,8 @@ public partial class HomePageUI : MonoBehaviour
         string attachment = mail.hasAttachment ? (mail.attachmentClaimed ? "附件状态：已领取" : "附件状态：可领取") : "附件状态：无附件";
         string time = string.IsNullOrEmpty(mail.createTime) ? "时间：未知" : $"时间：{mail.createTime}";
 
-        detailTitle.text = title;
-        detailBody.text = $"{content}\n\n发件人：{sender}\n{time}\n{attachment}\n{BuildMailAttachmentSummary(mail)}";
+        detailTitle.text = FrontendTextLocalization.Normalize(title);
+        detailBody.text = FrontendTextLocalization.Normalize($"{content}\n\n发件人：{sender}\n{time}\n{attachment}\n{BuildMailAttachmentSummary(mail)}");
     }
 
     private void AddAirmailBorder(Transform parent, Vector2 size)
@@ -4844,13 +4844,13 @@ public partial class HomePageUI : MonoBehaviour
         if (contentTitleText != null)
         {
             contentTitleText.gameObject.SetActive(true);
-            contentTitleText.text = title;
+            contentTitleText.text = FrontendTextLocalization.Normalize(title);
         }
 
         if (contentBodyText != null)
         {
             contentBodyText.gameObject.SetActive(true);
-            contentBodyText.text = body;
+            contentBodyText.text = FrontendTextLocalization.Normalize(body);
         }
 
         SetStatus(status);
@@ -5030,7 +5030,15 @@ public partial class HomePageUI : MonoBehaviour
             return "接口返回数据为空或格式错误。";
         }
 
-        return string.IsNullOrEmpty(response.message) ? $"接口返回错误：code={response.code}" : response.message;
+        if (string.IsNullOrEmpty(response.message))
+        {
+            return $"接口返回错误：错误码 {response.code}";
+        }
+
+        string message = FrontendTextLocalization.Normalize(response.message);
+        return FrontendTextLocalization.ContainsAsciiLetter(message)
+            ? "服务器返回了暂时无法显示的提示，请稍后重试。"
+            : message;
     }
 
     private string BuildInventoryText(InventoryItemResponse[] items, bool equipmentOnly)
@@ -5051,7 +5059,7 @@ public partial class HomePageUI : MonoBehaviour
             }
 
             count++;
-            text += $"{count}. {item.name} ({item.itemKey}) x{item.quantity}\n";
+            text += $"{count}. {FrontendTextLocalization.Normalize(item.name)} ×{item.quantity}\n";
         }
 
         if (equipmentOnly && count == 0)
@@ -5135,23 +5143,31 @@ public partial class HomePageUI : MonoBehaviour
     {
         if (products == null || products.Length == 0)
         {
-            return "当前没有可购买商品。\n\n如果后端已开启支付，请检查 PAYMENT_ENABLED 和商品配置。";
+            return "当前没有可购买商品。\n\n如果后端已开启支付，请检查支付开关和商品配置。";
         }
 
         string text = "充值商品\n\n";
         for (int i = 0; i < products.Length; i++)
         {
             PaymentProductResponse product = products[i];
-            text += $"{i + 1}. {product.name}\n   编码：{product.productCode}\n   价格：{product.priceFen / 100f:0.##} {product.currency}\n   奖励：{product.rewardItemName} x{GetShopRewardAmount(product)}\n";
+            text += $"{i + 1}. {FrontendTextLocalization.Normalize(product.name)}\n   价格：{product.priceFen / 100f:0.##} {GetPaymentCurrencyLabel(product.currency)}\n   奖励：{FrontendTextLocalization.Normalize(product.rewardItemName)} ×{GetShopRewardAmount(product)}\n";
         }
 
         text += "\n创建订单和微信支付需要商品按钮/订单确认弹窗，当前已接入商品列表接口。";
         return text;
     }
 
+    private static string GetPaymentCurrencyLabel(string currency)
+    {
+        if (string.IsNullOrWhiteSpace(currency)) return "";
+        string normalized = currency.Trim().ToUpperInvariant();
+        if (normalized == "CNY" || normalized == "RMB" || normalized == "YUAN") return "元";
+        return FrontendTextLocalization.ContainsAsciiLetter(currency) ? "货币" : currency.Trim();
+    }
+
     private string BuildLocalInventoryText(string title)
     {
-        return $"{title}\n\n金币 x{PlayerPrefs.GetInt("Gold", 1000)}\n木材 x{PlayerPrefs.GetInt("Wood", 500)}\n石材 x{PlayerPrefs.GetInt("Stone", 500)}\n铁矿 x{PlayerPrefs.GetInt("Iron", 300)}\n装备宝箱 x{PlayerPrefs.GetInt("EquipmentChest", 0)}\n高级抽奖券 x{PlayerPrefs.GetInt("LotteryTicket", 0)}";
+        return $"{title}\n\n金币 ×{PlayerPrefs.GetInt("Gold", 1000)}\n木材 ×{PlayerPrefs.GetInt("Wood", 500)}\n石材 ×{PlayerPrefs.GetInt("Stone", 500)}\n铁矿 ×{PlayerPrefs.GetInt("Iron", 300)}\n装备宝箱 ×{PlayerPrefs.GetInt("EquipmentChest", 0)}\n高级抽奖券 ×{PlayerPrefs.GetInt("LotteryTicket", 0)}";
     }
 
     private void AddLocalResource(string key, int amount)
@@ -5237,7 +5253,7 @@ public partial class HomePageUI : MonoBehaviour
         Text resourceTitle = CreateText("Title", resourceBlock.transform, "资源概览", 26, FontStyle.Bold, InkColor, TextAnchor.MiddleLeft);
         SetLayout(resourceTitle.gameObject, 0f, 32f);
 
-        Text levelLine = CreateText("LevelLine", resourceBlock.transform, $"Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}", 18, FontStyle.Bold, PrimaryColor, TextAnchor.MiddleLeft);
+        Text levelLine = CreateText("LevelLine", resourceBlock.transform, $"等级 {PlayerPrefs.GetInt("PlayerLv", 1)}", 18, FontStyle.Bold, PrimaryColor, TextAnchor.MiddleLeft);
         SetLayout(levelLine.gameObject, 0f, 22f);
 
         GridLayoutGroup grid = CreateLayoutObject("ResourceGrid", resourceBlock.transform).AddComponent<GridLayoutGroup>();
@@ -5351,7 +5367,7 @@ public partial class HomePageUI : MonoBehaviour
         popupModeText = CreateText("Mode", personalInfoPopup.transform, "状态：账号登录", 14, FontStyle.Bold, PrimaryColor, TextAnchor.MiddleLeft);
         SetLayout(popupModeText.gameObject, 0f, 16f);
 
-        popupLevelText = CreateText("Level", personalInfoPopup.transform, $"等级：Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}", 14, FontStyle.Normal, InkColor, TextAnchor.MiddleLeft);
+        popupLevelText = CreateText("Level", personalInfoPopup.transform, $"等级：{PlayerPrefs.GetInt("PlayerLv", 1)}", 14, FontStyle.Normal, InkColor, TextAnchor.MiddleLeft);
         SetLayout(popupLevelText.gameObject, 0f, 16f);
 
         popupResourceText = CreateText("Resource", personalInfoPopup.transform, $"金币 {PlayerPrefs.GetInt("Gold", 1000)}\n木材 {PlayerPrefs.GetInt("Wood", 500)}\n石材 {PlayerPrefs.GetInt("Stone", 500)}\n铁矿 {PlayerPrefs.GetInt("Iron", 300)}", 13, FontStyle.Normal, MutedColor, TextAnchor.MiddleLeft);
@@ -5398,11 +5414,11 @@ public partial class HomePageUI : MonoBehaviour
         string nickname = PlayerPrefs.GetString("PlayerNickname", "玩家");
         string username = PlayerPrefs.GetString("LoginUsername", string.Empty);
 
-        popupNameText.text = $"昵称：{nickname}";
-        popupAccountText.text = $"账号：{username}";
-        popupModeText.text = "状态：账号登录";
-        popupLevelText.text = $"等级：Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}";
-        popupResourceText.text = $"金币 {PlayerPrefs.GetInt("Gold", 1000)}\n木材 {PlayerPrefs.GetInt("Wood", 500)}\n石材 {PlayerPrefs.GetInt("Stone", 500)}\n铁矿 {PlayerPrefs.GetInt("Iron", 300)}";
+        popupNameText.text = FrontendTextLocalization.Normalize($"昵称：{nickname}");
+        popupAccountText.text = FrontendTextLocalization.Normalize($"账号：{username}");
+        popupModeText.text = FrontendTextLocalization.Normalize("状态：账号登录");
+        popupLevelText.text = FrontendTextLocalization.Normalize($"等级：{PlayerPrefs.GetInt("PlayerLv", 1)}");
+        popupResourceText.text = FrontendTextLocalization.Normalize($"金币 {PlayerPrefs.GetInt("Gold", 1000)}\n木材 {PlayerPrefs.GetInt("Wood", 500)}\n石材 {PlayerPrefs.GetInt("Stone", 500)}\n铁矿 {PlayerPrefs.GetInt("Iron", 300)}");
     }
 
     private void BuildRightPage(Transform page)
@@ -5476,7 +5492,7 @@ public partial class HomePageUI : MonoBehaviour
         AddMapImage(page, GetArea("volcano"), "Sprites/Arts/png/volcano.png", new Vector2(42f, -438f), new Vector2(210f, 430f), -4f);
         AddMapImage(page, GetArea("snow"), "Sprites/Arts/png/snow.png", new Vector2(310f, -618f), new Vector2(500f, 225f), 0f);
 
-        Button closeButton = CreateButton(page, "RightCloseButton", "X", new Color(0.32f, 0.18f, 0.10f, 0.90f), new Color(1f, 0.86f, 0.58f, 1f));
+        Button closeButton = CreateButton(page, "RightCloseButton", "×", new Color(0.32f, 0.18f, 0.10f, 0.90f), new Color(1f, 0.86f, 0.58f, 1f));
         closeButton.onClick.AddListener(() => SetStatus("关闭按钮待接入"));
         SetRect(closeButton.GetComponent<RectTransform>(), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-6f, -4f), new Vector2(24f, 24f));
         ShrinkButtonLabel(closeButton, 22);
@@ -5598,9 +5614,9 @@ public partial class HomePageUI : MonoBehaviour
             return;
         }
 
-        selectedAreaTitle.text = area.name;
-        selectedAreaDescription.text = area.description;
-        selectedAreaHint.text = area.unlockHint;
+        selectedAreaTitle.text = FrontendTextLocalization.Normalize(area.name);
+        selectedAreaDescription.text = FrontendTextLocalization.Normalize(area.description);
+        selectedAreaHint.text = FrontendTextLocalization.Normalize(area.unlockHint);
         selectedAreaHint.color = area.color;
         RefreshMapSelectorState();
         SetStatus($"已选择：{area.name}");
@@ -5649,7 +5665,7 @@ public partial class HomePageUI : MonoBehaviour
             return;
         }
 
-        SetStatus("Please sign in before entering management mode.");
+        SetStatus("进入模拟经营模式前请先登录。");
     }
 
     private string GetSelectedModeSceneName()
@@ -5672,7 +5688,7 @@ public partial class HomePageUI : MonoBehaviour
     {
         if (statusText != null)
         {
-            statusText.text = message;
+            statusText.text = FrontendTextLocalization.Normalize(message);
         }
     }
 
@@ -5715,7 +5731,7 @@ public partial class HomePageUI : MonoBehaviour
         Text label = obj.GetComponent<Text>();
         Font resolvedFont = ResolveFont(text);
         label.font = resolvedFont;
-        label.text = text;
+        label.text = FrontendTextLocalization.Normalize(text);
         label.fontSize = size;
         label.fontStyle = resolvedFont == defaultFont ? FontStyle.Normal : style;
         label.color = color;

@@ -5,6 +5,8 @@ using UnityEngine.UI;
 
 public sealed class IdleAdventureStartPanel : MonoBehaviour
 {
+    private const string DisplayTitle = "闯关模式";
+
     [SerializeField] private TextMeshProUGUI titleText;
     [SerializeField] private TextMeshProUGUI bodyText;
     [SerializeField] private TextMeshProUGUI stageSelectionText;
@@ -76,7 +78,7 @@ public sealed class IdleAdventureStartPanel : MonoBehaviour
 
     public void SetStageSelection(string content)
     {
-        if (stageSelectionText != null) stageSelectionText.text = content;
+        if (stageSelectionText != null) stageSelectionText.text = FrontendTextLocalization.Normalize(content);
     }
 
     public void SetStageSelectionInteractable(bool interactable)
@@ -87,7 +89,15 @@ public sealed class IdleAdventureStartPanel : MonoBehaviour
 
     public void SetContent(string title, string body)
     {
-        if (titleText != null) titleText.text = title;
-        if (bodyText != null) bodyText.text = body;
+        if (titleText != null)
+        {
+            titleText.color = Color.black;
+            titleText.text = FrontendTextLocalization.Normalize(DisplayTitle);
+        }
+        if (bodyText != null)
+        {
+            bodyText.color = Color.black;
+            bodyText.text = FrontendTextLocalization.Normalize(body);
+        }
     }
 }

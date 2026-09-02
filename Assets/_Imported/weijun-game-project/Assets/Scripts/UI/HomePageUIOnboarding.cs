@@ -372,23 +372,23 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         bool targetOnly = isBusinessEvent
             && string.Equals(step.inputMode, "ALLOW_TARGET_ONLY", StringComparison.OrdinalIgnoreCase);
 
-        titleText.text = string.IsNullOrEmpty(step.title) ? "新手引导" : step.title;
-        stepText.text = step.sequence > 0
+        titleText.text = FrontendTextLocalization.Normalize(string.IsNullOrEmpty(step.title) ? "新手引导" : step.title);
+        stepText.text = FrontendTextLocalization.Normalize(step.sequence > 0
             ? "步骤 " + step.sequence + (string.IsNullOrEmpty(currentSnapshot.status) ? string.Empty : "  ·  " + currentSnapshot.status)
-            : currentSnapshot.status;
-        contentText.text = string.IsNullOrEmpty(step.content) ? "请按照当前提示完成操作。" : step.content;
-        targetText.text = BuildTargetText(step, targetOnly);
-        stateText.text = isBusinessEvent
+            : currentSnapshot.status);
+        contentText.text = FrontendTextLocalization.Normalize(string.IsNullOrEmpty(step.content) ? "请按照当前提示完成操作。" : step.content);
+        targetText.text = FrontendTextLocalization.Normalize(BuildTargetText(step, targetOnly));
+        stateText.text = FrontendTextLocalization.Normalize(isBusinessEvent
             ? "请完成实际游戏操作，完成后由服务器自动推进。"
-            : "请确认已阅读当前说明。";
+            : "请确认已阅读当前说明。");
 
         acknowledgeButton.gameObject.SetActive(isClientAck);
         acknowledgeButton.interactable = isClientAck && !mutationRunning;
-        acknowledgeButtonText.text = mutationRunning ? "提交中..." : "完成当前步骤";
+        acknowledgeButtonText.text = FrontendTextLocalization.Normalize(mutationRunning ? "提交中..." : "完成当前步骤");
 
         skipButton.gameObject.SetActive(currentSnapshot.allowSkip);
         skipButton.interactable = !mutationRunning;
-        skipButtonText.text = "跳过引导";
+        skipButtonText.text = FrontendTextLocalization.Normalize("跳过引导");
 
         overlayObject.SetActive(true);
         transform.SetAsLastSibling();
@@ -564,7 +564,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         button.targetGraphic = image;
 
         labelText = CreateText("Label", buttonObject.transform, 17f, TextAlignmentOptions.Center);
-        labelText.text = label;
+        labelText.text = FrontendTextLocalization.Normalize(label);
         labelText.color = Color.white;
         SetStretch(labelText.rectTransform);
         return button;
@@ -1270,9 +1270,9 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
         messageMode = true;
         ResetTargetPresentation();
-        titleText.text = title;
+        titleText.text = FrontendTextLocalization.Normalize(title);
         stepText.text = string.Empty;
-        contentText.text = message;
+        contentText.text = FrontendTextLocalization.Normalize(message);
         targetText.text = string.Empty;
         stateText.text = string.Empty;
         acknowledgeButton.gameObject.SetActive(showAcknowledge);
@@ -1377,7 +1377,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
         OnboardingBusinessContextData context = step.businessContext;
         string target = targetOnly ? "操作目标：" : "服务器定位：";
-        if (!string.IsNullOrEmpty(context.eventType)) target += context.eventType;
+        if (!string.IsNullOrEmpty(context.eventType)) target += FrontendTextLocalization.Normalize(context.eventType);
         if (context.landConfigId > 0) target += "  地块配置 " + context.landConfigId;
         if (context.buildingConfigId > 0) target += "  建筑配置 " + context.buildingConfigId;
         if (context.playerLandId > 0) target += "  玩家地块 " + context.playerLandId;

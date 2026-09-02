@@ -70,7 +70,7 @@ public sealed class ResourceSaleDialogView : MonoBehaviour
         Text title = CreateText("Title", header, "资源出售", fontAsset, 28, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
         SetTopLeft(title.rectTransform, new Vector2(24f, -8f), new Vector2(620f, 46f));
 
-        closeButton = CreateButton("CloseButton", header, "X", fontAsset, 20, new Color(0.70f, 0.22f, 0.11f, 1f), Color.white);
+        closeButton = CreateButton("CloseButton", header, "关闭", fontAsset, 20, new Color(0.70f, 0.22f, 0.11f, 1f), Color.white);
         SetTopLeft(closeButton.GetComponent<RectTransform>(), new Vector2(698f, -10f), new Vector2(42f, 42f));
 
         quoteTabButton = CreateButton("QuoteTab", panel, "出售确认", fontAsset, 18, secondaryColor, Color.white);
@@ -324,7 +324,7 @@ public sealed class ResourceSaleDialogView : MonoBehaviour
         target.transform.SetParent(parent, false);
         Text text = target.GetComponent<Text>();
         text.font = fontAsset;
-        text.text = value;
+        text.text = FrontendTextLocalization.Normalize(value);
         text.fontSize = fontSize;
         text.fontStyle = style;
         text.color = color;
@@ -370,7 +370,7 @@ public sealed class ResourceSaleDialogView : MonoBehaviour
     {
         if (text != null)
         {
-            text.text = value ?? string.Empty;
+        text.text = FrontendTextLocalization.Normalize(value);
         }
     }
 

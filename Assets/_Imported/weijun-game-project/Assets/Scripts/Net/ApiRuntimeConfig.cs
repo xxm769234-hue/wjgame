@@ -42,9 +42,9 @@ public static class ApiRuntimeConfig
         }
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-        error = "开发接口地址无效，请检查 Resources/ApiConfig.json。";
+        error = "开发接口地址无效，请检查接口配置。";
 #else
-        error = "尚未配置生产接口地址，请设置 ApiConfig.json 的 productionBaseUrl。";
+        error = "尚未配置生产接口地址，请设置生产环境接口配置。";
 #endif
         return false;
     }

@@ -52,17 +52,17 @@ public partial class HomePageUI
 
         if (popupLevelText != null)
         {
-            popupLevelText.text = $"等级：Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}";
+            popupLevelText.text = FrontendTextLocalization.Normalize($"等级：{PlayerPrefs.GetInt("PlayerLv", 1)}");
         }
 
         if (popupResourceText != null)
         {
-            popupResourceText.text =
+            popupResourceText.text = FrontendTextLocalization.Normalize(
                 $"金币：{PlayerPrefs.GetInt("Gold", 1000)}\n" +
                 $"钻石：{PlayerPrefs.GetInt("Crystal", 0)}\n" +
                 $"木材：{PlayerPrefs.GetInt("Wood", 500)}\n" +
                 $"石材：{PlayerPrefs.GetInt("Stone", 500)}\n" +
-                $"铁矿：{PlayerPrefs.GetInt("Iron", 300)}";
+                $"铁矿：{PlayerPrefs.GetInt("Iron", 300)}");
         }
     }
 
@@ -387,7 +387,7 @@ public partial class HomePageUI
                 TaskRewardSnapshot reward = task.fixedRewards[i];
                 if (reward == null) continue;
                 string name = string.IsNullOrEmpty(reward.assetName) ? reward.assetKey : reward.assetName;
-                if (!string.IsNullOrEmpty(name)) rewards.Add(name + " x" + Math.Max(0, reward.quantity));
+            if (!string.IsNullOrEmpty(name)) rewards.Add(name + " ×" + Math.Max(0, reward.quantity));
             }
         }
 
@@ -403,11 +403,11 @@ public partial class HomePageUI
             else if (!string.IsNullOrEmpty(task.randomNpcPoolName))
             {
                 rewards.Add(task.randomNpcPoolName
-                    + (task.randomNpcDrawCount > 0 ? $" x{task.randomNpcDrawCount}" : string.Empty));
+                + (task.randomNpcDrawCount > 0 ? $" ×{task.randomNpcDrawCount}" : string.Empty));
             }
         }
 
-        if (task != null && task.experienceReward > 0) rewards.Add("经验 x" + task.experienceReward);
+        if (task != null && task.experienceReward > 0) rewards.Add("经验 ×" + task.experienceReward);
         return rewards.Count == 0 ? "无固定奖励" : string.Join("、", rewards.ToArray());
     }
 
@@ -440,7 +440,7 @@ public partial class HomePageUI
                 break;
             }
 
-            string description = name + " x" + Math.Max(0, candidate.quantity);
+            string description = name + " ×" + Math.Max(0, candidate.quantity);
             if (!string.IsNullOrEmpty(candidate.assetQuality))
             {
                 description += " [" + candidate.assetQuality + "]";
@@ -463,7 +463,7 @@ public partial class HomePageUI
                     : compensation.itemName;
                 if (!string.IsNullOrEmpty(compensationName))
                 {
-                    description += " [重复→" + compensationName + " x"
+                    description += " [重复→" + compensationName + " ×"
                         + Math.Max(0, compensation.quantity) + "]";
                 }
             }
@@ -478,10 +478,10 @@ public partial class HomePageUI
         }
 
         string poolName = string.IsNullOrEmpty(task.randomNpcPoolName)
-            ? "随机NPC"
+            ? "随机居民"
             : task.randomNpcPoolName;
         string drawCount = task.randomNpcDrawCount > 0
-            ? " x" + task.randomNpcDrawCount
+            ? " ×" + task.randomNpcDrawCount
             : string.Empty;
         string suffix = task.randomNpcCandidates.Length > shown ? " 等" : string.Empty;
         return poolName + drawCount + "：" + string.Join(" / ", candidates.ToArray()) + suffix;
@@ -511,7 +511,7 @@ public partial class HomePageUI
                     : (!string.IsNullOrEmpty(grant.selectedNpcName)
                         ? grant.selectedNpcName
                         : grant.grantedAssetKey);
-                if (!string.IsNullOrEmpty(name)) names.Add(name + " x" + Math.Max(0L, grant.grantedQuantity));
+            if (!string.IsNullOrEmpty(name)) names.Add(name + " ×" + Math.Max(0L, grant.grantedQuantity));
             }
         }
 
@@ -711,7 +711,7 @@ public partial class HomePageUI
         string mutation = serverSignMutationRunning ? "正在提交..." : status;
         string cost = plan.makeupCost == null
             ? string.Empty
-            : $" · 补签 {plan.makeupCost.itemName}x{plan.makeupCost.amount}";
+                : $" · 补签 {plan.makeupCost.itemName}×{plan.makeupCost.amount}";
         SetSceneText(
             root,
             statusName,
@@ -964,7 +964,7 @@ public partial class HomePageUI
                     string rewardName = string.IsNullOrWhiteSpace(reward.grantedRewardName)
                         ? GetRewardDisplayName(reward.grantedRewardType, reward.grantedRewardKey)
                         : reward.grantedRewardName;
-                    rewards.Add($"{rewardName}x{reward.grantedRewardAmount}");
+            rewards.Add($"{rewardName}×{reward.grantedRewardAmount}");
                 }
             }
         }
@@ -999,7 +999,7 @@ public partial class HomePageUI
         }
 
         rewardName = names.Count == 0 ? "暂无奖励" : string.Join("/", names.ToArray());
-        rewardAmount = rewards.Length == 1 ? "x" + totalAmount : rewards.Length + "项奖励";
+        rewardAmount = rewards.Length == 1 ? "×" + totalAmount : rewards.Length + "项奖励";
     }
 
     private static string GetRewardDisplayName(string rewardType, string rewardKey)
@@ -1011,8 +1011,14 @@ public partial class HomePageUI
         if (key == "stone") return "石材";
         if (key == "iron") return "铁矿";
         if (string.Equals(rewardType, "EQUIPMENT", StringComparison.OrdinalIgnoreCase)) return "装备";
-        if (string.Equals(rewardType, "NPC", StringComparison.OrdinalIgnoreCase)) return "NPC";
-        return string.IsNullOrEmpty(rewardKey) ? "奖励" : rewardKey;
+        if (string.Equals(rewardType, "NPC", StringComparison.OrdinalIgnoreCase)) return "居民";
+        if (string.IsNullOrEmpty(rewardKey)) return "奖励";
+        for (int i = 0; i < rewardKey.Length; i++)
+        {
+            char character = rewardKey[i];
+            if ((character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z')) return "奖励";
+        }
+        return rewardKey;
     }
 
     private void OpenServerLottery()
@@ -1426,8 +1432,8 @@ public partial class HomePageUI
         for (int i = 0; i < shown; i++)
         {
             CardDrawResultResponse result = data.results[i];
-            string suffix = result.duplicateNpcConverted ? "(重复NPC转碎片)" : string.Empty;
-            rewards.Add($"{GetCardDrawResultName(result)}x{result.grantedRewardAmount}{suffix}");
+            string suffix = result.duplicateNpcConverted ? "（重复居民转为碎片）" : string.Empty;
+            rewards.Add($"{GetCardDrawResultName(result)}×{result.grantedRewardAmount}{suffix}");
         }
 
         return "获得：" + string.Join("、", rewards.ToArray()) + $" · 剩余钻石 {data.remainingDiamond}";
@@ -1607,7 +1613,7 @@ public partial class HomePageUI
             cardObject.name = "RuntimeLotteryPrizeCard_" + cardData.slotNo;
             cardObject.SetActive(true);
             SetSceneText(cardObject.transform, "LotteryPrizeCardName", string.IsNullOrEmpty(cardData.rewardName) ? "奖励" : cardData.rewardName);
-            SetSceneText(cardObject.transform, "LotteryPrizeCardAmount", $"x{Mathf.Max(0, cardData.rewardAmount)}");
+            SetSceneText(cardObject.transform, "LotteryPrizeCardAmount", $"×{Mathf.Max(0, cardData.rewardAmount)}");
             SetSceneText(cardObject.transform, "LotteryPrizeCardProbability", $"概率 {cardData.probability:P1}");
             SetSceneText(cardObject.transform, "LotteryPrizeIconText", GetLotteryIconLabel(cardData.rewardName, cardData.rewardType));
             Image icon = FindSceneComponent<Image>(cardObject.transform, "LotteryPrizeIcon");
@@ -1622,7 +1628,7 @@ public partial class HomePageUI
             }
             if (pendingCardDrawHighlightNpcId > 0 && cardData.rewardAssetId == pendingCardDrawHighlightNpcId)
             {
-                SetSceneText(cardObject.transform, "LotteryPrizeCardName", "★ " + (string.IsNullOrEmpty(cardData.rewardName) ? "目标 NPC" : cardData.rewardName));
+                SetSceneText(cardObject.transform, "LotteryPrizeCardName", "★ " + (string.IsNullOrEmpty(cardData.rewardName) ? "目标角色" : cardData.rewardName));
             }
         }
     }
@@ -1648,7 +1654,7 @@ public partial class HomePageUI
         Transform template = FindSceneTransform(root, "LotteryPoolRowTemplate");
         if (poolPanel == null || content == null || template == null)
         {
-            SetStatus("奖池面板节点不完整，请在 Unity 中重新生成抽奖面板");
+            SetStatus("奖池面板节点不完整，请重新生成抽奖面板");
             return;
         }
 
@@ -1676,7 +1682,7 @@ public partial class HomePageUI
             rowObject.SetActive(true);
             SetSceneText(rowObject.transform, "LotteryPoolRowSlot", "#" + cardData.slotNo);
             SetSceneText(rowObject.transform, "LotteryPoolRowName", string.IsNullOrEmpty(cardData.rewardName) ? "奖励" : cardData.rewardName);
-            SetSceneText(rowObject.transform, "LotteryPoolRowAmount", "数量 x" + Mathf.Max(0, cardData.rewardAmount));
+            SetSceneText(rowObject.transform, "LotteryPoolRowAmount", "数量 ×" + Mathf.Max(0, cardData.rewardAmount));
             SetSceneText(rowObject.transform, "LotteryPoolRowProbability", "概率 " + cardData.probability.ToString("P1"));
         }
 
@@ -1746,8 +1752,8 @@ public partial class HomePageUI
             rowObject.SetActive(true);
             SetSceneText(rowObject.transform, "LotteryRewardRowSequence", result.drawSequence.ToString());
             SetSceneText(rowObject.transform, "LotteryRewardRowName", GetCardDrawResultName(result));
-            SetSceneText(rowObject.transform, "LotteryRewardRowAmount", "x" + Mathf.Max(0, result.grantedRewardAmount));
-            SetSceneText(rowObject.transform, "LotteryRewardRowNote", result.duplicateNpcConverted ? "重复 NPC 已转碎片" : GetRewardCategoryLabel(result.grantedRewardType));
+            SetSceneText(rowObject.transform, "LotteryRewardRowAmount", "×" + Mathf.Max(0, result.grantedRewardAmount));
+            SetSceneText(rowObject.transform, "LotteryRewardRowNote", result.duplicateNpcConverted ? "重复居民已转为碎片" : GetRewardCategoryLabel(result.grantedRewardType));
         }
 
         rewardPanel.gameObject.SetActive(true);
@@ -1815,7 +1821,11 @@ public partial class HomePageUI
         {
             return rewardName.Substring(0, 1);
         }
-        return string.IsNullOrEmpty(rewardType) ? "奖" : rewardType.Substring(0, 1);
+        string normalized = (rewardType ?? string.Empty).Trim().ToUpperInvariant();
+        if (normalized == "NPC") return "人";
+        if (normalized == "EQUIPMENT") return "装";
+        if (normalized == "ITEM") return "物";
+        return "奖";
     }
 
     private static Color GetLotteryRewardColor(string rewardType)
@@ -1832,7 +1842,7 @@ public partial class HomePageUI
         if (normalized == "NPC") return "角色";
         if (normalized == "EQUIPMENT") return "装备";
         if (normalized == "ITEM") return "物品";
-        return string.IsNullOrEmpty(rewardType) ? "奖励" : rewardType;
+        return "奖励";
     }
 
     private void ShowServerLotteryState(bool rolling = false)
@@ -2078,7 +2088,7 @@ public partial class HomePageUI
             }
 
             pendingRewardAdWatchId = response.data.watchId;
-            SetStatus($"观看完整广告可获得 {GetRewardDisplayName("ITEM", response.data.rewardItemKey)} x{response.data.rewardAmount}");
+            SetStatus($"观看完整广告可获得 {GetRewardDisplayName("ITEM", response.data.rewardItemKey)} ×{response.data.rewardAmount}");
             WeChatPlatformBridge.RequestRewardedVideo(this, response.data.watchId, response.data.adUnitId);
         }
     }
@@ -2191,7 +2201,7 @@ public partial class HomePageUI
             {
                 SyncInventoryResourceValues(response.data.items);
             }
-            SetStatus($"广告奖励已领取：{GetRewardDisplayName("ITEM", response.data.rewardItemKey)} x{response.data.rewardAmount}");
+            SetStatus($"广告奖励已领取：{GetRewardDisplayName("ITEM", response.data.rewardItemKey)} ×{response.data.rewardAmount}");
             StartCoroutine(RefreshAccountSnapshot(string.Empty));
         }
     }

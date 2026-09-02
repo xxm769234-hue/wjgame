@@ -5,8 +5,8 @@ public sealed class NpcConfig : ScriptableObject
 {
     [Header("Identity")]
     public int npcId;
-    public string npcName = "NPC";
-    public string role = "Resident";
+    public string npcName = "居民";
+    public string role = "居民";
     [TextArea] public string description;
 
     [Header("Visual")]

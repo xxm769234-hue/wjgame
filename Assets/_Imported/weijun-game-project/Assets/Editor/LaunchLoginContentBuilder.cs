@@ -121,7 +121,7 @@ public static class LaunchLoginContentBuilder
         Button startGameButton = CreateStartGameButton(landingContent, style);
         Toggle privacyConsentToggle = CreatePrivacyConsentToggle(contentRoot, style);
         SetCentered(privacyConsentToggle.GetComponent<RectTransform>(), new Vector2(-95f, -355f), new Vector2(490f, 38f));
-        CreateFixedButton(contentRoot, "PrivacyPolicyButton", "查看隐私政策", new Vector2(270f, -355f), new Vector2(180f, 42f), PaperColor, style.PaperTextColor, 15, style);
+        CreateFixedButton(contentRoot, "PrivacyPolicyButton", "查看隐私协议", new Vector2(270f, -355f), new Vector2(180f, 42f), PaperColor, style.PaperTextColor, 15, style);
 
         Text healthAdvice = CreateText(
             "HealthyGamingAdvice",
@@ -238,7 +238,7 @@ public static class LaunchLoginContentBuilder
         labelObject.transform.SetParent(root, false);
         TMP_Text label = labelObject.GetComponent<TMP_Text>();
         label.font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(TmpFontPath);
-        label.text = "我已阅读并同意当前隐私政策";
+        label.text = "我已阅读并同意当前隐私协议";
         label.fontSize = style.ResolveFontSize(15);
         label.color = Color.white;
         label.alignment = TextAlignmentOptions.MidlineLeft;

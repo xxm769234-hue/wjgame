@@ -58,8 +58,8 @@ public sealed class IdleAdventurePausePanel : MonoBehaviour
 
     public void SetContent(string title, string body)
     {
-        if (titleText != null) titleText.text = title;
-        if (bodyText != null) bodyText.text = body;
+        if (titleText != null) titleText.text = FrontendTextLocalization.Normalize(title);
+        if (bodyText != null) bodyText.text = FrontendTextLocalization.Normalize(body);
     }
 
     public void SetButtonLabels(string resumeLabel, string exitLabel)
@@ -74,7 +74,7 @@ public sealed class IdleAdventurePausePanel : MonoBehaviour
             exitButtonText = exitButton.GetComponentInChildren<TextMeshProUGUI>(true);
         }
 
-        if (resumeButtonText != null) resumeButtonText.text = resumeLabel;
-        if (exitButtonText != null) exitButtonText.text = exitLabel;
+        if (resumeButtonText != null) resumeButtonText.text = FrontendTextLocalization.Normalize(resumeLabel);
+        if (exitButtonText != null) exitButtonText.text = FrontendTextLocalization.Normalize(exitLabel);
     }
 }

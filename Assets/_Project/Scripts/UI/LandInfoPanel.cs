@@ -83,7 +83,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         LandConfig data = slot.CurrentLand;
         SetText(nameText, data.landName);
         SetText(descText, data.description);
-        SetText(levelText, $"Level: {data.unlockLevel}");
+        SetText(levelText, $"等级：{data.unlockLevel}");
         RefreshBuildingStatus();
         RefreshProductionStatus();
         RefreshNpcStatus();
@@ -143,7 +143,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             if (current != slot) return;
             if (result == null || !result.Success)
             {
-                SetText(buildingText, $"Building detail failed: {ResultMessage(result)}");
+                SetText(buildingText, $"建筑详情读取失败：{ResultMessage(result)}");
                 return;
             }
             RefreshBuildingStatus();
@@ -155,7 +155,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             if (current != slot) return;
             if (result == null || !result.Success)
             {
-                SetText(npcText, $"Production detail failed: {ResultMessage(result)}");
+                SetText(npcText, $"生产详情读取失败：{ResultMessage(result)}");
                 return;
             }
             RefreshProductionStatus();
@@ -181,7 +181,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
     private static void SetText(TMP_Text target, string value)
     {
-        if (target != null) target.text = value ?? string.Empty;
+        if (target != null) target.text = FrontendTextLocalization.Normalize(value);
     }
 
     public void ToggleBuildingList()
@@ -248,7 +248,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         if (!buildingManager.TryBuildOnSlot(current, config, out string reason))
         {
             Debug.LogWarning($"LandInfoPanel build click reached BuildingManager but failed before request. building={(config != null ? config.buildingName : "null")}, reason={reason}", this);
-            SetText(buildingText, $"Building failed: {reason}");
+            SetText(buildingText, $"建造失败：{reason}");
             return;
         }
 
@@ -266,7 +266,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!buildingManager.TryStartUpgrade(current, out string reason))
         {
-            SetText(buildingText, $"Upgrade failed: {reason}");
+            SetText(buildingText, $"升级失败：{reason}");
             return;
         }
 
@@ -282,7 +282,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!buildingManager.BeginMoveBuilding(current, out string reason))
         {
-            SetText(buildingText, $"Move failed: {reason}");
+            SetText(buildingText, $"移动失败：{reason}");
             return;
         }
 
@@ -296,7 +296,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!buildingManager.TryDemolishBuilding(current, out string reason))
         {
-            SetText(buildingText, $"Demolish failed: {reason}");
+            SetText(buildingText, $"拆除失败：{reason}");
             return;
         }
 
@@ -312,7 +312,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!buildingManager.TryCancelBuildingAction(current, out string reason))
         {
-            SetText(buildingText, $"Cancel failed: {reason}");
+            SetText(buildingText, $"取消失败：{reason}");
             return;
         }
 
@@ -328,7 +328,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!buildingManager.TryCompleteBuildingAction(current, out string reason))
         {
-            SetText(buildingText, $"Complete failed: {reason}");
+            SetText(buildingText, $"完成失败：{reason}");
             return;
         }
 
@@ -358,7 +358,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         ClearNpcList();
         LandSlotController requestedSlot = current;
-        Button loading = CreateTextButton("NPC Loading", npcListContent, "Loading NPCs...", new Vector2(0f, 0f), new Vector2(600f, 52f), 22f, () => { });
+        Button loading = CreateTextButton("NPC Loading", npcListContent, "正在读取居民……", new Vector2(0f, 0f), new Vector2(600f, 52f), 22f, () => { });
         loading.interactable = false;
         npcListPanel.gameObject.SetActive(true);
 
@@ -369,14 +369,14 @@ public sealed class LandInfoPanel : MonoBehaviour
             ClearNpcList();
             if (!success)
             {
-                Button failed = CreateTextButton("NPC Load Failed", npcListContent, $"NPC failed: {message}", new Vector2(0f, 0f), new Vector2(600f, 52f), 20f, () => { });
+                Button failed = CreateTextButton("NPC Load Failed", npcListContent, $"居民读取失败：{message}", new Vector2(0f, 0f), new Vector2(600f, 52f), 20f, () => { });
                 failed.interactable = false;
                 return;
             }
 
             if (npcs == null || npcs.Count == 0)
             {
-                Button empty = CreateTextButton("NPC Empty", npcListContent, "No available NPC", new Vector2(0f, 0f), new Vector2(600f, 52f), 22f, () => { });
+                Button empty = CreateTextButton("NPC Empty", npcListContent, "暂无可用居民", new Vector2(0f, 0f), new Vector2(600f, 52f), 22f, () => { });
                 empty.interactable = false;
                 return;
             }
@@ -403,7 +403,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         {
             if (!success)
             {
-                SetText(npcText, $"NPC failed: {message}");
+                SetText(npcText, $"居民操作失败：{message}");
                 return;
             }
 
@@ -413,7 +413,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             RefreshProductionControls();
         }, out string reason))
         {
-            SetText(npcText, $"NPC failed: {reason}");
+            SetText(npcText, $"居民操作失败：{reason}");
             return;
         }
     }
@@ -427,7 +427,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         {
             if (!success)
             {
-                SetText(npcText, $"Remove NPC failed: {message}");
+                SetText(npcText, $"移除居民失败：{message}");
                 return;
             }
 
@@ -436,7 +436,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             RefreshNpcStatus();
         }, out string reason))
         {
-            SetText(npcText, $"Remove NPC failed: {reason}");
+            SetText(npcText, $"移除居民失败：{reason}");
             return;
         }
     }
@@ -454,7 +454,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         }
         else
         {
-            SetText(buildingText, "Building: None");
+            SetText(buildingText, "建筑：无");
             if (buildButton != null) buildButton.gameObject.SetActive(true);
             SetBuildingActionButtonsVisible(false);
         }
@@ -466,28 +466,28 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!current.HasBuilding)
         {
-            SetText(npcText, "NPC: Build first");
+            SetText(npcText, "居民：请先建造建筑");
             if (assignNpcButton != null) assignNpcButton.gameObject.SetActive(false);
             if (removeNpcButton != null) removeNpcButton.gameObject.SetActive(false);
             HideNpcList();
         }
         else if (!current.IsBuildingCompleted)
         {
-            SetText(npcText, "NPC: Wait for completed building");
+            SetText(npcText, "居民：请等待建筑完成");
             if (assignNpcButton != null) assignNpcButton.gameObject.SetActive(false);
             if (removeNpcButton != null) removeNpcButton.gameObject.SetActive(false);
             HideNpcList();
         }
         else if (current.HasNpc)
         {
-            SetText(npcText, $"NPC: {current.CurrentNpc.npcName} ({current.CurrentNpc.role})");
+            SetText(npcText, $"居民：{current.CurrentNpc.npcName}（{current.CurrentNpc.role}）");
             if (assignNpcButton != null) assignNpcButton.gameObject.SetActive(false);
             if (removeNpcButton != null) removeNpcButton.gameObject.SetActive(true);
             HideNpcList();
         }
         else
         {
-            SetText(npcText, "NPC: None");
+            SetText(npcText, "居民：无");
             if (assignNpcButton != null) assignNpcButton.gameObject.SetActive(true);
             if (removeNpcButton != null) removeNpcButton.gameObject.SetActive(false);
         }
@@ -499,7 +499,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!current.HasBuilding)
         {
-            SetText(productionText, "Production: Build first");
+            SetText(productionText, "生产：请先建造建筑");
             RefreshProductionControls();
             return;
         }
@@ -507,7 +507,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         IReadOnlyList<ProductionResponse> productions = current.LatestProductions;
         if (productions == null || productions.Count == 0)
         {
-            SetText(productionText, current.IsBuildingCompleted ? "Production: Syncing..." : "Production: Paused");
+            SetText(productionText, current.IsBuildingCompleted ? "生产：同步中……" : "生产：已暂停");
             RefreshProductionControls();
             return;
         }
@@ -906,7 +906,7 @@ public sealed class LandInfoPanel : MonoBehaviour
     {
         if (button == null) return;
         TMP_Text text = button.GetComponentInChildren<TMP_Text>(true);
-        if (text != null) text.text = label ?? string.Empty;
+        if (text != null) text.text = FrontendTextLocalization.Normalize(label);
     }
 
     private void HideBuildingList()
@@ -941,24 +941,24 @@ public sealed class LandInfoPanel : MonoBehaviour
 
     private static string FormatBuildingLabel(BuildingConfig config, string disabledReason)
     {
-        string buildTime = config.buildSeconds > 0 ? $"{config.buildSeconds}s" : "Instant";
+        string buildTime = config.buildSeconds > 0 ? $"{config.buildSeconds}s" : "立即完成";
         List<string> costs = new List<string>();
-        if (config.goldCost > 0L) costs.Add($"Gold {config.goldCost:N0}");
-        if (config.woodCost > 0L) costs.Add($"Wood {config.woodCost:N0}");
-        if (config.stoneCost > 0L) costs.Add($"Stone {config.stoneCost:N0}");
-        if (config.ironCost > 0L) costs.Add($"Iron {config.ironCost:N0}");
-        string cost = costs.Count > 0 ? string.Join(", ", costs) : config.cost > 0 ? $"Cost {config.cost:N0}" : "Free";
-        string ownership = config.hasOwnershipLimit ? $"  Owned {config.ownedCount}/{config.maxOwnedCount}" : string.Empty;
-        string reason = string.IsNullOrEmpty(disabledReason) ? string.Empty : $"\nUnavailable: {disabledReason}";
+        if (config.goldCost > 0L) costs.Add($"金币 {config.goldCost:N0}");
+        if (config.woodCost > 0L) costs.Add($"木材 {config.woodCost:N0}");
+        if (config.stoneCost > 0L) costs.Add($"石材 {config.stoneCost:N0}");
+        if (config.ironCost > 0L) costs.Add($"铁矿 {config.ironCost:N0}");
+        string cost = costs.Count > 0 ? string.Join("、", costs) : config.cost > 0 ? $"消耗 {config.cost:N0}" : "免费";
+        string ownership = config.hasOwnershipLimit ? $"  已拥有 {config.ownedCount}/{config.maxOwnedCount}" : string.Empty;
+        string reason = string.IsNullOrEmpty(disabledReason) ? string.Empty : $"\n不可用：{disabledReason}";
         return $"{config.buildingName} - {cost} - {buildTime}{ownership}{reason}";
     }
 
     private static string FormatBuildingStatus(LandSlotController slot)
     {
         BuildingConfig building = slot.CurrentBuilding;
-        if (building == null) return "Building: None";
+        if (building == null) return "建筑：无";
 
-        string text = $"Building: {building.buildingName}  ID:{slot.PlayerBuildingId}\nLevel: {slot.BuildingLevel}/{building.maxLevel}  Status: {slot.BuildingStatus}";
+        string text = $"建筑：{building.buildingName}  编号：{slot.PlayerBuildingId}\n等级：{slot.BuildingLevel}/{building.maxLevel}  状态：{FormatBuildingRuntimeStatus(slot.BuildingStatus)}";
         if (slot.IsBuildingInProgress)
         {
             text += $"  {Mathf.CeilToInt(slot.BuildingRemainingSeconds)}s  {Mathf.RoundToInt(slot.BuildingProgress * 100f)}%";
@@ -968,7 +968,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
     private static string FormatProductionStatus(LandSlotController slot, IReadOnlyList<ProductionResponse> productions)
     {
-        if (productions == null || productions.Count == 0) return "Production: None";
+        if (productions == null || productions.Count == 0) return "生产：无";
 
         List<string> lines = new List<string>();
         string costText = FormatProductionCosts(slot != null ? slot.CurrentBuilding : null);
@@ -978,15 +978,16 @@ public sealed class LandInfoPanel : MonoBehaviour
             if (production == null) continue;
 
             string itemName = !string.IsNullOrEmpty(production.itemName) ? production.itemName : production.itemKey;
-            if (string.IsNullOrEmpty(itemName)) itemName = "Resource";
+            if (string.IsNullOrEmpty(itemName)) itemName = "资源";
+            itemName = TranslateResourceLabel(itemName);
 
-            string collectState = production.canCollect ? "Ready" : FormatRemaining(production.remainingSeconds);
-            string bonus = production.npcProduceBonusRate > 0f ? $"  Bonus +{Mathf.RoundToInt(production.npcProduceBonusRate * 100f)}%" : string.Empty;
-            string cost = string.IsNullOrEmpty(costText) ? string.Empty : $"  Cost {costText}/cycle";
+            string collectState = production.canCollect ? "可收取" : FormatRemaining(production.remainingSeconds);
+            string bonus = production.npcProduceBonusRate > 0f ? $"  加成 +{Mathf.RoundToInt(production.npcProduceBonusRate * 100f)}%" : string.Empty;
+            string cost = string.IsNullOrEmpty(costText) ? string.Empty : $"  消耗 {costText}/周期";
             lines.Add($"{itemName}: {production.storedAmount}/{production.storageCapacity}  +{production.produceAmount}/{production.produceIntervalSeconds}s  {collectState}{bonus}{cost}");
         }
 
-        return lines.Count == 0 ? "Production: None" : $"Production:\n{string.Join("\n", lines)}";
+        return lines.Count == 0 ? "生产：无" : $"生产：\n{string.Join("\n", lines)}";
     }
 
     private static string FormatProductionCosts(BuildingConfig building)
@@ -1000,7 +1001,8 @@ public sealed class LandInfoPanel : MonoBehaviour
             if (cost == null || !cost.IsValid) continue;
 
             string itemName = string.IsNullOrEmpty(cost.itemName) ? cost.itemKey : cost.itemName;
-            parts.Add($"{itemName}x{cost.amount}");
+            itemName = TranslateResourceLabel(itemName);
+            parts.Add($"{itemName}×{cost.amount}");
         }
 
         return string.Join(", ", parts);
@@ -1008,18 +1010,81 @@ public sealed class LandInfoPanel : MonoBehaviour
 
     private static string FormatRemaining(long remainingSeconds)
     {
-        if (remainingSeconds <= 0) return "Waiting";
+        if (remainingSeconds <= 0) return "等待中";
         long minutes = remainingSeconds / 60L;
         long seconds = remainingSeconds % 60L;
-        return minutes > 0 ? $"Next {minutes}m {seconds}s" : $"Next {seconds}s";
+        return minutes > 0 ? $"下次 {minutes}分 {seconds}秒" : $"下次 {seconds}秒";
     }
 
     private static string FormatNpcLabel(NpcConfig config)
     {
-        string role = IsBlank(config.role) ? "Resident" : config.role;
-        string requirement = IsBlank(config.requiredBuildingType) ? "Any building" : $"Needs {config.requiredBuildingType}";
-        string suffix = config.canAssign ? string.Empty : $" ({config.disabledReason})";
+        string role = IsBlank(config.role) ? "居民" : TranslateDisplayLabel(config.role, "居民");
+        string requirement = IsBlank(config.requiredBuildingType) ? "任意建筑" : $"需要{TranslateDisplayLabel(config.requiredBuildingType, "该类型建筑")}";
+        string suffix = config.canAssign ? string.Empty : $"（{TranslateDisplayLabel(config.disabledReason, "暂不可分配")}）";
         return $"{config.npcName} - {role} - {requirement}{suffix}";
+    }
+
+    private static string FormatBuildingRuntimeStatus(BuildingRuntimeStatus status)
+    {
+        switch (status)
+        {
+            case BuildingRuntimeStatus.BUILDING: return "建造中";
+            case BuildingRuntimeStatus.UPGRADING: return "升级中";
+            case BuildingRuntimeStatus.COMPLETED: return "已完成";
+            default: return "未知";
+        }
+    }
+
+    private static string TranslateResourceLabel(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        string key = value.Trim().ToLowerInvariant().Replace("_", string.Empty).Replace("-", string.Empty).Replace(" ", string.Empty);
+        switch (key)
+        {
+            case "gold": return "金币";
+            case "wood": return "木材";
+            case "stone": return "石材";
+            case "iron":
+            case "ore": return "铁矿";
+            case "wheat": return "小麦";
+            case "fish": return "鱼";
+            case "meat": return "肉";
+            case "food":
+            case "bread": return "食物";
+            case "metal": return "金属";
+            case "stamina": return "体力";
+            case "crystal":
+            case "diamond": return "钻石";
+            default: return TranslateDisplayLabel(value, "资源");
+        }
+    }
+
+    private static string TranslateDisplayLabel(string value, string fallback)
+    {
+        if (string.IsNullOrEmpty(value)) return fallback;
+        string normalized = value.Trim().ToUpperInvariant().Replace("_", string.Empty).Replace("-", string.Empty).Replace(" ", string.Empty);
+        switch (normalized)
+        {
+            case "FARM": return "农场";
+            case "MINE": return "矿场";
+            case "LUMBERMILL": return "伐木场";
+            case "WORKSHOP": return "工坊";
+            case "HOUSE": return "住宅";
+            case "RESIDENTIAL": return "住宅";
+            case "DEFAULT": return "默认";
+            case "NPC": return "居民";
+            case "AVAILABLE": return "可用";
+            case "UNAVAILABLE": return "不可用";
+            case "LOCKED": return "已锁定";
+            case "UNKNOWN": return "未知";
+            default:
+                for (int i = 0; i < value.Length; i++)
+                {
+                    char character = value[i];
+                    if ((character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z')) return fallback;
+                }
+                return value;
+        }
     }
 
     private static bool IsBlank(string value)
@@ -1029,8 +1094,8 @@ public sealed class LandInfoPanel : MonoBehaviour
 
     private static string ResultMessage<T>(BackendResult<T> result)
     {
-        if (result == null) return "No backend response.";
-        return string.IsNullOrEmpty(result.Message) ? $"HTTP {result.HttpStatus}" : result.Message;
+        if (result == null) return "未收到服务器响应。";
+        return FrontendTextLocalization.Normalize(string.IsNullOrEmpty(result.Message) ? $"请求状态：{result.HttpStatus}" : result.Message);
     }
 
     private static bool TryGetPointerDownPosition(out Vector2 screenPosition)
@@ -1120,7 +1185,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (buildButton == null)
         {
-            buildButton = CreateTextButton("Build Building Button", panelRect, "Build", new Vector2(220f, -55f), new Vector2(170f, 50f), 24f, ToggleBuildingList);
+            buildButton = CreateTextButton("Build Building Button", panelRect, "建造", new Vector2(220f, -55f), new Vector2(170f, 50f), 24f, ToggleBuildingList);
         }
         ConfigureButtonRect(buildButton, new Vector2(220f, -55f), new Vector2(170f, 50f));
 
@@ -1166,11 +1231,11 @@ public sealed class LandInfoPanel : MonoBehaviour
     {
         if (panelRect == null) return;
 
-        if (upgradeButton == null) upgradeButton = CreateTextButton("Upgrade Building Button", panelRect, "Upgrade", new Vector2(240f, 15f), new Vector2(135f, 42f), 18f, OnUpgradeClicked);
-        if (moveButton == null) moveButton = CreateTextButton("Move Building Button", panelRect, "Move", new Vector2(240f, -32f), new Vector2(135f, 42f), 18f, OnMoveClicked);
-        if (demolishButton == null) demolishButton = CreateTextButton("Demolish Building Button", panelRect, "Demolish", new Vector2(240f, -79f), new Vector2(135f, 42f), 18f, OnDemolishClicked);
-        if (cancelActionButton == null) cancelActionButton = CreateTextButton("Cancel Building Action Button", panelRect, "Cancel", new Vector2(240f, -126f), new Vector2(135f, 42f), 18f, OnCancelActionClicked);
-        if (completeActionButton == null) completeActionButton = CreateTextButton("Complete Building Action Button", panelRect, "Complete", new Vector2(240f, -173f), new Vector2(135f, 42f), 18f, OnCompleteActionClicked);
+        if (upgradeButton == null) upgradeButton = CreateTextButton("Upgrade Building Button", panelRect, "升级", new Vector2(240f, 15f), new Vector2(135f, 42f), 18f, OnUpgradeClicked);
+        if (moveButton == null) moveButton = CreateTextButton("Move Building Button", panelRect, "移动", new Vector2(240f, -32f), new Vector2(135f, 42f), 18f, OnMoveClicked);
+        if (demolishButton == null) demolishButton = CreateTextButton("Demolish Building Button", panelRect, "拆除", new Vector2(240f, -79f), new Vector2(135f, 42f), 18f, OnDemolishClicked);
+        if (cancelActionButton == null) cancelActionButton = CreateTextButton("Cancel Building Action Button", panelRect, "取消", new Vector2(240f, -126f), new Vector2(135f, 42f), 18f, OnCancelActionClicked);
+        if (completeActionButton == null) completeActionButton = CreateTextButton("Complete Building Action Button", panelRect, "完成", new Vector2(240f, -173f), new Vector2(135f, 42f), 18f, OnCompleteActionClicked);
 
         ConfigureButtonRect(upgradeButton, new Vector2(240f, 15f), new Vector2(135f, 42f));
         ConfigureButtonRect(moveButton, new Vector2(240f, -32f), new Vector2(135f, 42f));
@@ -1206,13 +1271,13 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (assignNpcButton == null)
         {
-            assignNpcButton = CreateTextButton("Assign NPC Button", panelRect, "Assign NPC", new Vector2(220f, -115f), new Vector2(170f, 44f), 20f, ToggleNpcList);
+            assignNpcButton = CreateTextButton("Assign NPC Button", panelRect, "分配居民", new Vector2(220f, -115f), new Vector2(170f, 44f), 20f, ToggleNpcList);
         }
         ConfigureButtonRect(assignNpcButton, new Vector2(220f, -115f), new Vector2(170f, 44f));
 
         if (removeNpcButton == null)
         {
-            removeNpcButton = CreateTextButton("Remove NPC Button", panelRect, "Remove NPC", new Vector2(220f, -164f), new Vector2(170f, 44f), 19f, OnRemoveNpcClicked);
+            removeNpcButton = CreateTextButton("Remove NPC Button", panelRect, "移除居民", new Vector2(220f, -164f), new Vector2(170f, 44f), 19f, OnRemoveNpcClicked);
         }
         ConfigureButtonRect(removeNpcButton, new Vector2(220f, -164f), new Vector2(170f, 44f));
         removeNpcButton.gameObject.SetActive(false);
@@ -1322,7 +1387,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         TMP_Text text = textObject.GetComponent<TMP_Text>();
         text.font = RuntimeFontAssetProvider.Resolve();
-        text.text = label;
+        text.text = FrontendTextLocalization.Normalize(label);
         text.fontSize = fontSize;
         text.color = Color.white;
         text.alignment = TextAlignmentOptions.Center;

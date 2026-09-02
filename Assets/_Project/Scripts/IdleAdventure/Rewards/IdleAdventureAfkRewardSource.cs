@@ -10,7 +10,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
 {
     [Header("Production")]
     [SerializeField] private string itemKey = "gold";
-    [SerializeField] private string displayName = "Gold";
+    [SerializeField] private string displayName = "金币";
     [SerializeField, Min(1)] private int baseQuantityPerCycle = 10;
     [SerializeField, Min(0)] private int quantityPerHighestStage = 2;
     [SerializeField, Min(1f)] private float productionIntervalSeconds = 30f;
@@ -501,7 +501,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
             { collectedKey, collectedName }
         };
 
-        if (rewardLedger != null) rewardLedger.GrantRewards(rewards, displayNames, $"{collectedName} x{collectedQuantity}");
+        if (rewardLedger != null) rewardLedger.GrantRewards(rewards, displayNames, $"{collectedName} ×{collectedQuantity}");
         rewardCollected.Invoke(collectedKey, collectedName, collectedQuantity);
     }
 
@@ -608,9 +608,9 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
         if (collectButton != null) collectButton.interactable = ready;
         if (iconImage != null) iconImage.color = ready ? new Color(0.95f, 0.72f, 0.24f, 1f) : new Color(0.32f, 0.36f, 0.40f, 1f);
         if (progressFill != null) progressFill.fillAmount = ready ? 1f : waitingForServer ? 0f : CalculateProgress(serverNow);
-        if (iconText != null) iconText.text = ResolveIconText();
-        if (amountText != null) amountText.text = waitingForServer ? "同步中" : $"x{amount}/{MaxStoredQuantity}";
-        if (timerText != null) timerText.text = waitingForServer ? "同步中" : full ? "Full" : ready ? "Ready" : FormatRemainingTime(CalculateRemainingSeconds(serverNow));
+        if (iconText != null) iconText.text = FrontendTextLocalization.Normalize(ResolveIconText());
+        if (amountText != null) amountText.text = waitingForServer ? "同步中" : $"×{amount}/{MaxStoredQuantity}";
+        if (timerText != null) timerText.text = waitingForServer ? "同步中" : full ? "已存满" : ready ? "可领取" : FormatRemainingTime(CalculateRemainingSeconds(serverNow));
     }
 
     private bool IsBackendAuthoritative()
@@ -650,7 +650,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     private string ResolveIconText()
     {
         string source = DisplayName;
-        return string.IsNullOrEmpty(source) ? "R" : source.Substring(0, 1).ToUpperInvariant();
+        return string.IsNullOrEmpty(source) ? "奖" : source.Substring(0, 1);
     }
 
     private string FormatRemainingTime(int remainingSeconds)

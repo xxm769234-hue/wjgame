@@ -92,7 +92,7 @@ public sealed class AnnouncementPanelView : MonoBehaviour
     {
         if (label != null)
         {
-            label.text = value ?? string.Empty;
+            label.text = FrontendTextLocalization.Normalize(value ?? string.Empty);
         }
     }
 

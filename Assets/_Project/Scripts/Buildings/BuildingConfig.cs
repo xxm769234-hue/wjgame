@@ -5,7 +5,7 @@ public sealed class BuildingConfig : ScriptableObject
 {
     [Header("Identity")]
     public int buildingId;
-    public string buildingName = "Building";
+    public string buildingName = "建筑";
     [TextArea] public string description;
 
     [Header("Visual")]
@@ -21,7 +21,7 @@ public sealed class BuildingConfig : ScriptableObject
     [Min(0)] public long stoneCost;
     [Min(0)] public long ironCost;
     [Min(0)] public int buildSeconds;
-    public string buildingType = "Default";
+    public string buildingType = "默认";
     [HideInInspector] public string requiredLandType;
     public bool canBuild = true;
     public string disabledReason;
@@ -41,7 +41,7 @@ public sealed class BuildingConfig : ScriptableObject
     public bool canProduceResource = true;
     public bool requireNpcForProduction;
     public bool showResourceBubbleImmediately = true;
-    public string resourceName = "Gold";
+    public string resourceName = "金币";
     public Sprite resourceIcon;
     public Color resourceColor = new Color(1f, 0.78f, 0.2f, 1f);
     [Min(1)] public int resourceAmount = 10;

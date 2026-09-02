@@ -82,7 +82,7 @@ public sealed class InventorySlotView : MonoBehaviour
         SetActive(fallbackText, useFallback);
         if (fallbackText != null)
         {
-            fallbackText.text = string.IsNullOrEmpty(fallbackLabel) ? "物" : fallbackLabel;
+            fallbackText.text = FrontendTextLocalization.Normalize(string.IsNullOrEmpty(fallbackLabel) ? "物" : fallbackLabel);
         }
 
         SetActive(quantityText, true);
@@ -135,7 +135,7 @@ public sealed class InventorySlotView : MonoBehaviour
             }
 
             TextMeshProUGUI replacement = legacy.gameObject.AddComponent<TextMeshProUGUI>();
-            replacement.text = legacy.text;
+            replacement.text = FrontendTextLocalization.Normalize(legacy.text);
             replacement.fontSize = legacy.fontSize;
             replacement.color = legacy.color;
             replacement.raycastTarget = legacy.raycastTarget;

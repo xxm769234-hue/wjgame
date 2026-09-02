@@ -398,7 +398,7 @@ public partial class HomePageUI
                 continue;
             }
 
-            rareBroadcastText.text = item.content;
+            rareBroadcastText.text = FrontendTextLocalization.Normalize(item.content);
             rareBroadcastText.gameObject.SetActive(true);
             float displaySeconds = RareBroadcastDisplaySeconds;
             if (item.expiresAt - now < TimeSpan.FromSeconds(displaySeconds))
@@ -614,7 +614,7 @@ public partial class HomePageUI
             }
 
             rareCardDrawBroadcastObject.SetActive(true);
-            rareCardDrawBroadcastText.text = message.content;
+            rareCardDrawBroadcastText.text = FrontendTextLocalization.Normalize(message.content);
             rareCardDrawBroadcastText.ForceMeshUpdate();
 
             float viewportWidth = Mathf.Max(1f, rareCardDrawBroadcastViewport.rect.width);

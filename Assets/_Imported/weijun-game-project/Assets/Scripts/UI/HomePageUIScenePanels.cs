@@ -103,7 +103,7 @@ public partial class HomePageUI
             Text label = button.GetComponentInChildren<Text>(true);
             if (label != null)
             {
-                label.text = categoryLabel;
+                label.text = FrontendTextLocalization.Normalize(categoryLabel);
                 label.color = selected ? Color.white : new Color(0.38f, 0.18f, 0.08f, 1f);
             }
 
@@ -177,7 +177,7 @@ public partial class HomePageUI
             row,
             "TaskRewardText",
             string.IsNullOrEmpty(task.rewardSummary)
-                ? $"{task.rewardName}\nx{task.rewardAmount}"
+                ? $"{task.rewardName}\n×{task.rewardAmount}"
                 : task.rewardSummary);
 
         Image progressFill = FindSceneComponent<Image>(row, "TaskProgressFill");
@@ -317,7 +317,7 @@ public partial class HomePageUI
             int bonus = 0;
 
             SetSceneText(card, "ProductName", productName);
-            SetSceneText(card, "HeaderText", $"{rewardName}x{rewardQuantity}");
+        SetSceneText(card, "HeaderText", $"{rewardName}×{rewardQuantity}");
             SetSceneText(card, "RewardAmount", rewardQuantity.ToString());
             SetSceneText(card, "BonusText", string.IsNullOrWhiteSpace(product.description) ? "后端定价商品" : product.description);
 
@@ -449,7 +449,7 @@ public partial class HomePageUI
         }
 
         string[] rewardNames = { "金币", "木材 石材", "装备宝箱" };
-        string[] rewardAmounts = { "x300", "x300", "x1" };
+        string[] rewardAmounts = { "×300", "×300", "×1" };
         for (int i = 0; i < 3; i++)
         {
             Transform card = FindSceneTransform(root, "NewbieSignCard" + (i + 1));
@@ -785,7 +785,7 @@ public partial class HomePageUI
             {
                 settingsLogoutConfirmation = false;
                 GameSettingsRuntime.SetTargetFrameRate(frameRate);
-                RefreshSettingsScenePanel(root, $"帧率上限已设置为 {frameRate} FPS");
+                RefreshSettingsScenePanel(root, $"帧率上限已设置为 {frameRate} 帧");
             });
         }
 
@@ -929,14 +929,14 @@ public partial class HomePageUI
         Text label = FindSceneComponent<Text>(root, objectName);
         if (label != null)
         {
-            label.text = value ?? string.Empty;
+            label.text = FrontendTextLocalization.Normalize(value);
             return;
         }
 
         TMP_Text tmpLabel = FindSceneComponent<TMP_Text>(root, objectName);
         if (tmpLabel != null)
         {
-            tmpLabel.text = value ?? string.Empty;
+            tmpLabel.text = FrontendTextLocalization.Normalize(value);
         }
     }
 
@@ -950,14 +950,14 @@ public partial class HomePageUI
         Text label = button.GetComponentInChildren<Text>(true);
         if (label != null)
         {
-            label.text = value ?? string.Empty;
+            label.text = FrontendTextLocalization.Normalize(value);
             return;
         }
 
         TMP_Text tmpLabel = button.GetComponentInChildren<TMP_Text>(true);
         if (tmpLabel != null)
         {
-            tmpLabel.text = value ?? string.Empty;
+            tmpLabel.text = FrontendTextLocalization.Normalize(value);
         }
     }
 

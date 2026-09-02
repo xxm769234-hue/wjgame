@@ -7,7 +7,7 @@ using UnityEngine.UI;
 public sealed class ReturnToHomeButton : MonoBehaviour
 {
     [SerializeField] private string homeSceneName = "HomeScene";
-    [SerializeField] private string buttonLabel = "Return Home";
+    [SerializeField] private string buttonLabel = "返回主页";
     [SerializeField] private Color buttonColor = new Color(0.18f, 0.26f, 0.34f, 0.96f);
 
     private Button button;
@@ -52,7 +52,7 @@ public sealed class ReturnToHomeButton : MonoBehaviour
         }
 
         label.font = RuntimeFontAssetProvider.Resolve();
-        label.text = buttonLabel;
+        label.text = FrontendTextLocalization.Normalize(buttonLabel);
         label.fontSize = 20f;
         label.fontStyle = FontStyles.Bold;
         label.alignment = TextAlignmentOptions.Center;
@@ -127,6 +127,84 @@ public static class SmallButtonIconUtility
             labelRect.anchorMax = Vector2.one;
             labelRect.offsetMin = new Vector2(horizontalPadding + iconWidth + 4f, labelRect.offsetMin.y);
             labelRect.offsetMax = new Vector2(-horizontalPadding, labelRect.offsetMax.y);
+        }
+
+        return icon;
+    }
+
+    public static Image ApplyVerticalIconButton(
+        Button button,
+        string resourceName,
+        string labelText,
+        float iconSize = 112f,
+        float labelHeight = 26f,
+        float labelGap = 6f)
+    {
+        if (button == null) return null;
+
+        Image background = button.GetComponent<Image>();
+        if (background != null)
+        {
+            background.sprite = null;
+            background.color = Color.clear;
+            background.type = Image.Type.Simple;
+            background.raycastTarget = true;
+        }
+
+        Transform iconTransform = button.transform.Find("SmallIcon");
+        Image icon;
+        if (iconTransform == null)
+        {
+            GameObject iconObject = new GameObject("SmallIcon", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            iconObject.layer = button.gameObject.layer;
+            iconObject.transform.SetParent(button.transform, false);
+            icon = iconObject.GetComponent<Image>();
+        }
+        else
+        {
+            icon = iconTransform.GetComponent<Image>();
+            if (icon == null) icon = iconTransform.gameObject.AddComponent<Image>();
+        }
+
+        if (!ApplyToImage(icon, resourceName)) return null;
+
+        RectTransform buttonRect = button.GetComponent<RectTransform>();
+        if (buttonRect != null)
+        {
+            Vector2 centerAnchor = (buttonRect.anchorMin + buttonRect.anchorMax) * 0.5f;
+            buttonRect.anchorMin = centerAnchor;
+            buttonRect.anchorMax = centerAnchor;
+            buttonRect.anchoredPosition = Vector2.zero;
+            buttonRect.sizeDelta = new Vector2(iconSize, iconSize + labelGap + labelHeight);
+        }
+
+        icon.color = Color.white;
+        icon.raycastTarget = false;
+        RectTransform iconRect = icon.rectTransform;
+        iconRect.anchorMin = new Vector2(0.5f, 0.5f);
+        iconRect.anchorMax = new Vector2(0.5f, 0.5f);
+        iconRect.pivot = new Vector2(0.5f, 0.5f);
+        iconRect.sizeDelta = new Vector2(iconSize, iconSize);
+        iconRect.anchoredPosition = new Vector2(0f, (labelHeight + labelGap) * 0.5f);
+        icon.transform.SetAsFirstSibling();
+
+        TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+        if (label != null && label.transform != icon.transform)
+        {
+            label.font = RuntimeFontAssetProvider.Resolve();
+            label.text = FrontendTextLocalization.Normalize(labelText);
+            label.fontSize = 22f;
+            label.fontStyle = FontStyles.Bold;
+            label.alignment = TextAlignmentOptions.Center;
+            label.color = Color.black;
+            label.raycastTarget = false;
+
+            RectTransform labelRect = label.rectTransform;
+            labelRect.anchorMin = new Vector2(0.5f, 0.5f);
+            labelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            labelRect.pivot = new Vector2(0.5f, 0.5f);
+            labelRect.sizeDelta = new Vector2(iconSize, labelHeight);
+            labelRect.anchoredPosition = new Vector2(0f, -(iconSize + labelGap) * 0.5f);
         }
 
         return icon;

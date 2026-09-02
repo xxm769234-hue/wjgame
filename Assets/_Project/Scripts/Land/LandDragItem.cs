@@ -40,7 +40,7 @@ public sealed class LandDragItem : MonoBehaviour, IBeginDragHandler, IDragHandle
         if (!config.canPlace)
         {
             string reason = string.IsNullOrEmpty(config.disabledReason)
-                ? "Backend currently rejects this land configuration."
+                ? "服务器当前不允许放置此地块。"
                 : config.disabledReason;
             Debug.LogWarning($"Land drag rejected by backend availability: {reason}", this);
             return;
@@ -69,7 +69,7 @@ public sealed class LandDragItem : MonoBehaviour, IBeginDragHandler, IDragHandle
     private void SetLabel(string value)
     {
         if (labelText == null) labelText = GetComponentInChildren<TMP_Text>(true);
-        if (labelText != null) labelText.text = value;
+        if (labelText != null) labelText.text = FrontendTextLocalization.Normalize(value);
     }
 
     private static string FormatLabel(LandConfig land)
@@ -78,10 +78,10 @@ public sealed class LandDragItem : MonoBehaviour, IBeginDragHandler, IDragHandle
         string cost = FormatCost(land);
         if (land.canPlace) return string.IsNullOrEmpty(cost) ? name : $"{name}\n{cost}";
 
-        string reason = string.IsNullOrEmpty(land.disabledReason) ? "Unavailable" : land.disabledReason;
+        string reason = string.IsNullOrEmpty(land.disabledReason) ? "不可用" : land.disabledReason;
         return string.IsNullOrEmpty(cost)
-            ? $"{name}\nUnavailable: {reason}"
-            : $"{name}\n{cost}\nUnavailable: {reason}";
+            ? $"{name}\n不可用：{reason}"
+            : $"{name}\n{cost}\n不可用：{reason}";
     }
 
     private static string FormatCost(LandConfig land)
@@ -89,17 +89,17 @@ public sealed class LandDragItem : MonoBehaviour, IBeginDragHandler, IDragHandle
         if (land == null) return string.Empty;
 
         System.Collections.Generic.List<string> costs = new System.Collections.Generic.List<string>();
-        if (land.goldCost > 0L) costs.Add($"Gold {land.goldCost:N0}");
-        if (land.woodCost > 0L) costs.Add($"Wood {land.woodCost:N0}");
-        if (land.stoneCost > 0L) costs.Add($"Stone {land.stoneCost:N0}");
-        if (land.ironCost > 0L) costs.Add($"Iron {land.ironCost:N0}");
-        if (costs.Count > 0) return "Cost: " + string.Join(", ", costs);
-        return land.cost > 0 ? $"Cost: {land.cost:N0}" : string.Empty;
+        if (land.goldCost > 0L) costs.Add($"金币 {land.goldCost:N0}");
+        if (land.woodCost > 0L) costs.Add($"木材 {land.woodCost:N0}");
+        if (land.stoneCost > 0L) costs.Add($"石材 {land.stoneCost:N0}");
+        if (land.ironCost > 0L) costs.Add($"铁矿 {land.ironCost:N0}");
+        if (costs.Count > 0) return "消耗：" + string.Join("、", costs);
+        return land.cost > 0 ? $"消耗：{land.cost:N0}" : string.Empty;
     }
 
     private static string DisplayName(LandConfig land)
     {
-        if (land == null) return "Land";
-        return string.IsNullOrEmpty(land.landName) ? $"Land {land.landId}" : land.landName;
+        if (land == null) return "地块";
+        return string.IsNullOrEmpty(land.landName) ? $"地块 {land.landId}" : land.landName;
     }
 }

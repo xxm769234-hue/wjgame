@@ -63,8 +63,8 @@ public sealed class IdleAdventureStageEndPanel : MonoBehaviour
 
     public void SetContent(string title, string body)
     {
-        if (titleText != null) titleText.text = title;
-        if (bodyText != null) bodyText.text = body;
+        if (titleText != null) titleText.text = FrontendTextLocalization.Normalize(title);
+        if (bodyText != null) bodyText.text = FrontendTextLocalization.Normalize(body);
     }
 
     public void SetButtonLabels(string continueLabel, string endModeLabel)
@@ -79,7 +79,7 @@ public sealed class IdleAdventureStageEndPanel : MonoBehaviour
             endModeButtonText = endModeButton.GetComponentInChildren<TextMeshProUGUI>(true);
         }
 
-        if (continueButtonText != null) continueButtonText.text = continueLabel;
-        if (endModeButtonText != null) endModeButtonText.text = endModeLabel;
+        if (continueButtonText != null) continueButtonText.text = FrontendTextLocalization.Normalize(continueLabel);
+        if (endModeButtonText != null) endModeButtonText.text = FrontendTextLocalization.Normalize(endModeLabel);
     }
 }

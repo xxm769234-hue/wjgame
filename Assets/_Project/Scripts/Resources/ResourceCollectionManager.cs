@@ -176,7 +176,7 @@ public sealed class ResourceCollectionManager : MonoBehaviour
         int readyCount = CountReadyResources();
         if (collectAllButtonText != null)
         {
-            collectAllButtonText.text = readyCount > 0 ? $"Collect All\n({readyCount})" : "Collect All\n(0)";
+        collectAllButtonText.text = readyCount > 0 ? $"一键收取\n({readyCount})" : "一键收取\n(0)";
         }
         if (collectAllButton != null)
         {

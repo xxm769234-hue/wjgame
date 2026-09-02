@@ -61,32 +61,32 @@ public sealed class BuildingManager : MonoBehaviour
         reason = string.Empty;
         if (slot == null)
         {
-            reason = "No selected land slot.";
+            reason = "未选择地块。";
             return false;
         }
         if (!slot.IsBuilt)
         {
-            reason = "Land must be placed before building.";
+            reason = "请先放置地块再建造。";
             return false;
         }
         if (slot.HasBuilding)
         {
-            reason = "This land already has a building.";
+            reason = "该地块已有建筑。";
             return false;
         }
         if (config == null)
         {
-            reason = "Building config is missing.";
+            reason = "建筑配置缺失。";
             return false;
         }
         if (!config.canBuild)
         {
-            reason = string.IsNullOrEmpty(config.disabledReason) ? "Building is not available." : config.disabledReason;
+            reason = string.IsNullOrEmpty(config.disabledReason) ? "该建筑当前不可用。" : config.disabledReason;
             return false;
         }
         if (!slot.AllowsBuildingType(config))
         {
-            reason = $"Land does not allow building type {config.buildingType}.";
+            reason = "该地块不允许建造此类型建筑。";
             return false;
         }
 
@@ -100,13 +100,13 @@ public sealed class BuildingManager : MonoBehaviour
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated)
         {
-            reason = "Backend session is not authenticated.";
+            reason = "服务器会话未认证。";
             return false;
         }
 
         if (remoteActionPending)
         {
-            reason = "A building action is already pending.";
+            reason = "建筑操作正在进行中。";
             return false;
         }
 
@@ -119,7 +119,7 @@ public sealed class BuildingManager : MonoBehaviour
                 remoteActionPending = false;
                 string message = ResultMessage(result);
                 Debug.LogWarning($"Backend building check failed: {message}", slot);
-                if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetBuildingMessage($"Building failed: {message}");
+            if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetBuildingMessage($"建筑操作失败：{message}");
                 return;
             }
 
@@ -127,9 +127,9 @@ public sealed class BuildingManager : MonoBehaviour
             if (!result.Data.canBuild)
             {
                 remoteActionPending = false;
-                string message = string.IsNullOrEmpty(result.Data.message) ? "Backend rejected this building placement." : result.Data.message;
+                string message = string.IsNullOrEmpty(result.Data.message) ? "服务器拒绝了该建造操作。" : result.Data.message;
                 Debug.LogWarning($"Backend building check rejected: {message}", slot);
-                if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetBuildingMessage($"Building failed: {message}");
+            if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetBuildingMessage($"建筑操作失败：{message}");
                 return;
             }
 
@@ -140,7 +140,7 @@ public sealed class BuildingManager : MonoBehaviour
                 if (!success) Debug.LogWarning($"Backend building build failed: {message}", slot);
                 if (LandInfoPanel.Instance != null)
                 {
-                    if (!success) LandInfoPanel.Instance.SetBuildingMessage($"Building failed: {message}");
+            if (!success) LandInfoPanel.Instance.SetBuildingMessage($"建筑操作失败：{message}");
                     LandInfoPanel.Instance.RefreshIfShowing(slot);
                 }
             });
@@ -153,18 +153,18 @@ public sealed class BuildingManager : MonoBehaviour
         reason = string.Empty;
         if (slot == null)
         {
-            reason = "No selected land slot.";
+            reason = "未选择地块。";
             return false;
         }
 
         if (!slot.IsBuildingCompleted)
         {
-            reason = "Only completed buildings can be upgraded.";
+            reason = "只有已完成的建筑可以升级。";
             return false;
         }
         if (slot.BuildingLevel >= slot.CurrentBuilding.maxLevel)
         {
-            reason = "Building is already at max level.";
+            reason = "建筑已达到最高等级。";
             return false;
         }
         return RunRemoteAction(slot, service => service.UpgradeBuilding(slot, RemoteRefresh(slot, "upgrade")), out reason);
@@ -175,13 +175,13 @@ public sealed class BuildingManager : MonoBehaviour
         reason = string.Empty;
         if (slot == null)
         {
-            reason = "No selected land slot.";
+            reason = "未选择地块。";
             return false;
         }
 
         if (!slot.IsBuildingInProgress)
         {
-            reason = "Only building or upgrading actions can be cancelled.";
+            reason = "只有建造中或升级中的建筑可以取消。";
             return false;
         }
         return RunRemoteAction(slot, service => service.CancelBuildingAction(slot, RemoteRefresh(slot, "cancel")), out reason);
@@ -192,18 +192,18 @@ public sealed class BuildingManager : MonoBehaviour
         reason = string.Empty;
         if (slot == null)
         {
-            reason = "No selected land slot.";
+            reason = "未选择地块。";
             return false;
         }
 
         if (!slot.IsBuildingInProgress)
         {
-            reason = "Building is not waiting to complete.";
+            reason = "该建筑当前不在等待完成状态。";
             return false;
         }
         if (slot.BuildingRemainingSeconds > 0f)
         {
-            reason = $"Still needs {Mathf.CeilToInt(slot.BuildingRemainingSeconds)}s.";
+            reason = $"还需 {Mathf.CeilToInt(slot.BuildingRemainingSeconds)}s。";
             return false;
         }
         return RunRemoteAction(slot, service => service.CompleteBuildingAction(slot, RemoteRefresh(slot, "complete")), out reason);
@@ -214,13 +214,13 @@ public sealed class BuildingManager : MonoBehaviour
         reason = string.Empty;
         if (slot == null)
         {
-            reason = "No selected land slot.";
+            reason = "未选择地块。";
             return false;
         }
 
         if (!slot.IsBuildingCompleted)
         {
-            reason = "Building or upgrading buildings cannot be demolished.";
+            reason = "建造中或升级中的建筑不能拆除。";
             return false;
         }
         return RunRemoteAction(slot, service => service.DemolishBuilding(slot, RemoteRefresh(slot, "demolish")), out reason);
@@ -231,12 +231,12 @@ public sealed class BuildingManager : MonoBehaviour
         reason = string.Empty;
         if (source == null)
         {
-            reason = "No selected land slot.";
+            reason = "未选择地块。";
             return false;
         }
         if (!source.IsBuildingCompleted)
         {
-            reason = "Only completed buildings can be moved.";
+            reason = "只有已完成的建筑可以移动。";
             return false;
         }
 
@@ -259,7 +259,7 @@ public sealed class BuildingManager : MonoBehaviour
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated)
         {
-            Debug.LogWarning("Building move failed: Backend session is not authenticated.", clickedSlot);
+            Debug.LogWarning("移动建筑失败：服务器会话未认证。", clickedSlot);
             if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.Show(source);
             return true;
         }
@@ -273,7 +273,7 @@ public sealed class BuildingManager : MonoBehaviour
 
         if (remoteActionPending)
         {
-            Debug.LogWarning("A building action is already pending.", clickedSlot);
+            Debug.LogWarning("建筑操作正在进行中。", clickedSlot);
             if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.Show(source);
             return true;
         }
@@ -321,14 +321,14 @@ public sealed class BuildingManager : MonoBehaviour
         reason = string.Empty;
         if (remoteActionPending)
         {
-            reason = "A building action is already pending.";
+            reason = "建筑操作正在进行中。";
             return false;
         }
 
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated)
         {
-            reason = "Backend session is not authenticated.";
+            reason = "服务器会话未认证。";
             return false;
         }
 
@@ -349,7 +349,7 @@ public sealed class BuildingManager : MonoBehaviour
 
     private static string ResultMessage<T>(BackendResult<T> result)
     {
-        if (result == null) return "No backend response.";
-        return string.IsNullOrEmpty(result.Message) ? $"HTTP {result.HttpStatus}" : result.Message;
+        if (result == null) return "未收到服务器响应。";
+        return FrontendTextLocalization.Normalize(string.IsNullOrEmpty(result.Message) ? $"请求状态：{result.HttpStatus}" : result.Message);
     }
 }

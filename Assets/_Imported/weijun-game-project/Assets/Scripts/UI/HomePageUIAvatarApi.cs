@@ -242,7 +242,7 @@ public partial class HomePageUI
         TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
         TMP_FontAsset resolvedFont = RuntimeFontAssetProvider.Resolve();
         text.font = resolvedFont != null ? resolvedFont : TMP_Settings.defaultFontAsset;
-        text.text = value;
+        text.text = FrontendTextLocalization.Normalize(value);
         text.fontSize = fontSize;
         text.fontStyle = FontStyles.Normal;
         text.color = color;
@@ -663,7 +663,7 @@ public partial class HomePageUI
             if (imageBytes.Length > MaximumSourceAvatarBytes)
             {
                 imageBytes = null;
-                error = "头像源文件超过 16 MB，请重新选择较小图片";
+                error = "头像源文件超过16兆字节，请重新选择较小图片";
                 return false;
             }
             return true;
@@ -684,7 +684,7 @@ public partial class HomePageUI
             }
             if (file.Length > MaximumSourceAvatarBytes)
             {
-                error = "头像源文件超过 16 MB，请重新选择较小图片";
+                error = "头像源文件超过16兆字节，请重新选择较小图片";
                 return false;
             }
 
@@ -753,7 +753,7 @@ public partial class HomePageUI
         error = "头像图片处理失败，请重新选择";
         if (!TryDetectAvatarImageType(sourceBytes, out fileName, out mimeType))
         {
-            error = "只支持 JPG 或 PNG 格式的头像图片";
+            error = "只支持扩展名为 .jpg 或 .png 的头像图片";
             return false;
         }
 
@@ -764,7 +764,7 @@ public partial class HomePageUI
                 || sourceTexture.width <= 0
                 || sourceTexture.height <= 0)
             {
-                error = "所选文件不是可读取的 JPG 或 PNG 图片";
+                error = "所选文件不是可读取的受支持图片";
                 return false;
             }
 
@@ -819,7 +819,7 @@ public partial class HomePageUI
                 targetHeight = Mathf.Max(256, targetHeight / 2);
             }
 
-            error = "头像压缩后仍超过 2 MB，请重新选择其他图片";
+            error = "头像压缩后仍超过2兆字节，请重新选择其他图片";
             return false;
         }
         catch (Exception exception)
@@ -1360,10 +1360,10 @@ public partial class HomePageUI
         {
             body = body.Substring(0, 500) + "...";
         }
-        return "HTTP " + request.responseCode
-            + ", result=" + request.result
-            + ", error=" + (request.error ?? string.Empty)
-            + ", body=" + body;
+        return "请求状态 " + request.responseCode
+            + "，结果=" + request.result
+            + "，错误=" + (request.error ?? string.Empty)
+            + "，响应=" + body;
     }
 
     private void DisposeAvatarCache()

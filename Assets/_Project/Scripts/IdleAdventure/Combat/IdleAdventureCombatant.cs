@@ -131,7 +131,7 @@ public sealed class IdleAdventureCombatant : MonoBehaviour
 
     public string FormatBuffSummary()
     {
-        if (buffs.Count == 0) return "Buff 0  Debuff 0  Skill 0  Other 0";
+        if (buffs.Count == 0) return "增益 0  减益 0  技能 0  其他 0";
 
         int benefitCount = 0;
         int detrimentCount = 0;
@@ -161,18 +161,18 @@ public sealed class IdleAdventureCombatant : MonoBehaviour
         }
 
         string names = visibleNames.Count > 0 ? $"  {string.Join(", ", visibleNames)}" : string.Empty;
-        return $"Buff {benefitCount}  Debuff {detrimentCount}  Skill {skillSourceCount}  Other {otherSourceCount}  N {normalDamageCount}  A {attributeDamageCount}  F {fieldCount}{names}";
+        return $"增益 {benefitCount}  减益 {detrimentCount}  技能 {skillSourceCount}  其他 {otherSourceCount}  普通 {normalDamageCount}  属性 {attributeDamageCount}  场地 {fieldCount}{names}";
     }
 
     public string FormatSkillSummary()
     {
-        if (skillSlots == null || skillSlots.Length == 0) return "Skill Slot 0";
+        if (skillSlots == null || skillSlots.Length == 0) return "技能栏 0";
 
         List<string> visibleNames = new List<string>();
         int count = Mathf.Min(MaxVisibleSkillNames, skillSlots.Length);
         for (int i = 0; i < count; i++)
         {
-            visibleNames.Add(skillSlots[i] != null ? skillSlots[i].FormatSummary(i + 1) : $"S{i + 1}:Empty");
+            visibleNames.Add(skillSlots[i] != null ? skillSlots[i].FormatSummary(i + 1) : $"技能{i + 1}：空");
         }
 
         return string.Join("  ", visibleNames);

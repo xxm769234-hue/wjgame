@@ -656,7 +656,7 @@ public partial class HomePageUI
         {
             if (texts[i].name == objectName)
             {
-                texts[i].text = first ? firstValue : string.Empty;
+                texts[i].text = FrontendTextLocalization.Normalize(first ? firstValue : string.Empty);
                 first = false;
             }
         }
@@ -887,7 +887,7 @@ public partial class HomePageUI
 
         Text title = CreateMailText("RefundCenterTitle", overlay.transform, "退款申请与进度", 30, FontStyle.Bold, new Color(0.38f, 0.17f, 0.07f, 1f), TextAnchor.MiddleLeft);
         SetRect(title.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(30f, -18f), new Vector2(420f, 44f));
-        Button close = CreateButton(overlay.transform, "RefundCenterCloseButton", "X", new Color(0.82f, 0.30f, 0.24f, 1f), Color.white);
+        Button close = CreateButton(overlay.transform, "RefundCenterCloseButton", "关闭", new Color(0.82f, 0.30f, 0.24f, 1f), Color.white);
         SetRect(close.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1180f, -16f), new Vector2(48f, 48f));
         ConfigureClearButtonLabel(close, 22);
 

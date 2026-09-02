@@ -56,7 +56,7 @@ public static class RuntimeConfigFactory
         if (config == null) return null;
 
         config.buildingId = response.buildingId;
-        config.buildingName = string.IsNullOrEmpty(response.buildingName) ? $"Building {response.buildingId}" : response.buildingName;
+        config.buildingName = string.IsNullOrEmpty(response.buildingName) ? $"建筑 {response.buildingId}" : response.buildingName;
         if (existing == null || string.IsNullOrEmpty(config.buildingType) || string.Equals(config.buildingType, "Default", StringComparison.OrdinalIgnoreCase))
         {
             config.buildingType = InferBuildType(response);
@@ -75,7 +75,7 @@ public static class RuntimeConfigFactory
         if (config == null) return null;
 
         config.buildingId = id;
-        config.buildingName = string.IsNullOrEmpty(response.name) ? $"Building {id}" : response.name;
+        config.buildingName = string.IsNullOrEmpty(response.name) ? $"建筑 {id}" : response.name;
         config.description = response.description;
         config.goldCost = response.goldCost;
         config.woodCost = response.woodCost;
@@ -129,8 +129,8 @@ public static class RuntimeConfigFactory
         if (template != null) return UnityEngine.Object.Instantiate(template);
 
         LandConfig config = ScriptableObject.CreateInstance<LandConfig>();
-        config.landName = "Remote Land";
-        config.description = "Loaded from backend";
+        config.landName = "服务器地块";
+        config.description = "已从服务器加载";
         return config;
     }
 
@@ -165,7 +165,7 @@ public static class RuntimeConfigFactory
         if (template != null) return UnityEngine.Object.Instantiate(template);
 
         BuildingConfig config = ScriptableObject.CreateInstance<BuildingConfig>();
-        config.buildingName = "Remote Building";
+        config.buildingName = "服务器建筑";
         config.canBuild = true;
         return config;
     }
@@ -265,13 +265,13 @@ public static class RuntimeConfigFactory
 
     private static string InferBuildType(BuildingResponse response)
     {
-        if (response == null) return "Default";
+        if (response == null) return "默认";
         if (!string.IsNullOrEmpty(response.buildingCode))
         {
             int separator = response.buildingCode.IndexOf('_');
             if (separator > 0) return response.buildingCode.Substring(0, separator).ToUpperInvariant();
         }
 
-        return string.IsNullOrEmpty(response.buildingType) ? "Default" : response.buildingType;
+        return string.IsNullOrEmpty(response.buildingType) ? "默认" : response.buildingType;
     }
 }

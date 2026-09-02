@@ -100,9 +100,9 @@ public partial class HomePageUI
         SetSceneText(root, "ProfileTitle", "个人信息");
         SetSceneText(root, "ProfileModeBadge", "账号登录");
         SetSceneText(root, "ProfileAvatarInitial", GetNicknameInitial(nickname));
-        SetSceneText(root, "ProfileIdentifier", $"玩家ID  {identifier}");
+        SetSceneText(root, "ProfileIdentifier", $"玩家编号  {identifier}");
         SetSceneText(root, "ProfileAccount", $"登录账号  {(string.IsNullOrEmpty(username) ? "未设置" : username)}");
-        SetSceneText(root, "ProfileLevel", $"领主等级  Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}");
+        SetSceneText(root, "ProfileLevel", $"领主等级  {PlayerPrefs.GetInt("PlayerLv", 1)}");
         SetSceneText(root, "ProfileVital", $"生命  {PlayerPrefs.GetInt("PlayerHp", 1000)}    体力  {GetHomeStamina()}");
         SetSceneText(root, "ProfileSignStat", BuildProfileSignStat());
         SetSceneText(root, "ProfileFriendStat", BuildProfileFriendStat());
@@ -167,7 +167,7 @@ public partial class HomePageUI
         }
         BindSceneButton(cancellationButton, () => HandleProfileCancellation(root));
         Button copyButton = FindSceneComponent<Button>(root, "ProfileCopyIdButton");
-        SetSceneButtonText(copyButton, "复制玩家ID");
+        SetSceneButtonText(copyButton, "复制玩家编号");
         BindSceneButton(copyButton, () => CopyProfileIdentifier(root));
         BindSceneButton(FindSceneComponent<Button>(root, "ProfileCloseButton"), HideAccountProfilePanel);
     }
@@ -176,7 +176,7 @@ public partial class HomePageUI
     {
         GUIUtility.systemCopyBuffer = GetCurrentProfileIdentifier();
         profileSwitchLoginConfirmation = false;
-        RefreshAccountProfileScenePanel(root, "玩家ID已复制");
+        RefreshAccountProfileScenePanel(root, "玩家编号已复制");
     }
 
     private void EnsureAccountProfileTextMeshPro(Transform root)
@@ -238,7 +238,7 @@ public partial class HomePageUI
             {
                 replacement.font = fallbackFontAsset;
             }
-            replacement.text = value;
+            replacement.text = FrontendTextLocalization.Normalize(value);
             replacement.fontSize = Mathf.Max(1, fontSize);
             replacement.color = color;
             replacement.alignment = ConvertProfileTextAlignment(alignment);
@@ -321,13 +321,13 @@ public partial class HomePageUI
         TMP_Text experience = CreateProfileRuntimeText(card.transform, "ProfileExperienceText", "经验详情\n总经验：0\n本级经验：0/0", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
         SetRect(experience.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(20f, -40f), new Vector2(342f, 48f));
 
-        TMP_Text accountStatus = CreateProfileRuntimeText(card.transform, "ProfileAccountStatusText", "账号状态\n状态：ACTIVE\n可正常进入游戏", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
+        TMP_Text accountStatus = CreateProfileRuntimeText(card.transform, "ProfileAccountStatusText", "账号状态\n状态：正常\n可正常进入游戏", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
         SetRect(accountStatus.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(382f, -40f), new Vector2(342f, 48f));
 
         TMP_Text cancellation = CreateProfileRuntimeText(card.transform, "ProfileCancellationDetailsText", "注销详情\n状态：未申请\n冷静期截止：未设置", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
         SetRect(cancellation.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(20f, -92f), new Vector2(342f, 58f));
 
-        TMP_Text compliance = CreateProfileRuntimeText(card.transform, "ProfileComplianceText", "实名/防沉迷\n实名：UNKNOWN\n防沉迷：等待服务器状态", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
+        TMP_Text compliance = CreateProfileRuntimeText(card.transform, "ProfileComplianceText", "实名/防沉迷\n实名：未知\n防沉迷：等待服务器状态", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
         SetRect(compliance.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(382f, -92f), new Vector2(342f, 58f));
     }
 
@@ -337,7 +337,7 @@ public partial class HomePageUI
         textObject.transform.SetParent(parent, false);
         TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
         text.font = RuntimeFontAssetProvider.Resolve();
-        text.text = value ?? string.Empty;
+        text.text = FrontendTextLocalization.Normalize(value ?? string.Empty);
         text.fontSize = fontSize;
         text.fontStyle = FontStyles.Normal;
         text.color = color;
@@ -809,7 +809,7 @@ public partial class HomePageUI
             string scheduledTime = string.IsNullOrEmpty(profileCancellationStatus.scheduledTime)
                 ? string.Empty
                 : "，冷静期截止：" + profileCancellationStatus.scheduledTime;
-            return "账号注销状态：" + state + scheduledTime;
+            return "账号注销状态：" + GetProfileStatusDisplayLabel(state) + scheduledTime;
         }
 
         if (string.Equals(state, "CANCELLED", StringComparison.OrdinalIgnoreCase))
@@ -822,7 +822,7 @@ public partial class HomePageUI
             return "账号注销状态：已完成，账号不可恢复";
         }
 
-        return "账号注销状态：" + state;
+        return "账号注销状态：" + GetProfileStatusDisplayLabel(state);
     }
 
     private string BuildProfileExperienceText(bool isAuthenticated)
@@ -876,7 +876,7 @@ public partial class HomePageUI
         bool economyFrozen = PlayerPrefs.GetInt("PlayerEconomyFrozen", 0) == 1;
         string mode = managementOnly ? "仅可进行账号管理" : "可正常进入游戏";
         string economy = economyFrozen ? "经济状态：冻结" : "经济状态：正常";
-        return "账号状态\n状态：" + (string.IsNullOrEmpty(accountStatus) ? "UNKNOWN" : accountStatus)
+        return "账号状态\n状态：" + GetProfileStatusDisplayLabel(accountStatus)
             + "\n" + mode + "  " + economy;
     }
 
@@ -901,7 +901,7 @@ public partial class HomePageUI
 
         string cancellationState = string.IsNullOrEmpty(profileCancellationStatus.cancellationStatus)
             ? "未申请"
-            : profileCancellationStatus.cancellationStatus;
+            : GetProfileStatusDisplayLabel(profileCancellationStatus.cancellationStatus);
         string requestedTime = string.IsNullOrEmpty(profileCancellationStatus.requestedTime)
             ? "未记录"
             : profileCancellationStatus.requestedTime;
@@ -932,12 +932,8 @@ public partial class HomePageUI
                 : profileComplianceStatusMessage);
         }
 
-        string verificationStatus = string.IsNullOrEmpty(profileComplianceStatus.verificationStatus)
-            ? "UNKNOWN"
-            : profileComplianceStatus.verificationStatus;
-        string ageGroup = string.IsNullOrEmpty(profileComplianceStatus.ageGroup)
-            ? "UNKNOWN"
-            : profileComplianceStatus.ageGroup;
+        string verificationStatus = GetProfileStatusDisplayLabel(profileComplianceStatus.verificationStatus);
+        string ageGroup = GetProfileAgeGroupDisplayLabel(profileComplianceStatus.ageGroup);
         string access = profileComplianceStatus.gameAccessAllowed ? "允许进入" : "暂不允许进入";
         string remaining = profileComplianceStatus.remainingSeconds < 0
             ? "不限时"
@@ -978,6 +974,51 @@ public partial class HomePageUI
         }
 
         return remainder + "秒";
+    }
+
+    private static bool ContainsAsciiLetter(string value)
+    {
+        if (string.IsNullOrEmpty(value)) return false;
+        for (int i = 0; i < value.Length; i++)
+        {
+            char character = value[i];
+            if ((character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z')) return true;
+        }
+        return false;
+    }
+
+    private static string GetProfileStatusDisplayLabel(string status)
+    {
+        string normalized = (status ?? string.Empty).Trim().ToUpperInvariant();
+        switch (normalized)
+        {
+            case "ACTIVE": return "正常";
+            case "INACTIVE": return "未启用";
+            case "CLOSED": return "已关闭";
+            case "UNKNOWN": return "未知";
+            case "PENDING": return "待处理";
+            case "PROCESSING": return "处理中";
+            case "CANCELLED": return "已撤销";
+            case "COMPLETED": return "已完成";
+            case "AVAILABLE": return "可用";
+            case "LOCKED": return "已锁定";
+            case "UNAVAILABLE": return "不可用";
+            default: return string.IsNullOrEmpty(status) || ContainsAsciiLetter(status) ? "未知" : status;
+        }
+    }
+
+    private static string GetProfileAgeGroupDisplayLabel(string ageGroup)
+    {
+        string normalized = (ageGroup ?? string.Empty).Trim().ToUpperInvariant();
+        switch (normalized)
+        {
+            case "UNKNOWN": return "未知";
+            case "MINOR": return "未成年";
+            case "ADULT": return "成年";
+            case "CHILD": return "儿童";
+            case "TEEN": return "青少年";
+            default: return string.IsNullOrEmpty(ageGroup) || ContainsAsciiLetter(ageGroup) ? "未知" : ageGroup;
+        }
     }
 
     private void SaveProfileAccountStatus(string accountStatus)
@@ -1362,7 +1403,7 @@ public partial class HomePageUI
             $"昵称：{PlayerPrefs.GetString("PlayerNickname", "玩家")}\n" +
             $"账号：{PlayerPrefs.GetString("LoginUsername", string.Empty)}\n" +
             "状态：账号登录\n" +
-            $"等级：Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}\n\n" +
+            $"等级：{PlayerPrefs.GetInt("PlayerLv", 1)}\n\n" +
             $"金币：{PlayerPrefs.GetInt("Gold", 1000)}\n" +
             $"木材：{PlayerPrefs.GetInt("Wood", 500)}\n" +
             $"石材：{PlayerPrefs.GetInt("Stone", 500)}\n" +
@@ -1381,7 +1422,7 @@ public partial class HomePageUI
         {
             if (labels[i].name == "AvatarName" || labels[i].name == "BookAvatarName")
             {
-                labels[i].text = nickname;
+                labels[i].text = FrontendTextLocalization.Normalize(nickname);
             }
         }
 
@@ -1390,7 +1431,7 @@ public partial class HomePageUI
         {
             if (tmpLabels[i].name == "AvatarName" || tmpLabels[i].name == "BookAvatarName")
             {
-                tmpLabels[i].text = nickname;
+                tmpLabels[i].text = FrontendTextLocalization.Normalize(nickname);
             }
         }
 

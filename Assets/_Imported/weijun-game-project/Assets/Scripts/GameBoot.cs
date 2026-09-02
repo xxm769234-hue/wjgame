@@ -239,7 +239,7 @@ public partial class GameBoot : MonoBehaviour
 
         CreateSpacer(brandPanel.transform, 14f);
 
-        Text brandFoot = CreateText("BrandFoot", brandPanel.transform, "WJ Game Project", 13, FontStyle.Normal, new Color(1f, 1f, 1f, 0.72f), TextAnchor.MiddleLeft);
+        Text brandFoot = CreateText("BrandFoot", brandPanel.transform, "维钧游戏", 13, FontStyle.Normal, new Color(1f, 1f, 1f, 0.72f), TextAnchor.MiddleLeft);
         SetLayout(brandFoot.gameObject, 0f, 20f);
 
         VerticalLayoutGroup formLayout = formPanel.gameObject.AddComponent<VerticalLayoutGroup>();
@@ -579,7 +579,7 @@ public partial class GameBoot : MonoBehaviour
         if (string.IsNullOrEmpty(code))
         {
             SetBusyState(false, string.Empty);
-            ShowError("微信登录 code 为空");
+            ShowError("微信登录凭证为空");
             return;
         }
 
@@ -631,13 +631,13 @@ public partial class GameBoot : MonoBehaviour
     {
         if (!privacyPolicyLoaded || string.IsNullOrEmpty(currentPolicyVersion))
         {
-            ShowError("隐私政策尚未加载完成，请稍后重试。");
+            ShowError("隐私协议尚未加载完成，请稍后重试。");
             return false;
         }
 
         if (privacyConsentToggle == null || !privacyConsentToggle.isOn)
         {
-            ShowError("请阅读并勾选同意当前隐私政策后再登录。");
+            ShowError("请阅读并勾选同意当前隐私协议后再登录。");
             ShowPrivacyPolicyOverlay();
             return false;
         }
@@ -695,7 +695,7 @@ public partial class GameBoot : MonoBehaviour
                 if (response != null && response.code == 7703)
                 {
                     privacyConsentRequestId = NewRequestId();
-                    SetBusyState(false, "隐私政策已更新，请重新阅读并确认。");
+                    SetBusyState(false, "隐私协议已更新，请重新阅读并确认。");
                     yield return LoadPrivacyPolicies();
                     if (!runtimePolicyBlocked)
                     {
@@ -706,7 +706,7 @@ public partial class GameBoot : MonoBehaviour
 
                 if (response != null && response.code == 7702)
                 {
-                    SetBusyState(false, "请先阅读并同意当前隐私政策");
+                    SetBusyState(false, "请先阅读并同意当前隐私协议");
                     ShowPrivacyPolicyOverlay();
                     yield break;
                 }
@@ -728,7 +728,7 @@ public partial class GameBoot : MonoBehaviour
 
             if (response.code == 7702)
             {
-                SetBusyState(false, "请先阅读并同意当前隐私政策");
+                SetBusyState(false, "请先阅读并同意当前隐私协议");
                 ShowPrivacyPolicyOverlay();
                 yield break;
             }
@@ -743,7 +743,7 @@ public partial class GameBoot : MonoBehaviour
             if (response.code == 7703)
             {
                 privacyConsentRequestId = NewRequestId();
-                SetBusyState(false, "隐私政策已更新，请重新阅读并确认。");
+                SetBusyState(false, "隐私协议已更新，请重新阅读并确认。");
                 yield return LoadPrivacyPolicies();
                 if (!runtimePolicyBlocked)
                 {
@@ -782,7 +782,7 @@ public partial class GameBoot : MonoBehaviour
 
             if (response.data == null || string.IsNullOrEmpty(response.data.token) || response.data.user == null)
             {
-                SetBusyState(false, "登录成功但缺少 token 或玩家信息");
+                SetBusyState(false, "登录成功但缺少登录凭证或玩家信息");
                 yield break;
             }
 
@@ -834,7 +834,7 @@ public partial class GameBoot : MonoBehaviour
             {
                 runtimePolicyBlocked = true;
                 SetBusyState(false, "启动策略读取失败，暂时无法登录：" + ApiRequestUtility.GetErrorMessage(request, "请求失败"));
-                ShowRuntimePolicyOverlay("启动策略不可用", "客户端启动策略或隐私政策暂时不可用，请稍后重试。", string.Empty);
+                ShowRuntimePolicyOverlay("启动策略不可用", "客户端启动策略或隐私协议暂时不可用，请稍后重试。", string.Empty);
                 yield break;
             }
 
@@ -1006,7 +1006,7 @@ public partial class GameBoot : MonoBehaviour
         if (statusText != null)
         {
             statusText.color = color;
-            statusText.text = message ?? string.Empty;
+            statusText.text = FrontendTextLocalization.Normalize(message ?? string.Empty);
         }
     }
 
@@ -1038,7 +1038,7 @@ public partial class GameBoot : MonoBehaviour
         LoginCanvasStyle style = LoginStyle;
         int resolvedFontSize = ResolveFontSize(size);
         label.font = style != null ? style.ResolveFont(defaultFont) : defaultFont;
-        label.text = text;
+        label.text = FrontendTextLocalization.Normalize(text);
         label.fontSize = resolvedFontSize;
         label.fontStyle = style != null ? style.ResolveFontStyle(name, fontStyle) : fontStyle;
         label.color = style != null ? style.ResolveTextColor(name, color) : color;

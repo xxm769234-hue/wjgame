@@ -141,7 +141,7 @@ public partial class HomePageUI
             }
             else
             {
-                Debug.LogWarning("Authoritative stamina refresh failed: " + ApiRequestUtility.GetErrorMessage(request, "request failed"), this);
+                Debug.LogWarning("服务器体力刷新失败：" + ApiRequestUtility.GetErrorMessage(request, "请求失败"), this);
             }
         }
 

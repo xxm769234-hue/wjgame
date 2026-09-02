@@ -53,7 +53,7 @@ public partial class HomePageUI
         HomePageScenePanel panel = OpenRegisteredScenePanel(HomePageScenePanelType.Shop);
         if (panel == null)
         {
-            SetLeftContent("商城", "商城场景组件尚未生成，请在 Unity 中执行 Tools/WeiJun UI/Rebuild Home Scene Panels。", "商城场景组件未找到");
+            SetLeftContent("商城", "商城场景组件尚未生成，请重新生成首页面板。", "商城场景组件未找到");
             return;
         }
 
@@ -178,7 +178,7 @@ public partial class HomePageUI
         Text text = button.GetComponentInChildren<Text>(true);
         if (text != null)
         {
-            text.text = label;
+            text.text = FrontendTextLocalization.Normalize(label);
             text.color = selected ? Color.white : new Color(0.34f, 0.18f, 0.08f, 1f);
         }
 
@@ -270,7 +270,7 @@ public partial class HomePageUI
         SetSceneText(card, "ShopProductTag", GetShopProductTag(product));
         SetSceneText(card, "ShopProductIconText", GetCoinShopIconText(product));
         SetSceneText(card, "ShopProductName", GetCoinShopProductName(product));
-        SetSceneText(card, "ShopProductReward", GetCoinShopRewardName(product) + " x" + product.rewardQuantityPerLot + "/批");
+        SetSceneText(card, "ShopProductReward", GetCoinShopRewardName(product) + " ×" + product.rewardQuantityPerLot + "/批");
         SetSceneText(card, "ShopProductPrice", GetActiveShopCurrencyLabel() + " " + GetActiveShopPricePerLot(product) + "/批");
         SetSceneObjectActive(card, "ShopSelectionMark", selected);
 
@@ -337,7 +337,7 @@ public partial class HomePageUI
         SetSceneText(root, "ShopDetailIconText", GetCoinShopIconText(product));
         SetSceneText(root, "ShopDetailName", productName);
         SetSceneText(root, "ShopDetailDescription", string.IsNullOrEmpty(product.description) ? "服务器正式发布商品" : product.description);
-        SetSceneText(root, "ShopDetailReward", "购买内容  " + GetCoinShopRewardName(product) + " x" + totalReward);
+        SetSceneText(root, "ShopDetailReward", "购买内容  " + GetCoinShopRewardName(product) + " ×" + totalReward);
         SetSceneText(root, "ShopDetailPrice", GetActiveShopCurrencyLabel() + " " + totalCost + "  (" + pricePerLot + "/批)");
         SetSceneText(root, "ShopPurchaseSummary", shopPurchaseSummary);
         SetSceneText(root, "ShopOwnedCount", GetCoinShopOwnedText(product));
@@ -532,7 +532,7 @@ public partial class HomePageUI
 
         selectedCoinShopLotCount = ClampCoinShopLots(product, selectedCoinShopLotCount + offset);
         long totalCost = GetCoinShopTotal(GetActiveShopPricePerLot(product), selectedCoinShopLotCount);
-        shopPurchaseSummary = "本次获得 " + GetCoinShopRewardName(product) + " x"
+        shopPurchaseSummary = "本次获得 " + GetCoinShopRewardName(product) + " ×"
             + GetCoinShopTotal(product.rewardQuantityPerLot, selectedCoinShopLotCount) + "，消耗" + GetActiveShopCurrencyLabel() + " " + totalCost;
         RenderShopScenePanel();
     }
@@ -1078,7 +1078,7 @@ public partial class HomePageUI
             ? result.rewardName
             : (!string.IsNullOrEmpty(result.rewardKey) ? result.rewardKey : "奖励");
         if (string.Equals(result.rewardType, "STAMINA", StringComparison.OrdinalIgnoreCase)) name = "体力";
-        return name + " x" + result.grantedQuantity;
+        return name + " ×" + result.grantedQuantity;
     }
 
     private string GetPendingCoinShopPurchaseKey()
@@ -1150,7 +1150,7 @@ public partial class HomePageUI
         SetRect(header.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), Vector2.zero, new Vector2(800f, 58f));
         Text title = CreateText("CoinShopHistoryTitle", header.transform, "商城购买记录", 24, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
         SetRect(title.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(22f, -8f), new Vector2(400f, 38f));
-        Button close = CreateButton(header.transform, "CoinShopHistoryCloseButton", "X", new Color(0.84f, 0.30f, 0.24f, 1f), Color.white);
+        Button close = CreateButton(header.transform, "CoinShopHistoryCloseButton", "关闭", new Color(0.84f, 0.30f, 0.24f, 1f), Color.white);
         SetRect(close.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(740f, -8f), new Vector2(42f, 42f));
 
         Text status = CreateText("CoinShopHistoryStatus", panel.transform, string.Empty, 15, FontStyle.Normal, new Color(0.36f, 0.22f, 0.11f, 1f), TextAnchor.MiddleLeft);
@@ -1218,7 +1218,7 @@ public partial class HomePageUI
                 historyText.Append('#').Append(item.orderId).Append("  ")
                     .Append(string.IsNullOrEmpty(item.productName) ? item.productCode : item.productName)
                     .Append("  批次 ").Append(item.lotCount).Append('\n')
-                    .Append("获得 ").Append(rewardName).Append(" x").Append(item.grantedQuantity)
+        .Append("获得 ").Append(rewardName).Append(" ×").Append(item.grantedQuantity)
                     .Append("，消耗").Append(currencyLabel).Append(' ').Append(IsDiamondShopActive() ? item.chargedDiamond : item.chargedGold)
                     .Append("，余额 ").Append(IsDiamondShopActive() ? item.diamondBalanceAfter : item.goldBalanceAfter).Append('\n');
                 if (i + 1 < coinShopHistoryItems.Length)

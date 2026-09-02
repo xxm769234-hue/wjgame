@@ -378,7 +378,7 @@ public partial class HomePageUI
             {
                 summary += "  ";
             }
-            summary += $"{name} x{quantity}";
+                summary += $"{name} ×{quantity}";
         }
 
         return string.IsNullOrEmpty(summary) ? "附件待领取" : summary;

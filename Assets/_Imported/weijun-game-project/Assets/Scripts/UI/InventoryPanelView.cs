@@ -446,7 +446,7 @@ public sealed class InventoryPanelView : MonoBehaviour
     {
         if (label != null)
         {
-            label.text = value;
+            label.text = FrontendTextLocalization.Normalize(value);
         }
     }
 
@@ -557,7 +557,7 @@ public sealed class InventoryPanelView : MonoBehaviour
             }
 
             TextMeshProUGUI replacement = legacy.gameObject.AddComponent<TextMeshProUGUI>();
-            replacement.text = legacy.text;
+            replacement.text = FrontendTextLocalization.Normalize(legacy.text);
             replacement.fontSize = legacy.fontSize;
             replacement.color = legacy.color;
             replacement.raycastTarget = legacy.raycastTarget;
@@ -685,7 +685,7 @@ public sealed class InventoryPanelView : MonoBehaviour
         rect.anchoredPosition = position;
         rect.sizeDelta = dimensions;
         TextMeshProUGUI text = child.GetComponent<TextMeshProUGUI>();
-        text.text = value;
+        text.text = FrontendTextLocalization.Normalize(value);
         text.font = fontAsset;
         text.fontSize = size;
         text.color = new Color(1f, 0.90f, 0.66f, 1f);

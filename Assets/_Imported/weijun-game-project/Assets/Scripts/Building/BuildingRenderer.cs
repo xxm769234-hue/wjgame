@@ -11,7 +11,7 @@ public class BuildingRenderer : MonoBehaviour
     {
         data = buildData;
         spr.sprite = cfg.buildSprite;
-        levelText.text = $"Lv.{data.level}";
+        levelText.text = FrontendTextLocalization.Normalize($"等级 {data.level}");
     }
 
     public void SetMoveTransparent(bool isMove)

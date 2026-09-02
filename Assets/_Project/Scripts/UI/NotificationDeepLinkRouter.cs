@@ -179,8 +179,8 @@ public sealed class NotificationDeepLinkRouter : MonoBehaviour
         }
 
         string failureReason = targetSceneId > 0 && sceneSwitchAttempts >= MaxSceneSwitchAttempts
-            ? "scene switch retry limit reached"
-            : "timeout";
+            ? "场景切换已达到重试上限"
+            : "等待超时";
         Debug.LogWarning("Notification deep link target could not be resolved (" + failureReason + ").");
         ClearPendingTarget();
         resolving = false;

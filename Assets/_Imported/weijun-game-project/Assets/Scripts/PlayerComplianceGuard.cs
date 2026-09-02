@@ -204,8 +204,8 @@ public sealed class PlayerComplianceGuard : MonoBehaviour
         noticeCanvasObject.SetActive(true);
         noticeBlocker.raycastTarget = blocking;
         noticeBlocker.color = blocking ? new Color(0f, 0f, 0f, 0.68f) : new Color(0f, 0f, 0f, 0f);
-        noticeTitle.text = title;
-        noticeMessage.text = message;
+        noticeTitle.text = FrontendTextLocalization.Normalize(title);
+        noticeMessage.text = FrontendTextLocalization.Normalize(message);
         if (noticeHideCoroutine != null)
         {
             StopCoroutine(noticeHideCoroutine);
@@ -316,7 +316,7 @@ public sealed class PlayerComplianceGuard : MonoBehaviour
         gameObject.transform.SetParent(parent, false);
         TMP_Text text = gameObject.GetComponent<TMP_Text>();
         text.font = RuntimeFontAssetProvider.Resolve();
-        text.text = value;
+        text.text = FrontendTextLocalization.Normalize(value);
         text.fontSize = fontSize;
         text.fontStyle = fontStyle == FontStyle.Bold
             ? FontStyles.Bold

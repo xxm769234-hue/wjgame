@@ -48,6 +48,7 @@ public sealed class LandSlotController : MonoBehaviour
     private NpcConfig currentNpc;
     private SpriteRenderer buildingRenderer;
     private SpriteRenderer npcRenderer;
+    private SpriteRenderer simulationShapeRenderer;
     private SpriteRenderer purificationOverlayRenderer;
     private ResourceBubbleController resourceBubble;
     private LineRenderer outlineRenderer;
@@ -195,14 +196,14 @@ public sealed class LandSlotController : MonoBehaviour
                 if (!success)
                 {
                     Debug.LogWarning($"Backend production collect failed: {message}", this);
-                    if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetProductionMessage($"Production failed: {message}");
+                    if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetProductionMessage($"生产收取失败：{message}");
                 }
             });
             return;
         }
 
         Debug.LogWarning("Backend production collect failed: Backend session is not authenticated.", this);
-        if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetProductionMessage("Production failed: Backend session is not authenticated.");
+        if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetProductionMessage("生产收取失败：服务器会话未认证。");
     }
 
     public bool CanReceiveMovedBuilding(BuildingConfig config, out string reason)
@@ -210,17 +211,17 @@ public sealed class LandSlotController : MonoBehaviour
         reason = string.Empty;
         if (!IsBuilt)
         {
-            reason = "Target land is not placed.";
+            reason = "目标地块尚未购买。";
             return false;
         }
         if (HasBuilding)
         {
-            reason = "Target land already has a building.";
+            reason = "目标地块已有建筑。";
             return false;
         }
         if (!AllowsBuildingType(config))
         {
-            reason = "Target land does not allow this building type.";
+            reason = "目标地块不允许建造此类型的建筑。";
             return false;
         }
         return true;
@@ -239,6 +240,77 @@ public sealed class LandSlotController : MonoBehaviour
         gridPosition = value;
         hasGridPosition = true;
         hasRuntimeLayoutGridPosition = true;
+    }
+
+    public void SetSimulationShapeSprite(Sprite sprite, Vector3 centerWorld)
+    {
+        ResolveReferences(false);
+        if (sprite == null)
+        {
+            if (simulationShapeRenderer != null) simulationShapeRenderer.enabled = false;
+            return;
+        }
+
+        if (simulationShapeRenderer == null)
+        {
+            Transform existing = transform.Find("Simulation Shape Renderer");
+            if (existing != null) simulationShapeRenderer = existing.GetComponent<SpriteRenderer>();
+        }
+        if (simulationShapeRenderer == null)
+        {
+            GameObject rendererObject = new GameObject("Simulation Shape Renderer");
+            rendererObject.transform.SetParent(transform, false);
+            simulationShapeRenderer = rendererObject.AddComponent<SpriteRenderer>();
+        }
+
+        transform.position = new Vector3(centerWorld.x, centerWorld.y, transform.position.z);
+        transform.localScale = Vector3.one;
+        ApplySpritePhysicsShape(sprite);
+
+        simulationShapeRenderer.sprite = sprite;
+        simulationShapeRenderer.color = Color.white;
+        simulationShapeRenderer.maskInteraction = SpriteMaskInteraction.None;
+        simulationShapeRenderer.sortingLayerName = landSortingLayer;
+        simulationShapeRenderer.sortingOrder = GetRuntimeSortingOrder() - 2;
+        simulationShapeRenderer.transform.localPosition = Vector3.zero;
+        simulationShapeRenderer.transform.localScale = Vector3.one;
+        simulationShapeRenderer.enabled = true;
+
+        if (spriteMask != null)
+        {
+            spriteMask.sprite = sprite;
+            spriteMask.transform.localPosition = Vector3.zero;
+            spriteMask.transform.localScale = Vector3.one;
+        }
+    }
+
+    private void ApplySpritePhysicsShape(Sprite sprite)
+    {
+        if (polygonCollider == null || sprite == null) return;
+
+        int physicsShapeCount = sprite.GetPhysicsShapeCount();
+        if (physicsShapeCount <= 0)
+        {
+            Bounds bounds = sprite.bounds;
+            polygonCollider.pathCount = 1;
+            polygonCollider.SetPath(0, new[]
+            {
+                new Vector2(bounds.min.x, bounds.min.y),
+                new Vector2(bounds.min.x, bounds.max.y),
+                new Vector2(bounds.max.x, bounds.max.y),
+                new Vector2(bounds.max.x, bounds.min.y)
+            });
+            return;
+        }
+
+        List<Vector2> path = new List<Vector2>();
+        polygonCollider.pathCount = physicsShapeCount;
+        for (int shapeIndex = 0; shapeIndex < physicsShapeCount; shapeIndex++)
+        {
+            path.Clear();
+            sprite.GetPhysicsShape(shapeIndex, path);
+            polygonCollider.SetPath(shapeIndex, path);
+        }
     }
 
     public void SetRuntimeUnlockState(int unitIndex, int requiredPlayerLevel, bool unlocked, bool requiresGoldPurchase)
@@ -566,7 +638,7 @@ public sealed class LandSlotController : MonoBehaviour
         purchaseIndicator.color = showPurificationAction
             ? new Color(0.42f, 1f, 0.86f, 1f)
             : new Color(1f, 0.78f, 0.2f, 1f);
-        purchaseIndicator.text = showPurificationAction ? "PURIFY" : $"{runtimePurchaseGoldCost:N0} G";
+        purchaseIndicator.text = showPurificationAction ? "净化" : $"{runtimePurchaseGoldCost:N0} 金币";
         purchaseIndicator.gameObject.SetActive(true);
     }
 
@@ -583,7 +655,9 @@ public sealed class LandSlotController : MonoBehaviour
         foreach (SpriteRenderer candidate in renderers)
         {
             if (candidate == null || candidate.GetComponent<SpriteMask>() != null) continue;
-            if (candidate == purificationOverlayRenderer || candidate.name == "Unpurified Overlay") continue;
+            if (candidate == purificationOverlayRenderer
+                || candidate.name == "Unpurified Overlay"
+                || candidate.name == "Simulation Shape Renderer") continue;
             return candidate;
         }
         return null;
@@ -596,7 +670,13 @@ public sealed class LandSlotController : MonoBehaviour
 
     private void FitSpriteRendererToCollider(SpriteRenderer renderer)
     {
-        if (renderer == null || renderer.sprite == null || polygonCollider == null) return;
+        if (renderer == null) return;
+        FitSpriteTransformToCollider(renderer.transform, renderer.sprite);
+    }
+
+    private void FitSpriteTransformToCollider(Transform target, Sprite sprite)
+    {
+        if (target == null || sprite == null || polygonCollider == null) return;
 
         Vector2[] path = ShapeHelper.GetLargestPath(polygonCollider);
         if (path.Length == 0) return;
@@ -609,14 +689,14 @@ public sealed class LandSlotController : MonoBehaviour
             max = Vector2.Max(max, path[i]);
         }
 
-        Vector2 spriteSize = renderer.sprite.bounds.size;
+        Vector2 spriteSize = sprite.bounds.size;
         if (spriteSize.x <= 0.0001f || spriteSize.y <= 0.0001f) return;
 
         Vector2 targetSize = max - min;
         float scale = Mathf.Max(targetSize.x / spriteSize.x, targetSize.y / spriteSize.y);
         Vector2 center = (min + max) * 0.5f;
-        renderer.transform.localPosition = new Vector3(center.x, center.y, renderer.transform.localPosition.z);
-        renderer.transform.localScale = new Vector3(scale, scale, 1f);
+        target.localPosition = new Vector3(center.x, center.y, target.localPosition.z);
+        target.localScale = new Vector3(scale, scale, 1f);
     }
 
     private void ConfigureRenderingLayers()
@@ -933,8 +1013,8 @@ public sealed class LandSlotController : MonoBehaviour
 
     private static string ResultMessage<T>(BackendResult<T> result)
     {
-        if (result == null) return "No backend response.";
-        return string.IsNullOrEmpty(result.Message) ? $"HTTP {result.HttpStatus}" : result.Message;
+        if (result == null) return "未收到服务器响应。";
+        return FrontendTextLocalization.Normalize(string.IsNullOrEmpty(result.Message) ? $"请求状态：{result.HttpStatus}" : result.Message);
     }
 
     private void ClearBuildingTimer()

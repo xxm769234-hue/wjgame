@@ -357,7 +357,7 @@ public partial class HomePageUI
             });
             if (playerIdInput.placeholder is Text placeholder)
             {
-                placeholder.text = "输入玩家 ID";
+                placeholder.text = "输入玩家编号";
             }
             playerIdInput.interactable = !interactionLocked;
         }
@@ -583,7 +583,7 @@ public partial class HomePageUI
                 otherAvatarUrl,
                 otherAvatarCode,
                 otherAvatarVersion,
-                $"Lv.{Mathf.Max(1, otherLevel)}    {FormatV37RequestTime(request.createTime)}",
+                $"等级 {Mathf.Max(1, otherLevel)}    {FormatV37RequestTime(request.createTime)}",
                 incoming ? "等待你处理" : "等待对方同意",
                 incoming ? new Color(0.91f, 0.46f, 0.16f, 1f) : new Color(0.26f, 0.52f, 0.82f, 1f),
                 interactionLocked,
@@ -656,7 +656,7 @@ public partial class HomePageUI
 
         if (friend == null)
         {
-            SetV37DetailEmpty(root, "暂无正式好友", "搜索玩家 ID 并发送申请后，等待对方同意");
+            SetV37DetailEmpty(root, "暂无正式好友", "搜索玩家编号并发送申请后，等待对方同意");
             return;
         }
 
@@ -756,7 +756,7 @@ public partial class HomePageUI
         ServerFriendSearchResponse result = v37FriendSearchResult;
         if (result == null)
         {
-            SetV37DetailEmpty(root, "搜索玩家", "请输入准确的玩家 ID，不支持昵称或全服模糊搜索");
+            SetV37DetailEmpty(root, "搜索玩家", "请输入准确的玩家编号，不支持昵称或全服模糊搜索");
             return;
         }
 
@@ -891,7 +891,7 @@ public partial class HomePageUI
         SetSceneText(root, "FriendDetailAvatar", GetNicknameInitial(nickname));
         SetSceneText(root, "FriendDetailName", string.IsNullOrWhiteSpace(nickname) ? "玩家 " + playerId : nickname);
         SetSceneText(root, "FriendDetailId", "玩家编号  " + playerId);
-        SetSceneText(root, "FriendDetailLevel", "领主等级  Lv." + Mathf.Max(1, level));
+        SetSceneText(root, "FriendDetailLevel", "领主等级  " + Mathf.Max(1, level));
         SetSceneText(root, "FriendDetailOnline", title);
         SetSceneText(root, "FriendDetailIntimacy", detail);
         SetSceneText(root, "FriendGiftHint", hint);
@@ -966,7 +966,7 @@ public partial class HomePageUI
         string value = input == null ? string.Empty : input.text.Trim();
         if (!int.TryParse(value, out int playerId) || playerId <= 0)
         {
-            RefreshServerFriendRequestPanel(root, "请输入正确的玩家 ID");
+            RefreshServerFriendRequestPanel(root, "请输入正确的玩家编号");
             return;
         }
 
@@ -1526,8 +1526,8 @@ public partial class HomePageUI
     {
         string date = ShortV38PresenceTime(friend == null ? null : friend.friendsSince);
         return string.IsNullOrEmpty(date)
-            ? "Lv." + Mathf.Max(1, friend == null ? 1 : friend.level) + "    正式好友"
-            : "Lv." + Mathf.Max(1, friend.level) + "    好友始于 " + date;
+            ? "等级 " + Mathf.Max(1, friend == null ? 1 : friend.level) + "    正式好友"
+            : "等级 " + Mathf.Max(1, friend.level) + "    好友始于 " + date;
     }
 
     private static string BuildV38FriendPresenceDetail(ServerFriendResponse friend)

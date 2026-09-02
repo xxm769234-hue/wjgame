@@ -18,7 +18,7 @@ public class UnlockPop : MonoBehaviour
     public void SetAreaData(MapAreaConfig areaCfg)
     {
         targetArea = areaCfg;
-        tipText.text = MapAreaGenerator.Instance.GetUnlockTip(areaCfg);
+        tipText.text = FrontendTextLocalization.Normalize(MapAreaGenerator.Instance.GetUnlockTip(areaCfg));
         bool canUnlock = MapAreaGenerator.Instance.CheckUnlockCondition(areaCfg);
         unlockBtn.interactable = canUnlock;
     }
