@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using TaskText = TMPro.TMP_Text;
 
 public partial class HomePageUI
 {
@@ -70,10 +71,9 @@ public partial class HomePageUI
 
         taskPanelObject = panel.gameObject;
         Transform root = panel.PanelRoot;
+        SetSceneText(root, "TaskTitle", "任务");
         SetSceneText(root, "TaskTotalProgress", $"本页进度  {completedCount}/{tasks.Length}");
-        SetSceneText(root, "TaskCategoryTitle", GetTaskCategoryTitle(category));
-        SetSceneText(root, "TaskCategoryNote", GetTaskCategoryNote(category));
-        SetSceneText(root, "TaskFooterText", message);
+        SetSceneText(root, "TaskFooterText", tasks.Length == 0 ? "暂无任务" : message);
         BindSceneButton(FindSceneComponent<Button>(root, "TaskCloseButton"), HideTaskPanel);
 
         string[] categoryIds = { "daily", "main", "growth", "activity" };
@@ -95,9 +95,7 @@ public partial class HomePageUI
             Image background = button.GetComponent<Image>();
             if (background != null)
             {
-                background.color = selected
-                    ? new Color(0.88f, 0.35f, 0.18f, 1f)
-                    : new Color(0.98f, 0.77f, 0.43f, 1f);
+                background.color = Color.white;
             }
 
             Text label = button.GetComponentInChildren<Text>(true);
@@ -110,7 +108,13 @@ public partial class HomePageUI
             Transform marker = FindSceneTransform(button.transform, "SelectedMarker");
             if (marker != null)
             {
-                marker.gameObject.SetActive(selected);
+                marker.gameObject.SetActive(false);
+            }
+
+            Transform selectedImage = FindSceneTransform(button.transform, "TaskCategorySelectedImage");
+            if (selectedImage != null)
+            {
+                selectedImage.gameObject.SetActive(selected);
             }
 
             button.interactable = supported;
@@ -143,13 +147,7 @@ public partial class HomePageUI
         Image rowImage = row.GetComponent<Image>();
         if (rowImage != null)
         {
-            rowImage.color = claimed
-                ? new Color(0.83f, 0.78f, 0.65f, 1f)
-                : task.IsComplete
-                    ? new Color(0.84f, 0.90f, 0.62f, 1f)
-                    : index % 2 == 0
-                        ? new Color(1f, 0.93f, 0.76f, 1f)
-                        : new Color(0.96f, 0.86f, 0.66f, 1f);
+            rowImage.color = Color.white;
         }
 
         Image accent = FindSceneComponent<Image>(row, "TaskRowAccent");
@@ -160,15 +158,6 @@ public partial class HomePageUI
                 : new Color(0.82f, 0.35f, 0.16f, 1f);
         }
 
-        Image numberBadge = FindSceneComponent<Image>(row, "TaskNumberBadge");
-        if (numberBadge != null)
-        {
-            numberBadge.color = task.IsComplete
-                ? new Color(0.42f, 0.65f, 0.24f, 1f)
-                : new Color(0.58f, 0.30f, 0.13f, 1f);
-        }
-
-        SetSceneText(row, "TaskNumber", task.IsComplete ? "√" : (index + 1).ToString());
         SetSceneText(row, "TaskItemTitle", task.title);
         SetSceneText(row, "TaskItemDescription", task.description);
         SetSceneText(row, "TaskProgressTitle", task.IsComplete ? "任务完成" : "任务进度");
@@ -177,15 +166,17 @@ public partial class HomePageUI
             row,
             "TaskRewardText",
             string.IsNullOrEmpty(task.rewardSummary)
-                ? $"{task.rewardName}\n×{task.rewardAmount}"
+                ? $"{task.rewardName} x{task.rewardAmount}"
                 : task.rewardSummary);
 
         Image progressFill = FindSceneComponent<Image>(row, "TaskProgressFill");
         if (progressFill != null)
         {
             float ratio = Mathf.Clamp01(task.current / (float)Mathf.Max(1, task.target));
-            Vector2 size = progressFill.rectTransform.sizeDelta;
-            progressFill.rectTransform.sizeDelta = new Vector2(190f * ratio, size.y);
+            progressFill.type = Image.Type.Filled;
+            progressFill.fillMethod = Image.FillMethod.Horizontal;
+            progressFill.fillOrigin = 0;
+            progressFill.fillAmount = ratio;
             progressFill.color = task.IsComplete
                 ? new Color(0.42f, 0.70f, 0.23f, 1f)
                 : new Color(0.95f, 0.58f, 0.18f, 1f);
@@ -205,19 +196,23 @@ public partial class HomePageUI
             return;
         }
 
-        string buttonLabel = claimed ? "已领取" : task.IsComplete ? "领取" : task.goAction != null ? "前往" : "进行中";
+        string buttonLabel = claimed ? "已领取" : task.IsComplete ? "领取" : "未完成";
         SetSceneButtonText(actionButton, buttonLabel);
+        TaskText buttonText = actionButton.GetComponentInChildren<TaskText>(true);
+        if (buttonText != null)
+        {
+            buttonText.fontSize = 25f;
+            buttonText.fontSizeMin = 25f;
+            buttonText.fontSizeMax = 25f;
+            buttonText.enableAutoSizing = false;
+        }
         Image buttonImage = actionButton.GetComponent<Image>();
         if (buttonImage != null)
         {
-            buttonImage.color = claimed
-                ? new Color(0.55f, 0.53f, 0.47f, 1f)
-                : task.IsComplete
-                    ? new Color(0.38f, 0.66f, 0.24f, 1f)
-                    : new Color(0.83f, 0.34f, 0.16f, 1f);
+            buttonImage.color = Color.white;
         }
 
-        actionButton.interactable = !claimed && (task.IsComplete || task.goAction != null);
+        actionButton.interactable = !claimed && task.IsComplete;
         if (claimed)
         {
             BindSceneButton(actionButton, null);
@@ -228,7 +223,7 @@ public partial class HomePageUI
         }
         else
         {
-            BindSceneButton(actionButton, task.goAction);
+            BindSceneButton(actionButton, null);
         }
     }
 

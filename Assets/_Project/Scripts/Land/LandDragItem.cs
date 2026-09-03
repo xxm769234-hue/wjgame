@@ -6,13 +6,27 @@ using UnityEngine.UI;
 /// <summary>UI input adapter. It neither places land nor owns build state.</summary>
 public sealed class LandDragItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
 {
+    private const float IconFrameSize = LandTypeIconCatalog.DisplayIconPixels;
+    private const float IconLeftPadding = 10f;
+    private const float LabelLeftPadding = 96f;
+    private const float LabelRightPadding = 8f;
+    private const float LabelVerticalPadding = 8f;
     [Header("对应地块配置")]
     [SerializeField] private LandConfig config;
     [Header("Runtime Display")]
     [SerializeField] private TMP_Text labelText;
     [SerializeField] private Image iconImage;
+    private Image cardImage;
+    private RectTransform iconRect;
     private LandPreview preview;
     private bool hasBackendConfig;
+
+    private void Awake()
+    {
+        cardImage = GetComponent<Image>();
+        if (labelText == null) labelText = GetComponentInChildren<TMP_Text>(true);
+        EnsureIconImage();
+    }
 
     public void SetBackendConfig(LandConfig value)
     {
@@ -22,12 +36,13 @@ public sealed class LandDragItem : MonoBehaviour, IBeginDragHandler, IDragHandle
         if (!hasBackendConfig)
         {
             SetLabel(string.Empty);
+            if (iconImage != null) iconImage.enabled = false;
             return;
         }
 
         gameObject.name = $"Land Drag Item - {DisplayName(config)}";
-        SetLabel(FormatLabel(config));
-        if (iconImage != null && config.landSprite != null) iconImage.sprite = config.landSprite;
+        SetLabel(string.Empty);
+        ApplyTypeIcon(config);
     }
 
     public void OnBeginDrag(PointerEventData eventData)
@@ -70,6 +85,64 @@ public sealed class LandDragItem : MonoBehaviour, IBeginDragHandler, IDragHandle
     {
         if (labelText == null) labelText = GetComponentInChildren<TMP_Text>(true);
         if (labelText != null) labelText.text = FrontendTextLocalization.Normalize(value);
+    }
+
+    private void EnsureIconImage()
+    {
+        if (iconImage != null && iconImage != cardImage)
+        {
+            iconRect = iconImage.rectTransform;
+            return;
+        }
+
+        GameObject iconObject = new GameObject("Land Type Icon", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        iconObject.transform.SetParent(transform, false);
+        iconImage = iconObject.GetComponent<Image>();
+        iconRect = iconImage.rectTransform;
+        iconImage.raycastTarget = false;
+    }
+
+    private void ApplyTypeIcon(LandConfig land)
+    {
+        EnsureIconImage();
+        if (iconImage == null) return;
+
+        Sprite icon = LandTypeIconCatalog.GetIcon(land);
+        iconImage.sprite = icon;
+        iconImage.enabled = icon != null;
+        iconImage.type = Image.Type.Simple;
+        iconImage.preserveAspect = true;
+        iconImage.raycastTarget = false;
+
+        if (icon != null)
+        {
+            iconImage.color = Color.white;
+            iconRect.anchorMin = new Vector2(0f, 0.5f);
+            iconRect.anchorMax = new Vector2(0f, 0.5f);
+            iconRect.pivot = new Vector2(0.5f, 0.5f);
+            iconRect.anchoredPosition = new Vector2(IconLeftPadding + IconFrameSize * 0.5f, 0f);
+            iconRect.sizeDelta = new Vector2(IconFrameSize, IconFrameSize);
+            iconRect.localScale = Vector3.one * LandTypeIconCatalog.GetUiVisualScale(land.LandTypeKey);
+            iconRect.SetAsLastSibling();
+            ConfigureLabelLayout();
+
+            if (cardImage != null && cardImage != iconImage)
+            {
+                cardImage.sprite = null;
+                cardImage.color = new Color(1f, 1f, 1f, 0f);
+            }
+        }
+    }
+
+    private void ConfigureLabelLayout()
+    {
+        if (labelText == null) return;
+
+        RectTransform labelRect = labelText.rectTransform;
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = new Vector2(LabelLeftPadding, LabelVerticalPadding);
+        labelRect.offsetMax = new Vector2(-LabelRightPadding, -LabelVerticalPadding);
     }
 
     private static string FormatLabel(LandConfig land)

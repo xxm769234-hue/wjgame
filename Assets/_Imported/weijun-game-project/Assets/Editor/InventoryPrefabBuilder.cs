@@ -10,9 +10,10 @@ public static class InventoryPrefabBuilder
     private const string PrefabDirectory = "Assets/Resources/UI";
     private const string PrefabPath = PrefabDirectory + "/InventoryPanel.prefab";
     private const string ImportedPrefabPath = "Assets/_Imported/weijun-game-project/Assets/Resources/UI/InventoryPanel.prefab";
-    private const int PrefabSchemaVersion = 3;
+    private const int PrefabSchemaVersion = 4;
     private const int InventoryCapacity = 40;
     private const int InventoryColumns = 8;
+    private const string InventoryArtDirectory = "Assets/_Project/Art/UI/二级界面/仓库二级界面/";
     private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
     private const string ResourceIconDirectory = "Assets/_Imported/weijun-game-project/Assets/UI/资源图标/";
 
@@ -51,20 +52,13 @@ public static class InventoryPrefabBuilder
             panelShadow.raycastTarget = false;
 
             Image panel = CreateImage("InventoryPanel", root.transform, new Color(0.39f, 0.19f, 0.07f, 1f));
+            panel.sprite = LoadInventoryArtSprite("二级界面背景");
+            panel.color = Color.white;
+            panel.type = Image.Type.Simple;
             SetTopLeft(panel.rectTransform, new Vector2(100f, -78f), new Vector2(1720f, 900f));
             panel.raycastTarget = true;
 
             BuildPanelBackground(panel.transform);
-
-            Button backButton = CreateButton(
-                panel.transform,
-                "InventoryBackButton",
-                "<",
-                new Color(0.82f, 0.53f, 0.18f, 1f),
-                new Color(1f, 0.93f, 0.70f, 1f),
-                30,
-                out _);
-            SetTopLeft(backButton.GetComponent<RectTransform>(), new Vector2(32f, -27f), new Vector2(72f, 48f));
 
             TMP_Text titleText = CreateText(
                 "InventoryTitle",
@@ -95,12 +89,17 @@ public static class InventoryPrefabBuilder
             Button closeButton = CreateButton(
                 panel.transform,
                 "InventoryCloseButton",
-                "X",
-                new Color(0.72f, 0.22f, 0.12f, 1f),
+                string.Empty,
+                Color.white,
                 Color.white,
                 23,
                 out _);
-            SetTopLeft(closeButton.GetComponent<RectTransform>(), new Vector2(1636f, -26f), new Vector2(48f, 48f));
+            Image closeImage = closeButton.GetComponent<Image>();
+            closeImage.sprite = LoadInventoryArtSprite("关闭按钮");
+            closeImage.color = Color.white;
+            closeImage.type = Image.Type.Simple;
+            closeImage.preserveAspect = true;
+            SetTopLeft(closeButton.GetComponent<RectTransform>(), new Vector2(1537f, -48f), new Vector2(75f, 77f));
 
             Image sidebar = CreateImage("InventorySidebar", panel.transform, new Color(0.69f, 0.38f, 0.13f, 0.96f));
             SetTopLeft(sidebar.rectTransform, new Vector2(24f, -108f), new Vector2(218f, 672f));
@@ -133,7 +132,7 @@ public static class InventoryPrefabBuilder
                 TextAnchor.MiddleCenter);
             SetTopLeft(sidebarHintText.rectTransform, new Vector2(18f, -540f), new Vector2(174f, 48f));
 
-            BuildGridFrame(panel.transform);
+            GameObject itemParent = BuildGridFrame(panel.transform);
 
             TMP_Text gridTitleText = CreateText(
                 "InventoryGridTitle",
@@ -145,7 +144,7 @@ public static class InventoryPrefabBuilder
                 TextAnchor.MiddleLeft);
             SetTopLeft(gridTitleText.rectTransform, new Vector2(286f, -120f), new Vector2(260f, 34f));
 
-            InventorySlotView[] slots = BuildSlots(panel.transform);
+            InventorySlotView[] slots = BuildSlots(itemParent.transform);
 
             TMP_Text emptyText = CreateText(
                 "InventoryEmptyText",
@@ -162,8 +161,8 @@ public static class InventoryPrefabBuilder
 
             InventoryPanelView.SideActionControl[] sideActions =
             {
-                BuildSideAction(panel.transform, new Vector2(1450f, -234f), "warehouse", "仓库", "仓"),
-                BuildSideAction(panel.transform, new Vector2(1450f, -414f), "store", "商店", "店")
+                BuildSideAction(panel.transform, new Vector2(24f, -234f), "warehouse", "仓库", "仓"),
+                BuildSideAction(panel.transform, new Vector2(24f, -414f), "store", "商店", "店")
             };
 
             ContextMenuReferences context = BuildContextMenu(panel.transform);
@@ -173,7 +172,7 @@ public static class InventoryPrefabBuilder
 
             view.EditorSetReferences(
                 panel.rectTransform,
-                backButton,
+                null,
                 closeButton,
                 expandButton,
                 footer.OrganizeButton,
@@ -200,7 +199,6 @@ public static class InventoryPrefabBuilder
                 sidebar.gameObject,
                 icons,
                 detail.Root,
-                detail.Icon,
                 detail.NameText,
                 detail.TypeText,
                 detail.QuantityText,
@@ -233,10 +231,6 @@ public static class InventoryPrefabBuilder
 
     private static void BuildPanelBackground(Transform panel)
     {
-        Image paper = CreateImage("InventoryPaper", panel, new Color(0.92f, 0.67f, 0.31f, 1f));
-        SetTopLeft(paper.rectTransform, new Vector2(16f, -86f), new Vector2(1688f, 792f));
-        paper.raycastTarget = false;
-
         Image header = CreateImage("InventoryHeader", panel, new Color(0.48f, 0.23f, 0.08f, 1f));
         SetTopLeft(header.rectTransform, new Vector2(16f, -14f), new Vector2(1688f, 74f));
         header.raycastTarget = false;
@@ -341,21 +335,28 @@ public static class InventoryPrefabBuilder
         };
     }
 
-    private static void BuildGridFrame(Transform panel)
+    private static GameObject BuildGridFrame(Transform panel)
     {
         Image gridFrame = CreateImage("InventoryGridFrame", panel, new Color(0.48f, 0.23f, 0.08f, 1f));
+        gridFrame.sprite = LoadInventoryArtSprite("资源栏");
+        gridFrame.color = Color.white;
+        gridFrame.type = Image.Type.Simple;
         SetTopLeft(gridFrame.rectTransform, new Vector2(258f, -108f), new Vector2(1060f, 678f));
         gridFrame.raycastTarget = false;
 
         Image gridPaper = CreateImage("InventoryGridPaper", gridFrame.transform, new Color(0.98f, 0.79f, 0.43f, 1f));
         SetTopLeft(gridPaper.rectTransform, new Vector2(12f, -12f), new Vector2(1036f, 654f));
         gridPaper.raycastTarget = false;
+
+        GameObject itemParent = CreateRectObject("ItemParent", gridPaper.transform);
+        Stretch(itemParent.GetComponent<RectTransform>());
+        return itemParent;
     }
 
-    private static InventorySlotView[] BuildSlots(Transform panel)
+    private static InventorySlotView[] BuildSlots(Transform itemParent)
     {
         InventorySlotView[] result = new InventorySlotView[InventoryCapacity];
-        Vector2 slotStart = new Vector2(286f, -158f);
+        Vector2 slotStart = new Vector2(16f, -38f);
         Vector2 slotSize = new Vector2(106f, 106f);
 
         for (int slotIndex = 0; slotIndex < InventoryCapacity; slotIndex++)
@@ -363,7 +364,8 @@ public static class InventoryPrefabBuilder
             int row = slotIndex / InventoryColumns;
             int column = slotIndex % InventoryColumns;
             Vector2 position = slotStart + new Vector2(column * 118f, -row * 118f);
-            result[slotIndex] = BuildSlot(panel, slotIndex, position, slotSize);
+            result[slotIndex] = BuildSlot(itemParent, slotIndex, position, slotSize);
+            result[slotIndex].gameObject.SetActive(false);
         }
 
         return result;
@@ -371,24 +373,27 @@ public static class InventoryPrefabBuilder
 
     private static InventorySlotView BuildSlot(Transform parent, int slotIndex, Vector2 position, Vector2 size)
     {
-        Image shadow = CreateImage("InventorySlotShadow_" + slotIndex.ToString("00"), parent, new Color(0.22f, 0.10f, 0.03f, 0.35f));
-        SetTopLeft(shadow.rectTransform, position + new Vector2(5f, -6f), size);
-        shadow.raycastTarget = false;
-
         Button button = CreateButton(
             parent,
             "InventorySlot_" + slotIndex.ToString("00"),
             string.Empty,
-            new Color(0.92f, 0.68f, 0.34f, 1f),
+            Color.white,
             Color.white,
             16,
             out _);
         SetTopLeft(button.GetComponent<RectTransform>(), position, size);
         Image background = button.GetComponent<Image>();
+        background.sprite = LoadInventoryArtSprite("格子（无点击）");
+        background.color = Color.white;
+        background.type = Image.Type.Simple;
 
-        Image inner = CreateImage("Inner", button.transform, new Color(1f, 0.86f, 0.54f, 0.68f));
-        SetTopLeft(inner.rectTransform, new Vector2(6f, -6f), size - new Vector2(12f, 12f));
-        inner.raycastTarget = false;
+        Image selectedImage = CreateImage("SelectedImage", button.transform, Color.white);
+        SetTopLeft(selectedImage.rectTransform, Vector2.zero, size);
+        selectedImage.sprite = LoadInventoryArtSprite("格子（点击）");
+        selectedImage.color = Color.white;
+        selectedImage.type = Image.Type.Simple;
+        selectedImage.raycastTarget = false;
+        selectedImage.gameObject.SetActive(false);
 
         Image itemIcon = CreateImage("ItemIcon", button.transform, Color.white);
         SetTopLeft(itemIcon.rectTransform, new Vector2(19f, -12f), new Vector2(68f, 68f));
@@ -413,10 +418,6 @@ public static class InventoryPrefabBuilder
             TextAnchor.MiddleRight);
         SetTopLeft(quantityText.rectTransform, new Vector2(54f, -84f), new Vector2(42f, 22f));
 
-        Image selectedFrame = CreateImage("SelectedFrame", button.transform, new Color(0.25f, 0.72f, 0.18f, 0.80f));
-        SetTopLeft(selectedFrame.rectTransform, Vector2.zero, new Vector2(8f, size.y));
-        selectedFrame.raycastTarget = false;
-
         GameObject lockRoot = CreateRectObject("Lock", button.transform);
         Stretch(lockRoot.GetComponent<RectTransform>());
         BuildLockMark(lockRoot.transform);
@@ -425,12 +426,12 @@ public static class InventoryPrefabBuilder
         slotView.EditorSetReferences(
             button,
             background,
-            inner,
+            null,
             itemIcon,
             fallbackBackground,
             fallbackText,
             quantityText,
-            selectedFrame.gameObject,
+            selectedImage,
             lockRoot);
         slotView.ShowEmpty();
         return slotView;
@@ -707,27 +708,20 @@ public static class InventoryPrefabBuilder
     private static DetailReferences BuildDetailPanel(Transform parent)
     {
         Image background = CreateImage("InventoryResourceDetail", parent, new Color(0.30f, 0.15f, 0.05f, 0.96f));
+        background.sprite = LoadInventoryArtSprite("资源栏");
+        background.color = Color.white;
+        background.type = Image.Type.Simple;
         SetTopLeft(background.rectTransform, new Vector2(1225f, -108f), new Vector2(300f, 672f));
 
-        Image icon = CreateImage("InventoryDetailIcon", background.transform, Color.white);
-        SetTopLeft(icon.rectTransform, new Vector2(32f, -32f), new Vector2(136f, 136f));
-        icon.raycastTarget = false;
-        icon.preserveAspect = true;
-
         TMP_Text name = CreateText("InventoryDetailName", background.transform, "资源详情", 25, FontStyle.Bold, new Color(1f, 0.90f, 0.66f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(name.rectTransform, new Vector2(28f, -190f), new Vector2(244f, 40f));
         TMP_Text type = CreateText("InventoryDetailType", background.transform, "物品", 16, FontStyle.Normal, new Color(1f, 0.78f, 0.45f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(type.rectTransform, new Vector2(28f, -238f), new Vector2(244f, 28f));
         TMP_Text quantity = CreateText("InventoryDetailQuantity", background.transform, "数量  0", 19, FontStyle.Bold, new Color(1f, 0.90f, 0.66f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(quantity.rectTransform, new Vector2(28f, -280f), new Vector2(244f, 32f));
         TMP_Text description = CreateText("InventoryDetailDescription", background.transform, "点击物品查看详情", 15, FontStyle.Normal, new Color(1f, 0.84f, 0.60f, 0.94f), TextAnchor.UpperLeft);
-        SetTopLeft(description.rectTransform, new Vector2(28f, -332f), new Vector2(244f, 210f));
         description.enableWordWrapping = true;
 
         return new DetailReferences
         {
             Root = background.rectTransform,
-            Icon = icon,
             NameText = name,
             TypeText = type,
             QuantityText = quantity,
@@ -769,6 +763,11 @@ public static class InventoryPrefabBuilder
     private static Sprite LoadResourceIcon(string assetName)
     {
         return AssetDatabase.LoadAssetAtPath<Sprite>(ResourceIconDirectory + assetName + ".png");
+    }
+
+    private static Sprite LoadInventoryArtSprite(string assetName)
+    {
+        return AssetDatabase.LoadAssetAtPath<Sprite>(InventoryArtDirectory + assetName + ".png");
     }
 
     private static TextAlignmentOptions ConvertAlignment(TextAnchor alignment)
@@ -836,7 +835,6 @@ public static class InventoryPrefabBuilder
     private sealed class DetailReferences
     {
         public RectTransform Root;
-        public Image Icon;
         public TMP_Text NameText;
         public TMP_Text TypeText;
         public TMP_Text QuantityText;

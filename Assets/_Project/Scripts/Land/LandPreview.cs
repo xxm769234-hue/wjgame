@@ -36,7 +36,14 @@ public sealed class LandPreview : MonoBehaviour
             previewCollider.enabled = false;
         }
 
-        spriteRenderer.sprite = land.landSprite;
+        Sprite icon = LandTypeIconCatalog.GetIcon(land);
+        spriteRenderer.sprite = icon != null ? icon : land.landSprite;
+        transform.localScale = icon != null
+            ? Vector3.one * LandTypeIconCatalog.GetPreviewScale(
+                land,
+                icon,
+                LandTypeIconCatalog.GetPreviewVisibleWorldHeight(worldCamera))
+            : Vector3.one;
         spriteRenderer.maskInteraction = SpriteMaskInteraction.None;
         spriteRenderer.sortingLayerName = previewSortingLayer;
         spriteRenderer.sortingOrder = sortingOrder;

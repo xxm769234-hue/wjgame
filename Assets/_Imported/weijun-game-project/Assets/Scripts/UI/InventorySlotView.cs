@@ -2,6 +2,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
 using TMPro;
+using LegacyText = UnityEngine.UI.Text;
 
 [DisallowMultipleComponent]
 public sealed class InventorySlotView : MonoBehaviour
@@ -14,7 +15,7 @@ public sealed class InventorySlotView : MonoBehaviour
     [SerializeField] private Image fallbackBackgroundImage;
     [SerializeField] private TMP_Text fallbackText;
     [SerializeField] private TMP_Text quantityText;
-    [SerializeField] private GameObject selectedFrame;
+    [SerializeField] private Image selectedImage;
     [SerializeField] private GameObject lockRoot;
 
     [Header("Slot Style")]
@@ -28,6 +29,7 @@ public sealed class InventorySlotView : MonoBehaviour
 
     private void Awake()
     {
+        UpgradeFontAsset();
         UpgradeLegacyTextComponents();
         ResolveTextReferences();
         if (itemIconImage != null)
@@ -39,8 +41,23 @@ public sealed class InventorySlotView : MonoBehaviour
     public void ShowEmpty()
     {
         ResetState();
-        SetColor(backgroundImage, emptyColor);
+        SetColor(backgroundImage, backgroundImage != null && backgroundImage.sprite != null ? Color.white : emptyColor);
         SetColor(innerImage, innerColor);
+    }
+
+    public void SetSlotImages(Sprite normalSprite, Sprite selectedSprite)
+    {
+        if (backgroundImage != null && normalSprite != null)
+        {
+            backgroundImage.sprite = normalSprite;
+            backgroundImage.color = Color.white;
+        }
+
+        if (selectedImage != null && selectedSprite != null)
+        {
+            selectedImage.sprite = selectedSprite;
+            selectedImage.color = Color.white;
+        }
     }
 
     public void ShowLocked(UnityAction onClick)
@@ -61,7 +78,7 @@ public sealed class InventorySlotView : MonoBehaviour
         UnityAction onClick)
     {
         ResetState();
-        SetColor(backgroundImage, occupiedColor);
+        SetColor(backgroundImage, backgroundImage != null && backgroundImage.sprite != null ? Color.white : occupiedColor);
         SetColor(innerImage, innerColor);
 
         Sprite displaySprite = itemSprite != null ? itemSprite : prefabItemIcon;
@@ -91,7 +108,7 @@ public sealed class InventorySlotView : MonoBehaviour
             quantityText.text = Mathf.Max(0, quantity).ToString();
         }
 
-        SetActive(selectedFrame, selected);
+        SetActive(selectedImage, selected);
         BindClick(onClick);
     }
 
@@ -111,7 +128,7 @@ public sealed class InventorySlotView : MonoBehaviour
         SetActive(fallbackBackgroundImage, false);
         SetActive(fallbackText, false);
         SetActive(quantityText, false);
-        SetActive(selectedFrame, false);
+        SetActive(selectedImage, false);
         SetActive(lockRoot, false);
     }
 
@@ -123,12 +140,25 @@ public sealed class InventorySlotView : MonoBehaviour
         }
     }
 
+    private void UpgradeFontAsset()
+    {
+        if (fallbackText != null && fallbackText.font == null)
+        {
+            fallbackText.font = RuntimeFontAssetProvider.Resolve();
+        }
+
+        if (quantityText != null && quantityText.font == null)
+        {
+            quantityText.font = RuntimeFontAssetProvider.Resolve();
+        }
+    }
+
     private void UpgradeLegacyTextComponents()
     {
-        Text[] legacyTexts = GetComponentsInChildren<Text>(true);
+        LegacyText[] legacyTexts = GetComponentsInChildren<LegacyText>(true);
         for (int i = 0; i < legacyTexts.Length; i++)
         {
-            Text legacy = legacyTexts[i];
+            LegacyText legacy = legacyTexts[i];
             if (legacy == null || legacy.GetComponent<TMP_Text>() != null)
             {
                 continue;
@@ -231,7 +261,7 @@ public sealed class InventorySlotView : MonoBehaviour
         Image fallbackBackground,
         TMP_Text itemFallbackText,
         TMP_Text itemQuantityText,
-        GameObject selection,
+        Image selectedStateImage,
         GameObject lockedRoot)
     {
         slotButton = button;
@@ -241,7 +271,7 @@ public sealed class InventorySlotView : MonoBehaviour
         fallbackBackgroundImage = fallbackBackground;
         fallbackText = itemFallbackText;
         quantityText = itemQuantityText;
-        selectedFrame = selection;
+        selectedImage = selectedStateImage;
         lockRoot = lockedRoot;
     }
 #endif

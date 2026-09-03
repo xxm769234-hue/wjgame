@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
 using TMPro;
+using LegacyText = UnityEngine.UI.Text;
 
 [DisallowMultipleComponent]
 public sealed class InventoryPanelView : MonoBehaviour
@@ -80,7 +81,6 @@ public sealed class InventoryPanelView : MonoBehaviour
 
     [Header("Resource Detail")]
     [SerializeField] private RectTransform detailRoot;
-    [SerializeField] private Image detailIcon;
     [SerializeField] private TMP_Text detailNameText;
     [SerializeField] private TMP_Text detailTypeText;
     [SerializeField] private TMP_Text detailQuantityText;
@@ -93,7 +93,7 @@ public sealed class InventoryPanelView : MonoBehaviour
     [SerializeField] private string inventoryGridTitle = "物品栏";
     [SerializeField] private string localInventoryHint = "本地奖励库存\n仅用于本地任务奖励";
     [SerializeField] private string serverInventoryHint = "服务器库存\n按正式报价出售";
-    [SerializeField] private string emptyCategoryText = "当前物品暂无物品";
+    [SerializeField] private string emptyCategoryText = "暂无物品，请获取";
     [SerializeField] private string capacityFormat = "背包空间：{0:00}/{1}";
     [SerializeField] private string visibleCountFormat = "当前物品 {0} 件  已开放 {1} 格";
 
@@ -114,6 +114,10 @@ public sealed class InventoryPanelView : MonoBehaviour
 
     private void Awake()
     {
+        if (fontAsset == null)
+        {
+            fontAsset = RuntimeFontAssetProvider.Resolve();
+        }
         UpgradeLegacyTextComponents();
         ResolveReferences();
         SetCategoriesVisible(false);
@@ -123,6 +127,31 @@ public sealed class InventoryPanelView : MonoBehaviour
     public InventorySlotView GetSlot(int index)
     {
         return slots != null && index >= 0 && index < slots.Length ? slots[index] : null;
+    }
+
+    public void SetSlotVisible(int index, bool visible)
+    {
+        InventorySlotView slot = GetSlot(index);
+        if (slot != null)
+        {
+            slot.gameObject.SetActive(visible);
+        }
+    }
+
+    public void ApplySlotImages(Sprite normalSprite, Sprite selectedSprite)
+    {
+        if (slots == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < slots.Length; i++)
+        {
+            if (slots[i] != null)
+            {
+                slots[i].SetSlotImages(normalSprite, selectedSprite);
+            }
+        }
     }
 
     public void SetMode(bool serverBacked)
@@ -262,7 +291,6 @@ public sealed class InventoryPanelView : MonoBehaviour
     }
 
     public void ShowResourceDetail(
-        Sprite sprite,
         string itemName,
         string itemType,
         int quantity,
@@ -270,13 +298,6 @@ public sealed class InventoryPanelView : MonoBehaviour
     {
         EnsureResourceDetailPanel();
         SetActive(detailRoot, true);
-        if (detailIcon != null)
-        {
-            detailIcon.sprite = sprite;
-            detailIcon.enabled = sprite != null;
-            detailIcon.preserveAspect = true;
-        }
-
         SetText(detailNameText, string.IsNullOrEmpty(itemName) ? "资源详情" : itemName);
         SetText(detailTypeText, string.IsNullOrEmpty(itemType) ? "物品" : itemType);
         SetText(detailQuantityText, $"数量  {Mathf.Max(0, quantity)}");
@@ -496,7 +517,6 @@ public sealed class InventoryPanelView : MonoBehaviour
         GameObject categoriesRoot,
         IconControl[] iconControls,
         RectTransform resourceDetailRoot,
-        Image resourceDetailIcon,
         TMP_Text resourceDetailName,
         TMP_Text resourceDetailType,
         TMP_Text resourceDetailQuantity,
@@ -531,7 +551,6 @@ public sealed class InventoryPanelView : MonoBehaviour
         contextSellButton = sellButton;
         contextDismissButton = dismissButton;
         detailRoot = resourceDetailRoot;
-        detailIcon = resourceDetailIcon;
         detailNameText = resourceDetailName;
         detailTypeText = resourceDetailType;
         detailQuantityText = resourceDetailQuantity;
@@ -547,10 +566,10 @@ public sealed class InventoryPanelView : MonoBehaviour
 
     private void UpgradeLegacyTextComponents()
     {
-        Text[] legacyTexts = GetComponentsInChildren<Text>(true);
+        LegacyText[] legacyTexts = GetComponentsInChildren<LegacyText>(true);
         for (int i = 0; i < legacyTexts.Length; i++)
         {
-            Text legacy = legacyTexts[i];
+            LegacyText legacy = legacyTexts[i];
             if (legacy == null || legacy.GetComponent<TMP_Text>() != null)
             {
                 continue;
@@ -642,34 +661,14 @@ public sealed class InventoryPanelView : MonoBehaviour
             root.GetComponent<Image>().color = new Color(0.30f, 0.15f, 0.05f, 0.96f);
         }
 
-        if (detailIcon == null)
-        {
-            detailIcon = CreateDetailImage("InventoryDetailIcon", new Vector2(35f, -32f), new Vector2(150f, 150f));
-        }
-
-        detailNameText = EnsureDetailText(detailNameText, "InventoryDetailName", "资源详情", 26, new Vector2(32f, -202f), new Vector2(286f, 42f), TextAlignmentOptions.Left);
-        detailTypeText = EnsureDetailText(detailTypeText, "InventoryDetailType", "物品", 17, new Vector2(32f, -250f), new Vector2(286f, 30f), TextAlignmentOptions.Left);
-        detailQuantityText = EnsureDetailText(detailQuantityText, "InventoryDetailQuantity", "数量  0", 19, new Vector2(32f, -294f), new Vector2(286f, 34f), TextAlignmentOptions.Left);
-        detailDescriptionText = EnsureDetailText(detailDescriptionText, "InventoryDetailDescription", "点击物品查看详情", 16, new Vector2(32f, -350f), new Vector2(286f, 220f), TextAlignmentOptions.TopLeft);
+        detailNameText = EnsureDetailText(detailNameText, "InventoryDetailName", "资源详情", 26, TextAlignmentOptions.Left);
+        detailTypeText = EnsureDetailText(detailTypeText, "InventoryDetailType", "物品", 17, TextAlignmentOptions.Left);
+        detailQuantityText = EnsureDetailText(detailQuantityText, "InventoryDetailQuantity", "数量  0", 19, TextAlignmentOptions.Left);
+        detailDescriptionText = EnsureDetailText(detailDescriptionText, "InventoryDetailDescription", "点击物品查看详情", 16, TextAlignmentOptions.TopLeft);
         detailDescriptionText.enableWordWrapping = true;
     }
 
-    private Image CreateDetailImage(string objectName, Vector2 position, Vector2 size)
-    {
-        GameObject child = new GameObject(objectName, typeof(RectTransform), typeof(Image));
-        child.transform.SetParent(detailRoot, false);
-        RectTransform rect = child.GetComponent<RectTransform>();
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(0f, 1f);
-        rect.pivot = new Vector2(0f, 1f);
-        rect.anchoredPosition = position;
-        rect.sizeDelta = size;
-        Image image = child.GetComponent<Image>();
-        image.raycastTarget = false;
-        return image;
-    }
-
-    private TMP_Text EnsureDetailText(TMP_Text current, string objectName, string value, float size, Vector2 position, Vector2 dimensions, TextAlignmentOptions alignment)
+    private TMP_Text EnsureDetailText(TMP_Text current, string objectName, string value, float size, TextAlignmentOptions alignment)
     {
         if (current != null)
         {
@@ -678,12 +677,6 @@ public sealed class InventoryPanelView : MonoBehaviour
 
         GameObject child = new GameObject(objectName, typeof(RectTransform), typeof(TextMeshProUGUI));
         child.transform.SetParent(detailRoot, false);
-        RectTransform rect = child.GetComponent<RectTransform>();
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(0f, 1f);
-        rect.pivot = new Vector2(0f, 1f);
-        rect.anchoredPosition = position;
-        rect.sizeDelta = dimensions;
         TextMeshProUGUI text = child.GetComponent<TextMeshProUGUI>();
         text.text = FrontendTextLocalization.Normalize(value);
         text.font = fontAsset;

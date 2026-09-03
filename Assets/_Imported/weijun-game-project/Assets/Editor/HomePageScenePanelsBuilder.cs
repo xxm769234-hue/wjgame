@@ -22,10 +22,36 @@ public static class HomePageScenePanelsBuilder
     private const string ProfileFontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
     private const int RoleListRows = 20;
     private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal.otf";
+    private const string TaskPanelBackgroundPath = "Assets/_Project/Art/UI/二级界面/二级界面背景.png";
+    private const string TaskArtDirectory = "Assets/_Project/Art/UI/二级界面/任务二级界面/";
+    private const string TaskCloseSpritePath = "Assets/_Project/Art/UI/三级界面/关闭按钮.png";
+    private const string TaskActionSpritePath = "Assets/_Project/Art/UI/二级界面/仓库二级界面/按钮.png";
+    private const string TaskActionDisabledSpritePath = "Assets/_Project/Art/UI/二级界面/仓库二级界面/灰阶按钮.png";
 
     private static Font defaultFont;
     private static Font fallbackFont;
     private static TMP_FontAsset roleFontAsset;
+
+    [InitializeOnLoadMethod]
+    private static void UpdateTaskPanelStyleAfterReload()
+    {
+        EditorApplication.delayCall += () =>
+        {
+            if (EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode)
+            {
+                return;
+            }
+
+            const string taskStyleKey = "WeiJun.HomeScenePanels.TaskStyleCheck.2";
+            if (SessionState.GetBool(taskStyleKey, false))
+            {
+                return;
+            }
+
+            UpdateTaskPanelStyle();
+            SessionState.SetBool(taskStyleKey, true);
+        };
+    }
 
     [InitializeOnLoadMethod]
     private static void BuildMissingPanelsAfterReload()
@@ -139,6 +165,47 @@ public static class HomePageScenePanelsBuilder
         }
 
         BuildScenePanels(scene, true);
+    }
+
+    [MenuItem("Tools/WeiJun UI/Update Task Panel Style")]
+    public static void UpdateTaskPanelStyle()
+    {
+        Scene scene = SceneManager.GetSceneByPath(HomeScenePath);
+        bool openedForUpdate = !scene.IsValid() || !scene.isLoaded;
+        if (openedForUpdate)
+        {
+            scene = EditorSceneManager.OpenScene(HomeScenePath, OpenSceneMode.Additive);
+        }
+
+        try
+        {
+            GameObject canvasObject = FindRoot(scene, CanvasName);
+            HomePageScenePanels registry = canvasObject != null
+                ? canvasObject.GetComponent<HomePageScenePanels>()
+                : null;
+            HomePageScenePanel taskPanel = registry != null
+                ? registry.Get(HomePageScenePanelType.Task)
+                : null;
+            if (taskPanel == null)
+            {
+                Debug.LogWarning("TaskScenePanel was not found in HomeScene.");
+                return;
+            }
+
+            ApplyTaskPanelStyle(taskPanel.transform);
+            EditorUtility.SetDirty(taskPanel);
+            EditorUtility.SetDirty(registry);
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            Debug.Log("Updated TaskScenePanel style without rebuilding other home panels.");
+        }
+        finally
+        {
+            if (openedForUpdate && scene.IsValid() && scene.isLoaded)
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
+        }
     }
 
     [MenuItem("Tools/WeiJun UI/Rebuild Lottery Panel")]
@@ -747,22 +814,7 @@ public static class HomePageScenePanelsBuilder
                 i == 0 ? Color.white : new Color(0.38f, 0.18f, 0.08f, 1f),
                 22);
             SetTopLeft(category.GetComponent<RectTransform>(), new Vector2(16f, -24f - i * 104f), new Vector2(178f, 84f));
-            Image marker = CreateImage("SelectedMarker", category.transform, new Color(1f, 0.89f, 0.42f, 1f));
-            SetTopLeft(marker.rectTransform, new Vector2(164f, -23f), new Vector2(14f, 38f));
-            marker.gameObject.SetActive(i == 0);
         }
-
-        Image badge = CreateImage("TaskSidebarBadge", sidebar.transform, new Color(0.39f, 0.18f, 0.08f, 0.90f));
-        SetTopLeft(badge.rectTransform, new Vector2(16f, -468f), new Vector2(178f, 104f));
-        Text badgeText = CreateText("TaskSidebarBadgeTitle", badge.transform, "委托印章", 18, FontStyle.Bold, new Color(1f, 0.83f, 0.42f, 1f), TextAnchor.MiddleCenter);
-        Stretch(badgeText.rectTransform);
-
-        Image listHeader = CreateImage("TaskListHeader", panel.transform, new Color(0.89f, 0.59f, 0.28f, 1f));
-        SetTopLeft(listHeader.rectTransform, new Vector2(258f, -106f), new Vector2(1092f, 64f));
-        Text categoryTitle = CreateText("TaskCategoryTitle", listHeader.transform, "每日任务", 27, FontStyle.Bold, new Color(0.32f, 0.14f, 0.06f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(categoryTitle.rectTransform, new Vector2(22f, -8f), new Vector2(300f, 46f));
-        Text categoryNote = CreateText("TaskCategoryNote", listHeader.transform, "每日 00:00 刷新完成状态与奖励", 17, FontStyle.Bold, new Color(0.43f, 0.24f, 0.12f, 0.90f), TextAnchor.MiddleRight);
-        SetTopLeft(categoryNote.rectTransform, new Vector2(520f, -10f), new Vector2(544f, 42f));
 
         for (int i = 0; i < 4; i++)
         {
@@ -773,7 +825,390 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(footer.rectTransform, new Vector2(258f, -718f), new Vector2(1092f, 42f));
         Text footerText = CreateText("TaskFooterText", footer.transform, "每日任务会在次日刷新", 17, FontStyle.Bold, new Color(1f, 0.88f, 0.64f, 1f), TextAnchor.MiddleCenter);
         SetTopLeft(footerText.rectTransform, new Vector2(18f, -4f), new Vector2(1056f, 32f));
+        ApplyTaskPanelStyle(scenePanel.transform);
         return scenePanel;
+    }
+
+    private static void ApplyTaskPanelStyle(Transform scenePanelRoot)
+    {
+        Transform panelTransform = FindTransformByName(scenePanelRoot, "TaskPanel");
+        if (panelTransform == null)
+        {
+            return;
+        }
+
+        Image panel = panelTransform.GetComponent<Image>();
+        if (panel != null)
+        {
+            SetTopLeft(panel.rectTransform, new Vector2(32f, -26f), new Vector2(1856f, 1050f));
+            panel.sprite = LoadTaskSprite(TaskPanelBackgroundPath);
+            panel.color = Color.white;
+            panel.type = Image.Type.Simple;
+        }
+
+        Transform shadowTransform = FindTransformByName(scenePanelRoot, "TaskPanelShadow");
+        Image shadow = shadowTransform != null ? shadowTransform.GetComponent<Image>() : null;
+        if (shadow != null)
+        {
+            SetTopLeft(shadow.rectTransform, new Vector2(42f, -36f), new Vector2(1836f, 1048f));
+            shadow.color = new Color(0.10f, 0.05f, 0.02f, 0.20f);
+        }
+
+        Transform paper = FindTransformByName(panelTransform, "TaskPaper");
+        if (paper != null)
+        {
+            paper.gameObject.SetActive(false);
+        }
+
+        Image header = FindImage(panelTransform, "TaskHeader");
+        if (header != null)
+        {
+            SetTopLeft(header.rectTransform, new Vector2(525f, -44f), new Vector2(810f, 116f));
+            header.sprite = LoadTaskSprite(TaskArtDirectory + "顶部信息栏.png");
+            header.color = Color.white;
+            header.type = Image.Type.Simple;
+            header.raycastTarget = false;
+        }
+
+        SetTaskTextStyle(panelTransform, "TaskTitle", new Vector2(545f, -48f), new Vector2(770f, 78f), 44, TextAnchor.MiddleCenter, new Color(0.10f, 0.05f, 0.02f, 1f));
+        SetTaskTextStyle(panelTransform, "TaskSubtitle", new Vector2(465f, -174f), new Vector2(430f, 34f), 18, TextAnchor.MiddleLeft, new Color(0.30f, 0.15f, 0.07f, 0.88f));
+        SetTaskTextStyle(panelTransform, "TaskTotalProgress", new Vector2(1340f, -174f), new Vector2(300f, 34f), 20, TextAnchor.MiddleRight, new Color(0.30f, 0.15f, 0.07f, 1f));
+
+        Image close = FindImage(panelTransform, "TaskCloseButton");
+        if (close != null)
+        {
+            SetTopLeft(close.rectTransform, new Vector2(76f, -58f), new Vector2(108f, 108f));
+            close.sprite = LoadTaskSprite(TaskCloseSpritePath);
+            close.color = Color.white;
+            close.type = Image.Type.Simple;
+            close.preserveAspect = true;
+        }
+
+        Transform sidebarTransform = FindTransformByName(panelTransform, "TaskSidebar");
+        if (sidebarTransform != null)
+        {
+            Image sidebar = sidebarTransform.GetComponent<Image>();
+            if (sidebar != null)
+            {
+                SetTopLeft(sidebar.rectTransform, new Vector2(104f, -202f), new Vector2(278f, 780f));
+                sidebar.color = Color.clear;
+                sidebar.raycastTarget = false;
+            }
+
+            string[] categoryIds = { "daily", "main", "growth", "activity" };
+            for (int i = 0; i < categoryIds.Length; i++)
+            {
+                Transform category = FindTransformByName(sidebarTransform, "TaskCategory_" + categoryIds[i]);
+                if (category == null)
+                {
+                    continue;
+                }
+
+                Image categoryImage = category.GetComponent<Image>();
+                if (categoryImage != null)
+                {
+                    SetTopLeft(categoryImage.rectTransform, new Vector2(0f, -i * 190f), new Vector2(278f, 158f));
+                    categoryImage.sprite = LoadTaskSprite(TaskArtDirectory + "左侧信息栏（无点击）.png");
+                    categoryImage.color = Color.white;
+                    categoryImage.type = Image.Type.Simple;
+                }
+
+                Image selectedImage = FindImage(category, "TaskCategorySelectedImage");
+                if (selectedImage == null)
+                {
+                    selectedImage = CreateImage("TaskCategorySelectedImage", category, Color.white);
+                    selectedImage.transform.SetAsFirstSibling();
+                }
+                Stretch(selectedImage.rectTransform);
+                selectedImage.sprite = LoadTaskSprite(TaskArtDirectory + "左侧信息栏.png");
+                selectedImage.color = Color.white;
+                selectedImage.type = Image.Type.Simple;
+                selectedImage.raycastTarget = false;
+                selectedImage.gameObject.SetActive(i == 0);
+
+                Transform marker = FindTransformByName(category, "SelectedMarker");
+                if (marker != null)
+                {
+                    Object.DestroyImmediate(marker.gameObject);
+                }
+            }
+        }
+
+        Transform listHeader = FindTransformByName(panelTransform, "TaskListHeader");
+        if (listHeader != null)
+        {
+            Object.DestroyImmediate(listHeader.gameObject);
+        }
+        string[] obsolete = { "TaskCategoryTitle", "TaskCategoryNote", "TaskSidebarBadge" };
+        for (int i = 0; i < obsolete.Length; i++)
+        {
+            Transform target = FindTransformByName(panelTransform, obsolete[i]);
+            if (target != null)
+            {
+                Object.DestroyImmediate(target.gameObject);
+            }
+        }
+
+        Image scrollBar = FindImage(panelTransform, "TaskScrollBar");
+        if (scrollBar == null)
+        {
+            scrollBar = CreateImage("TaskScrollBar", panelTransform, Color.white);
+        }
+        SetTopLeft(scrollBar.rectTransform, new Vector2(414f, -216f), new Vector2(32f, 720f));
+        scrollBar.sprite = LoadTaskSprite(TaskArtDirectory + "滑动条.png");
+        scrollBar.color = Color.white;
+        scrollBar.type = Image.Type.Simple;
+        scrollBar.preserveAspect = true;
+        scrollBar.raycastTarget = false;
+
+        Image scrollHandle = FindImage(scrollBar.transform, "TaskScrollHandle");
+        if (scrollHandle == null)
+        {
+            scrollHandle = CreateImage("TaskScrollHandle", scrollBar.transform, Color.white);
+        }
+        SetTopLeft(scrollHandle.rectTransform, new Vector2(5f, -5f), new Vector2(22f, 112f));
+        scrollHandle.sprite = LoadTaskSprite(TaskArtDirectory + "滑动条（内）.png");
+        scrollHandle.color = Color.white;
+        scrollHandle.type = Image.Type.Simple;
+        scrollHandle.preserveAspect = true;
+        scrollHandle.raycastTarget = false;
+        EnsureTaskScrollLayout(panelTransform, scrollBar, scrollHandle);
+
+        for (int i = 0; i < 4; i++)
+        {
+            Transform row = FindTransformByName(panelTransform, "TaskRow" + i);
+            if (row != null)
+            {
+                ApplyTaskRowStyle(panelTransform, row, i);
+            }
+        }
+
+        Transform footer = FindTransformByName(panelTransform, "TaskFooter");
+        if (footer != null)
+        {
+            Image footerImage = footer.GetComponent<Image>();
+            if (footerImage != null)
+            {
+                SetTopLeft(footerImage.rectTransform, new Vector2(465f, -1014f), new Vector2(1260f, 38f));
+                footerImage.color = Color.clear;
+                footerImage.raycastTarget = false;
+            }
+            TMP_Text footerText = FindTaskText(panelTransform, "TaskFooterText");
+            if (footerText != null)
+            {
+                Stretch(footerText.rectTransform);
+                footerText.color = new Color(0.34f, 0.22f, 0.12f, 0.82f);
+                footerText.fontStyle = FontStyles.Normal;
+            }
+        }
+    }
+
+    private static void EnsureTaskScrollLayout(Transform panelTransform, Image scrollBarImage, Image scrollHandleImage)
+    {
+        Transform viewport = FindTransformByName(panelTransform, "TaskRowsViewport");
+        if (viewport == null)
+        {
+            viewport = CreateRectObject("TaskRowsViewport", panelTransform).transform;
+        }
+        RectTransform viewportRect = viewport.GetComponent<RectTransform>();
+        SetTopLeft(viewportRect, new Vector2(465f, -435f), new Vector2(1260f, 550f));
+        if (viewport.GetComponent<RectMask2D>() == null)
+        {
+            viewport.gameObject.AddComponent<RectMask2D>();
+        }
+
+        Transform content = FindTransformByName(viewport, "TaskRowsContent");
+        if (content == null)
+        {
+            content = CreateRectObject("TaskRowsContent", viewport).transform;
+        }
+        RectTransform contentRect = content.GetComponent<RectTransform>();
+        SetTopLeft(contentRect, Vector2.zero, new Vector2(1260f, 620f));
+
+        for (int i = 0; i < 4; i++)
+        {
+            Transform row = FindTransformByName(panelTransform, "TaskRow" + i);
+            if (row == null)
+            {
+                continue;
+            }
+            row.SetParent(content, false);
+            SetTopLeft(row.GetComponent<RectTransform>(), new Vector2(0f, -i * 155f), new Vector2(1260f, 140f));
+            Image rowImage = row.GetComponent<Image>();
+            if (rowImage != null)
+            {
+                rowImage.raycastTarget = false;
+            }
+        }
+
+        ScrollRect scroll = viewport.GetComponent<ScrollRect>();
+        if (scroll == null)
+        {
+            scroll = viewport.gameObject.AddComponent<ScrollRect>();
+        }
+        scroll.content = contentRect;
+        scroll.viewport = viewportRect;
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.inertia = true;
+        scroll.scrollSensitivity = 28f;
+
+        Scrollbar scrollbar = scrollBarImage.GetComponent<Scrollbar>();
+        if (scrollbar == null)
+        {
+            scrollbar = scrollBarImage.gameObject.AddComponent<Scrollbar>();
+        }
+        scrollbar.direction = Scrollbar.Direction.BottomToTop;
+        scrollbar.targetGraphic = scrollHandleImage;
+        scrollbar.handleRect = scrollHandleImage.rectTransform;
+        scrollBarImage.raycastTarget = true;
+        scroll.verticalScrollbar = scrollbar;
+        scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
+
+        RectTransform handleRect = scrollHandleImage.rectTransform;
+        handleRect.anchorMin = new Vector2(0f, 0f);
+        handleRect.anchorMax = new Vector2(1f, 0.24f);
+        handleRect.pivot = new Vector2(0.5f, 0f);
+        handleRect.offsetMin = new Vector2(5f, 0f);
+        handleRect.offsetMax = new Vector2(-5f, 0f);
+    }
+
+    private static void ApplyTaskRowStyle(Transform panelTransform, Transform rowTransform, int index)
+    {
+        Image row = rowTransform.GetComponent<Image>();
+        if (row != null)
+        {
+            SetTopLeft(row.rectTransform, new Vector2(0f, -index * 155f), new Vector2(1260f, 140f));
+            row.sprite = LoadTaskSprite(TaskArtDirectory + "内容栏.png");
+            row.color = Color.white;
+            row.type = Image.Type.Simple;
+        }
+        Transform rowShadow = FindTransformByName(panelTransform, "TaskRowShadow" + index);
+        if (rowShadow != null)
+        {
+            rowShadow.gameObject.SetActive(false);
+        }
+        Transform accent = FindTransformByName(rowTransform, "TaskRowAccent");
+        if (accent != null)
+        {
+            accent.gameObject.SetActive(false);
+        }
+        Transform numberBadge = FindTransformByName(rowTransform, "TaskNumberBadge");
+        if (numberBadge != null)
+        {
+            Object.DestroyImmediate(numberBadge.gameObject);
+        }
+        SetTaskTextStyle(rowTransform, "TaskItemTitle", new Vector2(32f, -20f), new Vector2(585f, 34f), 23, TextAnchor.MiddleLeft, new Color(0.22f, 0.12f, 0.07f, 1f));
+        SetTaskTextStyle(rowTransform, "TaskItemDescription", new Vector2(32f, -58f), new Vector2(585f, 34f), 16, TextAnchor.UpperLeft, new Color(0.38f, 0.28f, 0.19f, 0.95f));
+        SetTaskTextStyle(rowTransform, "TaskProgressTitle", new Vector2(650f, -25f), new Vector2(260f, 28f), 16, TextAnchor.MiddleCenter, new Color(0.32f, 0.20f, 0.12f, 1f));
+        SetTaskTextStyle(rowTransform, "TaskProgressValue", new Vector2(650f, -106f), new Vector2(260f, 24f), 15, TextAnchor.MiddleCenter, new Color(0.32f, 0.20f, 0.12f, 1f));
+
+        Image progressBackground = FindImage(rowTransform, "TaskProgressBackground");
+        if (progressBackground != null)
+        {
+            SetTopLeft(progressBackground.rectTransform, new Vector2(650f, -58f), new Vector2(260f, 22f));
+            progressBackground.sprite = LoadTaskSprite(TaskArtDirectory + "滑动条（内）.png");
+            progressBackground.color = new Color(0.49f, 0.35f, 0.23f, 0.35f);
+            progressBackground.type = Image.Type.Simple;
+            progressBackground.preserveAspect = false;
+        }
+        Image progressFill = FindImage(rowTransform, "TaskProgressFill");
+        if (progressFill != null)
+        {
+            SetTopLeft(progressFill.rectTransform, new Vector2(650f, -58f), new Vector2(260f, 22f));
+            progressFill.sprite = LoadTaskSprite(TaskArtDirectory + "滑动条（内）.png");
+            progressFill.color = new Color(0.78f, 0.29f, 0.12f, 1f);
+            progressFill.type = Image.Type.Filled;
+            progressFill.fillMethod = Image.FillMethod.Horizontal;
+            progressFill.fillOrigin = 0;
+            progressFill.fillAmount = 0f;
+            progressFill.preserveAspect = false;
+        }
+
+        Transform reward = FindTransformByName(rowTransform, "TaskReward");
+        if (reward != null)
+        {
+            Image rewardImage = reward.GetComponent<Image>();
+            if (rewardImage != null)
+            {
+                SetTopLeft(rewardImage.rectTransform, new Vector2(32f, -101f), new Vector2(590f, 30f));
+                rewardImage.color = Color.clear;
+            }
+            Transform rewardIcon = FindTransformByName(reward, "TaskRewardIcon");
+            if (rewardIcon != null)
+            {
+                SetTopLeft(rewardIcon.GetComponent<RectTransform>(), new Vector2(0f, -1f), new Vector2(30f, 30f));
+            }
+            SetTaskTextStyle(reward, "TaskRewardText", new Vector2(40f, -1f), new Vector2(540f, 30f), 15, TextAnchor.MiddleLeft, new Color(0.34f, 0.20f, 0.11f, 1f));
+        }
+
+        Image action = FindImage(rowTransform, "TaskActionButton");
+        if (action != null)
+        {
+            SetTopLeft(action.rectTransform, new Vector2(1080f, -31f), new Vector2(150f, 78f));
+            action.sprite = LoadTaskSprite(TaskActionSpritePath);
+            action.color = Color.white;
+            action.type = Image.Type.Simple;
+            action.preserveAspect = true;
+            Button actionButton = action.GetComponent<Button>();
+            if (actionButton != null)
+            {
+                actionButton.transition = Selectable.Transition.SpriteSwap;
+                SpriteState state = actionButton.spriteState;
+                state.disabledSprite = LoadTaskSprite(TaskActionDisabledSpritePath);
+                actionButton.spriteState = state;
+            }
+            TMP_Text actionText = FindTaskText(action.transform, "Text");
+            if (actionText != null)
+            {
+                actionText.fontSize = 25f;
+                actionText.fontSizeMin = 25f;
+                actionText.fontSizeMax = 25f;
+                actionText.enableAutoSizing = false;
+            }
+        }
+    }
+
+    private static void SetTaskTextStyle(Transform parent, string name, Vector2 position, Vector2 size, int fontSize, TextAnchor alignment, Color color)
+    {
+        TMP_Text text = FindTaskText(parent, name);
+        if (text == null)
+        {
+            return;
+        }
+        SetTopLeft(text.rectTransform, position, size);
+        text.fontSize = fontSize;
+        text.alignment = ConvertTextAlignment(alignment);
+        text.color = color;
+    }
+
+    private static TMP_Text FindTaskText(Transform root, string name)
+    {
+        if (root == null)
+        {
+            return null;
+        }
+        TMP_Text[] texts = root.GetComponentsInChildren<TMP_Text>(true);
+        for (int i = 0; i < texts.Length; i++)
+        {
+            if (texts[i] != null && texts[i].name == name)
+            {
+                return texts[i];
+            }
+        }
+        return null;
+    }
+
+    private static Image FindImage(Transform root, string name)
+    {
+        Transform target = FindTransformByName(root, name);
+        return target != null ? target.GetComponent<Image>() : null;
+    }
+
+    private static Sprite LoadTaskSprite(string assetPath)
+    {
+        return AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
     }
 
     private static void BuildTaskRow(Transform parent, int index, Vector2 position)
@@ -786,11 +1221,6 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(row.rectTransform, position, new Vector2(1092f, 118f));
         Image accent = CreateImage("TaskRowAccent", row.transform, new Color(0.82f, 0.35f, 0.16f, 1f));
         SetTopLeft(accent.rectTransform, Vector2.zero, new Vector2(9f, 118f));
-
-        Image numberBadge = CreateImage("TaskNumberBadge", row.transform, new Color(0.58f, 0.30f, 0.13f, 1f));
-        SetTopLeft(numberBadge.rectTransform, new Vector2(22f, -30f), new Vector2(54f, 54f));
-        Text number = CreateText("TaskNumber", numberBadge.transform, (index + 1).ToString(), 25, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-        Stretch(number.rectTransform);
 
         Text title = CreateText("TaskItemTitle", row.transform, "任务名称", 22, FontStyle.Bold, new Color(0.30f, 0.13f, 0.06f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(title.rectTransform, new Vector2(92f, -13f), new Vector2(390f, 32f));

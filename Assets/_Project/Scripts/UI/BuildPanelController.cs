@@ -26,7 +26,7 @@ public sealed class BuildPanelController : MonoBehaviour
     private int openedFrame = -1;
     private RectTransform runtimeLandItemRoot;
     private readonly List<LandDragItem> runtimeLandItems = new List<LandDragItem>();
-    private const float LandListWidth = 300f;
+    private const float LandListWidth = 150f;
     private const float LandItemHeight = 104f;
     private const float LandItemSpacing = 10f;
     private const float LandListRightPadding = 16f;

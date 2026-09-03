@@ -29,7 +29,7 @@ public sealed class BuildManager : MonoBehaviour
         GameObject buildButtonObject = GameObject.Find("BuildButton");
         if (buildButtonObject != null)
         {
-            SmallButtonIconUtility.ApplyToButton(buildButtonObject.GetComponent<Button>(), "建造副", 48f, 8f, 8f);
+            SmallButtonIconUtility.ApplyIconButtonWithLabel(buildButtonObject.GetComponent<Button>(), "建造副", "建造");
         }
     }
 

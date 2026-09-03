@@ -132,6 +132,81 @@ public static class SmallButtonIconUtility
         return icon;
     }
 
+    public static Image ApplyIconButtonWithLabel(
+        Button button,
+        string resourceName,
+        string labelText,
+        float iconSize = 72f,
+        float labelHeight = 24f,
+        float labelGap = 4f)
+    {
+        if (button == null) return null;
+
+        button.transition = Selectable.Transition.None;
+        Image background = button.GetComponent<Image>();
+        if (background != null)
+        {
+            background.sprite = null;
+            background.color = Color.clear;
+            background.type = Image.Type.Simple;
+            background.raycastTarget = true;
+            if (button.targetGraphic == null) button.targetGraphic = background;
+        }
+
+        Transform iconTransform = button.transform.Find("SmallIcon");
+        Image icon;
+        if (iconTransform == null)
+        {
+            GameObject iconObject = new GameObject("SmallIcon", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            iconObject.layer = button.gameObject.layer;
+            iconObject.transform.SetParent(button.transform, false);
+            icon = iconObject.GetComponent<Image>();
+        }
+        else
+        {
+            icon = iconTransform.GetComponent<Image>();
+            if (icon == null) icon = iconTransform.gameObject.AddComponent<Image>();
+        }
+
+        if (!ApplyToImage(icon, resourceName)) return null;
+
+        RectTransform buttonRect = button.GetComponent<RectTransform>();
+        if (buttonRect != null) buttonRect.sizeDelta = new Vector2(iconSize, iconSize);
+
+        icon.color = Color.white;
+        icon.raycastTarget = false;
+        RectTransform iconRect = icon.rectTransform;
+        iconRect.anchorMin = new Vector2(0.5f, 0.5f);
+        iconRect.anchorMax = new Vector2(0.5f, 0.5f);
+        iconRect.pivot = new Vector2(0.5f, 0.5f);
+        iconRect.sizeDelta = new Vector2(iconSize, iconSize);
+        iconRect.anchoredPosition = Vector2.zero;
+        icon.transform.SetAsFirstSibling();
+
+        TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+        if (label != null && label.transform != icon.transform)
+        {
+            label.font = RuntimeFontAssetProvider.Resolve();
+            label.text = FrontendTextLocalization.Normalize(labelText);
+            label.fontSize = 20f;
+            label.fontStyle = FontStyles.Bold;
+            label.alignment = TextAlignmentOptions.Center;
+            label.color = Color.black;
+            label.raycastTarget = false;
+            label.enableWordWrapping = false;
+            label.overflowMode = TextOverflowModes.Overflow;
+
+            RectTransform labelRect = label.rectTransform;
+            labelRect.anchorMin = new Vector2(0.5f, 0.5f);
+            labelRect.anchorMax = new Vector2(0.5f, 0.5f);
+            labelRect.pivot = new Vector2(0.5f, 0.5f);
+            labelRect.sizeDelta = new Vector2(iconSize, labelHeight);
+            labelRect.anchoredPosition = new Vector2(0f, -(iconSize * 0.5f + labelGap + labelHeight * 0.5f));
+        }
+
+        return icon;
+    }
+
     public static Image ApplyVerticalIconButton(
         Button button,
         string resourceName,

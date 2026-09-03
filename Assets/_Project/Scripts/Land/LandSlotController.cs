@@ -595,7 +595,7 @@ public sealed class LandSlotController : MonoBehaviour
             && IsPurified
             && runtimeRequiresGoldPurchase
             && !runtimePurchased;
-        if (IsBuilt) SetOutlineVisible(true, outlineColor);
+        if (IsBuilt) SetOutlineVisible(false);
         else if (showPurificationOutline) SetOutlineVisible(true, purificationOutlineColor);
         else if (showUnpurchasedOutline) SetOutlineVisible(true, unpurchasedOutlineColor);
         else SetOutlineVisible(false);
@@ -1063,11 +1063,12 @@ public sealed class LandSlotController : MonoBehaviour
         if (spriteMask != null) spriteMask.enabled = true;
         if (landRenderer != null)
         {
-            if (config.landSprite != null) landRenderer.sprite = config.landSprite;
+            Sprite terrainSprite = LandTerrainCatalog.GetTerrain(config);
+            landRenderer.sprite = terrainSprite != null ? terrainSprite : config.landSprite;
             FitLandRendererToCollider();
             landRenderer.enabled = landRenderer.sprite != null;
         }
-        SetOutlineVisible(true);
+        SetOutlineVisible(false);
     }
 
     private void ApplyRemoteBuildingTimer(BuildingResponse response)

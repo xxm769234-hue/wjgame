@@ -29,6 +29,10 @@ public sealed class MapManager : MonoBehaviour
     [SerializeField, Min(0f)] private float unitHorizontalGap = 0.35f;
     [SerializeField, Min(0f)] private float unitVerticalGap = 0.25f;
     [SerializeField, Min(0f)] private float sideGap = 1.5f;
+    [SerializeField, Min(0f)] private float simulationShapeHorizontalGap = 0.12f;
+    [SerializeField, Min(0f)] private float simulationShapeVerticalGap = 0.12f;
+    [SerializeField] private Vector2 simulationBackgroundPadding = new Vector2(3.2f, 1.75f);
+    [SerializeField] private Vector2 simulationShapeOffsetInBackground = new Vector2(0f, 0.6f);
     [SerializeField, Min(0f)] private float mapTopSpacing = 3.5f;
     [SerializeField] private string mapBackgroundName = "MapBackground";
     [SerializeField] private Vector2 mapBackgroundPadding = new Vector2(2f, 2f);
@@ -952,6 +956,7 @@ public sealed class MapManager : MonoBehaviour
                     sprites,
                     page * pageShapeCount + rowFromTop * pageColumns,
                     pageColumns,
+                    simulationShapeHorizontalGap,
                     out rowSpans[rowIndex]);
             }
         }
@@ -966,7 +971,7 @@ public sealed class MapManager : MonoBehaviour
         }
 
         float pageCenterDistance = pageWidth + Mathf.Max(0f, sideGap);
-        float[] rowCenters = ResolveTopDownCenters(rowHeights);
+        float[] rowCenters = ResolveTopDownCenters(rowHeights, simulationShapeVerticalGap);
         float totalHeight = 0f;
         for (int i = 0; i < rowHeights.Length; i++) totalHeight += Mathf.Max(0.01f, rowHeights[i]);
 
@@ -986,9 +991,12 @@ public sealed class MapManager : MonoBehaviour
 
             int page = column / pageColumns;
             int pageColumn = column % pageColumns;
+            int rowIndex = page * pageRows + rowFromTop;
             int spriteIndex = page * pageShapeCount + rowFromTop * pageColumns + pageColumn;
             float pageCenterX = page == 0 ? -pageCenterDistance * 0.5f : pageCenterDistance * 0.5f;
-            float centerX = pageCenterX + rowColumnCenters[page * pageRows + rowFromTop][pageColumn];
+            float rowSpineOffset = (pageWidth - rowSpans[rowIndex]) * 0.5f;
+            if (page == 1) rowSpineOffset = -rowSpineOffset;
+            float centerX = pageCenterX + rowColumnCenters[rowIndex][pageColumn] + rowSpineOffset;
             float centerY = rowCenters[rowFromTop];
             Vector3 centerWorld = mapRoot.TransformPoint(new Vector3(centerX, centerY, 0f));
 
@@ -1004,9 +1012,13 @@ public sealed class MapManager : MonoBehaviour
             runtimeUnitHeight = totalHeight / Mathf.Max(1, sideRows);
             runtimeMapBounds = shapeBounds;
             runtimeMapBounds.Expand(new Vector3(
-                Mathf.Max(0f, mapBackgroundPadding.x) * 2f,
-                Mathf.Max(0f, mapBackgroundPadding.y) * 2f,
+                Mathf.Max(0f, simulationBackgroundPadding.x) * 2f,
+                Mathf.Max(0f, simulationBackgroundPadding.y) * 2f,
                 0f));
+            runtimeMapBounds.center -= new Vector3(
+                simulationShapeOffsetInBackground.x,
+                simulationShapeOffsetInBackground.y,
+                0f);
         }
     }
 
@@ -1014,6 +1026,7 @@ public sealed class MapManager : MonoBehaviour
         Sprite[] sprites,
         int firstSpriteIndex,
         int pageColumns,
+        float horizontalGap,
         out float rowSpan)
     {
         float[] centers = new float[pageColumns];
@@ -1034,7 +1047,7 @@ public sealed class MapManager : MonoBehaviour
                 float rightWidth = right != null ? right.bounds.size.x : 1f;
                 pitch = (leftWidth + rightWidth) * 0.5f;
             }
-            centers[column] = centers[column - 1] + pitch;
+            centers[column] = centers[column - 1] + pitch + Mathf.Max(0f, horizontalGap);
         }
 
         Sprite first = GetSprite(sprites, firstSpriteIndex);
@@ -1095,12 +1108,13 @@ public sealed class MapManager : MonoBehaviour
         return rightEdge ? bounds.max.x : bounds.min.x;
     }
 
-    private static float[] ResolveTopDownCenters(float[] sizes)
+    private static float[] ResolveTopDownCenters(float[] sizes, float verticalGap)
     {
         if (sizes == null || sizes.Length == 0) return new float[0];
 
         float totalSize = 0f;
         for (int i = 0; i < sizes.Length; i++) totalSize += Mathf.Max(0.01f, sizes[i]);
+        totalSize += Mathf.Max(0f, verticalGap) * Mathf.Max(0, sizes.Length - 1);
 
         float[] centers = new float[sizes.Length];
         float cursor = totalSize * 0.5f;
@@ -1108,7 +1122,7 @@ public sealed class MapManager : MonoBehaviour
         {
             float size = Mathf.Max(0.01f, sizes[i]);
             centers[i] = cursor - size * 0.5f;
-            cursor -= size;
+            cursor -= size + Mathf.Max(0f, verticalGap);
         }
         return centers;
     }

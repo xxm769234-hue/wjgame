@@ -1788,7 +1788,7 @@ public partial class HomePageUI : MonoBehaviour
         HideAccountProfilePanel();
         HideFriendsPanel();
 
-        TaskDisplayItem[] tasks = BuildTaskItems(category);
+        TaskDisplayItem[] tasks = BuildTaskItems(category) ?? new TaskDisplayItem[0];
         int completedCount = 0;
         for (int i = 0; i < tasks.Length; i++)
         {
@@ -1845,21 +1845,6 @@ public partial class HomePageUI : MonoBehaviour
         AddTaskCategoryButton(sidebar.transform, "growth", "成长任务", new Vector2(16f, -232f), category == "growth");
         AddTaskCategoryButton(sidebar.transform, "activity", "活动任务", new Vector2(16f, -336f), category == "activity");
 
-        Image sidebarBadge = CreateImage("TaskSidebarBadge", sidebar.transform, new Color(0.39f, 0.18f, 0.08f, 0.90f));
-        SetRect(sidebarBadge.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(16f, -468f), new Vector2(178f, 104f));
-        Text sidebarBadgeTitle = CreateMailText("TaskSidebarBadgeTitle", sidebarBadge.transform, "委托印章", 18, FontStyle.Bold, new Color(1f, 0.83f, 0.42f, 1f), TextAnchor.MiddleCenter);
-        SetRect(sidebarBadgeTitle.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(12f, -12f), new Vector2(154f, 28f));
-        AddSealToken(sidebarBadge.transform, new Vector2(66f, -46f), new Vector2(46f, 46f));
-
-        Image listHeader = CreateImage("TaskListHeader", panel.transform, new Color(0.89f, 0.59f, 0.28f, 1f));
-        SetRect(listHeader.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(258f, -106f), new Vector2(1092f, 64f));
-
-        Text categoryTitle = CreateMailText("TaskCategoryTitle", listHeader.transform, GetTaskCategoryTitle(category), 27, FontStyle.Bold, new Color(0.32f, 0.14f, 0.06f, 1f), TextAnchor.MiddleLeft);
-        SetRect(categoryTitle.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(22f, -8f), new Vector2(300f, 46f));
-
-        Text categoryNote = CreateMailText("TaskCategoryNote", listHeader.transform, GetTaskCategoryNote(category), 17, FontStyle.Bold, new Color(0.43f, 0.24f, 0.12f, 0.90f), TextAnchor.MiddleRight);
-        SetRect(categoryNote.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(520f, -10f), new Vector2(544f, 42f));
-
         for (int i = 0; i < tasks.Length; i++)
         {
             AddTaskRow(panel.transform, tasks[i], i, new Vector2(258f, -184f - i * 131f));
@@ -1867,7 +1852,7 @@ public partial class HomePageUI : MonoBehaviour
 
         Image footer = CreateImage("TaskFooter", panel.transform, new Color(0.54f, 0.28f, 0.12f, 0.90f));
         SetRect(footer.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(258f, -718f), new Vector2(1092f, 42f));
-        Text footerText = CreateMailText("TaskFooterText", footer.transform, message, 17, FontStyle.Bold, new Color(1f, 0.88f, 0.64f, 1f), TextAnchor.MiddleCenter);
+        Text footerText = CreateMailText("TaskFooterText", footer.transform, tasks.Length == 0 ? "暂无任务" : message, 17, FontStyle.Bold, new Color(1f, 0.88f, 0.64f, 1f), TextAnchor.MiddleCenter);
         SetRect(footerText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(18f, -4f), new Vector2(1056f, 32f));
 
         SetStatus(message);
@@ -1912,16 +1897,11 @@ public partial class HomePageUI : MonoBehaviour
         SetRect(accent.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), Vector2.zero, new Vector2(9f, 118f));
         accent.raycastTarget = false;
 
-        Image numberBadge = CreateImage("TaskNumberBadge", row.transform, task.IsComplete ? new Color(0.42f, 0.65f, 0.24f, 1f) : new Color(0.58f, 0.30f, 0.13f, 1f));
-        SetRect(numberBadge.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(22f, -30f), new Vector2(54f, 54f));
-        Text number = CreateMailText("TaskNumber", numberBadge.transform, task.IsComplete ? "√" : (index + 1).ToString(), 25, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-        Stretch(number.rectTransform);
-
         Text taskTitle = CreateMailText("TaskItemTitle", row.transform, task.title, 22, FontStyle.Bold, new Color(0.30f, 0.13f, 0.06f, 1f), TextAnchor.MiddleLeft);
-        SetRect(taskTitle.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(92f, -13f), new Vector2(390f, 32f));
+        SetRect(taskTitle.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(32f, -20f), new Vector2(585f, 34f));
 
         Text description = CreateMailText("TaskItemDescription", row.transform, task.description, 16, FontStyle.Normal, new Color(0.43f, 0.31f, 0.21f, 1f), TextAnchor.UpperLeft);
-        SetRect(description.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(92f, -49f), new Vector2(390f, 52f));
+        SetRect(description.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(32f, -58f), new Vector2(585f, 34f));
 
         Text progressTitle = CreateMailText("TaskProgressTitle", row.transform, task.IsComplete ? "任务完成" : "任务进度", 16, FontStyle.Bold, new Color(0.40f, 0.22f, 0.10f, 1f), TextAnchor.MiddleCenter);
         SetRect(progressTitle.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(494f, -15f), new Vector2(190f, 24f));
@@ -1937,32 +1917,28 @@ public partial class HomePageUI : MonoBehaviour
         SetRect(progressValue.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(494f, -72f), new Vector2(190f, 24f));
 
         Image reward = CreateImage("TaskReward", row.transform, new Color(0.99f, 0.79f, 0.37f, 0.88f));
-        SetRect(reward.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(704f, -18f), new Vector2(188f, 82f));
-        AddTaskRewardIcon(reward.transform, task.rewardKey, new Vector2(12f, -20f), new Vector2(40f, 40f));
-        Text rewardText = CreateMailText("TaskRewardText", reward.transform, string.IsNullOrEmpty(task.rewardSummary) ? $"{task.rewardName}\n×{task.rewardAmount}" : task.rewardSummary, 16, FontStyle.Bold, new Color(0.38f, 0.17f, 0.06f, 1f), TextAnchor.MiddleLeft);
-        SetRect(rewardText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(62f, -10f), new Vector2(116f, 62f));
+        SetRect(reward.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(32f, -101f), new Vector2(590f, 30f));
+        AddTaskRewardIcon(reward.transform, task.rewardKey, new Vector2(0f, -1f), new Vector2(30f, 30f));
+        Text rewardText = CreateMailText("TaskRewardText", reward.transform, string.IsNullOrEmpty(task.rewardSummary) ? $"{task.rewardName} x{task.rewardAmount}" : task.rewardSummary, 16, FontStyle.Bold, new Color(0.38f, 0.17f, 0.06f, 1f), TextAnchor.MiddleLeft);
+        SetRect(rewardText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(40f, -1f), new Vector2(540f, 30f));
 
-        string buttonLabel = claimed ? "已领取" : task.IsComplete ? "领取" : task.goAction != null ? "前往" : "进行中";
-        Color buttonColor = claimed
+        string buttonLabel = claimed ? "已领取" : task.IsComplete ? "领取" : "未完成";
+        Color buttonColor = claimed || !task.IsComplete
             ? new Color(0.55f, 0.53f, 0.47f, 1f)
             : task.IsComplete
                 ? new Color(0.38f, 0.66f, 0.24f, 1f)
                 : new Color(0.83f, 0.34f, 0.16f, 1f);
         Button actionButton = CreateButton(row.transform, "TaskActionButton", buttonLabel, buttonColor, Color.white);
-        SetRect(actionButton.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(922f, -34f), new Vector2(142f, 50f));
-        ConfigureClearButtonLabel(actionButton, 20);
+        SetRect(actionButton.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(922f, -20f), new Vector2(150f, 78f));
+        ConfigureClearButtonLabel(actionButton, 25);
 
-        if (claimed)
+        if (claimed || !task.IsComplete)
         {
             actionButton.interactable = false;
         }
         else if (task.IsComplete)
         {
             actionButton.onClick.AddListener(() => ClaimTaskReward(task));
-        }
-        else if (task.goAction != null)
-        {
-            actionButton.onClick.AddListener(() => task.goAction());
         }
         else
         {
@@ -2227,10 +2203,6 @@ public partial class HomePageUI : MonoBehaviour
         inventoryPanelObject = panel.gameObject;
         SetRect(panel.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(100f, -78f), new Vector2(1720f, 900f));
 
-        Image paper = CreateImage("InventoryPaper", panel.transform, new Color(0.92f, 0.67f, 0.31f, 1f));
-        SetRect(paper.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(16f, -86f), new Vector2(1688f, 792f));
-        paper.raycastTarget = false;
-
         Image header = CreateImage("InventoryHeader", panel.transform, new Color(0.48f, 0.23f, 0.08f, 1f));
         SetRect(header.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(16f, -14f), new Vector2(1688f, 74f));
         header.raycastTarget = false;
@@ -2238,11 +2210,6 @@ public partial class HomePageUI : MonoBehaviour
         Image headerLight = CreateImage("InventoryHeaderLight", header.transform, new Color(1f, 0.71f, 0.22f, 0.22f));
         SetRect(headerLight.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), Vector2.zero, new Vector2(1688f, 9f));
         headerLight.raycastTarget = false;
-
-        Button back = CreateButton(panel.transform, "InventoryBackButton", "<", new Color(0.82f, 0.53f, 0.18f, 1f), new Color(1f, 0.93f, 0.70f, 1f));
-        back.onClick.AddListener(HideInventoryPanel);
-        SetRect(back.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(32f, -27f), new Vector2(72f, 48f));
-        ConfigureClearButtonLabel(back, 30);
 
         Text title = CreateMailText("InventoryTitle", panel.transform, "背包", 36, FontStyle.Bold, new Color(1f, 0.88f, 0.47f, 1f), TextAnchor.MiddleLeft);
         SetRect(title.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(120f, -28f), new Vector2(170f, 52f));
@@ -2253,10 +2220,9 @@ public partial class HomePageUI : MonoBehaviour
         AddInventoryResourceBadge(panel.transform, new Vector2(620f, -24f), "金币", "Gold", new Color(1f, 0.74f, 0.14f, 1f));
         AddInventoryResourceBadge(panel.transform, new Vector2(900f, -24f), "钻石", "Crystal", new Color(0.26f, 0.70f, 1f, 1f));
 
-        Button close = CreateButton(panel.transform, "InventoryCloseButton", "×", new Color(0.72f, 0.22f, 0.12f, 1f), Color.white);
+        Button close = CreateButton(panel.transform, "InventoryCloseButton", string.Empty, Color.white, Color.white);
         close.onClick.AddListener(HideInventoryPanel);
-        SetRect(close.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1636f, -26f), new Vector2(48f, 48f));
-        ConfigureClearButtonLabel(close, 23);
+        SetRect(close.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1537f, -48f), new Vector2(75f, 77f));
 
         Image sidebar = CreateImage("InventorySidebar", panel.transform, new Color(0.69f, 0.38f, 0.13f, 0.96f));
         SetRect(sidebar.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(24f, -108f), new Vector2(218f, 672f));
@@ -2273,6 +2239,7 @@ public partial class HomePageUI : MonoBehaviour
 
         Text sidebarHint = CreateMailText("InventorySidebarHint", sidebar.transform, GetInventorySidebarHint(), 16, FontStyle.Bold, new Color(1f, 0.87f, 0.60f, 0.94f), TextAnchor.MiddleCenter);
         SetRect(sidebarHint.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(18f, -540f), new Vector2(174f, 48f));
+        sidebar.gameObject.SetActive(false);
 
         Image gridFrame = CreateImage("InventoryGridFrame", panel.transform, new Color(0.48f, 0.23f, 0.08f, 1f));
         SetRect(gridFrame.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(258f, -108f), new Vector2(1060f, 678f));
@@ -2282,29 +2249,32 @@ public partial class HomePageUI : MonoBehaviour
         SetRect(gridPaper.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(12f, -12f), new Vector2(1036f, 654f));
         gridPaper.raycastTarget = false;
 
+        GameObject itemParent = new GameObject("ItemParent", typeof(RectTransform));
+        itemParent.transform.SetParent(gridPaper.transform, false);
+        Stretch(itemParent.GetComponent<RectTransform>());
+
         Text gridTitle = CreateMailText("InventoryGridTitle", panel.transform, "物品栏", 22, FontStyle.Bold, new Color(0.42f, 0.19f, 0.05f, 1f), TextAnchor.MiddleLeft);
         SetRect(gridTitle.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(286f, -120f), new Vector2(260f, 34f));
 
-        Vector2 slotStart = new Vector2(286f, -158f);
+        Vector2 slotStart = new Vector2(16f, -38f);
         Vector2 slotSize = new Vector2(106f, 106f);
-        for (int slotIndex = 0; slotIndex < InventoryCapacity; slotIndex++)
+        for (int slotIndex = 0; slotIndex < Mathf.Min(InventoryCapacity, visibleItems.Count); slotIndex++)
         {
             int row = slotIndex / InventoryColumns;
             int column = slotIndex % InventoryColumns;
             Vector2 position = slotStart + new Vector2(column * 118f, -row * 118f);
-            InventoryItemResponse item = slotIndex < visibleItems.Count ? visibleItems[slotIndex] : null;
-            AddInventorySlot(panel.transform, item, slotIndex, position, slotSize, slotIndex >= unlockedSlots);
+            AddInventorySlot(itemParent.transform, visibleItems[slotIndex], slotIndex, position, slotSize, false);
         }
 
         if (visibleItems.Count == 0)
         {
-            Text emptyText = CreateMailText("InventoryEmptyText", panel.transform, "当前分类暂无物品", 22, FontStyle.Bold, new Color(0.48f, 0.27f, 0.12f, 0.72f), TextAnchor.MiddleCenter);
+            Text emptyText = CreateMailText("InventoryEmptyText", panel.transform, "暂无物品，请获取", 22, FontStyle.Bold, new Color(0.48f, 0.27f, 0.12f, 0.72f), TextAnchor.MiddleCenter);
             SetRect(emptyText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(510f, -390f), new Vector2(430f, 42f));
         }
 
         AddInventoryFooter(panel.transform, ownedCount, visibleItems.Count, unlockedSlots);
-        AddInventorySideAction(panel.transform, new Vector2(1450f, -234f), "仓库", "仓", true, null);
-        AddInventorySideAction(panel.transform, new Vector2(1450f, -414f), "商店", "店", false, ShowShopContent);
+        AddInventorySideAction(panel.transform, new Vector2(24f, -234f), "仓库", "仓", true, null);
+        AddInventorySideAction(panel.transform, new Vector2(24f, -414f), "商店", "店", false, ShowShopContent);
 
         selectedIndex = FindFilteredInventoryIndex(visibleItems, selectedInventoryItemKey);
         if (selectedIndex >= 0)
@@ -2347,16 +2317,11 @@ public partial class HomePageUI : MonoBehaviour
                 continue;
             }
 
-            if (slotIndex >= unlockedSlots)
-            {
-                slot.ShowLocked(ExpandInventorySlots);
-                continue;
-            }
-
             InventoryItemResponse item = slotIndex < visibleItems.Count ? visibleItems[slotIndex] : null;
-            if (item == null)
+            bool hasItem = item != null && item.quantity > 0;
+            view.SetSlotVisible(slotIndex, hasItem);
+            if (!hasItem)
             {
-                slot.ShowEmpty();
                 continue;
             }
 
@@ -2382,14 +2347,14 @@ public partial class HomePageUI : MonoBehaviour
             InventorySlotView slot = view.GetSlot(slotIndex);
             if (slot != null)
             {
-                slot.ShowEmpty();
+                view.SetSlotVisible(slotIndex, false);
             }
         }
 
         if (selectedIndex < 0 || selectedIndex >= slotCount)
         {
             view.HideContextMenu();
-            view.ShowResourceDetail(null, "资源详情", "请选择物品", 0, "点击物品后，在这里查看名称、类型、数量和说明");
+            view.ShowResourceDetail("资源详情", "请选择物品", 0, "点击物品后，在这里查看名称、类型、数量和说明");
             return;
         }
 
@@ -2401,7 +2366,6 @@ public partial class HomePageUI : MonoBehaviour
             : slotPosition + new Vector2(112f, -4f);
         InventoryItemResponse selectedItem = visibleItems[selectedIndex];
         view.ShowResourceDetail(
-            view.ResolveIcon(selectedItem.itemKey, selectedItem.name, selectedItem.icon),
             selectedItem.name,
             GetInventoryTypeLabel(selectedItem),
             selectedItem.quantity,
@@ -2475,7 +2439,7 @@ public partial class HomePageUI : MonoBehaviour
         for (int i = 0; i < currentInventoryItems.Length; i++)
         {
             InventoryItemResponse item = currentInventoryItems[i];
-            if (item == null || IsTopCurrencyItem(item))
+            if (item == null || item.quantity <= 0 || IsTopCurrencyItem(item))
             {
                 continue;
             }

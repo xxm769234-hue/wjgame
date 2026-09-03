@@ -174,7 +174,9 @@ public static class RuntimeConfigFactory
     {
         if (string.IsNullOrEmpty(value)) return LandType.Grassland;
 
-        string normalized = value.Replace("_", string.Empty);
+        string normalized = value.Trim().Replace("_", string.Empty);
+        if (string.Equals(normalized, "WATER", StringComparison.OrdinalIgnoreCase)) normalized = nameof(LandType.Ocean);
+        if (string.Equals(normalized, "SNOW", StringComparison.OrdinalIgnoreCase)) normalized = nameof(LandType.Snowfield);
         LandType parsed;
         return Enum.TryParse(normalized, true, out parsed) ? parsed : LandType.Grassland;
     }

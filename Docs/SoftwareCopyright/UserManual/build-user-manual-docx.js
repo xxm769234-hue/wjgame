@@ -31,16 +31,19 @@ const {
   TableCell,
   TableRow,
   TextRun,
+  VerticalAlign,
   WidthType,
 } = loadDocx();
 
-const sourcePath = path.resolve(
-  __dirname,
-  "书屿梦行游戏软件V1.0-用户操作说明书-修订稿.md"
-);
-const outputPath = process.argv[2]
+const sourcePath = process.argv[2]
   ? path.resolve(process.argv[2])
-  : path.resolve(__dirname, "书屿梦行游戏软件V1.0-用户操作说明书-修订稿.docx");
+  : path.resolve(__dirname, "书屿梦行游戏软件V1.0-用户操作说明书-修订稿.md");
+const outputPath = process.argv[3]
+  ? path.resolve(process.argv[3])
+  : path.resolve(
+      path.dirname(sourcePath),
+      `${path.basename(sourcePath, path.extname(sourcePath))}.docx`
+    );
 
 const bodyFont = "SimSun";
 const headingFont = "SimHei";
@@ -170,6 +173,97 @@ function bulletParagraph(value) {
   });
 }
 
+function numberedParagraph(value) {
+  return new Paragraph({
+    children: inlineRuns(value),
+    spacing: { after: 65, line: 350 },
+    indent: { left: 420, hanging: 220 },
+  });
+}
+
+function pngDimensions(data) {
+  const pngSignature = "89504e470d0a1a0a";
+  if (data.length < 24 || data.subarray(0, 8).toString("hex") !== pngSignature) {
+    return null;
+  }
+
+  return {
+    width: data.readUInt32BE(16),
+    height: data.readUInt32BE(20),
+  };
+}
+
+function screenshotBlock(value) {
+  const fields = value
+    .slice("[[SCREENSHOT|".length, -2)
+    .split("|")
+    .map((field) => field.trim());
+  const figureNumber = fields[0] || "图";
+  const title = fields[1] || "界面截图";
+  const fileName = fields[2] || "待定.png";
+  const imagePath = path.resolve(
+    path.dirname(sourcePath),
+    "Screenshots",
+    "Final",
+    fileName
+  );
+  const caption = new Paragraph({
+    alignment: AlignmentType.CENTER,
+    children: [
+      new TextRun({
+        text: `${figureNumber} ${title}`,
+        font: bodyFont,
+        size: 19,
+      }),
+    ],
+    spacing: { before: 70, after: 180 },
+    keepNext: false,
+  });
+
+  if (!fs.existsSync(imagePath)) {
+    return [
+      instructionParagraph(`缺少实机截图：${fileName}。请补齐图片后重新生成文档。`),
+      caption,
+    ];
+  }
+
+  const imageData = fs.readFileSync(imagePath);
+  const dimensions = pngDimensions(imageData);
+  const maximumWidth = 600;
+  const maximumHeight = 380;
+  let width = maximumWidth;
+  let height = 338;
+
+  if (dimensions && dimensions.width > 0 && dimensions.height > 0) {
+    height = Math.round((maximumWidth * dimensions.height) / dimensions.width);
+    if (height > maximumHeight) {
+      height = maximumHeight;
+      width = Math.round((maximumHeight * dimensions.width) / dimensions.height);
+    }
+  }
+
+  return [
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      children: [
+        new ImageRun({
+          data: imageData,
+          type: "png",
+          transformation: { width, height },
+          altText: {
+            title: `${figureNumber} ${title}`,
+            description: title,
+            name: fileName,
+          },
+        }),
+      ],
+      spacing: { before: 100, after: 40 },
+      keepNext: true,
+    }),
+    caption,
+  ];
+}
+
 function imageParagraph(relativePath, altText) {
   const imagePath = path.resolve(path.dirname(sourcePath), relativePath);
   if (!fs.existsSync(imagePath)) {
@@ -255,6 +349,19 @@ function parseMarkdown() {
     const trimmed = lines[index].trim();
 
     if (!trimmed) {
+      index += 1;
+      continue;
+    }
+
+    if (trimmed === "[[PAGE_BREAK]]") {
+      children.push(new Paragraph({ children: [new PageBreak()] }));
+      onCover = false;
+      index += 1;
+      continue;
+    }
+
+    if (trimmed.startsWith("[[SCREENSHOT|") && trimmed.endsWith("]]")) {
+      children.push(...screenshotBlock(trimmed));
       index += 1;
       continue;
     }
@@ -345,6 +452,13 @@ function parseMarkdown() {
       continue;
     }
 
+
+    if (/^\d+[.、]\s+/.test(trimmed)) {
+      children.push(numberedParagraph(trimmed));
+      index += 1;
+      continue;
+    }
+
     children.push(
       bodyParagraph(trimmed, {
         alignment: onCover ? AlignmentType.CENTER : undefined,
@@ -360,7 +474,7 @@ function parseMarkdown() {
 const document = new Document({
   creator: "书屿梦行项目组",
   title: "书屿梦行游戏软件 V1.0 用户操作说明书",
-  description: "软件著作权用户手册修订工作稿",
+  description: "书屿梦行游戏软件 V1.0 软件著作权用户操作说明书",
   styles: {
     default: {
       document: { run: { font: bodyFont, size: 21 } },
@@ -438,4 +552,3 @@ Packer.toBuffer(document)
     console.error(error);
     process.exitCode = 1;
   });
-

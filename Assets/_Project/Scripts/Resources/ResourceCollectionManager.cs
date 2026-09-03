@@ -10,7 +10,7 @@ public sealed class ResourceCollectionManager : MonoBehaviour
     [SerializeField] private bool createRuntimeButton = true;
     [SerializeField] private string buttonObjectName = "Collect All Resources Button";
     [SerializeField] private Vector2 buttonPosition = new Vector2(210f, 70f);
-    [SerializeField] private Vector2 buttonSize = new Vector2(180f, 80f);
+    [SerializeField] private Vector2 buttonSize = new Vector2(72f, 72f);
     [SerializeField, Min(0.05f)] private float refreshInterval = 0.25f;
 
     private Button collectAllButton;
@@ -114,7 +114,7 @@ public sealed class ResourceCollectionManager : MonoBehaviour
                 collectAllButton.onClick.RemoveListener(OnClickCollectAll);
                 collectAllButton.onClick.AddListener(OnClickCollectAll);
                 ConfigureButtonRect(collectAllButton.GetComponent<RectTransform>());
-                SmallButtonIconUtility.ApplyToButton(collectAllButton, "一键收取", 48f, 8f, 8f);
+                SmallButtonIconUtility.ApplyIconButtonWithLabel(collectAllButton, "一键收取", "一键收取");
                 return;
             }
         }
@@ -155,7 +155,7 @@ public sealed class ResourceCollectionManager : MonoBehaviour
         collectAllButtonText.color = Color.white;
         collectAllButtonText.alignment = TextAlignmentOptions.Center;
         collectAllButtonText.enableWordWrapping = true;
-        SmallButtonIconUtility.ApplyToButton(collectAllButton, "一键收取", 48f, 8f, 8f);
+        SmallButtonIconUtility.ApplyIconButtonWithLabel(collectAllButton, "一键收取", "一键收取");
     }
 
     private void ConfigureButtonRect(RectTransform rect)
@@ -176,7 +176,7 @@ public sealed class ResourceCollectionManager : MonoBehaviour
         int readyCount = CountReadyResources();
         if (collectAllButtonText != null)
         {
-        collectAllButtonText.text = readyCount > 0 ? $"一键收取\n({readyCount})" : "一键收取\n(0)";
+            collectAllButtonText.text = "一键收取";
         }
         if (collectAllButton != null)
         {
