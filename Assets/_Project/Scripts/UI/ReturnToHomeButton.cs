@@ -7,7 +7,7 @@ using UnityEngine.UI;
 public sealed class ReturnToHomeButton : MonoBehaviour
 {
     [SerializeField] private string homeSceneName = "HomeScene";
-    [SerializeField] private string buttonLabel = "返回主页";
+    [SerializeField] private string buttonLabel = "";
     [SerializeField] private Color buttonColor = new Color(0.18f, 0.26f, 0.34f, 0.96f);
 
     private Button button;
@@ -36,29 +36,18 @@ public sealed class ReturnToHomeButton : MonoBehaviour
     private void ConfigureAppearance()
     {
         Image background = GetComponent<Image>();
-        if (background != null) background.color = buttonColor;
-
-        TMP_Text label = GetComponentInChildren<TMP_Text>(true);
-        if (label == null)
+        if (background != null)
         {
-            GameObject labelObject = new GameObject("Label", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
-            labelObject.transform.SetParent(transform, false);
-            RectTransform labelRect = labelObject.GetComponent<RectTransform>();
-            labelRect.anchorMin = Vector2.zero;
-            labelRect.anchorMax = Vector2.one;
-            labelRect.offsetMin = new Vector2(8f, 4f);
-            labelRect.offsetMax = new Vector2(-8f, -4f);
-            label = labelObject.GetComponent<TextMeshProUGUI>();
+            background.sprite = null;
+            background.color = Color.clear;
+            background.type = Image.Type.Simple;
+            background.raycastTarget = false;
         }
 
-        label.font = RuntimeFontAssetProvider.Resolve();
-        label.text = FrontendTextLocalization.Normalize(buttonLabel);
-        label.fontSize = 20f;
-        label.fontStyle = FontStyles.Bold;
-        label.alignment = TextAlignmentOptions.Center;
-        label.color = Color.white;
-        label.raycastTarget = false;
-        SmallButtonIconUtility.ApplyToButton(button, "返回", 42f, 7f, 7f);
+        TMP_Text[] labels = GetComponentsInChildren<TMP_Text>(true);
+        for (int i = 0; i < labels.Length; i++) labels[i].gameObject.SetActive(false);
+
+        SmallButtonIconUtility.ApplyIconOnlyToButton(button, "\u8FD4\u56DE");
     }
 }
 
@@ -129,6 +118,55 @@ public static class SmallButtonIconUtility
             labelRect.offsetMax = new Vector2(-horizontalPadding, labelRect.offsetMax.y);
         }
 
+        return icon;
+    }
+
+    public static Image ApplyIconOnlyToButton(Button button, string resourceName)
+    {
+        if (button == null) return null;
+
+        button.transition = Selectable.Transition.ColorTint;
+
+        Image background = button.GetComponent<Image>();
+        if (background != null)
+        {
+            background.sprite = null;
+            background.color = Color.clear;
+            background.type = Image.Type.Simple;
+            background.raycastTarget = false;
+        }
+
+        Transform iconTransform = button.transform.Find("SmallIcon");
+        Image icon;
+        if (iconTransform == null)
+        {
+            GameObject iconObject = new GameObject("SmallIcon", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            iconObject.layer = button.gameObject.layer;
+            iconObject.transform.SetParent(button.transform, false);
+            icon = iconObject.GetComponent<Image>();
+        }
+        else
+        {
+            icon = iconTransform.GetComponent<Image>();
+            if (icon == null) icon = iconTransform.gameObject.AddComponent<Image>();
+        }
+
+        if (!ApplyToImage(icon, resourceName)) return null;
+
+        icon.gameObject.SetActive(true);
+        icon.color = Color.white;
+        icon.raycastTarget = true;
+        icon.alphaHitTestMinimumThreshold = 0.1f;
+
+        RectTransform iconRect = icon.rectTransform;
+        iconRect.anchorMin = Vector2.zero;
+        iconRect.anchorMax = Vector2.one;
+        iconRect.pivot = new Vector2(0.5f, 0.5f);
+        iconRect.offsetMin = Vector2.zero;
+        iconRect.offsetMax = Vector2.zero;
+        icon.transform.SetAsLastSibling();
+
+        button.targetGraphic = icon;
         return icon;
     }
 

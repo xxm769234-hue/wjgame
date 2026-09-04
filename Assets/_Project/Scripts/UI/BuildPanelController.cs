@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>Only animates the sidebar and map UI; it has no build-domain dependency.</summary>
 public sealed class BuildPanelController : MonoBehaviour
@@ -12,9 +13,9 @@ public sealed class BuildPanelController : MonoBehaviour
     [SerializeField] private Transform landDragItemContainer;
     [SerializeField, Min(0.01f)] private float animationDuration = 0.25f;
     [SerializeField] private Vector2 panelOpenPosition = Vector2.zero;
-    [SerializeField] private Vector2 panelClosedPosition = new Vector2(350f, 0f);
+    [SerializeField] private Vector2 panelClosedPosition = new Vector2(438f, 0f);
     [SerializeField] private Vector2 mapClosedPosition = Vector2.zero;
-    [SerializeField] private Vector2 mapOpenPosition = new Vector2(-175f, 0f);
+    [SerializeField] private Vector2 mapOpenPosition = new Vector2(-438f, 0f);
     [SerializeField] private Vector3 worldMapOpenOffset = new Vector3(-2f, 0f, 0f);
     [SerializeField] private bool closeWhenClickOutside = true;
     [SerializeField] private bool startOpen;
@@ -26,11 +27,18 @@ public sealed class BuildPanelController : MonoBehaviour
     private int openedFrame = -1;
     private RectTransform runtimeLandItemRoot;
     private readonly List<LandDragItem> runtimeLandItems = new List<LandDragItem>();
-    private const float LandListWidth = 150f;
-    private const float LandItemHeight = 104f;
-    private const float LandItemSpacing = 10f;
-    private const float LandListRightPadding = 16f;
-    private const float LandListTopPadding = 24f;
+    private const float LandListWidth = 242f;
+    private const float LandItemHeight = 149.5f;
+    private const float LandItemSpacing = 12f;
+    private const float LandListRightPadding = 43f;
+    private const float LandListTopPadding = 120f;
+    private const float LandScrollViewWidth = 292f;
+    private const float LandScrollViewHeight = 849.5f;
+    private const float LandViewportRightPadding = 50f;
+    private const float LandViewportTopPadding = 28f;
+    private const int LandVisibleItemCount = 5;
+    private const float LandViewportHeight = LandVisibleItemCount * LandItemHeight + (LandVisibleItemCount - 1) * LandItemSpacing + 4f;
+    private const float LandViewportBottomPadding = LandScrollViewHeight - LandViewportTopPadding - LandViewportHeight;
 
     private void Awake()
     {
@@ -152,27 +160,34 @@ public sealed class BuildPanelController : MonoBehaviour
     {
         if (runtimeLandItemRoot != null) return runtimeLandItemRoot;
 
-        Transform existing = buildPanel.Find("Runtime Land Drag Items");
+        Transform content = landDragItemContainer != null ? landDragItemContainer : buildPanel;
+        Transform existing = content.Find("Runtime Land Drag Items");
         if (existing != null) runtimeLandItemRoot = existing as RectTransform;
         if (runtimeLandItemRoot == null)
         {
             GameObject rootObject = new GameObject("Runtime Land Drag Items", typeof(RectTransform));
             runtimeLandItemRoot = rootObject.GetComponent<RectTransform>();
-            runtimeLandItemRoot.SetParent(buildPanel, false);
+            runtimeLandItemRoot.SetParent(content, false);
         }
 
-        runtimeLandItemRoot.SetAsLastSibling();
+        ConfigureLandScrollView(content as RectTransform);
         return runtimeLandItemRoot;
     }
 
-    private static void ConfigureRuntimeLandList(RectTransform parent, int itemCount)
+    private void ConfigureRuntimeLandList(RectTransform parent, int itemCount)
     {
         float height = itemCount > 0 ? itemCount * LandItemHeight + Mathf.Max(0, itemCount - 1) * LandItemSpacing : LandItemHeight;
-        parent.anchorMin = new Vector2(1f, 1f);
+        parent.anchorMin = new Vector2(0f, 1f);
         parent.anchorMax = new Vector2(1f, 1f);
-        parent.pivot = new Vector2(1f, 1f);
-        parent.anchoredPosition = new Vector2(-LandListRightPadding, -LandListTopPadding);
-        parent.sizeDelta = new Vector2(LandListWidth, height);
+        parent.pivot = new Vector2(0.5f, 1f);
+        parent.anchoredPosition = Vector2.zero;
+        parent.sizeDelta = new Vector2(0f, height);
+
+        LayoutElement layoutElement = parent.GetComponent<LayoutElement>();
+        if (layoutElement == null) layoutElement = parent.gameObject.AddComponent<LayoutElement>();
+        layoutElement.minHeight = height;
+        layoutElement.preferredHeight = height;
+        layoutElement.flexibleHeight = 0f;
     }
 
     private static void NormalizeRuntimeLandItem(LandDragItem item, int index)
@@ -202,7 +217,54 @@ public sealed class BuildPanelController : MonoBehaviour
         {
             NormalizeRuntimeLandItem(runtimeLandItems[i], i);
         }
-        runtimeLandItemRoot.SetAsLastSibling();
+    }
+
+    private void ConfigureLandScrollView(RectTransform content)
+    {
+        if (content == null) return;
+
+        RectTransform viewport = content.parent as RectTransform;
+        RectTransform scrollView = viewport != null ? viewport.parent as RectTransform : null;
+        if (scrollView == null) return;
+
+        scrollView.anchorMin = new Vector2(1f, 1f);
+        scrollView.anchorMax = new Vector2(1f, 1f);
+        scrollView.pivot = new Vector2(1f, 1f);
+        scrollView.anchoredPosition = new Vector2(-LandListRightPadding, -LandListTopPadding);
+        scrollView.sizeDelta = new Vector2(LandScrollViewWidth, LandScrollViewHeight);
+
+        viewport.anchorMin = Vector2.zero;
+        viewport.anchorMax = Vector2.one;
+        viewport.pivot = new Vector2(0.5f, 0.5f);
+        viewport.offsetMin = new Vector2(0f, LandViewportBottomPadding);
+        viewport.offsetMax = new Vector2(-LandViewportRightPadding, -LandViewportTopPadding);
+
+        ScrollRect scrollRect = scrollView.GetComponent<ScrollRect>();
+        if (scrollRect != null)
+        {
+            scrollRect.horizontal = false;
+            scrollRect.vertical = true;
+            scrollRect.viewport = viewport;
+            scrollRect.content = content;
+        }
+
+        VerticalLayoutGroup layoutGroup = content.GetComponent<VerticalLayoutGroup>();
+        if (layoutGroup != null)
+        {
+            layoutGroup.spacing = 0f;
+            layoutGroup.childAlignment = TextAnchor.UpperCenter;
+            layoutGroup.childForceExpandWidth = true;
+            layoutGroup.childForceExpandHeight = false;
+            layoutGroup.childControlWidth = true;
+            layoutGroup.childControlHeight = true;
+        }
+
+        ContentSizeFitter sizeFitter = content.GetComponent<ContentSizeFitter>();
+        if (sizeFitter != null)
+        {
+            sizeFitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            sizeFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        }
     }
 
     public void SetOpen(bool open)

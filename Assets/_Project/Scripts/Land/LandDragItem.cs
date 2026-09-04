@@ -7,7 +7,6 @@ using UnityEngine.UI;
 public sealed class LandDragItem : MonoBehaviour, IBeginDragHandler, IDragHandler, IEndDragHandler
 {
     private const float IconFrameSize = LandTypeIconCatalog.DisplayIconPixels;
-    private const float IconLeftPadding = 10f;
     private const float LabelLeftPadding = 96f;
     private const float LabelRightPadding = 8f;
     private const float LabelVerticalPadding = 8f;
@@ -117,20 +116,14 @@ public sealed class LandDragItem : MonoBehaviour, IBeginDragHandler, IDragHandle
         if (icon != null)
         {
             iconImage.color = Color.white;
-            iconRect.anchorMin = new Vector2(0f, 0.5f);
-            iconRect.anchorMax = new Vector2(0f, 0.5f);
+            iconRect.anchorMin = new Vector2(0.5f, 0.5f);
+            iconRect.anchorMax = new Vector2(0.5f, 0.5f);
             iconRect.pivot = new Vector2(0.5f, 0.5f);
-            iconRect.anchoredPosition = new Vector2(IconLeftPadding + IconFrameSize * 0.5f, 0f);
+            iconRect.anchoredPosition = Vector2.zero;
             iconRect.sizeDelta = new Vector2(IconFrameSize, IconFrameSize);
             iconRect.localScale = Vector3.one * LandTypeIconCatalog.GetUiVisualScale(land.LandTypeKey);
             iconRect.SetAsLastSibling();
             ConfigureLabelLayout();
-
-            if (cardImage != null && cardImage != iconImage)
-            {
-                cardImage.sprite = null;
-                cardImage.color = new Color(1f, 1f, 1f, 0f);
-            }
         }
     }
 

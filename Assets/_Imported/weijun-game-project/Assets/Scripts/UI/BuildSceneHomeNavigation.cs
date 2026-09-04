@@ -16,6 +16,7 @@ public sealed class BuildSceneHomeNavigation : MonoBehaviour
 
     private const int NavigationSortingOrder = 220;
     private const float LeftMargin = 28f;
+    private const float VerticalShortcutTopMargin = 112f;
     private const float BottomMargin = 28f;
     private const float ButtonSpacing = 16f;
     private const float ShortcutSpacing = 14f;
@@ -102,7 +103,7 @@ public sealed class BuildSceneHomeNavigation : MonoBehaviour
 
         SetHomeBookInvisible(bookView);
         CreateNavigationCanvas();
-        nextVerticalShortcutTop = LeftMargin;
+        nextVerticalShortcutTop = VerticalShortcutTopMargin;
         Vector2? mailShortcutSize = GetShortcutSize(bookView.MailButton);
         MoveShortcut(bookView.MailButton, "MailShortcut", true, 0);
         MoveShortcut(bookView.NoticeButton, "NoticeShortcut", true, 1);
