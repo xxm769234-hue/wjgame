@@ -1,0 +1,13 @@
+{
+    "name": "WeijunGameProject",
+    "references": [
+        "Unity.TextMeshPro",
+        "Unity.ugui"
+    ],
+    "autoReferenced": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
