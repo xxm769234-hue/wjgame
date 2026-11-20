@@ -1,0 +1,552 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject:
+    fileID: 0
+  m_PrefabInstance:
+    fileID: 0
+  m_PrefabAsset:
+    fileID: 0
+  m_GameObject:
+    fileID: 0
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5143e441843abbc4488d633139467931, type: 3}
+  m_Name: BattleAnimationCatalog
+  m_EditorClassIdentifier: ''
+  entries:
+  - key: Npc_3
+    keys:
+    - Swordsman
+    - Npc_3
+    - '3'
+    - 岑岳
+    - 剑士
+    - '3003'
+    - master_manager
+    - npc_master_manager
+    sourceFacingRight: 1
+    referenceBodyHeight: 2.81
+    visualScale: 1.0
+    offset:
+      x: 0
+      y: 0
+    animations:
+    - id: Swordsman_Move_02
+      action: 1
+      resource: BattleAnimations/Characters/Swordsman/Swordsman_Move_02/Swordsman_Move_02
+      skillKeys: []
+      archived: 0
+    - id: Swordsman_NormalAttack_02
+      action: 2
+      resource: BattleAnimations/Characters/Swordsman/Swordsman_NormalAttack_02/Swordsman_NormalAttack_02
+      skillKeys: []
+      archived: 0
+    - id: Swordsman_SkillAttack_03
+      action: 3
+      resource: BattleAnimations/Characters/Swordsman/Swordsman_SkillAttack_03/Swordsman_SkillAttack_03
+      skillKeys: []
+      archived: 0
+    - id: Swordsman_Death_01
+      action: 6
+      resource: BattleAnimations/Characters/Swordsman/Swordsman_Death_01/Swordsman_Death_01
+      skillKeys: []
+      archived: 0
+    - id: Swordsman_Hit_01
+      action: 5
+      resource: BattleAnimations/Characters/Swordsman/Swordsman_Hit_01/Swordsman_Hit_01
+      skillKeys: []
+      archived: 0
+    - id: Swordsman_Idle_01
+      action: 0
+      resource: BattleAnimations/Characters/Swordsman/Swordsman_Idle_01/Swordsman_Idle_01
+      skillKeys: []
+      archived: 0
+    - id: Swordsman_Move_01
+      action: 1
+      resource: BattleAnimations/Characters/Swordsman/Swordsman_Move_01/Swordsman_Move_01
+      skillKeys: []
+      archived: 1
+    - id: Swordsman_NormalAttack_01
+      action: 2
+      resource: BattleAnimations/Characters/Swordsman/Swordsman_NormalAttack_01/Swordsman_NormalAttack_01
+      skillKeys: []
+      archived: 1
+    - id: Swordsman_SkillAttack_01
+      action: 3
+      resource: BattleAnimations/Characters/Swordsman/Swordsman_SkillAttack_01/Swordsman_SkillAttack_01
+      skillKeys: []
+      archived: 1
+    - id: Swordsman_SkillAttack_02
+      action: 3
+      resource: BattleAnimations/Characters/Swordsman/Swordsman_SkillAttack_02/Swordsman_SkillAttack_02
+      skillKeys: []
+      archived: 1
+  - key: Npc_7
+    keys:
+    - Warhammer
+    - Npc_7
+    - '7'
+    - 战锤
+    sourceFacingRight: 1
+    referenceBodyHeight: 2.82
+    visualScale: 1.0
+    offset:
+      x: 0
+      y: 0
+    animations:
+    - id: Warhammer_Move_02
+      action: 1
+      resource: BattleAnimations/Characters/Warhammer/Warhammer_Move_02/Warhammer_Move_02
+      skillKeys: []
+      archived: 0
+    - id: Warhammer_Buff_01
+      action: 4
+      resource: BattleAnimations/Characters/Warhammer/Warhammer_Buff_01/Warhammer_Buff_01
+      skillKeys: []
+      archived: 0
+    - id: Warhammer_Death_01
+      action: 6
+      resource: BattleAnimations/Characters/Warhammer/Warhammer_Death_01/Warhammer_Death_01
+      skillKeys: []
+      archived: 0
+    - id: Warhammer_Death_02
+      action: 6
+      resource: BattleAnimations/Characters/Warhammer/Warhammer_Death_02/Warhammer_Death_02
+      skillKeys: []
+      archived: 0
+    - id: Warhammer_Death_03
+      action: 6
+      resource: BattleAnimations/Characters/Warhammer/Warhammer_Death_03/Warhammer_Death_03
+      skillKeys: []
+      archived: 0
+    - id: Warhammer_Hit_01
+      action: 5
+      resource: BattleAnimations/Characters/Warhammer/Warhammer_Hit_01/Warhammer_Hit_01
+      skillKeys: []
+      archived: 0
+    - id: Warhammer_Idle_01
+      action: 0
+      resource: BattleAnimations/Characters/Warhammer/Warhammer_Idle_01/Warhammer_Idle_01
+      skillKeys: []
+      archived: 0
+    - id: Warhammer_Move_01
+      action: 1
+      resource: BattleAnimations/Characters/Warhammer/Warhammer_Move_01/Warhammer_Move_01
+      skillKeys: []
+      archived: 1
+    - id: Warhammer_NormalAttack_01
+      action: 2
+      resource: BattleAnimations/Characters/Warhammer/Warhammer_NormalAttack_01/Warhammer_NormalAttack_01
+      skillKeys: []
+      archived: 0
+    - id: Warhammer_SkillAttack_01
+      action: 3
+      resource: BattleAnimations/Characters/Warhammer/Warhammer_SkillAttack_01/Warhammer_SkillAttack_01
+      skillKeys: []
+      archived: 0
+    - id: Warhammer_SkillAttack_JumpRaisedV2
+      action: 3
+      resource: BattleAnimations/Characters/Warhammer/Warhammer_SkillAttack_JumpRaisedV2
+      skillKeys:
+      - 跳跃重击
+      - 跳跃抬高V2
+      archived: 1
+  - key: Npc_5
+    keys:
+    - Alchemist
+    - Npc_5
+    - '5'
+    - 砚衡
+    - 炼金术士
+    - '400001'
+    - yanheng
+    sourceFacingRight: 1
+    referenceBodyHeight: 2.83
+    visualScale: 1.0
+    offset:
+      x: 0
+      y: 0
+    animations:
+    - id: Alchemist_Buff_01
+      action: 4
+      resource: BattleAnimations/Characters/Alchemist/Alchemist_Buff_01/Alchemist_Buff_01
+      skillKeys: []
+      archived: 0
+    - id: Alchemist_Buff_02
+      action: 4
+      resource: BattleAnimations/Characters/Alchemist/Alchemist_Buff_02/Alchemist_Buff_02
+      skillKeys: []
+      archived: 0
+    - id: Alchemist_Death_01
+      action: 6
+      resource: BattleAnimations/Characters/Alchemist/Alchemist_Death_01/Alchemist_Death_01
+      skillKeys: []
+      archived: 0
+    - id: Alchemist_Death_02
+      action: 6
+      resource: BattleAnimations/Characters/Alchemist/Alchemist_Death_02/Alchemist_Death_02
+      skillKeys: []
+      archived: 0
+    - id: Alchemist_Hit_01
+      action: 5
+      resource: BattleAnimations/Characters/Alchemist/Alchemist_Hit_01/Alchemist_Hit_01
+      skillKeys: []
+      archived: 0
+    - id: Alchemist_Idle_01
+      action: 0
+      resource: BattleAnimations/Characters/Alchemist/Alchemist_Idle_01/Alchemist_Idle_01
+      skillKeys: []
+      archived: 0
+    - id: Alchemist_NormalAttack_01
+      action: 2
+      resource: BattleAnimations/Characters/Alchemist/Alchemist_NormalAttack_01/Alchemist_NormalAttack_01
+      skillKeys: []
+      archived: 0
+  - key: Npc_6
+    keys:
+    - Assassin
+    - Npc_6
+    - '6'
+    - 刺客
+    sourceFacingRight: 1
+    referenceBodyHeight: 2.82
+    visualScale: 1.0
+    offset:
+      x: 0
+      y: 0
+    animations:
+    - id: Assassin_Buff_01
+      action: 4
+      resource: BattleAnimations/Characters/Assassin/Assassin_Buff_01/Assassin_Buff_01
+      skillKeys: []
+      archived: 0
+    - id: Assassin_Death_01
+      action: 6
+      resource: BattleAnimations/Characters/Assassin/Assassin_Death_01/Assassin_Death_01
+      skillKeys: []
+      archived: 0
+    - id: Assassin_Death_02
+      action: 6
+      resource: BattleAnimations/Characters/Assassin/Assassin_Death_02/Assassin_Death_02
+      skillKeys: []
+      archived: 0
+    - id: Assassin_Hit_01
+      action: 5
+      resource: BattleAnimations/Characters/Assassin/Assassin_Hit_01/Assassin_Hit_01
+      skillKeys: []
+      archived: 0
+    - id: Assassin_Hit_02
+      action: 5
+      resource: BattleAnimations/Characters/Assassin/Assassin_Hit_02/Assassin_Hit_02
+      skillKeys: []
+      archived: 0
+    - id: Assassin_Idle_01
+      action: 0
+      resource: BattleAnimations/Characters/Assassin/Assassin_Idle_01/Assassin_Idle_01
+      skillKeys: []
+      archived: 0
+    - id: Assassin_Move_01
+      action: 1
+      resource: BattleAnimations/Characters/Assassin/Assassin_Move_01/Assassin_Move_01
+      skillKeys: []
+      archived: 0
+    - id: Assassin_NormalAttack_01
+      action: 2
+      resource: BattleAnimations/Characters/Assassin/Assassin_NormalAttack_01/Assassin_NormalAttack_01
+      skillKeys: []
+      archived: 0
+    - id: Assassin_SkillAttack_01
+      action: 3
+      resource: BattleAnimations/Characters/Assassin/Assassin_SkillAttack_01/Assassin_SkillAttack_01
+      skillKeys: []
+      archived: 0
+  - key: Npc_2
+    keys:
+    - Cangqi
+    - Npc_2
+    - '2'
+    - 澄言
+    - 沧祈
+    - '3002'
+    - workshop_foreman
+    - npc_workshop_foreman
+    sourceFacingRight: 1
+    referenceBodyHeight: 2.93
+    visualScale: 1.0
+    offset:
+      x: 0
+      y: 0
+    animations:
+    - id: Cangqi_Death_01
+      action: 6
+      resource: BattleAnimations/Characters/Cangqi/Cangqi_Death_01/Cangqi_Death_01
+      skillKeys: []
+      archived: 0
+    - id: Cangqi_Hit_01
+      action: 5
+      resource: BattleAnimations/Characters/Cangqi/Cangqi_Hit_01/Cangqi_Hit_01
+      skillKeys: []
+      archived: 0
+    - id: Cangqi_Idle_01
+      action: 0
+      resource: BattleAnimations/Characters/Cangqi/Cangqi_Idle_01/Cangqi_Idle_01
+      skillKeys: []
+      archived: 0
+    - id: Cangqi_Move_01
+      action: 1
+      resource: BattleAnimations/Characters/Cangqi/Cangqi_Move_01/Cangqi_Move_01
+      skillKeys: []
+      archived: 0
+    - id: Cangqi_NormalAttack_01
+      action: 2
+      resource: BattleAnimations/Characters/Cangqi/Cangqi_NormalAttack_01/Cangqi_NormalAttack_01
+      skillKeys: []
+      archived: 0
+    - id: Cangqi_SkillAttack_01
+      action: 3
+      resource: BattleAnimations/Characters/Cangqi/Cangqi_SkillAttack_01/Cangqi_SkillAttack_01
+      skillKeys: []
+      archived: 0
+    - id: Cangqi_SkillAttack_02
+      action: 3
+      resource: BattleAnimations/Characters/Cangqi/Cangqi_SkillAttack_02/Cangqi_SkillAttack_02
+      skillKeys: []
+      archived: 0
+  - key: Npc_4
+    keys:
+    - Priest
+    - Npc_4
+    - '4'
+    - 绮萝
+    - 牧师
+    - '400000'
+    - chief_manager
+    sourceFacingRight: 1
+    referenceBodyHeight: 2.83
+    visualScale: 1.0
+    offset:
+      x: 0
+      y: 0
+    animations:
+    - id: Priest_Buff_01
+      action: 4
+      resource: BattleAnimations/Characters/Priest/Priest_Buff_01/Priest_Buff_01
+      skillKeys: []
+      archived: 0
+    - id: Priest_Buff_02
+      action: 4
+      resource: BattleAnimations/Characters/Priest/Priest_Buff_02/Priest_Buff_02
+      skillKeys: []
+      archived: 0
+    - id: Priest_Death_01
+      action: 6
+      resource: BattleAnimations/Characters/Priest/Priest_Death_01/Priest_Death_01
+      skillKeys: []
+      archived: 0
+    - id: Priest_Hit_01
+      action: 5
+      resource: BattleAnimations/Characters/Priest/Priest_Hit_01/Priest_Hit_01
+      skillKeys: []
+      archived: 0
+    - id: Priest_Idle_01
+      action: 0
+      resource: BattleAnimations/Characters/Priest/Priest_Idle_01/Priest_Idle_01
+      skillKeys: []
+      archived: 0
+    - id: Priest_Move_01
+      action: 1
+      resource: BattleAnimations/Characters/Priest/Priest_Move_01/Priest_Move_01
+      skillKeys: []
+      archived: 0
+    - id: Priest_NormalAttack_01
+      action: 2
+      resource: BattleAnimations/Characters/Priest/Priest_NormalAttack_01/Priest_NormalAttack_01
+      skillKeys: []
+      archived: 0
+  - key: Effects
+    keys:
+    - Effects
+    sourceFacingRight: 1
+    referenceBodyHeight: 3.0
+    visualScale: 1.0
+    offset:
+      x: 0
+      y: 0
+    animations:
+    - id: Cangqi_IceSpear_01
+      action: 7
+      resource: BattleAnimations/Effects/Cangqi_IceSpear_01
+      skillKeys: []
+      archived: 0
+    - id: Cangqi_MeteorField_01
+      action: 7
+      resource: BattleAnimations/Effects/Cangqi_MeteorField_01
+      skillKeys: []
+      archived: 1
+    - id: Cangqi_MeteorPortal_01
+      action: 7
+      resource: BattleAnimations/Effects/Cangqi_MeteorPortal_01
+      skillKeys: []
+      archived: 1
+    - id: Cangqi_MeteorShower_01
+      action: 7
+      resource: BattleAnimations/Effects/Cangqi_MeteorShower_01
+      skillKeys: []
+      archived: 0
+    - id: F01
+      action: 7
+      resource: BattleAnimations/Effects/F01
+      skillKeys: []
+      archived: 0
+    - id: F02
+      action: 7
+      resource: BattleAnimations/Effects/F02
+      skillKeys: []
+      archived: 0
+    - id: F03
+      action: 7
+      resource: BattleAnimations/Effects/F03
+      skillKeys: []
+      archived: 0
+    - id: F04
+      action: 7
+      resource: BattleAnimations/Effects/F04
+      skillKeys: []
+      archived: 0
+    - id: F05
+      action: 7
+      resource: BattleAnimations/Effects/F05
+      skillKeys: []
+      archived: 0
+    - id: F06
+      action: 7
+      resource: BattleAnimations/Effects/F06
+      skillKeys: []
+      archived: 0
+    - id: F07
+      action: 7
+      resource: BattleAnimations/Effects/F07
+      skillKeys: []
+      archived: 0
+    - id: F08
+      action: 7
+      resource: BattleAnimations/Effects/F08
+      skillKeys: []
+      archived: 0
+    - id: F09
+      action: 7
+      resource: BattleAnimations/Effects/F09
+      skillKeys: []
+      archived: 0
+    - id: F10
+      action: 7
+      resource: BattleAnimations/Effects/F10
+      skillKeys: []
+      archived: 0
+    - id: F11
+      action: 7
+      resource: BattleAnimations/Effects/F11
+      skillKeys: []
+      archived: 0
+    - id: F12
+      action: 7
+      resource: BattleAnimations/Effects/F12
+      skillKeys: []
+      archived: 0
+  - key: Environment
+    keys:
+    - Environment
+    sourceFacingRight: 1
+    referenceBodyHeight: 3.0
+    visualScale: 1.0
+    offset:
+      x: 0
+      y: 0
+    animations:
+    - id: BattleBackground
+      action: 0
+      resource: BattleAnimations/Environment/BattleBackground
+      skillKeys: []
+      archived: 0
+    - id: DemoBackground
+      action: 0
+      resource: BattleAnimations/Environment/DemoBackground
+      skillKeys: []
+      archived: 1
+  - key: Whale
+    keys:
+    - Whale
+    - boss_whale
+    - whale_boss
+    - boss鲸
+    - 鲸鱼
+    - 巨鲸
+    sourceFacingRight: 0
+    referenceBodyHeight: 14.425531914893616
+    visualScale: 2.1
+    offset:
+      x: 0
+      y: 0
+    animations:
+    - id: Whale_Idle
+      action: 0
+      resource: BattleAnimations/Enemies/Whale/Whale_Idle
+      skillKeys: []
+      archived: 0
+    - id: Whale_NormalAttack
+      action: 2
+      resource: BattleAnimations/Enemies/Whale/Whale_NormalAttack
+      skillKeys: []
+      archived: 0
+  - key: Monster4_Spider
+    keys:
+    - Monster4_Spider
+    - 怪物4_蜘蛛
+    - 怪物4
+    - 蜘蛛
+    - 紫黑蜘蛛
+    - enemy_spider
+    - monster_spider
+    sourceFacingRight: 0
+    referenceBodyHeight: 3.0
+    visualScale: 1.0
+    offset:
+      x: 0
+      y: 0
+    animations:
+    - id: Monster4_Spider_Idle
+      action: 0
+      resource: BattleAnimations/Enemies/Monster4_Spider/Monster4_Spider_Idle
+      skillKeys: []
+      archived: 0
+    - id: Monster4_Spider_Attack
+      action: 2
+      resource: BattleAnimations/Enemies/Monster4_Spider/Monster4_Spider_Attack
+      skillKeys: []
+      archived: 0
+    - id: Monster4_Spider_Death
+      action: 6
+      resource: BattleAnimations/Enemies/Monster4_Spider/Monster4_Spider_Death
+      skillKeys: []
+      archived: 0
+  - key: Monster6_Moth
+    keys:
+    - Monster6_Moth
+    - 怪物6_四翼飞蛾
+    - 四翼飞蛾
+    - enemy_moth
+    sourceFacingRight: 0
+    referenceBodyHeight: 3.0
+    visualScale: 1.0
+    offset:
+      x: 0
+      y: 0
+    animations:
+    - id: Monster6_Moth_AttackEffect
+      action: 7
+      resource: BattleAnimations/Enemies/Monster6_Moth/Monster6_Moth_AttackEffect
+      skillKeys: []
+      archived: 0

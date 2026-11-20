@@ -87,7 +87,7 @@ public partial class HomePageUI
         if (panel == null || panel.PanelRoot == null)
         {
             Debug.LogWarning("[Avatar] Account profile panel is unavailable; cannot show preset avatars.", this);
-            RefreshProfileAvatarPanel("个人信息面板未找到，无法选择头像");
+            RefreshProfileAvatarPanel("头像选择暂不可用，请稍后重试");
             return;
         }
 
@@ -136,27 +136,32 @@ public partial class HomePageUI
         overlayButton.targetGraphic = overlayImage;
         BindSceneButton(overlayButton, HidePresetAvatarPicker);
 
-        Image card = CreateImage("ProfileAvatarPickerCard", overlay.transform, new Color(1f, 0.94f, 0.76f, 1f));
+        Image card = CreateImage("ProfileAvatarPickerCard", overlay.transform, Color.white);
+        card.sprite = Resources.Load<Sprite>("UI/ApprovedUi/Panels/PaperPanel");
         card.raycastTarget = true;
-        SetRect(card.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(560f, 410f));
+        SetRect(card.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(740f, 450f));
 
         TMP_Text title = CreatePresetAvatarText("ProfileAvatarPickerTitle", card.transform, "选择预置头像", 26f, new Color(0.30f, 0.16f, 0.08f, 1f), TextAlignmentOptions.Center);
-        SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(-100f, 42f));
+        SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -58f), new Vector2(-160f, 44f));
 
         Image closeImage = CreateImage("ProfileAvatarPickerCloseButton", card.transform, new Color(0.78f, 0.30f, 0.22f, 1f));
         closeImage.raycastTarget = true;
-        SetRect(closeImage.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-18f, -18f), new Vector2(42f, 42f));
+        closeImage.sprite = Resources.Load<Sprite>("UI/ApprovedUi/Panels/CloseButton");
+        closeImage.color = Color.white;
+        closeImage.preserveAspect = true;
+        SetRect(closeImage.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-36f, -48f), new Vector2(52f, 52f));
         Button closeButton = closeImage.gameObject.AddComponent<Button>();
         closeButton.targetGraphic = closeImage;
         BindSceneButton(closeButton, HidePresetAvatarPicker);
         TMP_Text closeText = CreatePresetAvatarText("Text", closeImage.transform, "X", 22f, Color.white, TextAlignmentOptions.Center);
         Stretch(closeText.rectTransform);
+        closeText.gameObject.SetActive(closeImage.sprite == null);
 
         GameObject gridObject = new GameObject("ProfileAvatarPickerGrid", typeof(RectTransform));
         gridObject.transform.SetParent(card.transform, false);
-        SetRect(gridObject.GetComponent<RectTransform>(), Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(0f, 4f), new Vector2(-56f, -142f));
+        SetRect(gridObject.GetComponent<RectTransform>(), Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(0f, -19f), new Vector2(-140f, -240f));
         GridLayoutGroup grid = gridObject.AddComponent<GridLayoutGroup>();
-        grid.cellSize = new Vector2(100f, 100f);
+        grid.cellSize = new Vector2(128f, 148f);
         grid.spacing = new Vector2(18f, 18f);
         grid.padding = new RectOffset(10, 10, 10, 10);
         grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
@@ -164,8 +169,8 @@ public partial class HomePageUI
         grid.childAlignment = TextAnchor.UpperCenter;
 
         Button weChatButton = CreateButton(card.transform, "ProfileWechatAvatarButton", "选择微信头像", new Color(0.25f, 0.58f, 0.42f, 1f), Color.white);
-        SetRect(weChatButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 18f), new Vector2(180f, 42f));
-        ShrinkButtonLabel(weChatButton, 16);
+        SetRect(weChatButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 48f), new Vector2(224f, 52f));
+        ApplyPresentationButton(weChatButton, false, 23f);
         BindSceneButton(weChatButton, BeginWeChatAvatarSelection);
 
         return overlay;
@@ -179,6 +184,9 @@ public partial class HomePageUI
             Debug.LogWarning("[Avatar] Preset avatar grid is missing.", pickerRoot);
             return;
         }
+        RectTransform card = FindSceneComponent<RectTransform>(pickerRoot, "ProfileAvatarPickerCard");
+        if (card != null)
+            card.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, Mathf.Clamp(300f + Mathf.Ceil(presetAvatarOptions.Count / 4f) * 150f, 450f, 900f));
 
         for (int i = grid.childCount - 1; i >= 0; i--)
         {
@@ -193,10 +201,15 @@ public partial class HomePageUI
                 continue;
             }
 
-            Image option = CreateImage("ProfileAvatarPreset_" + preset.avatarCode, grid, Color.white);
-            option.sprite = preset.sprite;
-            option.preserveAspect = true;
+            Image option = CreateImage("ProfileAvatarPreset_" + preset.avatarCode, grid, new Color(1f, .96f, .85f, 1f));
+            option.sprite = Resources.Load<Sprite>("IdleAdventureUI/RoundedPanel");
+            option.type = Image.Type.Sliced;
             option.raycastTarget = true;
+            Image portrait = CreateImage("Portrait", option.transform, Color.white);
+            portrait.sprite = preset.sprite;
+            portrait.preserveAspect = true;
+            portrait.raycastTarget = false;
+            SetRect(portrait.rectTransform, new Vector2(.5f, 1f), new Vector2(.5f, 1f), new Vector2(.5f, 1f), new Vector2(0f, -8f), new Vector2(104f, 104f));
             Button optionButton = option.gameObject.AddComponent<Button>();
             optionButton.targetGraphic = option;
             AvatarPresetOption selectedPreset = preset;
@@ -206,10 +219,13 @@ public partial class HomePageUI
                 "Label",
                 option.transform,
                 string.IsNullOrWhiteSpace(preset.displayName) ? preset.avatarCode : preset.displayName,
-                12f,
+                17f,
                 new Color(0.28f, 0.14f, 0.06f, 1f),
-                TextAlignmentOptions.Bottom);
-            SetRect(label.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(-4f, -4f));
+                TextAlignmentOptions.Center);
+            SetRect(label.rectTransform, Vector2.zero, new Vector2(1f, 0f), new Vector2(.5f, 0f), new Vector2(0f, 4f), new Vector2(-8f, 30f));
+            ConfigurePresentationLabel(label, 17f, false);
+            label.margin = Vector4.zero;
+            label.alignment = TextAlignmentOptions.Center;
         }
     }
 

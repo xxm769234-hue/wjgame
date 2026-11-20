@@ -52,7 +52,7 @@ public partial class HomePageUI
         HomePageScenePanel panel = OpenRegisteredScenePanel(HomePageScenePanelType.AccountProfile);
         if (panel == null)
         {
-            SetLeftContent("个人信息", BuildAccountProfileFallbackText(), "个人档案场景组件未找到");
+            SetLeftContent("个人信息", BuildAccountProfileFallbackText(), "个人档案暂时无法打开");
             return;
         }
 
@@ -69,7 +69,7 @@ public partial class HomePageUI
         profileComplianceStatusLoaded = false;
         profileComplianceStatus = null;
         profileComplianceStatusMessage = string.Empty;
-        RefreshAccountProfileScenePanel(panel.PanelRoot, "账号资料来自当前登录存档");
+        RefreshAccountProfileScenePanel(panel.PanelRoot, string.Empty);
         if (HasAuthSession())
         {
             StartCoroutine(RefreshCurrentUserProfile(panel.PanelRoot));
@@ -100,9 +100,13 @@ public partial class HomePageUI
         SetSceneText(root, "ProfileVital", $"生命  {PlayerPrefs.GetInt("PlayerHp", 1000)}    体力  {GetHomeStamina()}");
         SetSceneText(root, "ProfileSignStat", $"签到天数\n{PlayerPrefs.GetInt("DailySignDays", 0)} 天");
         SetSceneText(root, "ProfileFriendStat", $"好友数量\n{v37Friends.Count} 人");
+        SetSceneText(root, "ProfileGrowthTitle", "旅途概览");
         SetSceneText(root, "ProfileSyncText", GetProfileSyncText(isAuthenticated));
         SetSceneText(root, "ProfileStatus", status);
-        SetSceneText(root, "ProfileCancellationStatus", BuildProfileCancellationStatus(isAuthenticated));
+        bool hasCancellationDetails = FindSceneTransform(root, "ProfileCancellationDetailsText") != null;
+        SetSceneObjectActive(root, "ProfileCancellationStatus", !hasCancellationDetails);
+        if (!hasCancellationDetails)
+            SetSceneText(root, "ProfileCancellationStatus", BuildProfileCancellationStatus(isAuthenticated));
         SetSceneText(root, "ProfileExperienceText", BuildProfileExperienceText(isAuthenticated));
         SetSceneText(root, "ProfileAccountStatusText", BuildProfileAccountStatusText(isAuthenticated));
         SetSceneText(root, "ProfileCancellationDetailsText", BuildProfileCancellationDetailsText(isAuthenticated));
@@ -715,7 +719,7 @@ public partial class HomePageUI
 
         if (profileCancellationStatusLoading)
         {
-            return "读取中...";
+            return "查询中";
         }
 
         if (profileCancellationRequestRunning)
@@ -738,7 +742,10 @@ public partial class HomePageUI
             return profileCancellationConfirmation ? "确认注销账号" : "注销账号";
         }
 
-        return "注销状态处理中";
+        string cancellationState = profileCancellationStatus == null ? string.Empty : profileCancellationStatus.cancellationStatus;
+        return string.Equals(cancellationState, "PENDING", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(cancellationState, "PROCESSING", StringComparison.OrdinalIgnoreCase)
+            ? "注销处理中" : "待确认";
     }
 
     private string BuildProfileCancellationStatus(bool isAuthenticated)
@@ -750,12 +757,12 @@ public partial class HomePageUI
 
         if (profileCancellationStatusLoading)
         {
-            return "账号注销状态：读取中...";
+            return "注销状态：查询中";
         }
 
         if (!profileCancellationStatusLoaded || profileCancellationStatus == null)
         {
-            return "账号注销状态：暂未同步";
+            return "注销状态：待确认";
         }
 
         if (string.IsNullOrEmpty(profileCancellationStatus.cancellationStatus))
@@ -770,7 +777,7 @@ public partial class HomePageUI
             string scheduledTime = string.IsNullOrEmpty(profileCancellationStatus.scheduledTime)
                 ? string.Empty
                 : "，冷静期截止：" + profileCancellationStatus.scheduledTime;
-            return "账号注销状态：" + state + scheduledTime;
+            return "账号注销状态：" + FrontendTextLocalization.DisplayStatus(state) + scheduledTime;
         }
 
         if (string.Equals(state, "CANCELLED", StringComparison.OrdinalIgnoreCase))
@@ -783,7 +790,7 @@ public partial class HomePageUI
             return "账号注销状态：已完成，账号不可恢复";
         }
 
-        return "账号注销状态：" + state;
+        return "账号注销状态：" + FrontendTextLocalization.DisplayStatus(state);
     }
 
     private string BuildProfileExperienceText(bool isAuthenticated)
@@ -832,13 +839,12 @@ public partial class HomePageUI
         string accountStatus = profileCancellationStatus != null
             && !string.IsNullOrEmpty(profileCancellationStatus.accountStatus)
             ? profileCancellationStatus.accountStatus
-            : PlayerPrefs.GetString("AccountStatus", "ACTIVE");
+            : PlayerPrefs.GetString("AccountStatus", "UNKNOWN");
         bool managementOnly = PlayerPrefs.GetInt("AccountManagementOnly", 0) == 1;
         bool economyFrozen = PlayerPrefs.GetInt("PlayerEconomyFrozen", 0) == 1;
-        string mode = managementOnly ? "仅可进行账号管理" : "可正常进入游戏";
-        string economy = economyFrozen ? "经济状态：冻结" : "经济状态：正常";
-        return "账号状态\n状态：" + (string.IsNullOrEmpty(accountStatus) ? "UNKNOWN" : accountStatus)
-            + "\n" + mode + "  " + economy;
+        string mode = managementOnly ? "\n仅可进行账号管理" : string.Empty;
+        string economy = economyFrozen ? "\n交易状态：受限" : string.Empty;
+        return "账号状态\n" + FrontendTextLocalization.DisplayStatus(accountStatus) + mode + economy;
     }
 
     private string BuildProfileCancellationDetailsText(bool isAuthenticated)
@@ -850,19 +856,19 @@ public partial class HomePageUI
 
         if (profileCancellationStatusLoading)
         {
-            return "注销详情\n正在读取服务器状态...";
+            return "注销详情\n查询中";
         }
 
         if (!profileCancellationStatusLoaded || profileCancellationStatus == null)
         {
             return "注销详情\n" + (string.IsNullOrEmpty(profileCancellationStatusMessage)
-                ? "等待服务器状态"
-                : profileCancellationStatusMessage);
+                ? "待确认"
+                : FrontendTextLocalization.NormalizePlayerMessage(profileCancellationStatusMessage));
         }
 
         string cancellationState = string.IsNullOrEmpty(profileCancellationStatus.cancellationStatus)
             ? "未申请"
-            : profileCancellationStatus.cancellationStatus;
+            : FrontendTextLocalization.DisplayStatus(profileCancellationStatus.cancellationStatus);
         string requestedTime = string.IsNullOrEmpty(profileCancellationStatus.requestedTime)
             ? "未记录"
             : profileCancellationStatus.requestedTime;
@@ -883,35 +889,31 @@ public partial class HomePageUI
 
         if (profileComplianceStatusLoading)
         {
-            return "实名/防沉迷\n正在读取服务器状态...";
+            return "实名/防沉迷\n查询中";
         }
 
         if (!profileComplianceStatusLoaded || profileComplianceStatus == null)
         {
             return "实名/防沉迷\n" + (string.IsNullOrEmpty(profileComplianceStatusMessage)
-                ? "等待服务器状态"
-                : profileComplianceStatusMessage);
+                ? "待确认"
+                : FrontendTextLocalization.NormalizePlayerMessage(profileComplianceStatusMessage));
         }
 
-        string verificationStatus = string.IsNullOrEmpty(profileComplianceStatus.verificationStatus)
-            ? "UNKNOWN"
-            : profileComplianceStatus.verificationStatus;
-        string ageGroup = string.IsNullOrEmpty(profileComplianceStatus.ageGroup)
-            ? "UNKNOWN"
-            : profileComplianceStatus.ageGroup;
+        string verificationStatus = FrontendTextLocalization.DisplayStatus(profileComplianceStatus.verificationStatus);
+        string ageGroup = FrontendTextLocalization.DisplayStatus(profileComplianceStatus.ageGroup);
         string access = profileComplianceStatus.gameAccessAllowed ? "允许进入" : "暂不允许进入";
         string remaining = profileComplianceStatus.remainingSeconds < 0
             ? "不限时"
             : FormatProfileRemainingSeconds(profileComplianceStatus.remainingSeconds);
         string reason = string.IsNullOrEmpty(profileComplianceStatus.blockReason)
             ? "无"
-            : profileComplianceStatus.blockReason;
+            : FrontendTextLocalization.DisplayStatus(profileComplianceStatus.blockReason);
         string nextAllowed = string.IsNullOrEmpty(profileComplianceStatus.nextAllowedTime)
             ? string.Empty
             : "，下次可进入：" + profileComplianceStatus.nextAllowedTime;
         string message = string.IsNullOrEmpty(profileComplianceStatus.message)
             ? string.Empty
-            : "\n提示：" + profileComplianceStatus.message;
+            : "\n提示：" + FrontendTextLocalization.NormalizePlayerMessage(profileComplianceStatus.message);
         return "实名：" + verificationStatus + "  年龄：" + ageGroup
             + "\n防沉迷：" + (profileComplianceStatus.enforcementEnabled ? access : "未启用")
             + "  剩余：" + remaining
@@ -961,7 +963,7 @@ public partial class HomePageUI
 
         profileRefreshRunning = true;
         profileSwitchLoginConfirmation = false;
-        RefreshAccountProfileScenePanel(root, "正在同步服务器资料...");
+        RefreshAccountProfileScenePanel(root, "正在刷新资料...");
 
         UnityWebRequest request = CreateAuthorizedGet("/user/me");
         if (request == null)
@@ -996,14 +998,14 @@ public partial class HomePageUI
             catch (Exception)
             {
                 profileRefreshRunning = false;
-                RefreshAccountProfileScenePanel(root, "服务器资料格式无法解析");
+                RefreshAccountProfileScenePanel(root, "资料读取失败，请稍后重试");
                 yield break;
             }
 
             if (response == null || response.code != 200 || response.data == null)
             {
                 profileRefreshRunning = false;
-                RefreshAccountProfileScenePanel(root, response == null ? "服务器未返回资料" : GetApiError(response));
+                RefreshAccountProfileScenePanel(root, response == null ? "暂时无法读取资料" : GetApiError(response));
                 yield break;
             }
 
@@ -1012,7 +1014,7 @@ public partial class HomePageUI
             yield return RefreshProfileCancellationStatus(root, "正在同步账号注销状态...");
             yield return RefreshProfileComplianceStatus(root, "正在同步实名及防沉迷状态...");
             profileRefreshRunning = false;
-            RefreshAccountProfileScenePanel(root, "服务器资料同步完成");
+            RefreshAccountProfileScenePanel(root, string.Empty);
             SetStatus("个人资料已刷新");
         }
     }
@@ -1066,7 +1068,7 @@ public partial class HomePageUI
     private static string GetProfileSyncText(bool isAuthenticated)
     {
         string lastSync = PlayerPrefs.GetString("ProfileLastSync", string.Empty);
-        return string.IsNullOrEmpty(lastSync) ? "资料来源  当前登录缓存" : $"最近同步  {lastSync}";
+        return string.IsNullOrEmpty(lastSync) ? string.Empty : $"最近更新  {lastSync}";
     }
 
     private string BuildAccountProfileFallbackText()
@@ -1257,7 +1259,7 @@ public partial class HomePageUI
                 profileNicknameEditing = false;
                 profileNicknamePolicy = null;
                 yield return RefreshProfileNicknamePolicy(root);
-                RefreshAccountProfileScenePanel(root, "昵称已修改并同步到服务器");
+                RefreshAccountProfileScenePanel(root, "昵称已修改");
                 SetStatus("昵称已更新");
                 yield break;
             }
@@ -1285,7 +1287,7 @@ public partial class HomePageUI
     {
         if (profileNicknamePolicyLoading)
         {
-            return "正在读取服务器昵称规则...";
+            return "正在查询昵称修改条件...";
         }
 
         if (profileNicknamePolicy == null)
@@ -1297,7 +1299,7 @@ public partial class HomePageUI
 
         if (!profileNicknamePolicy.enabled)
         {
-            return "服务器暂未开放昵称修改";
+            return "昵称修改暂未开放";
         }
 
         if (!profileNicknamePolicy.canChangeNow)
@@ -1356,7 +1358,7 @@ public partial class HomePageUI
         HomePageScenePanel panel = OpenRegisteredScenePanel(HomePageScenePanelType.Friends);
         if (panel == null)
         {
-            SetLeftContent("好友列表", "好友面板场景组件未找到。", "无法打开好友列表");
+            SetLeftContent("好友列表", "好友列表暂不可用，请稍后重试。", "无法打开好友列表");
             return;
         }
 
@@ -1372,8 +1374,8 @@ public partial class HomePageUI
         EnsureFriendRequestsEntry(panel.PanelRoot);
         EnsureFriendSearchDialog(panel.PanelRoot);
         EnsureFriendRequestsDialog(panel.PanelRoot);
-        RefreshFriendsScenePanel(panel.PanelRoot, "正在同步服务器好友和申请摘要...");
-        StartCoroutine(RefreshServerFriendRequestState(panel.PanelRoot, true, "服务器好友同步完成"));
+        RefreshFriendsScenePanel(panel.PanelRoot, "正在加载好友与申请...");
+        StartCoroutine(RefreshServerFriendRequestState(panel.PanelRoot, true, "好友已刷新"));
         SetStatus("已打开好友列表");
     }
 

@@ -199,7 +199,7 @@ public partial class HomePageUI
         if (overlay == null)
         {
             Debug.LogWarning("[Friends] Cannot open add-friend dialog: required scene controls are missing.", this);
-            SetSceneText(root, "FriendsStatus", "添加好友窗口组件缺失，请同步好友窗口");
+            SetSceneText(root, "FriendsStatus", "添加好友暂不可用，请稍后重试");
             return;
         }
         Transform paper = FindSceneTransform(overlay, "FriendSearchPanel");
@@ -337,7 +337,7 @@ public partial class HomePageUI
         int revision = v37PanelRevision;
         v37Loading = true;
         v37LastLoadFailed = false;
-        RefreshServerFriendRequestPanel(root, "正在同步服务器好友数据...");
+        RefreshServerFriendRequestPanel(root, "正在加载好友...");
 
         yield return LoadServerFriendRequestSummary(root, revision);
         if (revision != v37PanelRevision)
@@ -425,7 +425,7 @@ public partial class HomePageUI
                 V37FriendListApiResponse response = ParseJson<V37FriendListApiResponse>(request.downloadHandler.text);
                 if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
                 {
-                    SetV37LoadFailure(GetV37RequestError(request, response, "正式好友列表读取失败"));
+                    SetV37LoadFailure(GetV37RequestError(request, response, "好友列表读取失败"));
                     yield break;
                 }
 
@@ -564,7 +564,7 @@ public partial class HomePageUI
         if (serverFriendPanelMode == ServerFriendPanelMode.Friends)
         {
             SetSceneText(root, "FriendsTitle", "游戏好友");
-            SetSceneText(root, "FriendsSubtitle", "正式好友");
+            SetSceneText(root, "FriendsSubtitle", string.Empty);
             SetSceneText(root, "FriendsStatus", v37StatusMessage);
             ConfigureV37TopControls(root, interactionLocked);
             RenderV37FriendRows(root, interactionLocked);
@@ -901,7 +901,11 @@ public partial class HomePageUI
         SetSceneText(row, "FriendRowName" + rowIndex, string.IsNullOrWhiteSpace(nickname) ? "玩家 " + playerId : nickname);
         Text idLabel = FindSceneComponent<Text>(row, "FriendRowId" + rowIndex);
         string levelText = "Lv." + Mathf.Max(1, level);
-        if (idLabel != null) idLabel.text = "ID " + playerId;
+        if (idLabel != null)
+        {
+            idLabel.text = "ID " + playerId;
+            ConfigureReadableText(idLabel, idLabel.name);
+        }
         SetSceneText(row, "FriendRowMeta" + rowIndex, idLabel != null ? levelText : levelText + "\nID " + playerId);
         SetSceneText(row, "FriendRowState" + rowIndex, state);
         SetFriendPresenceTextColor(FindSceneComponent<Text>(row, "FriendRowState" + rowIndex), offline);
@@ -918,7 +922,7 @@ public partial class HomePageUI
         ServerFriendResponse friend = FindV37Friend(v37SelectedFriendPlayerId);
         if (friend == null)
         {
-            SetV37DetailEmpty(root, "暂无正式好友", "搜索玩家 ID 并发送申请后，等待对方同意");
+            SetV37DetailEmpty(root, "暂无好友", "搜索玩家 ID，发送好友申请");
             return;
         }
 
@@ -1049,7 +1053,7 @@ public partial class HomePageUI
         if (FindSceneTransform(root, "FriendRequestsOverlay") == null)
         {
             Debug.LogWarning("[Friends] FriendRequestsOverlay is missing.", this);
-            SetSceneText(root, "FriendsStatus", "申请窗口组件缺失");
+            SetSceneText(root, "FriendsStatus", "申请列表暂时无法打开，请稍后重试");
             return;
         }
         if (v37Loading)
@@ -1123,7 +1127,7 @@ public partial class HomePageUI
                 friendsSearchQuery = string.Empty;
                 v37FriendSearchResult = null;
                 v37SelectedFriendPlayerId = playerId;
-                RefreshServerFriendRequestPanel(root, "已是正式好友");
+                RefreshServerFriendRequestPanel(root, "已是好友");
                 ScrollToSelectedFriend(root);
                 break;
             default:

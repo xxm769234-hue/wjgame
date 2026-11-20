@@ -1,0 +1,118 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
+  m_Name: Alchemist_Buff_01
+  m_EditorClassIdentifier: 
+  sequenceId: Alchemist_Buff_01
+  sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\Buff\\\u70BC\u91D1\u672F\u58EB"
+  action: 4
+  frameRate: 24
+  playbackDuration: 2.1
+  loop: 0
+  frames:
+  - {fileID: 21300000, guid: d8e1d27e492b570e994c1a6febd52ad8, type: 3}
+  - {fileID: 21300000, guid: a40e9b90a9b05c11992e0fe4654ee37c, type: 3}
+  - {fileID: 21300000, guid: ca79a83dfd9f5711b7322130b009eba5, type: 3}
+  - {fileID: 21300000, guid: e706c3a7d18e5bd9ac17827decea0d4d, type: 3}
+  - {fileID: 21300000, guid: 0db4d7db7530571bb427fb0b3ad9403d, type: 3}
+  - {fileID: 21300000, guid: 4ea72ddceafc5ee6a2ceef47d0ffbe30, type: 3}
+  - {fileID: 21300000, guid: e63cb918731754c39ed1adf413cd4a8a, type: 3}
+  - {fileID: 21300000, guid: cd084263730f5efda63d6d9a876a95d5, type: 3}
+  - {fileID: 21300000, guid: 7f4fab395c7e5190a7f83fead9c4237b, type: 3}
+  - {fileID: 21300000, guid: 314d649a952a549d8f6b54e789fce3a3, type: 3}
+  - {fileID: 21300000, guid: 26a89c4cbc635620886b77db04f4fdc9, type: 3}
+  - {fileID: 21300000, guid: b031958a45de575ba9610c7945827c47, type: 3}
+  - {fileID: 21300000, guid: 96fec1881338554f97fc7acf8533eeaf, type: 3}
+  - {fileID: 21300000, guid: aaf1db34eeac5cfeb93b7c66e7be0844, type: 3}
+  - {fileID: 21300000, guid: cc5b6c1e5e5d59068e7170bcbec1320d, type: 3}
+  - {fileID: 21300000, guid: af81c7997be35bcc93e5b9565c9d4027, type: 3}
+  - {fileID: 21300000, guid: 9d34590da6eb51a68265c2257b919afd, type: 3}
+  - {fileID: 21300000, guid: 07d2d0d3ddbc5e3eaa55e897632b6d8d, type: 3}
+  - {fileID: 21300000, guid: 689d6e839298505d8457cff3821b47f2, type: 3}
+  - {fileID: 21300000, guid: 0d46d44e0c7e5fd1ab8fa2cd850a064b, type: 3}
+  - {fileID: 21300000, guid: 23461d09d44650ceb9bf55a397c0a096, type: 3}
+  - {fileID: 21300000, guid: e6c52bab7ef953c6b6e4035aace00994, type: 3}
+  - {fileID: 21300000, guid: 129482a40bd9543a9f75d51e74bf42e8, type: 3}
+  - {fileID: 21300000, guid: 4f77e76ee17052159028cd5b0d8f7f0f, type: 3}
+  - {fileID: 21300000, guid: ea1b10d0eb035d8497c77703c68770a8, type: 3}
+  - {fileID: 21300000, guid: bafd09dbfea55a24a0b99402ae414857, type: 3}
+  - {fileID: 21300000, guid: f21784084b7855c6a35f112c5e3390ba, type: 3}
+  - {fileID: 21300000, guid: f3ac3e7ceee15c5291938d881de3fd2d, type: 3}
+  - {fileID: 21300000, guid: e6be7b5efcfe52189a141a485e5ffd30, type: 3}
+  - {fileID: 21300000, guid: cdb3519ec81b593b8d043279642678b0, type: 3}
+  - {fileID: 21300000, guid: 4a2bd81f300d5b3fb53384847ea75a48, type: 3}
+  - {fileID: 21300000, guid: 3d197ae8d91a57659287c78f29e41e76, type: 3}
+  - {fileID: 21300000, guid: 4842e794552259a99f1defc90603fdee, type: 3}
+  - {fileID: 21300000, guid: b512408c4ed85701b51b2fefa104ce68, type: 3}
+  - {fileID: 21300000, guid: 917eff5f7df85068b21282b586caea8b, type: 3}
+  - {fileID: 21300000, guid: 697b313660e756db8bad7cd2d19eb40c, type: 3}
+  - {fileID: 21300000, guid: 9c5efad50bfc54a8acaee00a55d5fc36, type: 3}
+  - {fileID: 21300000, guid: 262d7a8bf2f05c9683675e343c3feaf7, type: 3}
+  - {fileID: 21300000, guid: 859ce9ab6f4559bc8070abfd2436d0cc, type: 3}
+  - {fileID: 21300000, guid: 646e707e950d518492bebc3e0bd5efdd, type: 3}
+  - {fileID: 21300000, guid: 1ccbc695a3c4554495c1bb26f5dad231, type: 3}
+  - {fileID: 21300000, guid: f74078f26fa95b78bf210942b8be011f, type: 3}
+  - {fileID: 21300000, guid: 4fcf6237913e5f0188d78311aef1b7eb, type: 3}
+  - {fileID: 21300000, guid: f6c1fcd432b354b1aece1205d2a455ab, type: 3}
+  - {fileID: 21300000, guid: 49f3e3495743551fbb2c721b41310283, type: 3}
+  - {fileID: 21300000, guid: 941f2c07c01b5b0f97112049bbdf5eec, type: 3}
+  - {fileID: 21300000, guid: e0683445afa255d3b3ce6f924d067966, type: 3}
+  - {fileID: 21300000, guid: f145fd609b5f5b12958b01caeaf46964, type: 3}
+  - {fileID: 21300000, guid: a9919e2e133a5d4d8124c3ab0ce9f4a5, type: 3}
+  - {fileID: 21300000, guid: e1e53d9beac85160960860444930e971, type: 3}
+  - {fileID: 21300000, guid: ded3d099ee165b2ea88202ef41630ddb, type: 3}
+  - {fileID: 21300000, guid: 1883588a00ba5606af6cf44c99889985, type: 3}
+  - {fileID: 21300000, guid: ebcd7efbd3c150d494a3f458fddee5e4, type: 3}
+  - {fileID: 21300000, guid: 5eb1ae9f907a554bb3d4f60937c550c1, type: 3}
+  - {fileID: 21300000, guid: e02e0d7e54ea58a89e2a41209564a7be, type: 3}
+  - {fileID: 21300000, guid: be57b0420d8d5e80a814513a6b4853e8, type: 3}
+  - {fileID: 21300000, guid: e45577ac8c9e58518a10671c4142ec36, type: 3}
+  - {fileID: 21300000, guid: 24c587bca29f58af86ffc5a5709c582e, type: 3}
+  - {fileID: 21300000, guid: 445e42866be55e988ae5489d6c42b0e2, type: 3}
+  - {fileID: 21300000, guid: d92a5f63d395576f94e9fa7885e6fc35, type: 3}
+  - {fileID: 21300000, guid: 1f4095735cc65e8da0be039157ac89d8, type: 3}
+  - {fileID: 21300000, guid: 10d87aa2d2355c4ead4153deec2dc9c1, type: 3}
+  - {fileID: 21300000, guid: 387f1f7a7e105c458455ce8bc132a7e7, type: 3}
+  - {fileID: 21300000, guid: 4ce42651995b50eabf5d1133e1897eef, type: 3}
+  - {fileID: 21300000, guid: 3a9bd597ea615c2f82d738682801f5db, type: 3}
+  - {fileID: 21300000, guid: a3662b56c34952eba528712cfd76919c, type: 3}
+  - {fileID: 21300000, guid: 9a3b0e0f8a3d5a7eaf0cf449db8ee5e1, type: 3}
+  - {fileID: 21300000, guid: a29ab7e8380950cfb910031958511a57, type: 3}
+  - {fileID: 21300000, guid: 01b189bbb6875cb7a1df5edc632a39ff, type: 3}
+  - {fileID: 21300000, guid: 265e8e1fec5e5c368a3477f714116a16, type: 3}
+  - {fileID: 21300000, guid: 1e17c1568d2c5ecbba7d4f45c0efabe7, type: 3}
+  - {fileID: 21300000, guid: 55b4c8c31b845f66b1e3719260b844f7, type: 3}
+  - {fileID: 21300000, guid: 68563470809a502292419b3f2142d43e, type: 3}
+  effects:
+  - effect: {fileID: 11400000, guid: a3d24d96188354d2bdc1dbb9e030f5c8, type: 2}
+    placement: 4
+    startFrame: 20
+    launchFrame: 20
+    contactFrame: 36
+    endFrame: 72
+    firstEffectFrame: 0
+    launchEffectFrame: 0
+    contactEffectFrame: 28
+    impactIndex: -1
+    width: 5.8
+    opacity: 0.9
+    preserveSourceScale: 0
+    sourceOffset: {x: 0.3, y: 0.64}
+    targetOffset: {x: 0, y: 0}
+    targetBodyOffset: {x: 0, y: 0}
+    arcHeight: 0
+    flipX: 0
+  audioCues:
+  - clip: {fileID: 8300000, guid: 84f23b3724be50bfb4cdd7e21e1c9358, type: 3}
+    startFrame: 20
+    endFrame: 72
+    volume: 0.8

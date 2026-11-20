@@ -1,9 +1,14 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 /// <summary>Owns map coordinates, slot registration, and backend snapshot application.</summary>
 public sealed class MapManager : MonoBehaviour
 {
+    private const string SimulationSceneName = "Simulation management mode";
+    private const string SimulationShapeResourcesPath = "SimulationLandShapes";
+    private const int SimulationShapeCount = 32;
+
     public static MapManager Instance { get; private set; }
 
     [Header("Grid")]
@@ -24,6 +29,10 @@ public sealed class MapManager : MonoBehaviour
     [SerializeField, Min(0f)] private float unitHorizontalGap = 0.35f;
     [SerializeField, Min(0f)] private float unitVerticalGap = 0.25f;
     [SerializeField, Min(0f)] private float sideGap = 1.5f;
+    [SerializeField, Min(0f)] private float simulationShapeHorizontalGap = 0.12f;
+    [SerializeField, Min(0f)] private float simulationShapeVerticalGap = 0.12f;
+    [SerializeField] private Vector2 simulationBackgroundPadding = new Vector2(3.2f, 1.75f);
+    [SerializeField] private Vector2 simulationShapeOffsetInBackground = new Vector2(0f, 0.6f);
     [SerializeField, Min(0f)] private float mapTopSpacing = 3.5f;
     [SerializeField] private string mapBackgroundName = "MapBackground";
     [SerializeField] private Vector2 mapBackgroundPadding = new Vector2(2f, 2f);
@@ -172,24 +181,22 @@ public sealed class MapManager : MonoBehaviour
         reason = string.Empty;
         if (slot == null)
         {
-            reason = "No land slot under pointer.";
+            reason = "请将地块放在小镇的可用位置。";
             return false;
         }
         if (!slot.IsPlacementUnlocked)
         {
-            reason = "The backend has not unlocked placement on this land slot.";
+            reason = "此处尚未解锁。";
             return false;
         }
         if (config == null)
         {
-            reason = "Land config is missing.";
+            reason = "暂时无法选择这块地，请重新选择。";
             return false;
         }
         if (!config.canPlace)
         {
-            reason = string.IsNullOrEmpty(config.disabledReason)
-                ? "The backend currently rejects this land configuration."
-                : config.disabledReason;
+            reason = FrontendTextLocalization.NormalizePlayerMessage(config.disabledReason, "这块地暂时无法放置。");
             return false;
         }
 
@@ -197,12 +204,12 @@ public sealed class MapManager : MonoBehaviour
         Vector2Int gridPosition = slot.GridPosition;
         if (!IsWithinBounds(gridPosition))
         {
-            reason = $"Grid position {gridPosition} is outside map bounds {mapSize}.";
+            reason = "请将地块放在小镇范围内。";
             return false;
         }
         if (slot.IsBuilt || occupiedSlots.Contains(gridPosition))
         {
-            reason = "Current land slot is already occupied.";
+            reason = "当前地块已被占用。";
             return false;
         }
 
@@ -485,7 +492,6 @@ public sealed class MapManager : MonoBehaviour
         if (hasBounds)
         {
             runtimeMapBounds = AddTopSpacing(combinedBounds, mapTopSpacing);
-            ResizeMapBackground(runtimeMapBounds);
             runtimeMapBounds.Expand(new Vector3(
                 Mathf.Max(0f, mapBackgroundPadding.x) * 2f,
                 Mathf.Max(0f, mapBackgroundPadding.y) * 2f,
@@ -493,6 +499,7 @@ public sealed class MapManager : MonoBehaviour
         }
 
         ApplyRuntimeLandUnlockLayout(units, ResolveCurrentPlayerLevel());
+        ApplySimulationLandShapeLayout(mapRoot);
         RebuildSlotCache();
     }
 
@@ -717,10 +724,15 @@ public sealed class MapManager : MonoBehaviour
         if (left == null) return 1;
         if (right == null) return -1;
 
-        Vector3 leftCenter = CalculateWorldBounds(left).center;
-        Vector3 rightCenter = CalculateWorldBounds(right).center;
-        int verticalOrder = leftCenter.y.CompareTo(rightCenter.y);
-        return verticalOrder != 0 ? verticalOrder : leftCenter.x.CompareTo(rightCenter.x);
+        Vector3 leftAnchor = left.transform.localPosition;
+        Vector3 rightAnchor = right.transform.localPosition;
+        int verticalOrder = leftAnchor.y.CompareTo(rightAnchor.y);
+        if (verticalOrder != 0) return verticalOrder;
+
+        int horizontalOrder = leftAnchor.x.CompareTo(rightAnchor.x);
+        if (horizontalOrder != 0) return horizontalOrder;
+
+        return left.transform.GetSiblingIndex().CompareTo(right.transform.GetSiblingIndex());
     }
 
     private static int CompareSlotsForLogicalPosition(LandSlotController left, LandSlotController right)
@@ -729,8 +741,15 @@ public sealed class MapManager : MonoBehaviour
         if (left == null) return 1;
         if (right == null) return -1;
 
-        int verticalOrder = left.CenterWorld.y.CompareTo(right.CenterWorld.y);
-        return verticalOrder != 0 ? verticalOrder : left.CenterWorld.x.CompareTo(right.CenterWorld.x);
+        Vector3 leftAnchor = left.transform.localPosition;
+        Vector3 rightAnchor = right.transform.localPosition;
+        int verticalOrder = leftAnchor.y.CompareTo(rightAnchor.y);
+        if (verticalOrder != 0) return verticalOrder;
+
+        int horizontalOrder = leftAnchor.x.CompareTo(rightAnchor.x);
+        if (horizontalOrder != 0) return horizontalOrder;
+
+        return left.transform.GetSiblingIndex().CompareTo(right.transform.GetSiblingIndex());
     }
 
     private static void DisableExcessUnitSlots(GameObject unit)
@@ -840,8 +859,17 @@ public sealed class MapManager : MonoBehaviour
         Vector3 parentScale = backgroundTransform.parent != null ? backgroundTransform.parent.lossyScale : Vector3.one;
         float parentScaleX = Mathf.Abs(parentScale.x) <= 0.0001f ? 1f : Mathf.Abs(parentScale.x);
         float parentScaleY = Mathf.Abs(parentScale.y) <= 0.0001f ? 1f : Mathf.Abs(parentScale.y);
-        float targetWorldWidth = mapBounds.size.x + mapBackgroundPadding.x * 2f;
-        float targetWorldHeight = mapBounds.size.y + mapBackgroundPadding.y * 2f;
+        float targetWorldWidth = mapBounds.size.x;
+        float targetWorldHeight = mapBounds.size.y;
+
+        Camera camera = Camera.main;
+        if (camera != null && camera.orthographic)
+        {
+            float viewportHeight = camera.orthographicSize * 2f;
+            float viewportWidth = viewportHeight * Mathf.Max(0.01f, camera.aspect);
+            targetWorldWidth = Mathf.Max(targetWorldWidth, viewportWidth);
+            targetWorldHeight = Mathf.Max(targetWorldHeight, viewportHeight);
+        }
 
         backgroundTransform.localScale = new Vector3(
             targetWorldWidth / (spriteSize.x * parentScaleX),
@@ -883,5 +911,241 @@ public sealed class MapManager : MonoBehaviour
         MapCameraController controller = camera.GetComponent<MapCameraController>();
         if (controller == null) controller = camera.gameObject.AddComponent<MapCameraController>();
         controller.Configure(runtimeMapBounds, runtimeUnitWidth, runtimeUnitHeight);
+        ResizeMapBackground(runtimeMapBounds);
     }
+
+    private void ApplySimulationLandShapeLayout(Transform mapRoot)
+    {
+        if (SceneManager.GetActiveScene().name != SimulationSceneName) return;
+
+        LandSlotController[] slots = FindObjectsByType<LandSlotController>(FindObjectsSortMode.None);
+        if (slots.Length == 0) return;
+
+        Sprite[] sprites = new Sprite[SimulationShapeCount];
+        int loadedCount = 0;
+        for (int i = 0; i < sprites.Length; i++)
+        {
+            sprites[i] = Resources.Load<Sprite>($"{SimulationShapeResourcesPath}/{i + 1}");
+            if (sprites[i] != null) loadedCount++;
+        }
+
+        if (loadedCount != SimulationShapeCount)
+        {
+            Debug.LogWarning(
+                $"Simulation land shape resources loaded {loadedCount}/{SimulationShapeCount}.",
+                this);
+        }
+
+        int pageColumns = Mathf.Max(1, sideColumns * LandUnlockRules.UnitSideLength);
+        int pageRows = Mathf.Max(1, sideRows * LandUnlockRules.UnitSideLength);
+        int totalColumns = pageColumns * 2;
+        int pageShapeCount = pageColumns * pageRows;
+        float[][] rowColumnCenters = new float[2 * pageRows][];
+        float[] rowSpans = new float[2 * pageRows];
+        float[] rowHeights = new float[pageRows];
+
+        for (int rowFromTop = 0; rowFromTop < pageRows; rowFromTop++)
+        {
+            rowHeights[rowFromTop] = AverageSpriteHeight(sprites, rowFromTop, pageColumns, pageRows);
+            for (int page = 0; page < 2; page++)
+            {
+                int rowIndex = page * pageRows + rowFromTop;
+                rowColumnCenters[rowIndex] = ResolveRowColumnCenters(
+                    sprites,
+                    page * pageShapeCount + rowFromTop * pageColumns,
+                    pageColumns,
+                    simulationShapeHorizontalGap,
+                    out rowSpans[rowIndex]);
+            }
+        }
+
+        float pageWidth = 0f;
+        for (int page = 0; page < 2; page++)
+        {
+            for (int rowFromTop = 0; rowFromTop < pageRows; rowFromTop++)
+            {
+                pageWidth = Mathf.Max(pageWidth, rowSpans[page * pageRows + rowFromTop]);
+            }
+        }
+
+        float pageCenterDistance = pageWidth + Mathf.Max(0f, sideGap);
+        float[] rowCenters = ResolveTopDownCenters(rowHeights, simulationShapeVerticalGap);
+        float totalHeight = 0f;
+        for (int i = 0; i < rowHeights.Length; i++) totalHeight += Mathf.Max(0.01f, rowHeights[i]);
+
+        for (int i = 0; i < slots.Length; i++)
+        {
+            LandSlotController slot = slots[i];
+            if (slot == null) continue;
+
+            Vector2Int gridPosition = slot.GridPosition;
+            int column = gridPosition.x;
+            int rowFromTop = pageRows - 1 - gridPosition.y;
+            if (column < 0 || column >= totalColumns || rowFromTop < 0 || rowFromTop >= pageRows)
+            {
+                slot.SetSimulationShapeSprite(null, slot.transform.position);
+                continue;
+            }
+
+            int page = column / pageColumns;
+            int pageColumn = column % pageColumns;
+            int rowIndex = page * pageRows + rowFromTop;
+            int spriteIndex = page * pageShapeCount + rowFromTop * pageColumns + pageColumn;
+            float pageCenterX = page == 0 ? -pageCenterDistance * 0.5f : pageCenterDistance * 0.5f;
+            float rowSpineOffset = (pageWidth - rowSpans[rowIndex]) * 0.5f;
+            if (page == 1) rowSpineOffset = -rowSpineOffset;
+            float centerX = pageCenterX + rowColumnCenters[rowIndex][pageColumn] + rowSpineOffset;
+            float centerY = rowCenters[rowFromTop];
+            Vector3 centerWorld = mapRoot.TransformPoint(new Vector3(centerX, centerY, 0f));
+
+            slot.SetSimulationShapeSprite(
+                spriteIndex >= 0 && spriteIndex < sprites.Length ? sprites[spriteIndex] : null,
+                centerWorld);
+        }
+
+        Bounds shapeBounds = CalculateWorldBounds(mapRoot.gameObject);
+        if (shapeBounds.size.x > 0.0001f && shapeBounds.size.y > 0.0001f)
+        {
+            runtimeUnitWidth = pageWidth / Mathf.Max(1, sideColumns);
+            runtimeUnitHeight = totalHeight / Mathf.Max(1, sideRows);
+            runtimeMapBounds = shapeBounds;
+            runtimeMapBounds.Expand(new Vector3(
+                Mathf.Max(0f, simulationBackgroundPadding.x) * 2f,
+                Mathf.Max(0f, simulationBackgroundPadding.y) * 2f,
+                0f));
+            runtimeMapBounds.center -= new Vector3(
+                simulationShapeOffsetInBackground.x,
+                simulationShapeOffsetInBackground.y,
+                0f);
+        }
+    }
+
+    private static float[] ResolveRowColumnCenters(
+        Sprite[] sprites,
+        int firstSpriteIndex,
+        int pageColumns,
+        float horizontalGap,
+        out float rowSpan)
+    {
+        float[] centers = new float[pageColumns];
+        if (pageColumns == 0)
+        {
+            rowSpan = 0f;
+            return centers;
+        }
+
+        for (int column = 1; column < pageColumns; column++)
+        {
+            Sprite left = GetSprite(sprites, firstSpriteIndex + column - 1);
+            Sprite right = GetSprite(sprites, firstSpriteIndex + column);
+            float pitch = ResolveSharedHorizontalPitch(left, right);
+            if (pitch <= 0.0001f)
+            {
+                float leftWidth = left != null ? left.bounds.size.x : 1f;
+                float rightWidth = right != null ? right.bounds.size.x : 1f;
+                pitch = (leftWidth + rightWidth) * 0.5f;
+            }
+            centers[column] = centers[column - 1] + pitch + Mathf.Max(0f, horizontalGap);
+        }
+
+        Sprite first = GetSprite(sprites, firstSpriteIndex);
+        Sprite last = GetSprite(sprites, firstSpriteIndex + pageColumns - 1);
+        float leftEdge = ResolveSpriteHorizontalEdge(first, false);
+        float rightEdge = centers[pageColumns - 1] + ResolveSpriteHorizontalEdge(last, true);
+        rowSpan = Mathf.Max(0.01f, rightEdge - leftEdge);
+        float offset = -(leftEdge + rightEdge) * 0.5f;
+        for (int column = 0; column < centers.Length; column++) centers[column] += offset;
+        return centers;
+    }
+
+    private static float ResolveSharedHorizontalPitch(Sprite left, Sprite right)
+    {
+        if (left == null || right == null) return 0f;
+        return ResolveSpriteHorizontalEdge(left, true) - ResolveSpriteHorizontalEdge(right, false);
+    }
+
+    private static float ResolveSpriteHorizontalEdge(Sprite sprite, bool rightEdge)
+    {
+        if (sprite == null) return rightEdge ? 0.5f : -0.5f;
+
+        int shapeCount = sprite.GetPhysicsShapeCount();
+        float edge = rightEdge ? float.NegativeInfinity : float.PositiveInfinity;
+        bool foundIntersection = false;
+        List<Vector2> path = new List<Vector2>();
+        for (int shapeIndex = 0; shapeIndex < shapeCount; shapeIndex++)
+        {
+            path.Clear();
+            sprite.GetPhysicsShape(shapeIndex, path);
+            for (int pointIndex = 0; pointIndex < path.Count; pointIndex++)
+            {
+                Vector2 start = path[pointIndex];
+                Vector2 end = path[(pointIndex + 1) % path.Count];
+                if (Mathf.Abs(start.y) <= 0.0001f)
+                {
+                    edge = rightEdge ? Mathf.Max(edge, start.x) : Mathf.Min(edge, start.x);
+                    foundIntersection = true;
+                }
+                if (Mathf.Abs(end.y) <= 0.0001f)
+                {
+                    edge = rightEdge ? Mathf.Max(edge, end.x) : Mathf.Min(edge, end.x);
+                    foundIntersection = true;
+                }
+                if ((start.y < 0f && end.y > 0f) || (start.y > 0f && end.y < 0f))
+                {
+                    float t = -start.y / (end.y - start.y);
+                    float x = Mathf.Lerp(start.x, end.x, t);
+                    edge = rightEdge ? Mathf.Max(edge, x) : Mathf.Min(edge, x);
+                    foundIntersection = true;
+                }
+            }
+        }
+
+        if (foundIntersection) return edge;
+
+        Bounds bounds = sprite.bounds;
+        return rightEdge ? bounds.max.x : bounds.min.x;
+    }
+
+    private static float[] ResolveTopDownCenters(float[] sizes, float verticalGap)
+    {
+        if (sizes == null || sizes.Length == 0) return new float[0];
+
+        float totalSize = 0f;
+        for (int i = 0; i < sizes.Length; i++) totalSize += Mathf.Max(0.01f, sizes[i]);
+        totalSize += Mathf.Max(0f, verticalGap) * Mathf.Max(0, sizes.Length - 1);
+
+        float[] centers = new float[sizes.Length];
+        float cursor = totalSize * 0.5f;
+        for (int i = 0; i < sizes.Length; i++)
+        {
+            float size = Mathf.Max(0.01f, sizes[i]);
+            centers[i] = cursor - size * 0.5f;
+            cursor -= size + Mathf.Max(0f, verticalGap);
+        }
+        return centers;
+    }
+
+    private static Sprite GetSprite(Sprite[] sprites, int index)
+    {
+        return sprites != null && index >= 0 && index < sprites.Length ? sprites[index] : null;
+    }
+
+    private static float AverageSpriteHeight(Sprite[] sprites, int rowFromTop, int pageColumns, int pageRows)
+    {
+        float total = 0f;
+        int count = 0;
+        int pageShapeCount = pageColumns * pageRows;
+        for (int page = 0; page < 2; page++)
+        {
+            for (int column = 0; column < pageColumns; column++)
+            {
+                int index = page * pageShapeCount + rowFromTop * pageColumns + column;
+                if (index < 0 || index >= sprites.Length || sprites[index] == null) continue;
+                total += sprites[index].bounds.size.y;
+                count++;
+            }
+        }
+        return count > 0 ? total / count : 1f;
+    }
+
 }

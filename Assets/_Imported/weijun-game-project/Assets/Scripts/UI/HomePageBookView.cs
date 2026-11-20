@@ -216,6 +216,81 @@ public sealed class HomePageBookView : MonoBehaviour
         metricPlusButtons = plusButtons.ToArray();
     }
 
+    public void ApplyApprovedEntryIcons()
+    {
+        ApplyApprovedEntryIcon(roleButton, "05_characters");
+        ApplyApprovedEntryIcon(equipmentButton, "02_equipment");
+        ApplyApprovedEntryIcon(friendsButton, "04_friends");
+        ApplyApprovedEntryIcon(bagButton, "07_inventory");
+        ApplyApprovedEntryIcon(taskButton, "08_tasks");
+        ApplyApprovedEntryIcon(shopButton, "03_shop");
+        ApplyApprovedEntryIcon(settingsButton, "09_settings");
+        ApplyApprovedEntryIcon(mailButton, "15_mail");
+        ApplyApprovedEntryIcon(noticeButton, "11_announcements");
+        ApplyApprovedEntryIcon(dailySignButton, "16_sign_in");
+        ApplyApprovedEntryIcon(activityButton, "14_activity_candidate");
+        ApplyApprovedEntryIcon(battleButton, "19_battle");
+        ApplyApprovedEntryIcon(enterMapButton, "06_build");
+        ApplyModeEntryTitle(battleButton, "闯关冒险");
+        ApplyModeEntryTitle(enterMapButton, "小镇经营");
+    }
+
+    private static void ApplyModeEntryTitle(Button button, string title)
+    {
+        if (button == null || button.transform.parent == null) return;
+        Transform entry = button.transform.parent;
+        Transform existing = entry.Find("ModeEntryTitle");
+        RectTransform badge = existing as RectTransform;
+        if (badge == null)
+        {
+            GameObject badgeObject = new GameObject("ModeEntryTitle", typeof(RectTransform), typeof(Image));
+            badgeObject.layer = entry.gameObject.layer;
+            badge = badgeObject.GetComponent<RectTransform>();
+            badge.SetParent(entry, false);
+        }
+        badge.anchorMin = badge.anchorMax = Vector2.zero;
+        badge.pivot = Vector2.zero;
+        badge.anchoredPosition = new Vector2(18f, 18f);
+        badge.sizeDelta = new Vector2(202f, 58f);
+        Image background = badge.GetComponent<Image>();
+        background.sprite = Resources.Load<Sprite>("UI/ApprovedUi/Controls/SecondaryButton");
+        background.color = Color.white;
+        background.raycastTarget = false;
+        TMP_Text label = badge.GetComponentInChildren<TMP_Text>(true);
+        if (label == null)
+        {
+            GameObject labelObject = new GameObject("ModeTitleText", typeof(RectTransform), typeof(TextMeshProUGUI));
+            labelObject.layer = badge.gameObject.layer;
+            labelObject.transform.SetParent(badge, false);
+            label = labelObject.GetComponent<TextMeshProUGUI>();
+            label.font = RuntimeFontAssetProvider.Resolve();
+        }
+        label.rectTransform.anchorMin = Vector2.zero;
+        label.rectTransform.anchorMax = Vector2.one;
+        label.rectTransform.offsetMin = new Vector2(14f, 5f);
+        label.rectTransform.offsetMax = new Vector2(-14f, -5f);
+        label.text = title;
+        label.fontSize = 28f;
+        label.fontStyle = FontStyles.Bold;
+        label.enableWordWrapping = false;
+        label.alignment = TextAlignmentOptions.Center;
+        label.color = new Color(.25f, .17f, .11f, 1f);
+        label.raycastTarget = false;
+    }
+
+    private static void ApplyApprovedEntryIcon(Button button, string resourceName)
+    {
+        if (button == null) return;
+        Transform iconTransform = button.transform.Find("IconPatch");
+        Image icon = iconTransform == null ? button.GetComponent<Image>() : iconTransform.GetComponent<Image>();
+        Sprite approved = Resources.Load<Sprite>("UI/ApprovedUi/Icons/" + resourceName);
+        if (icon == null || approved == null) return;
+        icon.overrideSprite = null;
+        icon.sprite = approved;
+        icon.color = Color.white;
+        icon.preserveAspect = true;
+    }
+
     private T FindComponent<T>(string path) where T : Component
     {
         Transform target = transform.Find(path);

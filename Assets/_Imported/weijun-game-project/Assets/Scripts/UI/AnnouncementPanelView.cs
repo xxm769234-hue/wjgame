@@ -111,8 +111,8 @@ public sealed class AnnouncementPanelView : MonoBehaviour
     public void SetStatus(string status, string message)
     {
         SetAnnouncements(null);
-        SetText(versionText, status);
-        SetText(bodyText, message);
+        SetText(versionText, FrontendTextLocalization.DisplayStatus(status));
+        SetText(bodyText, FrontendTextLocalization.NormalizePlayerMessage(message, "公告暂时无法查看，请稍后重试。"));
         RefreshBodyScroll();
     }
 
@@ -158,6 +158,152 @@ public sealed class AnnouncementPanelView : MonoBehaviour
             missingReferenceWarningLogged = true;
             Debug.LogWarning("AnnouncementPanelView 缺少公告正文，请检查 AnnouncementContent 下的 Body TMP 节点。", this);
         }
+        ConfigureSingleLine(titleText, 28f, 34f);
+        if (titleText != null)
+        {
+            titleText.enableWordWrapping = false;
+            titleText.maxVisibleLines = 1;
+            titleText.alignment = TextAlignmentOptions.Center;
+            titleText.margin = new Vector4(16f, 4f, 16f, 4f);
+        }
+        ConfigureSingleLine(versionText, 14f, 18f);
+        ConfigureSingleLine(publishDateText, 14f, 18f);
+        ConfigureBodyBounds();
+        if (bodyText != null)
+        {
+            bodyText.enableAutoSizing = false;
+            bodyText.enableWordWrapping = true;
+            bodyText.alignment = TextAlignmentOptions.TopLeft;
+            bodyText.lineSpacing = 4f;
+            bodyText.paragraphSpacing = 8f;
+            bodyText.raycastTarget = false;
+        }
+        ApplyPaperPresentation();
+    }
+
+    private void ApplyPaperPresentation()
+    {
+        Transform paper = transform.Find("AnnouncementPaper");
+        if (paper == null || announcementContentRoot != null) return;
+        Sprite paperSprite = Resources.Load<Sprite>("UI/ApprovedUi/Panels/AnnouncementPaper");
+        if (paperSprite == null) return;
+        paperImage = paper.GetComponent<Image>();
+        if (paperImage != null)
+        {
+            paperImage.sprite = paperSprite;
+            paperImage.overrideSprite = null;
+            paperImage.type = Image.Type.Simple;
+            paperImage.preserveAspect = false;
+            paperImage.color = Color.white;
+        }
+        Image shadow = FindNamedComponent<Image>("PaperShadow");
+        if (shadow != null)
+        {
+            shadow.sprite = paperSprite;
+            shadow.type = Image.Type.Simple;
+            shadow.color = new Color(0f, 0f, 0f, 0.33f);
+        }
+        titleBannerImage = paper.Find("TitleBanner")?.GetComponent<Image>();
+        if (titleBannerImage != null) titleBannerImage.color = Color.clear;
+        Image divider = paper.Find("HeaderDivider")?.GetComponent<Image>();
+        if (divider != null) divider.color = Color.clear;
+        Color ink = new Color(0.286f, 0.220f, 0.161f, 1f);
+        Color muted = new Color(0.42f, 0.345f, 0.267f, 1f);
+        if (titleText != null) titleText.color = ink;
+        if (versionText != null) versionText.color = muted;
+        if (publishDateText != null) publishDateText.color = muted;
+        if (bodyText != null)
+        {
+            bodyText.fontSize = 22f;
+            bodyText.color = ink;
+            bodyText.margin = new Vector4(16f, 0f, 16f, 0f);
+        }
+        if (scrollHintText != null)
+        {
+            scrollHintText.fontSize = 17f;
+            scrollHintText.color = muted;
+        }
+        if (scrollRect != null && scrollRect.viewport != null)
+        {
+            Image viewportImage = scrollRect.viewport.GetComponent<Image>();
+            Mask viewportMask = scrollRect.viewport.GetComponent<Mask>();
+            if (viewportMask != null)
+            {
+                viewportMask.showMaskGraphic = false;
+                if (viewportImage != null) viewportImage.color = Color.white;
+            }
+            else if (viewportImage != null) viewportImage.color = Color.clear;
+        }
+        ApplyPaperButton(confirmButton, "UI/ApprovedUi/Panels/PrimaryButton", false);
+        ApplyPaperButton(closeButton, "UI/ApprovedUi/Panels/CloseButton", true);
+        Image confirmShadow = paper.Find("ConfirmShadow")?.GetComponent<Image>();
+        if (confirmShadow != null) confirmShadow.color = Color.clear;
+    }
+
+    private static void ApplyPaperButton(Button button, string resourcePath, bool iconOnly)
+    {
+        if (button == null) return;
+        Image image = button.GetComponent<Image>();
+        Sprite sprite = Resources.Load<Sprite>(resourcePath);
+        if (image == null || sprite == null) return;
+        image.sprite = sprite;
+        image.overrideSprite = null;
+        image.type = Image.Type.Simple;
+        image.preserveAspect = true;
+        image.color = Color.white;
+        button.targetGraphic = image;
+        button.transition = Selectable.Transition.ColorTint;
+        ColorBlock colors = button.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1f, 0.96f, 0.88f, 1f);
+        colors.pressedColor = new Color(0.82f, 0.72f, 0.60f, 1f);
+        colors.selectedColor = Color.white;
+        colors.disabledColor = new Color(0.66f, 0.64f, 0.59f, 1f);
+        button.colors = colors;
+        TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+        if (label == null) return;
+        label.color = new Color(1f, 0.96f, 0.86f, 1f);
+        if (iconOnly) label.text = string.Empty;
+    }
+
+    private static void ConfigureSingleLine(TMP_Text text, float minimum, float maximum)
+    {
+        if (text == null) return;
+        text.enableAutoSizing = true;
+        text.fontSizeMin = minimum;
+        text.fontSizeMax = maximum;
+        text.enableWordWrapping = false;
+        text.overflowMode = TextOverflowModes.Ellipsis;
+        text.raycastTarget = false;
+    }
+
+    private void ConfigureBodyBounds()
+    {
+        if (scrollRect == null || scrollRect.viewport == null) return;
+        RectTransform scrollArea = scrollRect.transform as RectTransform;
+        RectTransform parent = scrollArea.parent as RectTransform;
+        if (parent == null) return;
+        Vector3[] corners = new Vector3[4];
+        scrollArea.GetWorldCorners(corners);
+        float top = parent.InverseTransformPoint(corners[1]).y;
+        float bottom = parent.InverseTransformPoint(corners[0]).y;
+        foreach (TMP_Text heading in new[] { versionText, publishDateText })
+        {
+            if (heading == null) continue;
+            heading.rectTransform.GetWorldCorners(corners);
+            top = Mathf.Min(top, parent.InverseTransformPoint(corners[0]).y - 12f);
+        }
+        if (scrollHintText != null)
+        {
+            scrollHintText.rectTransform.GetWorldCorners(corners);
+            bottom = Mathf.Max(bottom, parent.InverseTransformPoint(corners[1]).y + 12f);
+        }
+        if (top <= bottom + 80f) return;
+        float anchorY = Mathf.Lerp(parent.rect.yMin, parent.rect.yMax, scrollArea.anchorMax.y);
+        scrollArea.anchorMin = new Vector2(scrollArea.anchorMin.x, scrollArea.anchorMax.y);
+        scrollArea.pivot = new Vector2(scrollArea.pivot.x, 1f);
+        scrollArea.anchoredPosition = new Vector2(scrollArea.anchoredPosition.x, top - anchorY);
+        scrollArea.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, top - bottom);
     }
 
     private void BuildAnnouncementTypeGroups(AnnouncementItem[] items)
@@ -177,7 +323,7 @@ public sealed class AnnouncementPanelView : MonoBehaviour
             }
 
             string key = string.IsNullOrWhiteSpace(item.categoryKey) ? "SYSTEM" : item.categoryKey.Trim();
-            string name = string.IsNullOrWhiteSpace(item.categoryName) ? key : item.categoryName.Trim();
+            string name = string.IsNullOrWhiteSpace(item.categoryName) ? "游戏公告" : item.categoryName.Trim();
             AnnouncementTypeGroup group = null;
             for (int groupIndex = 0; groupIndex < announcementTypeGroups.Count; groupIndex++)
             {
@@ -380,6 +526,7 @@ public sealed class AnnouncementPanelView : MonoBehaviour
         }
 
         label.text = value ?? string.Empty;
+        ConfigureSingleLine(label, 16f, Mathf.Max(16f, label.fontSizeMax));
     }
 
     private void SelectAnnouncementType(int index)
@@ -403,9 +550,8 @@ public sealed class AnnouncementPanelView : MonoBehaviour
         AnnouncementTypeGroup group = announcementTypeGroups[index];
         selectedCategoryKey = group.key;
         AnnouncementItem firstItem = group.items.Count > 0 ? group.items[0] : null;
-        string announcementTitle = firstItem == null || string.IsNullOrEmpty(firstItem.title) ? group.name : firstItem.title;
-        SetText(titleText, announcementTitle);
-        SetText(versionText, announcementTitle);
+        SetText(titleText, "游戏公告");
+        SetText(versionText, firstItem == null ? string.Empty : firstItem.version);
         SetText(publishDateText, firstItem == null ? string.Empty : firstItem.publishDate);
         SetText(bodyText, BuildAnnouncementTypeBody(group));
         RefreshBodyScroll();
@@ -414,10 +560,18 @@ public sealed class AnnouncementPanelView : MonoBehaviour
     private void RefreshBodyScroll()
     {
         if (!isActiveAndEnabled || scrollRect == null || contentRoot == null || scrollRect.viewport == null) return;
+        Canvas.ForceUpdateCanvases();
         LayoutRebuilder.ForceRebuildLayoutImmediate(contentRoot);
         scrollRect.StopMovement();
         scrollRect.vertical = contentRoot.rect.height > scrollRect.viewport.rect.height + 0.5f;
+        if (scrollHintText != null) scrollHintText.gameObject.SetActive(scrollRect.vertical);
+        if (scrollRect.verticalScrollbar != null)
+        {
+            scrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
+            scrollRect.verticalScrollbar.gameObject.SetActive(scrollRect.vertical);
+        }
         scrollRect.verticalNormalizedPosition = 1f;
+        contentRoot.anchoredPosition = new Vector2(contentRoot.anchoredPosition.x, 0f);
     }
 
     private string BuildAnnouncementTypeBody(AnnouncementTypeGroup group)
@@ -426,9 +580,6 @@ public sealed class AnnouncementPanelView : MonoBehaviour
         {
             return "暂无公告内容";
         }
-
-        if (group.items.Count == 1 && titleText != null)
-            return group.items[0].body ?? string.Empty;
 
         StringBuilder builder = new StringBuilder();
         for (int index = 0; index < group.items.Count; index++)
@@ -449,7 +600,7 @@ public sealed class AnnouncementPanelView : MonoBehaviour
                 builder.Append(item.title);
             }
 
-            if (!string.IsNullOrEmpty(item.publishDate))
+            if (group.items.Count > 1 && !string.IsNullOrEmpty(item.publishDate))
             {
                 builder.Append("\n").Append(item.publishDate);
             }

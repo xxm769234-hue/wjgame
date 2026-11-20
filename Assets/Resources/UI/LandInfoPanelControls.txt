@@ -1,0 +1,26 @@
+# x, y-from-top, width, height
+ButtonPrimary=16,16,370,182
+ButtonSecondary=402,16,369,182
+ButtonDanger=787,16,370,182
+ButtonDisabled=1173,16,369,182
+ButtonCompact=1558,16,268,146
+ButtonSquare=16,214,201,200
+Close=233,214,158,158
+BadgeGreen=407,214,302,134
+BadgeBlue=725,214,301,134
+BadgeOrange=1042,214,302,134
+BadgeGray=1360,214,301,133
+StatusGreen=1677,214,328,178
+StatusOrange=16,430,330,178
+StatusBlue=362,430,328,178
+StatusGray=706,430,328,178
+ProgressEmpty=1050,430,375,88
+ProgressFill=1441,430,375,88
+Upgrade=1832,430,199,200
+Move=16,646,197,199
+AssignNpc=229,646,200,200
+Demolish=445,646,194,197
+Inspect=655,646,187,189
+Terrain=858,646,232,106
+Wheat=1106,646,166,197
+SyncDot=1288,646,104,103

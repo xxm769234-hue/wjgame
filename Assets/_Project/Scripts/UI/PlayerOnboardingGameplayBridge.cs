@@ -1,5 +1,8 @@
 using System;
+using System.Collections;
+using System.Reflection;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.Scripting;
 using UnityEngine.UI;
 
@@ -22,12 +25,90 @@ public sealed class PlayerOnboardingGameplayBridge : MonoBehaviour
     private string _focusedStep;
     private int _playerId;
     private string _token;
+    private bool _settlementLookupPending;
+    private float _nextSettlementLookupTime;
+    private int _settlementLookupVersion;
+    private static MethodInfo notifyBusinessSucceeded;
+
+    [Preserve]
+    public static bool OpenPage(string actionKey, int playerId, string token)
+    {
+        string sceneName;
+        switch (actionKey)
+        {
+            case "OPEN_HOME_MAP":
+            case "OPEN_LAND_PLACEMENT":
+            case "PLACE_LAND":
+            case "FOCUS_FREE_LAND":
+            case "OPEN_BUILDING_PANEL":
+            case "START_BUILDING":
+            case "FOCUS_BUILDING":
+            case "OPEN_PRODUCTION":
+            case "OPEN_SUPPLY":
+            case "OPEN_EXPANSION":
+            case "OPEN_NPC_SETTLEMENT":
+                sceneName = "Simulation management mode";
+                break;
+            case "OPEN_FORMATION":
+            case "OPEN_ADVENTURE":
+            case "OPEN_AFK":
+                sceneName = "Idle Adventure mode";
+                break;
+            default:
+                return false;
+        }
+        if (BackendGameService.Instance == null && Application.isPlaying && playerId > 0 && !string.IsNullOrEmpty(token)
+            && PlayerPrefs.GetInt("weijun.backend.playerId", 0) == playerId
+            && string.Equals(PlayerPrefs.GetString("weijun.backend.token", string.Empty), token, StringComparison.Ordinal))
+            BackendGameService.EnsureInstance();
+        if (!IsSessionCurrent(playerId, token)) return false;
+        if (SceneManager.GetActiveScene().name != sceneName)
+        {
+            if (!Application.CanStreamedLevelBeLoaded(sceneName)) return false;
+            SceneManager.LoadScene(sceneName);
+        }
+        return true;
+    }
+
+    [Preserve]
+    public static bool IsPresentationSuspended(string stepJson, int playerId, string token)
+    {
+        if (!IsSessionCurrent(playerId, token)) return false;
+        Step step = JsonUtility.FromJson<Step>(stepJson);
+        if (step == null || step.actionKey != "OPEN_ADVENTURE") return false;
+        IdleAdventureModeController controller = FindFirstObjectByType<IdleAdventureModeController>();
+        return controller != null && controller.IsOnboardingBattlePresentationActive;
+    }
+
+    public static void NotifyBusinessSucceeded()
+    {
+        if (notifyBusinessSucceeded == null)
+        {
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type manager = assembly.GetType("PlayerOnboardingManager", false);
+                if (manager == null) continue;
+                notifyBusinessSucceeded = manager.GetMethod("NotifyBusinessSucceeded", BindingFlags.Public | BindingFlags.Static);
+                break;
+            }
+        }
+        if (notifyBusinessSucceeded == null) return;
+        try { notifyBusinessSucceeded.Invoke(null, null); }
+        catch (Exception exception) { Debug.LogWarning("Onboarding refresh failed: " + exception.GetBaseException().Message); }
+    }
 
     /// <summary>Returns the actual UI control or a screen-space hit target over the selected world slot.</summary>
     [Preserve]
     public static RectTransform ResolveTarget(string stepJson, int playerId, string token)
     {
         if (!IsSessionCurrent(playerId, token)) return null;
+        Step step = JsonUtility.FromJson<Step>(stepJson);
+        if (step == null) return null;
+        if (step.actionKey == "OPEN_FORMATION" || step.actionKey == "OPEN_ADVENTURE" || step.actionKey == "OPEN_AFK")
+        {
+            IdleAdventureModeController controller = FindFirstObjectByType<IdleAdventureModeController>();
+            return controller != null ? controller.ResolveOnboardingTarget(step.actionKey) : null;
+        }
         MapManager map = MapManager.Instance;
         if (map == null || !map.isActiveAndEnabled || map.gameObject.scene.name != "Simulation management mode") return null;
         if (_instance == null)
@@ -36,11 +117,12 @@ public sealed class PlayerOnboardingGameplayBridge : MonoBehaviour
         {
             _instance._step = null;
             _instance._slot = null;
+            _instance._settlementLookupVersion++;
+            _instance._settlementLookupPending = false;
             _instance._playerId = playerId;
             _instance._token = token;
         }
-        Step step = JsonUtility.FromJson<Step>(stepJson);
-        return step == null ? null : _instance.Resolve(step);
+        return _instance.Resolve(step);
     }
 
     /// <summary>Client acknowledgements require an actually loaded HOME map or visible free slot.</summary>
@@ -57,15 +139,25 @@ public sealed class PlayerOnboardingGameplayBridge : MonoBehaviour
 
     private RectTransform Resolve(Step step)
     {
-        if (_step == null || _step.stepCode != step.stepCode)
+        if (_step == null || _step.stepCode != step.stepCode || _step.actionKey != step.actionKey)
         {
             _slot = null;
             _land = null;
             _focusedStep = null;
+            _settlementLookupVersion++;
+            _settlementLookupPending = false;
+            _nextSettlementLookupTime = 0f;
             if (_worldTarget != null) _worldTarget.gameObject.SetActive(false);
         }
         _step = step;
         if (!EnsureHomeMap()) return null;
+        if (step.actionKey == "OPEN_SUPPLY")
+        {
+            ProductionWorkTimePanel supply = FindFirstObjectByType<ProductionWorkTimePanel>();
+            return supply != null ? supply.ResolveOnboardingTarget() : null;
+        }
+        if (step.actionKey == "OPEN_PRODUCTION" || step.actionKey == "OPEN_EXPANSION" || step.actionKey == "OPEN_NPC_SETTLEMENT")
+            return ResolveFeatureTarget(step);
         if (step.stepCode == "OPEN_HOME_MAP") return null;
         bool freeLand = step.stepCode == "FOCUS_FREE_LAND" || step.stepCode == "PLACE_FARM_LAND";
         bool start = step.stepCode == "START_FARM_BUILD";
@@ -104,6 +196,85 @@ public sealed class PlayerOnboardingGameplayBridge : MonoBehaviour
         _placeButton.interactable = step.stepCode == "PLACE_FARM_LAND" && _land != null && BuildManager.Instance != null;
         UpdateWorldTarget();
         return _worldTarget;
+    }
+
+    private RectTransform ResolveFeatureTarget(Step step)
+    {
+        if (!MatchesFeatureSlot(_slot, step.actionKey))
+        {
+            _slot = null;
+            if (step.actionKey == "OPEN_NPC_SETTLEMENT")
+            {
+                if (!_settlementLookupPending && Time.unscaledTime >= _nextSettlementLookupTime)
+                    StartCoroutine(FindSettlementSlot());
+            }
+            else
+            {
+                foreach (LandSlotController candidate in FindObjectsOfType<LandSlotController>())
+                {
+                    if (!MatchesFeatureSlot(candidate, step.actionKey)) continue;
+                    if (_slot == null || candidate.SlotId < _slot.SlotId) _slot = candidate;
+                }
+            }
+        }
+        if (_slot == null) return null;
+        PlayerPrefs.SetInt("weijun.onboarding.slotId", _slot.SlotId);
+        FocusSlotOnce();
+        if (step.actionKey == "OPEN_EXPANSION")
+            return LandSlotPurchasePanel.EnsureInstance().ResolveOnboardingTarget(_slot);
+        if (step.actionKey == "OPEN_NPC_SETTLEMENT")
+            return LandInfoPanel.Instance != null ? LandInfoPanel.Instance.ResolveSettlementOnboardingTarget(_slot) : null;
+        EnsureWorldTarget();
+        _worldTarget.gameObject.SetActive(true);
+        _placeButton.interactable = _slot.HasResourceReady;
+        UpdateWorldTarget();
+        return _worldTarget;
+    }
+
+    private IEnumerator FindSettlementSlot()
+    {
+        _settlementLookupPending = true;
+        int version = _settlementLookupVersion;
+        int playerId = _playerId;
+        string token = _token;
+        BackendGameService service = BackendGameService.Instance;
+        LandSlotController[] candidates = FindObjectsOfType<LandSlotController>();
+        Array.Sort(candidates, (left, right) => left.SlotId.CompareTo(right.SlotId));
+        foreach (LandSlotController candidate in candidates)
+        {
+            if (!MatchesFeatureSlot(candidate, "OPEN_NPC_SETTLEMENT")) continue;
+            if (version != _settlementLookupVersion || !IsSessionCurrent(playerId, token)) yield break;
+            BackendResult<NpcResponse[]> result = null;
+            yield return service.GetAvailableNpcs(candidate, response => result = response);
+            if (version != _settlementLookupVersion || !IsSessionCurrent(playerId, token)) yield break;
+            if (result == null || !result.Success || result.Data == null) continue;
+            bool available = Array.Exists(result.Data, resident => resident != null && resident.playerNpcId > 0);
+            if (!available || !MatchesFeatureSlot(candidate, "OPEN_NPC_SETTLEMENT")) continue;
+            _slot = candidate;
+            _focusedStep = null;
+            break;
+        }
+        if (version != _settlementLookupVersion) yield break;
+        _settlementLookupPending = false;
+        _nextSettlementLookupTime = Time.unscaledTime + 10f;
+    }
+
+    private bool MatchesFeatureSlot(LandSlotController slot, string actionKey)
+    {
+        if (slot == null || !slot.gameObject.activeInHierarchy || slot.gameObject.scene != gameObject.scene) return false;
+        if (actionKey == "OPEN_PRODUCTION") return slot.IsBuildingCompleted && slot.HasResourceReady;
+        if (actionKey == "OPEN_NPC_SETTLEMENT") return slot.IsBuildingCompleted && !slot.HasNpc;
+        if (actionKey != "OPEN_EXPANSION" || slot.IsBuilt || !slot.IsPurificationAvailable || slot.PurificationItemAmount <= 0) return false;
+        BackendGameService service = BackendGameService.Instance;
+        if (service == null || service.CurrentInventory == null) return false;
+        foreach (InventoryItemResponse item in service.CurrentInventory)
+        {
+            if (item == null || item.quantity < slot.PurificationItemAmount) continue;
+            if (slot.PurificationItemId > 0 && item.itemId == slot.PurificationItemId
+                || !string.IsNullOrEmpty(slot.PurificationItemKey) && string.Equals(item.itemKey, slot.PurificationItemKey, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
 
     private bool MatchesSlot(LandSlotController slot, Context context, bool freeLand)
@@ -210,6 +381,13 @@ public sealed class PlayerOnboardingGameplayBridge : MonoBehaviour
 
     private void PlaceLand()
     {
+        if (_step != null && _step.actionKey == "OPEN_PRODUCTION" && IsHomeMapReady()
+            && MatchesFeatureSlot(_slot, _step.actionKey)
+            && PlayerOnboardingInputLock.IsInputAllowed("OPEN_PRODUCTION", "PRODUCTION_COLLECT"))
+        {
+            _slot.CollectReadyResource();
+            return;
+        }
         if (_step == null || _step.stepCode != "PLACE_FARM_LAND" || !IsHomeMapReady()
             || !MatchesSlot(_slot, _step.businessContext, true) || BuildManager.Instance == null) return;
         BuildManager.Instance.PlaceOnboardingLand(_slot, _land);
@@ -219,7 +397,8 @@ public sealed class PlayerOnboardingGameplayBridge : MonoBehaviour
     {
         if (_worldTarget == null) return;
         bool active = _step != null && PlayerPrefs.GetString("weijun.onboarding.stepCode", string.Empty) == _step.stepCode
-            && (_step.stepCode == "PLACE_FARM_LAND" || _step.stepCode == "FOCUS_FREE_LAND") && IsHomeMapReady();
+            && PlayerPrefs.GetString("weijun.onboarding.actionKey", string.Empty) == (_step.actionKey ?? string.Empty)
+            && (_step.stepCode == "PLACE_FARM_LAND" || _step.stepCode == "FOCUS_FREE_LAND" || _step.actionKey == "OPEN_PRODUCTION") && IsHomeMapReady();
         _worldTarget.gameObject.SetActive(active);
         if (active) UpdateWorldTarget();
     }
@@ -243,6 +422,7 @@ public sealed class PlayerOnboardingGameplayBridge : MonoBehaviour
     private sealed class Step
     {
         public string stepCode;
+        public string actionKey;
         public Context businessContext;
     }
 

@@ -49,42 +49,42 @@ public sealed class NpcManager : MonoBehaviour
         reason = string.Empty;
         if (slot == null)
         {
-            reason = "No selected land slot.";
+            reason = "未选择地块。";
             return false;
         }
         if (!slot.IsBuilt)
         {
-            reason = "Land must be placed before assigning an NPC.";
+            reason = "请先放置地块，再分配居民。";
             return false;
         }
         if (!slot.HasBuilding)
         {
-            reason = "Build a building before assigning an NPC.";
+            reason = "请先建造建筑，再分配居民。";
             return false;
         }
         if (!slot.IsBuildingCompleted)
         {
-            reason = "Wait for the building to complete before assigning an NPC.";
+            reason = "请等待建筑完成，再分配居民。";
             return false;
         }
         if (slot.HasNpc)
         {
-            reason = "This land already has an NPC.";
+            reason = "该地块已有居民。";
             return false;
         }
         if (config == null)
         {
-            reason = "NPC config is missing.";
+            reason = "暂时无法查看此居民，请重新打开列表。";
             return false;
         }
         if (!config.canAssign)
         {
-            reason = string.IsNullOrEmpty(config.disabledReason) ? "NPC is not available." : config.disabledReason;
+            reason = FrontendTextLocalization.NormalizePlayerMessage(config.disabledReason, "居民当前不可用。");
             return false;
         }
         if (!CanUseBuildingType(slot.CurrentBuilding, config.requiredBuildingType))
         {
-            reason = $"Requires building type: {config.requiredBuildingType}.";
+            reason = $"需要建筑：{FrontendTextLocalization.Normalize(config.requiredBuildingType)}。";
             return false;
         }
 
@@ -106,7 +106,7 @@ public sealed class NpcManager : MonoBehaviour
         {
             bool success = result != null && result.Success && result.Data != null;
             if (success) StoreRemoteAvailableNpcs(result.Data);
-            string message = result == null || string.IsNullOrEmpty(result.Message) ? "No backend response." : result.Message;
+            string message = result == null || string.IsNullOrEmpty(result.Message) ? "未收到服务器响应。" : result.Message;
             onComplete?.Invoke(success, message, remoteAvailableNpcs);
         });
     }
@@ -117,14 +117,14 @@ public sealed class NpcManager : MonoBehaviour
 
         if (!playerNpcIds.TryGetValue(config, out int playerNpcId) || playerNpcId <= 0)
         {
-            reason = "Backend player NPC id is missing.";
+            reason = "暂时无法分配此居民，请刷新列表。";
             return false;
         }
 
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated)
         {
-            reason = "Backend session is not authenticated.";
+            reason = "请先登录账号。";
             return false;
         }
 
@@ -142,22 +142,22 @@ public sealed class NpcManager : MonoBehaviour
         reason = string.Empty;
         if (slot == null)
         {
-            reason = "No selected land slot.";
+            reason = "未选择地块。";
             return false;
         }
         if (!slot.HasBuilding)
         {
-            reason = "No building on this land.";
+            reason = "该地块没有建筑。";
             return false;
         }
         if (!slot.IsBuildingCompleted)
         {
-            reason = "Wait for the building to complete before removing an NPC.";
+            reason = "请等待建筑完成，再移除居民。";
             return false;
         }
         if (!slot.HasNpc)
         {
-            reason = "No NPC is assigned to this building.";
+            reason = "该建筑未分配居民。";
             return false;
         }
 
@@ -171,7 +171,7 @@ public sealed class NpcManager : MonoBehaviour
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated)
         {
-            reason = "Backend session is not authenticated.";
+            reason = "请先登录账号。";
             return false;
         }
 
@@ -201,7 +201,7 @@ public sealed class NpcManager : MonoBehaviour
         NpcConfig config = ScriptableObject.CreateInstance<NpcConfig>();
         config.npcId = npcId;
         config.npcName = string.IsNullOrEmpty(npcName) ? npcCode : npcName;
-        config.role = produceBonusRate > 0f ? $"+{Mathf.RoundToInt(produceBonusRate * 100f)}% Production" : "Resident";
+        config.role = produceBonusRate > 0f ? $"+{Mathf.RoundToInt(produceBonusRate * 100f)}%产出" : "居民";
         config.description = npcCode;
         config.fallbackColor = new Color(0.34f, 0.66f, 0.96f, 1f);
         config.visualScale = 0.85f;
@@ -215,29 +215,29 @@ public sealed class NpcManager : MonoBehaviour
         reason = string.Empty;
         if (slot == null)
         {
-            reason = "No selected land slot.";
+            reason = "未选择地块。";
             return false;
         }
         if (!slot.HasBuilding)
         {
-            reason = "Build a building before assigning an NPC.";
+            reason = "请先建造建筑，再分配居民。";
             return false;
         }
         if (!slot.IsBuildingCompleted)
         {
-            reason = "Wait for the building to complete before assigning an NPC.";
+            reason = "请等待建筑完成，再分配居民。";
             return false;
         }
         if (slot.HasNpc)
         {
-            reason = "This land already has an NPC.";
+            reason = "该地块已有居民。";
             return false;
         }
 
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated)
         {
-            reason = "Backend session is not authenticated.";
+            reason = "请先登录账号。";
             return false;
         }
         return true;
@@ -269,7 +269,7 @@ public sealed class NpcManager : MonoBehaviour
         NpcConfig runtime = Instantiate(config);
         runtime.npcId = response.npcId;
         runtime.npcName = string.IsNullOrEmpty(response.name) ? config.npcName : response.name;
-        runtime.role = response.produceBonusRate > 0f ? $"+{Mathf.RoundToInt(response.produceBonusRate * 100f)}% Production" : config.role;
+        runtime.role = response.produceBonusRate > 0f ? $"+{Mathf.RoundToInt(response.produceBonusRate * 100f)}%产出" : config.role;
         runtime.description = response.npcCode;
         runtime.canAssign = true;
         return runtime;

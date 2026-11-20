@@ -18,6 +18,7 @@ public sealed class LandPreview : MonoBehaviour
     private LandSlotController hoveredSlot;
     private int landSlotMask;
     private bool completed;
+    private bool usesPaintBrush;
 
     private void Awake() => spriteRenderer = GetComponent<SpriteRenderer>();
 
@@ -36,7 +37,24 @@ public sealed class LandPreview : MonoBehaviour
             previewCollider.enabled = false;
         }
 
-        spriteRenderer.sprite = land.landSprite;
+        Sprite brush = LandPaintBrushCatalog.GetBrush(land);
+        usesPaintBrush = brush != null;
+        if (usesPaintBrush)
+        {
+            spriteRenderer.sprite = brush;
+            transform.localScale = Vector3.one * LandPaintBrushCatalog.GetPreviewScale(brush, worldCamera);
+        }
+        else
+        {
+            Sprite icon = LandTypeIconCatalog.GetIcon(land);
+            spriteRenderer.sprite = icon != null ? icon : land.landSprite;
+            transform.localScale = icon != null
+                ? Vector3.one * LandTypeIconCatalog.GetPreviewScale(
+                    land,
+                    icon,
+                    LandTypeIconCatalog.GetPreviewVisibleWorldHeight(worldCamera))
+                : Vector3.one;
+        }
         spriteRenderer.maskInteraction = SpriteMaskInteraction.None;
         spriteRenderer.sortingLayerName = previewSortingLayer;
         spriteRenderer.sortingOrder = sortingOrder;
@@ -46,9 +64,7 @@ public sealed class LandPreview : MonoBehaviour
 
     public void FollowPointer()
     {
-        if (completed || worldCamera == null
-            || (!PlayerOnboardingInputLock.IsTargetAllowed("FREE_LAND")
-                && !PlayerOnboardingInputLock.IsTargetAllowed("LAND_SLOT"))) return;
+        if (completed || worldCamera == null || PlayerOnboardingInputLock.IsLocked) return;
         Vector3 screen = Input.mousePosition;
         screen.z = Mathf.Abs(worldCamera.transform.position.z);
         Vector3 world = worldCamera.ScreenToWorldPoint(screen);
@@ -57,9 +73,7 @@ public sealed class LandPreview : MonoBehaviour
 
     public void RequestPlacement()
     {
-        if (completed
-            || (!PlayerOnboardingInputLock.IsTargetAllowed("FREE_LAND")
-                && !PlayerOnboardingInputLock.IsTargetAllowed("LAND_SLOT"))) return;
+        if (completed || PlayerOnboardingInputLock.IsLocked) return;
         completed = true;
         if (currentSlot != null && config != null) PlacementRequested?.Invoke(currentSlot, config);
         else Cancelled?.Invoke();
@@ -128,6 +142,11 @@ public sealed class LandPreview : MonoBehaviour
 
     private void SetValidVisual(bool valid)
     {
+        if (usesPaintBrush)
+        {
+            spriteRenderer.color = new Color(1f, 1f, 1f, valid ? 1f : Mathf.Clamp(alpha, 0.45f, 0.75f));
+            return;
+        }
         spriteRenderer.color = valid ? new Color(0.25f, 1f, 0.35f, alpha) : new Color(1f, 0.25f, 0.25f, alpha);
     }
 }

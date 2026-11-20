@@ -58,8 +58,8 @@ public partial class HomePageUI
     private string GetInventorySidebarHint()
     {
         return inventoryServerBacked
-            ? "服务器库存\n按正式报价出售"
-            : "本地奖励库存\n出售功能需账号数据";
+            ? "选择资源查看售价"
+            : "登录后可出售资源";
     }
 
     private string GetInventorySaleContextHint(InventoryItemResponse item)
@@ -108,7 +108,7 @@ public partial class HomePageUI
 
         if (!inventoryServerBacked || !HasAuthSession())
         {
-            inventoryStatusMessage = "玩家资源出售需要登录账号，并以服务器正式报价和库存为准";
+            inventoryStatusMessage = "请登录后出售资源";
             RenderInventoryPanel();
             return;
         }
@@ -122,7 +122,7 @@ public partial class HomePageUI
 
         if (resourceSaleOptionsLoading)
         {
-            inventoryStatusMessage = "正在读取服务器正式报价，请稍候";
+            inventoryStatusMessage = "正在查询售价，请稍候";
             RenderInventoryPanel();
             return;
         }
@@ -144,7 +144,7 @@ public partial class HomePageUI
         resourceSaleOptionsLoading = true;
         if (preserveDialogOnFailure && activeResourceSaleOption != null)
         {
-            resourceSaleQuoteStatus = "正在刷新服务器正式报价...";
+            resourceSaleQuoteStatus = "正在刷新售价...";
             RenderResourceSaleQuote(true);
         }
 
@@ -213,7 +213,7 @@ public partial class HomePageUI
             {
                 activeResourceSaleOption = null;
                 HideResourceSaleDialog();
-                SetResourceSaleInventoryStatus("该物品不在服务器当前允许出售的资源列表中");
+                SetResourceSaleInventoryStatus("此物品暂不可出售");
                 yield break;
             }
 
@@ -244,7 +244,7 @@ public partial class HomePageUI
             resourceSaleQuoteStatus = activeResourceSalePendingRetry
                 ? "检测到上次成交结果未确认，可使用原请求编号安全重试"
                 : string.IsNullOrEmpty(successStatus)
-                    ? $"报价版本 {resourceSaleOptions.configRevision}，额度日期 {resourceSaleOptions.usageDate}"
+                    ? string.Empty
                     : successStatus;
 
             bool selectedItemStillActive = string.Equals(
@@ -502,7 +502,7 @@ public partial class HomePageUI
 
         activeResourceSaleLotCount = nextLots;
         activeResourceSalePendingRetry = false;
-        resourceSaleQuoteStatus = $"报价版本 {resourceSaleOptions.configRevision}，请确认本次出售数量";
+        resourceSaleQuoteStatus = "请确认本次出售数量与所得金币";
         ClearPendingResourceSaleIntent();
         RenderResourceSaleQuote(false);
     }
@@ -537,7 +537,7 @@ public partial class HomePageUI
             && activeResourceSaleLotCount <= maximumLots;
         if (resourceSaleSubmissionBlocked || (!activeResourceSalePendingRetry && !matchesLiveLimits))
         {
-            resourceSaleQuoteStatus = "当前出售数量不符合服务器规则，请刷新报价后重试";
+            resourceSaleQuoteStatus = "出售数量已失效，请刷新售价后重试";
             RenderResourceSaleQuote(false);
             return;
         }
@@ -672,7 +672,7 @@ public partial class HomePageUI
             selectedInventoryItemKey = string.Empty;
         }
 
-        string replayText = result.replayed ? "（服务器返回原成交记录）" : string.Empty;
+        string replayText = result.replayed ? "（已确认上次成交，请勿重复出售）" : string.Empty;
         inventoryStatusMessage =
             $"{(string.IsNullOrWhiteSpace(message) ? "资源出售成功" : message)}：" +
             $"出售 {FormatResourceSaleQuantity(result.soldQuantity)} {sourceName}，" +
@@ -750,7 +750,7 @@ public partial class HomePageUI
         resourceSaleHistoryItems.Clear();
         resourceSaleHistoryNextCursor = 0;
         resourceSaleHistoryHasMore = false;
-        resourceSaleHistoryStatus = "正在读取服务器出售记录...";
+        resourceSaleHistoryStatus = "正在加载出售记录...";
         RenderResourceSaleHistory(true);
         StartCoroutine(GetResourceSaleHistory(true));
     }
@@ -909,8 +909,6 @@ public partial class HomePageUI
             builder.Append(time)
                 .Append("  ")
                 .Append(sourceName)
-                .Append("  #")
-                .Append(item.orderId)
                 .AppendLine();
             builder.Append("出售 ")
                 .Append(FormatResourceSaleQuantity(item.soldQuantity))

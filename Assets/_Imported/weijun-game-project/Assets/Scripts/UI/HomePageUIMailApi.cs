@@ -254,6 +254,7 @@ public partial class HomePageUI
 
         mailMutationRunning = false;
         SetStatus("附件领取成功，正在刷新邮件列表...");
+        PlayerOnboardingManager.NotifyBusinessSucceeded();
         yield return GetMailList();
     }
 
@@ -308,6 +309,7 @@ public partial class HomePageUI
 
         mailMutationRunning = false;
         SetStatus($"一键领取完成，共领取 {claimedCount} 封邮件附件。正在刷新列表...");
+        if (claimedCount > 0) PlayerOnboardingManager.NotifyBusinessSucceeded();
         yield return GetMailList();
     }
 

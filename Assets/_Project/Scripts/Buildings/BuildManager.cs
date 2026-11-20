@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>
 /// Owns the build session and preview lifetime. UI movement belongs to BuildPanelController.
@@ -25,6 +26,11 @@ public sealed class BuildManager : MonoBehaviour
         Instance = this;
         if (worldCamera == null) worldCamera = Camera.main;
         mapManager = MapManager.EnsureInstance();
+        GameObject buildButtonObject = GameObject.Find("BuildButton");
+        if (buildButtonObject != null)
+        {
+            SmallButtonIconUtility.ApplyIconButtonWithLabel(buildButtonObject.GetComponent<Button>(), "建造副", "建造");
+        }
     }
 
     private void OnDestroy()
@@ -34,12 +40,6 @@ public sealed class BuildManager : MonoBehaviour
 
     public void OnClickBuildButton()
     {
-        if (!PlayerOnboardingInputLock.IsTargetAllowed("BUILDING_FARM_CARD"))
-        {
-            Debug.LogWarning("Onboarding currently blocks this building entry.", this);
-            return;
-        }
-
         if (panelController == null) { Debug.LogError("BuildPanelController is not assigned.", this); return; }
         panelController.TogglePanel();
     }
@@ -47,7 +47,7 @@ public sealed class BuildManager : MonoBehaviour
     /// <summary>Called by a UI drag item. Replaces an unfinished preview safely.</summary>
     public LandPreview BeginDrag(LandConfig config)
     {
-        if (!PlayerOnboardingInputLock.IsInputAllowed("PLACE_FARM_LAND", "FREE_LAND"))
+        if (PlayerOnboardingInputLock.IsLocked)
         {
             Debug.LogWarning("Onboarding currently locks build input.", this);
             return null;
@@ -77,17 +77,19 @@ public sealed class BuildManager : MonoBehaviour
         return activePreview;
     }
 
-    /// <summary>Uses the normal placement transaction for the onboarding-selected slot and configuration.</summary>
     public void PlaceOnboardingLand(LandSlotController slot, LandConfig config)
     {
-        if (!PlayerOnboardingInputLock.IsTargetOnly || config == null || slot == null) return;
+        if (!PlayerOnboardingInputLock.IsTargetOnly || config == null || slot == null
+            || !(PlayerOnboardingInputLock.IsInputAllowed("OPEN_LAND_PLACEMENT", "LAND_BUILD_BUTTON")
+                || PlayerOnboardingInputLock.IsInputAllowed("PLACE_LAND", "HOME_FREE_LAND_SLOT")
+                || PlayerOnboardingInputLock.IsInputAllowed("PLACE_FARM_LAND", "FREE_LAND"))
+            || !PlayerOnboardingInputLock.IsSlotAllowed(slot)
+            || !PlayerOnboardingInputLock.IsConfigAllowed("land", config.landId)) return;
         HandlePlacementRequested(slot, config);
     }
 
     private void HandlePlacementRequested(LandSlotController slot, LandConfig config)
     {
-        if (!PlayerOnboardingInputLock.IsSlotAllowed(slot) || config == null
-            || !PlayerOnboardingInputLock.IsConfigAllowed("land", config.landId)) return;
         if (mapManager == null) mapManager = MapManager.EnsureInstance();
         string reason = "MapManager is missing.";
         if (mapManager == null || !mapManager.CanPlace(slot, config, out reason))
@@ -117,6 +119,7 @@ public sealed class BuildManager : MonoBehaviour
         {
             placementPending = false;
             if (!success) Debug.LogWarning($"Backend land placement failed: {message}", slot);
+            else PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
         });
         EndBuild(false);
     }

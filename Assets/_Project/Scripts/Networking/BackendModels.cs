@@ -1249,6 +1249,7 @@ public sealed class IdleAdventureBattleActionResponse
     public int action_order;
     public int round;
     public string action_type;
+    public string effect_type;
     public string actor_runtime_id;
     public string actor_name;
     public string target_runtime_id;
@@ -1258,11 +1259,34 @@ public sealed class IdleAdventureBattleActionResponse
     public long damage;
     public long target_health_before;
     public long target_health_after;
+    public int selected_group_seq;
+    public int[] selected_slots;
+    public long total_damage;
+    public long total_healed;
+    public IdleAdventureBattleTargetResponse[] targets;
+    [NonSerialized] public bool has_target_health_after = true;
     public IdleAdventureDamageFormulaResponse damage_formula;
     public IdleAdventureActiveBuffResponse[] applied_buffs;
     public string[] defeated_runtime_ids;
     public IdleAdventureAnimationResponse animation;
     public string log;
+}
+
+[Serializable]
+public sealed class IdleAdventureBattleTargetResponse
+{
+    public int slot_index;
+    public string runtime_id;
+    public string target_name;
+    public long health_before;
+    public long health_after;
+    public long damage;
+    public long healed_amount;
+    public bool defeated;
+    public string defender_attribute;
+    // JsonUtility cannot represent nullable numbers. The session decoder restores presence.
+    [NonSerialized] public bool has_health_after = true;
+    [NonSerialized] public bool has_defeated = true;
 }
 
 [Serializable]

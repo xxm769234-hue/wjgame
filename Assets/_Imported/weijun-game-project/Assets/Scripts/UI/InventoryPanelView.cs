@@ -77,6 +77,7 @@ public sealed class InventoryPanelView : MonoBehaviour
     private RectTransform slotContent;
     private GridLayoutGroup slotGrid;
     private ScrollRect slotScroll;
+    private ScrollRect detailDescriptionScroll;
     private readonly List<InventorySlotView> runtimeSlots = new List<InventorySlotView>();
 
     [Header("Item Quality Backgrounds")]
@@ -115,8 +116,8 @@ public sealed class InventoryPanelView : MonoBehaviour
     [SerializeField] private string inventoryTitle = "仓库";
     [SerializeField] private string inventorySubtitle = "领地物资与道具管理";
     [SerializeField] private string inventoryGridTitle = "物品栏";
-    [SerializeField] private string localInventoryHint = "本地奖励库存\n仅用于本地任务奖励";
-    [SerializeField] private string serverInventoryHint = "服务器库存\n按正式报价出售";
+    [SerializeField] private string localInventoryHint = "任务奖励物品\n点击物品查看详情";
+    [SerializeField] private string serverInventoryHint = "领地物资\n选择物品查看详情或出售";
     [SerializeField] private string emptyCategoryText = "暂无物品，请获取";
     [SerializeField] private string capacityFormat = "背包空间：{0:00}/{1}";
     [SerializeField] private string visibleCountFormat = "当前物品 {0} 件  已开放 {1} 格";
@@ -142,6 +143,19 @@ public sealed class InventoryPanelView : MonoBehaviour
         ResolveReferences();
         SetCategoriesVisible(false);
         EnsureResourceDetailPanel();
+    }
+
+    private void ApplyApprovedGridFrame()
+    {
+        GameObject frameObject = FindObject("InventoryGridFrame");
+        Image frame = frameObject != null ? frameObject.GetComponent<Image>() : null;
+        Sprite sprite = Resources.Load<Sprite>("UI/ApprovedUi/Panels/InventoryFrame");
+        if (frame == null || sprite == null) return;
+        frame.sprite = sprite;
+        frame.overrideSprite = null;
+        frame.type = Image.Type.Simple;
+        frame.preserveAspect = false;
+        frame.color = Color.white;
     }
 
     private void RemoveInventoryResourceBadges()
@@ -374,17 +388,21 @@ public sealed class InventoryPanelView : MonoBehaviour
 
     public void SetMode(bool serverBacked)
     {
+        ResolveReferences();
         SetText(titleText, inventoryTitle);
         SetText(subtitleText, inventorySubtitle);
         SetText(gridTitleText, inventoryGridTitle);
-        SetText(sidebarHintText, serverBacked ? serverInventoryHint : localInventoryHint);
+        string hint = serverBacked ? serverInventoryHint : localInventoryHint;
+        string defaultHint = serverBacked ? "领地物资\n选择物品查看详情或出售" : "任务奖励物品\n点击物品查看详情";
+        if (string.IsNullOrWhiteSpace(hint) || hint.Contains("服务器") || hint.Contains("本地")) hint = defaultHint;
+        SetText(sidebarHintText, FrontendTextLocalization.NormalizePlayerMessage(hint, defaultHint));
         SetText(emptyText, emptyCategoryText);
         SetCategoriesVisible(false);
     }
 
     public void SetSidebarHint(string value)
     {
-        SetText(sidebarHintText, value);
+        SetText(sidebarHintText, string.IsNullOrWhiteSpace(value) ? string.Empty : FrontendTextLocalization.NormalizePlayerMessage(value));
     }
 
     public void SetResourceValue(string key, int value)
@@ -524,7 +542,7 @@ public sealed class InventoryPanelView : MonoBehaviour
 
     public void SetStatus(string message)
     {
-        SetText(statusText, message ?? string.Empty);
+        SetText(statusText, string.IsNullOrWhiteSpace(message) ? string.Empty : FrontendTextLocalization.NormalizePlayerMessage(message));
     }
 
     public void SetEmptyVisible(bool visible)
@@ -544,7 +562,19 @@ public sealed class InventoryPanelView : MonoBehaviour
         SetText(detailNameText, string.IsNullOrEmpty(itemName) ? "资源详情" : itemName);
         SetText(detailTypeText, string.IsNullOrEmpty(itemType) ? "物品" : itemType);
         SetText(detailQuantityText, $"数量  {Mathf.Max(0, quantity)}");
-        SetText(detailDescriptionText, string.IsNullOrEmpty(description) ? "服务器物品配置未提供额外说明" : description);
+        SetText(detailDescriptionText, string.IsNullOrEmpty(description) ? "暂无物品说明" : description);
+        if (detailDescriptionScroll != null)
+        {
+            Canvas.ForceUpdateCanvases();
+            detailDescriptionScroll.StopMovement();
+            detailDescriptionScroll.verticalNormalizedPosition = 1f;
+            if (detailDescriptionScroll.content != null)
+            {
+                detailDescriptionScroll.content.anchoredPosition = new Vector2(detailDescriptionScroll.content.anchoredPosition.x, 0f);
+            }
+            Transform hint = detailRoot.Find("InventoryDetailScrollHint");
+            if (hint != null) hint.gameObject.SetActive(detailDescriptionScroll.content.rect.height > detailDescriptionScroll.viewport.rect.height + 1f);
+        }
     }
 
     public void HideResourceDetail()
@@ -846,6 +876,7 @@ public sealed class InventoryPanelView : MonoBehaviour
         contextTypeText = ResolveText(contextTypeText, "Type");
         contextHintText = ResolveText(contextHintText, "Hint");
         contextPrimaryLabel = ResolveText(contextPrimaryLabel, "Label");
+        ApplyApprovedGridFrame();
     }
 
     private TMP_Text ResolveText(TMP_Text current, string objectName)
@@ -902,11 +933,111 @@ public sealed class InventoryPanelView : MonoBehaviour
             root.GetComponent<Image>().color = new Color(0.30f, 0.15f, 0.05f, 0.96f);
         }
 
+        float widthChange = 360f - detailRoot.rect.width;
+        if (Mathf.Abs(widthChange) > 0.01f)
+        {
+            detailRoot.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 360f);
+            detailRoot.anchoredPosition += Vector2.right * widthChange * detailRoot.pivot.x;
+        }
+
         detailNameText = EnsureDetailText(detailNameText, "InventoryDetailName", "资源详情", 26, TextAlignmentOptions.Left);
         detailTypeText = EnsureDetailText(detailTypeText, "InventoryDetailType", "物品", 17, TextAlignmentOptions.Left);
         detailQuantityText = EnsureDetailText(detailQuantityText, "InventoryDetailQuantity", "数量  0", 19, TextAlignmentOptions.Left);
         detailDescriptionText = EnsureDetailText(detailDescriptionText, "InventoryDetailDescription", "点击物品查看详情", 16, TextAlignmentOptions.TopLeft);
+        ConfigureDetailHeading(detailNameText, 18f, 25f);
+        detailNameText.enableWordWrapping = true;
+        detailNameText.maxVisibleLines = 2;
+        ConfigureDetailHeading(detailTypeText, 14f, 18f);
+        ConfigureDetailHeading(detailQuantityText, 15f, 19f);
+        EnsureDetailDescriptionScroll();
+        SetDetailTextRegion(detailNameText.rectTransform, 24f, 24f, 22f, 54f);
+        SetDetailTextRegion(detailTypeText.rectTransform, 24f, 24f, 112f, 32f);
+        SetDetailTextRegion(detailQuantityText.rectTransform, 24f, 24f, 180f, 32f);
+        if (detailDescriptionScroll != null)
+        {
+            RectTransform viewport = detailDescriptionScroll.viewport;
+            viewport.anchorMin = Vector2.zero;
+            viewport.anchorMax = Vector2.one;
+            viewport.offsetMin = new Vector2(24f, 136f);
+            viewport.offsetMax = new Vector2(-24f, -254f);
+        }
+        TMP_Text scrollHint = detailRoot.Find("InventoryDetailScrollHint")?.GetComponent<TMP_Text>();
+        scrollHint = EnsureDetailText(scrollHint, "InventoryDetailScrollHint", "上下滑动查看说明", 16f, TextAlignmentOptions.Center);
+        scrollHint.color = new Color(0.44f, 0.34f, 0.25f, 1f);
+        scrollHint.enableWordWrapping = false;
+        scrollHint.rectTransform.anchorMin = new Vector2(0f, 0f);
+        scrollHint.rectTransform.anchorMax = new Vector2(1f, 0f);
+        scrollHint.rectTransform.pivot = new Vector2(0.5f, 0f);
+        scrollHint.rectTransform.offsetMin = new Vector2(24f, 101f);
+        scrollHint.rectTransform.offsetMax = new Vector2(-24f, 129f);
+        LoginCanvasStyle.ApplyDialogButton(contextSellButton, true);
+    }
+
+    private static void SetDetailTextRegion(RectTransform rect, float left, float right, float top, float height)
+    {
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = Vector2.one;
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.offsetMin = new Vector2(left, -top - height);
+        rect.offsetMax = new Vector2(-right, -top);
+    }
+
+    private static void ConfigureDetailHeading(TMP_Text text, float minimum, float maximum)
+    {
+        if (text == null) return;
+        text.enableAutoSizing = true;
+        text.fontSizeMin = minimum;
+        text.fontSizeMax = maximum;
+        text.enableWordWrapping = false;
+        text.overflowMode = TextOverflowModes.Ellipsis;
+        text.raycastTarget = false;
+    }
+
+    private void EnsureDetailDescriptionScroll()
+    {
+        if (detailDescriptionText == null || detailDescriptionScroll != null) return;
+        RectTransform content = detailDescriptionText.rectTransform;
+        GameObject viewportObject = new GameObject("InventoryDetailDescriptionViewport", typeof(RectTransform), typeof(Image), typeof(RectMask2D), typeof(ScrollRect));
+        RectTransform viewport = viewportObject.GetComponent<RectTransform>();
+        viewport.SetParent(content.parent, false);
+        viewport.SetSiblingIndex(content.GetSiblingIndex());
+        viewport.anchorMin = content.anchorMin;
+        viewport.anchorMax = content.anchorMax;
+        viewport.pivot = content.pivot;
+        viewport.anchoredPosition = content.anchoredPosition;
+        viewport.sizeDelta = content.sizeDelta;
+        viewport.localScale = content.localScale;
+        viewport.localRotation = content.localRotation;
+        viewportObject.GetComponent<Image>().color = Color.clear;
+        content.SetParent(viewport, false);
+        content.anchorMin = new Vector2(0f, 1f);
+        content.anchorMax = Vector2.one;
+        content.pivot = new Vector2(0.5f, 1f);
+        content.anchoredPosition = Vector2.zero;
+        content.sizeDelta = Vector2.zero;
+        content.localScale = Vector3.one;
+        content.localRotation = Quaternion.identity;
+        detailDescriptionText.enableAutoSizing = false;
+        detailDescriptionText.fontSize = 18f;
+        detailDescriptionText.color = new Color(0.29f, 0.22f, 0.16f, 1f);
+        detailDescriptionText.fontStyle = FontStyles.Normal;
+        detailDescriptionText.characterSpacing = 0f;
+        detailDescriptionText.lineSpacing = 3f;
+        detailDescriptionText.paragraphSpacing = 6f;
+        detailDescriptionText.alignment = TextAlignmentOptions.TopLeft;
         detailDescriptionText.enableWordWrapping = true;
+        detailDescriptionText.overflowMode = TextOverflowModes.Overflow;
+        detailDescriptionText.raycastTarget = false;
+        ContentSizeFitter fitter = content.GetComponent<ContentSizeFitter>();
+        if (fitter == null) fitter = content.gameObject.AddComponent<ContentSizeFitter>();
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        detailDescriptionScroll = viewportObject.GetComponent<ScrollRect>();
+        detailDescriptionScroll.viewport = viewport;
+        detailDescriptionScroll.content = content;
+        detailDescriptionScroll.horizontal = false;
+        detailDescriptionScroll.vertical = true;
+        detailDescriptionScroll.movementType = ScrollRect.MovementType.Clamped;
+        detailDescriptionScroll.scrollSensitivity = 24f;
     }
 
     private TMP_Text EnsureDetailText(TMP_Text current, string objectName, string value, float size, TextAlignmentOptions alignment)

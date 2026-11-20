@@ -31,6 +31,7 @@ public sealed class ResourceSaleDialogView : MonoBehaviour
     private Button maxButton;
     private Button submitButton;
     private Button closeButton;
+    private ScrollRect quoteStatusScroll;
 
     public bool EnsureBuilt(TMP_FontAsset fontAsset)
     {
@@ -41,6 +42,7 @@ public sealed class ResourceSaleDialogView : MonoBehaviour
 
         if (TryBindSceneLayout())
         {
+            ConfigureTextPresentation();
             initialized = true;
             return true;
         }
@@ -111,13 +113,21 @@ public sealed class ResourceSaleDialogView : MonoBehaviour
         }
 
         SetText(itemNameText, itemName);
-        SetText(ratioText, ratio);
+        SetText(ratioText, FormatRatio(itemName, ratio));
         SetText(limitsText, limits);
         SetText(lotCountText, lotCount);
         SetText(summaryText, summary);
-        SetText(quoteStatusText, status);
+        SetText(quoteStatusText, string.IsNullOrWhiteSpace(status) ? string.Empty : FrontendTextLocalization.NormalizePlayerMessage(status));
         SetText(submitButtonText, busy ? "正在提交..." : submitLabel);
         SetResourceIcon(sourceIconKey, itemName);
+        Canvas.ForceUpdateCanvases();
+        if (quoteStatusScroll != null)
+        {
+            quoteStatusScroll.StopMovement();
+            quoteStatusScroll.verticalNormalizedPosition = 1f;
+            if (quoteStatusScroll.content != null)
+                quoteStatusScroll.content.anchoredPosition = new Vector2(quoteStatusScroll.content.anchoredPosition.x, 0f);
+        }
 
         decreaseButton.interactable = !busy && canDecrease;
         increaseButton.interactable = !busy && canIncrease;
@@ -248,6 +258,179 @@ public sealed class ResourceSaleDialogView : MonoBehaviour
     private void SetResourceIcon(string sourceIconKey, string sourceName)
     {
         SetIcon(sourceItemIconImage, ResolveResourceIcon(sourceIconKey, sourceName));
+    }
+
+    private void ConfigureTextPresentation()
+    {
+        ConfigureQuoteLayout();
+        ConfigureLabel(itemNameText, 16f, 24f, false);
+        ConfigureLabel(ratioText, 17f, 20f, true);
+        ConfigureLabel(limitsText, 16f, 18f, true);
+        ConfigureLabel(lotCountText, 14f, 21f, false);
+        ConfigureLabel(summaryText, 14f, 18f, true);
+        ConfigureLabel(submitButtonText, 14f, 19f, false);
+        TMP_Text decreaseLabel = FindButtonText(decreaseButton);
+        TMP_Text increaseLabel = FindButtonText(increaseButton);
+        TMP_Text maxLabel = FindButtonText(maxButton);
+        TMP_Text closeLabel = FindButtonText(closeButton);
+        ConfigureLabel(decreaseLabel, 18f, 25f, false);
+        ConfigureLabel(increaseLabel, 18f, 25f, false);
+        ConfigureLabel(maxLabel, 13f, 17f, false);
+        ConfigureLabel(closeLabel, 22f, 30f, false);
+        SetButtonLabel(decreaseButton, "−");
+        SetButtonLabel(increaseButton, "+");
+        SetButtonLabel(maxButton, "最大");
+        SetButtonLabel(closeButton, "×");
+        if (itemNameText != null) itemNameText.gameObject.SetActive(true);
+        itemNameText.alignment = TextAlignmentOptions.MidlineLeft;
+        ratioText.alignment = TextAlignmentOptions.MidlineLeft;
+        SetStretch(ratioText.rectTransform, 0f, 12f, 4f, 4f);
+        SetStretch(limitsText.rectTransform, 28f, 28f, 6f, 6f);
+        sourceItemIconImage.preserveAspect = true;
+        sourceItemIconImage.raycastTarget = false;
+        sourceItemIconImage.transform.SetParent(quoteContent.transform, false);
+        SetTopLeft(sourceItemIconImage.rectTransform, new Vector2(26f, -28f), new Vector2(64f, 64f));
+        ApplyButtonArtwork(decreaseButton, "UI/ApprovedUi/Controls/08_minus", true);
+        ApplyButtonArtwork(increaseButton, "UI/ApprovedUi/Controls/07_plus", true);
+        ApplyButtonArtwork(maxButton, "UI/ApprovedUi/Controls/SecondaryButton", false);
+        ApplyButtonArtwork(submitButton, "UI/ApprovedUi/Panels/PrimaryButton", false);
+        ApplyButtonArtwork(closeButton, "UI/ApprovedUi/Panels/CloseButton", true);
+        Image quantityBackground = lotCountText.transform.parent.GetComponent<Image>();
+        if (quantityBackground != null)
+            quantityBackground.color = new Color(0.96f, 0.88f, 0.71f, 1f);
+        lotCountText.color = inkColor;
+        TMP_Text maxText = FindButtonText(maxButton);
+        if (maxText != null) maxText.color = inkColor;
+        if (summaryText != null) summaryText.color = inkColor;
+
+        if (quoteStatusScroll == null)
+        {
+            Transform panel = transform.Find("SaleDialogPanel");
+            RectTransform viewport = CreateImage("QuoteStatusViewport", quoteContent.transform, Color.clear);
+            SetTopLeft(viewport, new Vector2(42f, -294f),
+                new Vector2(Mathf.Max(240f, ((RectTransform)panel).rect.width - 386f), 72f));
+            viewport.gameObject.AddComponent<RectMask2D>();
+            if (quoteStatusText == null)
+                quoteStatusText = CreateText("Status", viewport, string.Empty, itemNameText.font, 14, FontStyle.Normal, inkColor, TextAnchor.UpperCenter);
+            else
+                quoteStatusText.transform.SetParent(viewport, false);
+            RectTransform content = quoteStatusText.rectTransform;
+            content.anchorMin = new Vector2(0f, 1f);
+            content.anchorMax = Vector2.one;
+            content.pivot = new Vector2(0.5f, 1f);
+            content.anchoredPosition = Vector2.zero;
+            content.sizeDelta = Vector2.zero;
+            quoteStatusText.enableAutoSizing = false;
+            quoteStatusText.fontSize = 16f;
+            quoteStatusText.color = new Color(0.42f, 0.33f, 0.24f, 1f);
+            quoteStatusText.enableWordWrapping = true;
+            quoteStatusText.alignment = TextAlignmentOptions.TopLeft;
+            quoteStatusText.overflowMode = TextOverflowModes.Overflow;
+            quoteStatusText.lineSpacing = 2f;
+            content.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+            quoteStatusScroll = viewport.gameObject.AddComponent<ScrollRect>();
+            quoteStatusScroll.viewport = viewport;
+            quoteStatusScroll.content = content;
+            quoteStatusScroll.horizontal = false;
+            quoteStatusScroll.vertical = true;
+            quoteStatusScroll.movementType = ScrollRect.MovementType.Clamped;
+            quoteStatusScroll.scrollSensitivity = 18f;
+        }
+    }
+
+    private void ConfigureQuoteLayout()
+    {
+        RectTransform panel = transform.Find("SaleDialogPanel") as RectTransform;
+        if (panel == null || quoteContent == null) return;
+        float width = panel.rect.width - 120f;
+        RectTransform header = panel.Find("Header") as RectTransform;
+        if (header != null)
+        {
+            SetTopLeft(header, new Vector2(60f, -56f), new Vector2(width, 50f));
+            TMP_Text title = FindText(header, "Title");
+            if (title != null)
+            {
+                SetStretch(title.rectTransform, 0f, 64f, 0f, 0f);
+                ConfigureLabel(title, 20f, 28f, false);
+            }
+            SetTopLeft(closeButton.GetComponent<RectTransform>(), new Vector2(width - 48f, 0f), new Vector2(48f, 48f));
+        }
+        SetStretch(quoteContent.GetComponent<RectTransform>(), 60f, 60f, 120f, 0f);
+        SetTopLeft(itemNameText.rectTransform, new Vector2(108f, -22f), new Vector2(Mathf.Max(160f, width - 128f), 34f));
+        SetTopLeft(ratioText.transform.parent as RectTransform, new Vector2(108f, -56f), new Vector2(width - 128f, 54f));
+        SetTopLeft(limitsText.transform.parent as RectTransform, new Vector2(0f, -120f), new Vector2(width, 48f));
+        TMP_Text lotLabel = FindText(quoteContent.transform, "LotLabel");
+        if (lotLabel != null) SetTopLeft(lotLabel.rectTransform, new Vector2(0f, -184f), new Vector2(130f, 44f));
+        SetTopLeft(decreaseButton.GetComponent<RectTransform>(), new Vector2(146f, -184f), new Vector2(48f, 44f));
+        SetTopLeft(lotCountText.transform.parent as RectTransform, new Vector2(204f, -184f), new Vector2(170f, 44f));
+        SetTopLeft(increaseButton.GetComponent<RectTransform>(), new Vector2(384f, -184f), new Vector2(48f, 44f));
+        SetTopLeft(maxButton.GetComponent<RectTransform>(), new Vector2(442f, -184f), new Vector2(86f, 44f));
+        SetTopLeft(summaryText.transform.parent as RectTransform, new Vector2(0f, -240f), new Vector2(width, 48f));
+        SetTopLeft(submitButton.GetComponent<RectTransform>(), new Vector2(width - 200f, -286f), new Vector2(200f, 54f));
+    }
+
+    private static string FormatRatio(string itemName, string ratio)
+    {
+        if (string.IsNullOrWhiteSpace(ratio) || string.IsNullOrWhiteSpace(itemName)) return ratio;
+        string trimmed = ratio.Trim();
+        return trimmed.StartsWith(itemName, System.StringComparison.Ordinal)
+            ? "每批 " + trimmed.Substring(itemName.Length).TrimStart()
+            : ratio;
+    }
+
+    private static void ApplyButtonArtwork(Button button, string resourcePath, bool iconOnly)
+    {
+        if (button == null) return;
+        Image image = button.GetComponent<Image>();
+        Sprite sprite = Resources.Load<Sprite>(resourcePath);
+        if (image == null || sprite == null) return;
+        image.sprite = sprite;
+        image.overrideSprite = null;
+        image.type = Image.Type.Simple;
+        image.preserveAspect = iconOnly;
+        image.color = Color.white;
+        button.targetGraphic = image;
+        button.transition = Selectable.Transition.ColorTint;
+        ColorBlock colors = button.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1f, 0.96f, 0.88f, 1f);
+        colors.pressedColor = new Color(0.82f, 0.72f, 0.60f, 1f);
+        colors.selectedColor = Color.white;
+        colors.disabledColor = new Color(0.65f, 0.63f, 0.60f, 0.65f);
+        button.colors = colors;
+        TMP_Text label = FindButtonText(button);
+        if (label == null) return;
+        label.color = new Color(1f, 0.96f, 0.86f, 1f);
+        if (iconOnly) label.text = string.Empty;
+    }
+
+    private static void SetButtonLabel(Button button, string value)
+    {
+        TMP_Text label = FindButtonText(button);
+        if (label == null) return;
+        label.gameObject.SetActive(true);
+        label.enabled = true;
+        TMP_FontAsset resolvedFont = RuntimeFontAssetProvider.Resolve();
+        if (resolvedFont != null) label.font = resolvedFont;
+        label.text = value;
+        label.color = Color.white;
+        label.alignment = TextAlignmentOptions.Center;
+        label.raycastTarget = false;
+        label.margin = Vector4.zero;
+        label.characterSpacing = 0f;
+        label.lineSpacing = 0f;
+        SetStretch(label.rectTransform, 2f, 2f, 2f, 2f);
+    }
+
+    private static void ConfigureLabel(TMP_Text text, float minimum, float maximum, bool wrap)
+    {
+        if (text == null) return;
+        text.enableAutoSizing = true;
+        text.fontSizeMin = minimum;
+        text.fontSizeMax = maximum;
+        text.enableWordWrapping = wrap;
+        text.overflowMode = TextOverflowModes.Ellipsis;
+        text.raycastTarget = false;
     }
 
     private static void SetIcon(Image image, Sprite sprite)

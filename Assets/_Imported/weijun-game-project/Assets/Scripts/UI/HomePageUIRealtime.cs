@@ -1315,7 +1315,7 @@ public partial class HomePageUI
             resumeRealtimeAfterPause = false;
             StartCoroutine(RefreshServerStamina());
             LoadPendingPaymentState();
-            StartCoroutine(RecoverPendingPaymentOrder("应用恢复前台，正在补查支付订单..."));
+            StartCoroutine(RecoverPendingPaymentOrder("正在查询支付结果..."));
             BeginRealtimeConnection();
         }
     }

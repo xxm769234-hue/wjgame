@@ -1,0 +1,41 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 998ba3725d154f84ab8a9b73c1b4cfe9, type: 3}
+  m_Name: PreviewIcons
+  m_EditorClassIdentifier:
+  icons:
+  - keys: [gold, 金币]
+    sprite: {fileID: 21300000, guid: ca956f9be0cdf034e810e51141693392, type: 3}
+  - keys: [diamond, crystal, bluecrystal, 钻石, 万能彩墨]
+    sprite: {fileID: 21300000, guid: 66dcc7baa3360674a902421ba72cfa17, type: 3}
+  - keys: [wood, 木材]
+    sprite: {fileID: 21300000, guid: b71ba1db322ee76489ebebbf34fcb945, type: 3}
+  - keys: [stone, 石材]
+    sprite: {fileID: 21300000, guid: c83bff13119fd9a4da90b0557990e42e, type: 3}
+  - keys: [iron, ore, 矿石, 铁矿]
+    sprite: {fileID: 21300000, guid: 6ceaa7f7accfe0a4fb3c76e45d6d7e52, type: 3}
+  - keys: [wheat, 小麦]
+    sprite: {fileID: 21300000, guid: 01b59d20cb6455f4db6e531efa23b3c9, type: 3}
+  - keys: [fish, 鱼]
+    sprite: {fileID: 21300000, guid: 7fec9ea32a82a3d49a2bc5b2283decd9, type: 3}
+  - keys: [meat, 肉]
+    sprite: {fileID: 21300000, guid: 109c99aa393ddd64ea8a64f57b4ee9e5, type: 3}
+  - keys: [bread, food, 面包, 食物]
+    sprite: {fileID: 21300000, guid: 49fdb2e99fb9f6d4bbcb8d43c456320f, type: 3}
+  - keys: [metal, 金属]
+    sprite: {fileID: 21300000, guid: 2201f5ac6bfe83642946e4d2bf417277, type: 3}
+  - keys: [stamina, 体力]
+    sprite: {fileID: 21300000, guid: 29a926e7641d7594ebf6690ce400fdb3, type: 3}
+  - keys: [purificationagent, purification_agent, 净化剂]
+    sprite: {fileID: 21300000, guid: 1b6d1292f73dd8247bda39968f7990a1, type: 3}
+  - keys: [chest, 宝箱]
+    sprite: {fileID: 21300000, guid: 0325ca3390337b248bf5d0793818a703, type: 3}

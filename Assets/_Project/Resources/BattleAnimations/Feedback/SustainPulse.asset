@@ -1,0 +1,45 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 201f0ee8395392343b511a44f8ef8d2f, type: 3}
+  m_Name: SustainPulse
+  m_EditorClassIdentifier: 
+  priority: 10
+  hitStop: 0
+  shakePixels: 1.8
+  shakeDuration: 0.14
+  shakeMode: 1
+  recoilPixels: 0.9
+  recoilAttack: 0.04
+  recoilReturn: 0.08
+  recoilMode: 1
+  horizontalRecoil: 1
+  flashAmount: 0.32
+  flashColor: {r: 1, g: 0.12, b: 0.16, a: 1}
+  flashDuration: 0.04
+  afterglowDuration: 0.08
+  afterglowAmount: 0.1
+  afterglowColor: {r: 1, g: 0.35, b: 0.38, a: 1}
+  flashBodyFraction: 0.625
+  sparkPixels: 20
+  sparkDuration: 0.14
+  sparkWidthPixels: 3
+  sparkRayWidthPixels: 1.8
+  contactColor: {r: 0.45, g: 0.86, b: 1, a: 1}
+  contactGain: 0.25
+  windupSounds: []
+  contactSounds:
+  - {fileID: 8300000, guid: 2417c835a8d35e3f90e9ed12f6cd23bb, type: 3}
+  - {fileID: 8300000, guid: f242df24558658d8b613d571f07273c6, type: 3}
+  - {fileID: 8300000, guid: 6308e2f413f051cd90a0337d8fd19b7d, type: 3}
+  tailSounds: []
+  sustainSound: {fileID: 0}
+  windupLead: 0.12

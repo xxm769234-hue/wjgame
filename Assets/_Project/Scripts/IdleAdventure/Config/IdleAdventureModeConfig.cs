@@ -4,7 +4,7 @@ using UnityEngine;
 [Serializable]
 public sealed class IdleAdventureCombatantDefinition
 {
-    [SerializeField] private string combatantName = "Combatant";
+    [SerializeField] private string combatantName = "角色";
     [SerializeField, Min(1)] private int maxHealth = 100;
     [SerializeField, Min(0)] private int attack = 10;
     [SerializeField, Min(0)] private int defense = 0;
@@ -49,7 +49,7 @@ public sealed class IdleAdventureCombatantDefinition
 public sealed class IdleAdventureBuffDefinition
 {
     [SerializeField] private string buffId = "battle_buff";
-    [SerializeField] private string displayName = "Battle Buff";
+    [SerializeField] private string displayName = "战斗增益";
     [SerializeField] private IdleAdventureBuffCategory category = IdleAdventureBuffCategory.Benefit;
     [SerializeField] private IdleAdventureBuffSource source = IdleAdventureBuffSource.CharacterSkill;
     [SerializeField] private IdleAdventureBuffEffectType effectType = IdleAdventureBuffEffectType.NormalDamage;
@@ -101,7 +101,7 @@ public sealed class IdleAdventureBuffDefinition
 public sealed class IdleAdventureFieldBuffDefinition
 {
     [SerializeField] private string buffId = "field_buff";
-    [SerializeField] private string displayName = "Field Buff";
+    [SerializeField] private string displayName = "场地增益";
     [SerializeField] private IdleAdventureBuffCategory category = IdleAdventureBuffCategory.Benefit;
     [SerializeField] private bool affectFriendlies = true;
     [SerializeField] private bool affectEnemies = true;
@@ -156,7 +156,7 @@ public sealed class IdleAdventureAttributeRestraintDefinition
 public sealed class IdleAdventureRewardItemDefinition
 {
     [SerializeField] private string itemKey = "gold";
-    [SerializeField] private string displayName = "Gold";
+    [SerializeField] private string displayName = "金币";
     [SerializeField, Min(1)] private int quantity = 100;
 
     public IdleAdventureRewardItemDefinition()
@@ -226,44 +226,44 @@ public sealed class IdleAdventureModeConfig : ScriptableObject
     [Header("Default Lineups")]
     [SerializeField] private IdleAdventureCombatantDefinition[] friendlyLineup =
     {
-        new IdleAdventureCombatantDefinition("Hero 1", 160, 28, 5, 18, IdleAdventureDamageAttribute.Fire, new[]
+        new IdleAdventureCombatantDefinition("我方角色 1", 160, 28, 5, 18, IdleAdventureDamageAttribute.Fire, new[]
         {
-            new IdleAdventureSkillDefinition("Power Strike", 2, 1.35f, IdleAdventureDamageAttribute.Fire),
-            new IdleAdventureSkillDefinition("Battle Focus", 3, 1f, IdleAdventureDamageAttribute.Fire, 0)
+            new IdleAdventureSkillDefinition("强力一击", 2, 1.35f, IdleAdventureDamageAttribute.Fire),
+            new IdleAdventureSkillDefinition("战斗专注", 3, 1f, IdleAdventureDamageAttribute.Fire, 0)
         }),
-        new IdleAdventureCombatantDefinition("Hero 2", 174, 31, 6, 17, IdleAdventureDamageAttribute.Water, new[]
+        new IdleAdventureCombatantDefinition("我方角色 2", 174, 31, 6, 17, IdleAdventureDamageAttribute.Water, new[]
         {
-            new IdleAdventureSkillDefinition("Piercing Hit", 2, 1.25f, IdleAdventureDamageAttribute.Water),
-            new IdleAdventureSkillDefinition("Guard Break", 3, 1f, IdleAdventureDamageAttribute.Water, -1, 1)
+            new IdleAdventureSkillDefinition("穿刺打击", 2, 1.25f, IdleAdventureDamageAttribute.Water),
+            new IdleAdventureSkillDefinition("破甲", 3, 1f, IdleAdventureDamageAttribute.Water, -1, 1)
         }),
-        new IdleAdventureCombatantDefinition("Hero 3", 188, 34, 7, 16, IdleAdventureDamageAttribute.Wood, new[]
+        new IdleAdventureCombatantDefinition("我方角色 3", 188, 34, 7, 16, IdleAdventureDamageAttribute.Wood, new[]
         {
-            new IdleAdventureSkillDefinition("Heavy Blow", 2, 1.45f, IdleAdventureDamageAttribute.Wood),
-            new IdleAdventureSkillDefinition("Quick Tempo", 3, 1f, IdleAdventureDamageAttribute.Wood, 0)
+            new IdleAdventureSkillDefinition("重击", 2, 1.45f, IdleAdventureDamageAttribute.Wood),
+            new IdleAdventureSkillDefinition("迅捷节奏", 3, 1f, IdleAdventureDamageAttribute.Wood, 0)
         })
     };
 
     [SerializeField] private IdleAdventureCombatantDefinition[] enemyLineup =
     {
-        new IdleAdventureCombatantDefinition("Enemy 1", 95, 15, 1, 15, IdleAdventureDamageAttribute.Wood, new[] { new IdleAdventureSkillDefinition("Claw", 2, 1.2f, IdleAdventureDamageAttribute.Wood) }),
-        new IdleAdventureCombatantDefinition("Enemy 2", 107, 17, 1, 14, IdleAdventureDamageAttribute.Fire, new[] { new IdleAdventureSkillDefinition("Rend", 2, 1.15f, IdleAdventureDamageAttribute.Fire) }),
-        new IdleAdventureCombatantDefinition("Enemy 3", 119, 19, 2, 13, IdleAdventureDamageAttribute.Earth, new[] { new IdleAdventureSkillDefinition("Intimidate", 3, 1f, IdleAdventureDamageAttribute.Earth, -1, 1) }),
-        new IdleAdventureCombatantDefinition("Enemy 4", 131, 21, 2, 12, IdleAdventureDamageAttribute.Water, new[] { new IdleAdventureSkillDefinition("Claw", 2, 1.2f, IdleAdventureDamageAttribute.Water) }),
-        new IdleAdventureCombatantDefinition("Enemy 5", 143, 23, 3, 11, IdleAdventureDamageAttribute.Light, new[] { new IdleAdventureSkillDefinition("Rend", 2, 1.15f, IdleAdventureDamageAttribute.Light) }),
-        new IdleAdventureCombatantDefinition("Enemy 6", 155, 25, 3, 10, IdleAdventureDamageAttribute.Dark, new[] { new IdleAdventureSkillDefinition("Intimidate", 3, 1f, IdleAdventureDamageAttribute.Dark, -1, 1) })
+        new IdleAdventureCombatantDefinition("敌人 1", 95, 15, 1, 15, IdleAdventureDamageAttribute.Wood, new[] { new IdleAdventureSkillDefinition("利爪", 2, 1.2f, IdleAdventureDamageAttribute.Wood) }),
+        new IdleAdventureCombatantDefinition("敌人 2", 107, 17, 1, 14, IdleAdventureDamageAttribute.Fire, new[] { new IdleAdventureSkillDefinition("撕裂", 2, 1.15f, IdleAdventureDamageAttribute.Fire) }),
+        new IdleAdventureCombatantDefinition("敌人 3", 119, 19, 2, 13, IdleAdventureDamageAttribute.Earth, new[] { new IdleAdventureSkillDefinition("威吓", 3, 1f, IdleAdventureDamageAttribute.Earth, -1, 1) }),
+        new IdleAdventureCombatantDefinition("敌人 4", 131, 21, 2, 12, IdleAdventureDamageAttribute.Water, new[] { new IdleAdventureSkillDefinition("利爪", 2, 1.2f, IdleAdventureDamageAttribute.Water) }),
+        new IdleAdventureCombatantDefinition("敌人 5", 143, 23, 3, 11, IdleAdventureDamageAttribute.Light, new[] { new IdleAdventureSkillDefinition("撕裂", 2, 1.15f, IdleAdventureDamageAttribute.Light) }),
+        new IdleAdventureCombatantDefinition("敌人 6", 155, 25, 3, 10, IdleAdventureDamageAttribute.Dark, new[] { new IdleAdventureSkillDefinition("威吓", 3, 1f, IdleAdventureDamageAttribute.Dark, -1, 1) })
     };
 
     [Header("Buff Presets")]
     [SerializeField] private IdleAdventureBuffDefinition[] buffPresets =
     {
-        new IdleAdventureBuffDefinition("normal_damage_up", "Damage Up", IdleAdventureBuffCategory.Benefit, IdleAdventureBuffSource.CharacterSkill, IdleAdventureBuffEffectType.NormalDamage, 3, 0, 0, 0, 0.15f, 0f, IdleAdventureDamageAttribute.None),
-        new IdleAdventureBuffDefinition("fire_damage_down", "Fire Damage Down", IdleAdventureBuffCategory.Detriment, IdleAdventureBuffSource.CharacterSkill, IdleAdventureBuffEffectType.AttributeDamage, 3, 0, 0, 0, 0f, -0.15f, IdleAdventureDamageAttribute.Fire)
+        new IdleAdventureBuffDefinition("normal_damage_up", "伤害提升", IdleAdventureBuffCategory.Benefit, IdleAdventureBuffSource.CharacterSkill, IdleAdventureBuffEffectType.NormalDamage, 3, 0, 0, 0, 0.15f, 0f, IdleAdventureDamageAttribute.None),
+        new IdleAdventureBuffDefinition("fire_damage_down", "火焰伤害降低", IdleAdventureBuffCategory.Detriment, IdleAdventureBuffSource.CharacterSkill, IdleAdventureBuffEffectType.AttributeDamage, 3, 0, 0, 0, 0f, -0.15f, IdleAdventureDamageAttribute.Fire)
     };
 
     [Header("Field Buffs")]
     [SerializeField] private IdleAdventureFieldBuffDefinition[] fieldBuffs =
     {
-        new IdleAdventureFieldBuffDefinition("fire_field_up", "Fire Field Up", IdleAdventureBuffCategory.Benefit, true, true, IdleAdventureDamageAttribute.Fire, 0.15f)
+        new IdleAdventureFieldBuffDefinition("fire_field_up", "火焰领域提升", IdleAdventureBuffCategory.Benefit, true, true, IdleAdventureDamageAttribute.Fire, 0.15f)
     };
 
     [Header("Attribute Restraints")]
@@ -282,33 +282,33 @@ public sealed class IdleAdventureModeConfig : ScriptableObject
     {
         new IdleAdventureStageRewardDefinition(1, new[]
         {
-            new IdleAdventureRewardItemDefinition("gold", "Gold", 120),
-            new IdleAdventureRewardItemDefinition("adventure_token", "Adventure Token", 1)
+            new IdleAdventureRewardItemDefinition("gold", "金币", 120),
+            new IdleAdventureRewardItemDefinition("adventure_token", "远征令牌", 1)
         }),
         new IdleAdventureStageRewardDefinition(2, new[]
         {
-            new IdleAdventureRewardItemDefinition("gold", "Gold", 180),
-            new IdleAdventureRewardItemDefinition("wood", "Wood", 60),
-            new IdleAdventureRewardItemDefinition("adventure_token", "Adventure Token", 1)
+            new IdleAdventureRewardItemDefinition("gold", "金币", 180),
+            new IdleAdventureRewardItemDefinition("wood", "木材", 60),
+            new IdleAdventureRewardItemDefinition("adventure_token", "远征令牌", 1)
         }),
         new IdleAdventureStageRewardDefinition(3, new[]
         {
-            new IdleAdventureRewardItemDefinition("gold", "Gold", 260),
-            new IdleAdventureRewardItemDefinition("stone", "Stone", 80),
-            new IdleAdventureRewardItemDefinition("adventure_token", "Adventure Token", 2)
+            new IdleAdventureRewardItemDefinition("gold", "金币", 260),
+            new IdleAdventureRewardItemDefinition("stone", "石材", 80),
+            new IdleAdventureRewardItemDefinition("adventure_token", "远征令牌", 2)
         }),
         new IdleAdventureStageRewardDefinition(4, new[]
         {
-            new IdleAdventureRewardItemDefinition("gold", "Gold", 360),
-            new IdleAdventureRewardItemDefinition("iron", "Iron", 80),
-            new IdleAdventureRewardItemDefinition("adventure_token", "Adventure Token", 2)
+            new IdleAdventureRewardItemDefinition("gold", "金币", 360),
+            new IdleAdventureRewardItemDefinition("iron", "铁矿", 80),
+            new IdleAdventureRewardItemDefinition("adventure_token", "远征令牌", 2)
         }),
         new IdleAdventureStageRewardDefinition(5, new[]
         {
-            new IdleAdventureRewardItemDefinition("gold", "Gold", 480),
-            new IdleAdventureRewardItemDefinition("stone", "Stone", 120),
-            new IdleAdventureRewardItemDefinition("iron", "Iron", 100),
-            new IdleAdventureRewardItemDefinition("adventure_token", "Adventure Token", 3)
+            new IdleAdventureRewardItemDefinition("gold", "金币", 480),
+            new IdleAdventureRewardItemDefinition("stone", "石材", 120),
+            new IdleAdventureRewardItemDefinition("iron", "铁矿", 100),
+            new IdleAdventureRewardItemDefinition("adventure_token", "远征令牌", 3)
         })
     };
 

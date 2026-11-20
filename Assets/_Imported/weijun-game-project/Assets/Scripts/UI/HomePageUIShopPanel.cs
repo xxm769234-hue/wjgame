@@ -58,7 +58,7 @@ public partial class HomePageUI
         HomePageScenePanel panel = OpenRegisteredScenePanel(HomePageScenePanelType.Shop);
         if (panel == null)
         {
-            SetLeftContent("商城", "商城场景组件尚未生成，请在 Unity 中执行 Tools/WeiJun UI/Rebuild Home Scene Panels。", "商城场景组件未找到");
+            SetLeftContent("商城", "商城暂时无法打开，请稍后重试。", "商城暂不可用");
             return;
         }
 
@@ -74,12 +74,12 @@ public partial class HomePageUI
             coinShopCatalog = null;
             coinShopProducts = new CoinShopProductResponse[0];
             shopPurchaseSummary = "商城仅对已登录玩家开放";
-            shopStatusMessage = "请登录账号后读取服务器商城";
+            shopStatusMessage = "请登录后查看商城";
             RenderShopScenePanel();
             return;
         }
 
-        shopPurchaseSummary = "正在读取服务器商品目录";
+        shopPurchaseSummary = "正在加载商品...";
         shopStatusMessage = "正在读取金币商城...";
         RenderShopScenePanel();
         StartCoroutine(GetCoinShopCatalog("金币商城目录已同步"));
@@ -95,9 +95,9 @@ public partial class HomePageUI
 
         Transform root = panel.PanelRoot;
         string currencyLabel = GetActiveShopCurrencyLabel();
-        SetSceneText(root, "ShopSubtitle", "使用" + currencyLabel + "购买服务器商品");
+        SetSceneText(root, "ShopSubtitle", "使用" + currencyLabel + "兑换补给");
         SetSceneText(root, "ShopSidebarNoteTitle", "商城规则");
-        SetSceneText(root, "ShopSidebarNoteText", "商品、价格和限额\n均由服务器结算\n\n金币与钻石独立结算");
+        SetSceneText(root, "ShopSidebarNoteText", string.Empty);
         long goldBalance = IsDiamondShopActive()
             ? PlayerPrefs.GetInt("Gold", 0)
             : (coinShopCatalog == null ? PlayerPrefs.GetInt("Gold", 0) : coinShopCatalog.goldBalance);
@@ -275,12 +275,12 @@ public partial class HomePageUI
         {
             SetSceneText(root, "ShopDetailIconText", "商");
             SetSceneText(root, "ShopDetailName", coinShopCatalogLoading ? "正在读取商品" : "暂无商品");
-            SetSceneText(root, "ShopDetailDescription", coinShopCatalogLoading ? "请稍候..." : "当前分类没有可购买的服务器商品");
+            SetSceneText(root, "ShopDetailDescription", coinShopCatalogLoading ? "请稍候..." : "当前分类暂无商品");
             SetSceneText(root, "ShopDetailReward", "购买内容  --");
             SetSceneText(root, "ShopDetailPrice", GetActiveShopCurrencyLabel() + "价格  --");
             SetSceneText(root, "ShopPurchaseSummary", shopPurchaseSummary);
             SetSceneText(root, "ShopOwnedCount", "背包数量  --");
-            SetSceneText(root, "ShopStorageModeText", HasAuthSession() ? "商品和限购以服务器为准" : "登录后可购买");
+            SetSceneText(root, "ShopStorageModeText", HasAuthSession() ? string.Empty : "登录后可购买");
             ConfigureCoinShopLotControls(root, null);
             ConfigureCoinShopBuyButton(buyButton, false);
             return;
@@ -302,7 +302,7 @@ public partial class HomePageUI
         SetSceneText(root, "ShopDetailIconText", GetCoinShopIconText(product));
         ConfigureShopProductIcon(root, product, "ShopDetailIcon", "ShopDetailIconText");
         SetSceneText(root, "ShopDetailName", productName);
-        SetSceneText(root, "ShopDetailDescription", string.IsNullOrEmpty(product.description) ? "服务器正式发布商品" : product.description);
+        SetSceneText(root, "ShopDetailDescription", product.description ?? string.Empty);
         SetSceneText(root, "ShopDetailReward", "购买内容  " + GetCoinShopRewardName(product) + " x" + totalReward);
         SetSceneText(root, "ShopDetailPrice", GetActiveShopCurrencyLabel() + " " + totalCost + "  (" + pricePerLot + "/批)");
         SetSceneText(root, "ShopPurchaseSummary", shopPurchaseSummary);
@@ -354,7 +354,7 @@ public partial class HomePageUI
 
         if (count != null)
         {
-            count.text = product == null ? "批次 --" : "批次 " + selectedCoinShopLotCount;
+            count.text = product == null ? "数量 --" : "数量 " + selectedCoinShopLotCount;
         }
         if (decrease != null)
         {
@@ -436,7 +436,7 @@ public partial class HomePageUI
         selectedCoinShopProductId = 0;
         selectedCoinShopLotCount = 0;
         shopDetailVisible = false;
-        shopPurchaseSummary = "选择商品后可按服务器规则调整购买批次";
+        shopPurchaseSummary = "选择商品和购买数量";
         RenderShopScenePanel();
     }
 
@@ -459,7 +459,7 @@ public partial class HomePageUI
     {
         if (!HasAuthSession())
         {
-            shopStatusMessage = "请登录账号后读取服务器商城";
+            shopStatusMessage = "请登录后查看商城";
             shopPurchaseSummary = "商城仅对已登录玩家开放";
             RenderShopScenePanel();
             return;
@@ -510,7 +510,7 @@ public partial class HomePageUI
                     : GetApiError(response);
                 if (apiPrefix == "/diamond-shop" && request.responseCode == 404)
                 {
-                    catalogError = "钻石商城 V41 后端接口尚未部署";
+                    catalogError = "钻石商城暂未开放";
                 }
                 shopStatusMessage = "商城目录读取失败：" + catalogError;
                 RenderShopScenePanel();
@@ -536,10 +536,10 @@ public partial class HomePageUI
         }
 
         shopPurchaseSummary = coinShopCatalog.enabled
-            ? "商品价格、每日额度和可购买批次均以服务器目录为准"
+            ? string.Empty
             : currencyLabel + "商城当前未开放";
         shopStatusMessage = string.IsNullOrEmpty(completionMessage)
-            ? (coinShopCatalog.enabled ? currencyLabel + "商城目录已同步" : currencyLabel + "商城当前未开放")
+            ? (coinShopCatalog.enabled ? string.Empty : currencyLabel + "商城当前未开放")
             : completionMessage;
         RenderShopScenePanel();
     }
@@ -562,7 +562,7 @@ public partial class HomePageUI
         long lotCount = ClampCoinShopLots(product, selectedCoinShopLotCount);
         if (lotCount < product.minLotsPerOrder || lotCount > product.maxPurchasableLots)
         {
-            shopStatusMessage = "购买批次数量不符合当前规则";
+            shopStatusMessage = "购买数量已失效，请刷新商品后重试";
             RenderShopScenePanel();
             return;
         }
@@ -570,7 +570,7 @@ public partial class HomePageUI
         CoinShopPendingPurchase pending = LoadPendingCoinShopPurchase();
         if (pending != null && !IsSameCoinShopPurchase(pending, product.productId, lotCount, coinShopCatalog.configRevision))
         {
-            shopPurchaseSummary = "上次购买结果未知，请先对同一商品和批次重试，不能覆盖幂等请求";
+            shopPurchaseSummary = "上次购买结果尚未确认，请保持原商品和数量，点击重试查询本次结果";
             shopStatusMessage = "存在待确认的购买请求";
             RenderShopScenePanel();
             return;
@@ -610,7 +610,7 @@ public partial class HomePageUI
         {
             coinShopPurchaseRunning = false;
             shopStatusMessage = "无法提交购买：" + error;
-            shopPurchaseSummary = "请求尚未发送，可使用同一商品和批次重试";
+            shopPurchaseSummary = "购买尚未提交，请保持原商品和数量重试";
             RenderShopScenePanel();
             yield break;
         }
@@ -649,9 +649,9 @@ public partial class HomePageUI
                 string failure = response == null
                     ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
                     : GetApiError(response);
-                shopStatusMessage = "购买失败：" + failure;
+                shopStatusMessage = outcomeUncertain ? "购买结果尚未确认" : "购买失败：" + failure;
                 shopPurchaseSummary = outcomeUncertain
-                    ? "网络结果未知，请使用同一商品和批次重试；系统会复用原幂等键"
+                    ? "购买结果尚未确认，请保持原商品和数量，点击重试查询本次结果"
                     : "请根据最新商城规则重新确认购买";
                 RenderShopScenePanel();
                 if (refreshRequired)
@@ -899,14 +899,6 @@ public partial class HomePageUI
         {
             return "体力";
         }
-        if (!string.IsNullOrEmpty(product.rewardKey))
-        {
-            return product.rewardKey;
-        }
-        if (string.Equals(product.rewardType, "STAMINA", StringComparison.OrdinalIgnoreCase))
-        {
-            return "体力";
-        }
         return string.Equals(product.rewardType, "EQUIPMENT", StringComparison.OrdinalIgnoreCase) ? "装备" : "物品";
     }
 
@@ -1125,7 +1117,7 @@ public partial class HomePageUI
         }
         string name = !string.IsNullOrEmpty(result.rewardName)
             ? result.rewardName
-            : (!string.IsNullOrEmpty(result.rewardKey) ? result.rewardKey : "奖励");
+            : "奖励";
         if (string.Equals(result.rewardType, "STAMINA", StringComparison.OrdinalIgnoreCase)) name = "体力";
         return name + " x" + result.grantedQuantity;
     }
@@ -1224,6 +1216,7 @@ public partial class HomePageUI
         }
 
         Transform root = coinShopHistoryPanelObject.transform;
+        ConfigureCoinShopHistoryPresentation(root);
         string currencyLabel = GetActiveShopCurrencyLabel();
         SetSceneText(root, "CoinShopHistoryTitle", currencyLabel + "商城购买记录");
         SetSceneText(root, "CoinShopHistoryStatus", status);
@@ -1263,20 +1256,61 @@ public partial class HomePageUI
                 {
                     continue;
                 }
-                string rewardName = string.IsNullOrEmpty(item.rewardName) ? item.rewardKey : item.rewardName;
-                historyText.Append('#').Append(item.orderId).Append("  ")
-                    .Append(string.IsNullOrEmpty(item.productName) ? item.productCode : item.productName)
-                    .Append("  批次 ").Append(item.lotCount).Append('\n')
-                    .Append("获得 ").Append(rewardName).Append(" x").Append(item.grantedQuantity)
+                string rewardName = string.IsNullOrEmpty(item.rewardName) ? "商品奖励" : item.rewardName;
+                historyText.Append(string.IsNullOrEmpty(item.productName) ? "商品" : item.productName)
+                    .Append(" ×").Append(item.lotCount).Append('\n')
+                    .Append("获得 ").Append(rewardName).Append(" ×").Append(item.grantedQuantity)
                     .Append("，消耗").Append(currencyLabel).Append(' ').Append(IsDiamondShopActive() ? item.chargedDiamond : item.chargedGold)
-                    .Append("，余额 ").Append(IsDiamondShopActive() ? item.diamondBalanceAfter : item.goldBalanceAfter).Append('\n');
+                    .Append('\n');
                 if (i + 1 < coinShopHistoryItems.Length)
                 {
                     historyText.Append('\n');
                 }
             }
         }
-        SetSceneText(root, "CoinShopHistoryList", historyText.ToString());
+        SetSceneText(root, "CoinShopHistoryList", historyText.ToString().TrimEnd());
+        TMP_Text historyBody = FindSceneComponent<TMP_Text>(root, "CoinShopHistoryList");
+        if (historyBody != null) EnsureReadableBodyScroll(historyBody, 17f);
+    }
+
+    private static void ConfigureCoinShopHistoryPresentation(Transform root)
+    {
+        Image paper = root.GetComponent<Image>();
+        Sprite approved = Resources.Load<Sprite>("UI/ApprovedUi/Panels/PaperPanel");
+        if (paper != null && approved != null)
+        {
+            paper.overrideSprite = null;
+            paper.sprite = approved;
+            paper.color = Color.white;
+            paper.preserveAspect = false;
+        }
+        PlaceReadableRect(root, "CoinShopHistoryTitle", 64f, 44f, 650f, 46f);
+        PlaceReadableRect(root, "CoinShopHistoryStatus", 88f, 108f, 646f, 24f);
+        PlaceReadableRect(root, "CoinShopHistoryList", 88f, 134f, 646f, 286f);
+        TMP_Text title = FindSceneComponent<TMP_Text>(root, "CoinShopHistoryTitle");
+        TMP_Text status = FindSceneComponent<TMP_Text>(root, "CoinShopHistoryStatus");
+        TMP_Text body = FindSceneComponent<TMP_Text>(root, "CoinShopHistoryList");
+        if (title != null)
+        {
+            title.fontSize = 30f;
+            title.enableAutoSizing = false;
+            title.enableWordWrapping = false;
+            title.color = new Color(.30f, .21f, .16f, 1f);
+        }
+        if (status != null)
+        {
+            status.fontSize = 16f;
+            status.enableAutoSizing = false;
+            status.color = new Color(.44f, .35f, .25f, 1f);
+        }
+        if (body != null)
+        {
+            body.color = new Color(.30f, .21f, .16f, 1f);
+            body.richText = false;
+        }
+        ConfigureReadableButtonLabel(root, "CoinShopHistoryPreviousButton", 18f);
+        ConfigureReadableButtonLabel(root, "CoinShopHistoryNextButton", 18f);
+        ConfigureReadableButtonLabel(root, "CoinShopHistoryRefreshButton", 18f);
     }
 
     private void HideCoinShopHistory()
@@ -1404,7 +1438,7 @@ public partial class HomePageUI
         }
 
         coinShopHistoryLoading = false;
-        RenderCoinShopHistory("已读取 " + coinShopHistoryItems.Length + " 条购买记录");
+        RenderCoinShopHistory(string.Empty);
     }
 
     private void HandleCoinShopPurchaseRealtime(CoinShopPurchaseResult result, string eventId)

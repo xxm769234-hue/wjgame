@@ -11,7 +11,13 @@ public partial class HomePageUI
 {
     private const string EquipmentMaterialPolicy = "SAME_EQUIPMENT_ANY_LEVEL_ONE_SLOT_EACH";
     private const int EquipmentMaterialPageSize = 4;
+    private const string EquipmentGrowthStoragePrefix = "EquipmentGrowth.Pending.v1.";
     private static readonly Dictionary<long, EquipmentGrowthRequest> PendingEquipmentGrowth = new Dictionary<long, EquipmentGrowthRequest>();
+    private long equipmentGrowthPersistencePlayer;
+    private string equipmentGrowthPersistenceError;
+    private bool equipmentGrowthRecoveryRunning;
+    private bool equipmentGrowthStateReadSucceeded;
+    private bool equipmentGrowthPreservesBreakthrough;
     private GameObject equipmentBreakthroughPanel;
     private EquipmentUpgradePreviewData equipmentBreakthroughPlan;
     private EquipmentBreakthroughSelection equipmentBreakthroughSelection;
@@ -25,6 +31,17 @@ public partial class HomePageUI
     private string equipmentBreakthroughMessage;
     private Toggle equipmentIrreversibleToggle;
     private Toggle equipmentHighLevelToggle;
+
+    private void OnEnable()
+    {
+        if (Application.isPlaying) StartCoroutine(ResumeEquipmentGrowthAfterEnable());
+    }
+
+    private IEnumerator ResumeEquipmentGrowthAfterEnable()
+    {
+        yield return null;
+        if (HasAuthSession()) ResumePendingEquipmentGrowthRequest();
+    }
 
     private static bool IsValidEquipmentSinglePreview(EquipmentUpgradePreviewData preview, long equipmentId, int level)
     {
@@ -50,30 +67,237 @@ public partial class HomePageUI
 
     private bool HasPendingEquipmentGrowthRequest()
     {
-        return PendingEquipmentGrowth.ContainsKey(GameSession.PlayerId);
+        return PendingEquipmentGrowth.Values.Any(operation => operation.playerId == GameSession.PlayerId);
+    }
+
+    private bool HasPendingEquipmentGrowthRequest(long playerEquipmentId)
+    {
+        return PendingEquipmentGrowth.Values.Any(operation => operation.playerId == GameSession.PlayerId
+            && (operation.playerEquipmentId == playerEquipmentId
+                || (operation.materialPlayerEquipmentIds != null && operation.materialPlayerEquipmentIds.Contains(playerEquipmentId))));
+    }
+
+    private static bool IsPendingEquipmentGrowthRequest(EquipmentGrowthRequest operation)
+    {
+        return operation != null
+            && PendingEquipmentGrowth.TryGetValue(operation.playerEquipmentId, out EquipmentGrowthRequest pending)
+            && ReferenceEquals(pending, operation);
     }
 
     private void ResumePendingEquipmentGrowthRequest()
     {
-        if (equipmentMutationRunning || equipmentRefreshRunning
-            || !PendingEquipmentGrowth.TryGetValue(GameSession.PlayerId, out EquipmentGrowthRequest pending)
-            || pending.inFlight) return;
-        StartCoroutine(string.IsNullOrEmpty(pending.idempotencyKey)
-            ? ReconcileSingleEquipmentUpgrade(pending) : SendEquipmentGrowthRequest(pending));
+        LoadPendingEquipmentGrowthRequests();
+        if (!string.IsNullOrEmpty(equipmentGrowthPersistenceError))
+        {
+            equipmentStatusMessage = equipmentGrowthPersistenceError;
+            return;
+        }
+        foreach (EquipmentGrowthRequest pending in PendingEquipmentGrowth.Values)
+        {
+            if (pending.playerId != GameSession.PlayerId || !pending.inFlight) continue;
+            if (pending.owner == null || !pending.owner.gameObject.activeInHierarchy)
+            {
+                pending.inFlight = false;
+                pending.nextRecoveryTime = 0f;
+                pending.recoveryAttempts = Math.Max(1, pending.recoveryAttempts);
+            }
+        }
+        if (equipmentGrowthRecoveryRunning || !HasPendingEquipmentGrowthRequest() || !isActiveAndEnabled) return;
+        equipmentGrowthRecoveryRunning = true;
+        StartCoroutine(RecoverPendingEquipmentGrowthRequests());
+    }
+
+    private void LoadPendingEquipmentGrowthRequests()
+    {
+        long playerId = GameSession.PlayerId;
+        if (playerId <= 0 || equipmentGrowthPersistencePlayer == playerId) return;
+        equipmentGrowthPersistencePlayer = playerId;
+        equipmentGrowthPersistenceError = string.Empty;
+        string storageKey = EquipmentGrowthStoragePrefix + playerId;
+        try
+        {
+            if (!PlayerPrefs.HasKey(storageKey)) return;
+            string json = PlayerPrefs.GetString(storageKey);
+            if (string.IsNullOrWhiteSpace(json) || json.Length > 1048576) throw new FormatException("Invalid equipment recovery snapshot");
+            EquipmentGrowthSnapshot snapshot = JsonUtility.FromJson<EquipmentGrowthSnapshot>(json);
+            if (snapshot == null || snapshot.version != 1 || snapshot.playerId != playerId || snapshot.operations == null)
+                throw new FormatException("Invalid equipment recovery snapshot");
+            HashSet<long> equipmentIds = new HashSet<long>();
+            foreach (EquipmentGrowthRequest operation in snapshot.operations)
+            {
+                if (!IsValidPersistedEquipmentGrowthRequest(operation, playerId) || !equipmentIds.Add(operation.playerEquipmentId))
+                    throw new FormatException("Invalid equipment recovery operation");
+            }
+            foreach (EquipmentGrowthRequest operation in snapshot.operations)
+            {
+                if (PendingEquipmentGrowth.ContainsKey(operation.playerEquipmentId)) continue;
+                operation.inFlight = false;
+                operation.owner = null;
+                operation.recoveryAttempts = 1;
+                operation.nextRecoveryTime = 0f;
+                PendingEquipmentGrowth.Add(operation.playerEquipmentId, operation);
+            }
+        }
+        catch (Exception exception)
+        {
+            equipmentGrowthPersistenceError = "上次升级记录无法读取，为避免重复消耗已暂停升级与突破，请联系客服";
+            Debug.LogWarning("Equipment recovery snapshot was preserved because it could not be loaded: " + exception.GetType().Name, this);
+        }
+    }
+
+    private static bool IsValidPersistedEquipmentGrowthRequest(EquipmentGrowthRequest operation, long playerId)
+    {
+        if (operation == null || operation.playerId != playerId || operation.playerEquipmentId <= 0
+            || operation.expectedLevel < 1 || operation.targetLevel <= operation.expectedLevel || operation.targetLevel > 100
+            || string.IsNullOrWhiteSpace(operation.json) || operation.json.Length > 131072) return false;
+        if (operation.path == "/equipment/upgrade")
+        {
+            EquipmentInstanceRequest payload = JsonUtility.FromJson<EquipmentInstanceRequest>(operation.json);
+            return string.IsNullOrEmpty(operation.idempotencyKey) && operation.targetLevel == operation.expectedLevel + 1
+                && payload != null && payload.playerEquipmentId == operation.playerEquipmentId;
+        }
+        if (!Guid.TryParseExact(operation.idempotencyKey, "D", out Guid requestId) || requestId == Guid.Empty) return false;
+        if (operation.path == "/equipment/auto-upgrade")
+        {
+            EquipmentAutoUpgradeRequestPayload payload = JsonUtility.FromJson<EquipmentAutoUpgradeRequestPayload>(operation.json);
+            return payload != null && payload.playerEquipmentId == operation.playerEquipmentId
+                && payload.expectedCurrentLevel == operation.expectedLevel && payload.targetLevel == operation.targetLevel
+                && IsValidUpgradePlanFingerprint(payload.planFingerprint);
+        }
+        if (operation.path == "/equipment/breakthrough")
+        {
+            EquipmentBreakthroughExecuteRequest payload = JsonUtility.FromJson<EquipmentBreakthroughExecuteRequest>(operation.json);
+            if (payload == null || payload.playerEquipmentId != operation.playerEquipmentId
+                || payload.expectedCurrentLevel != operation.expectedLevel || payload.targetLevel != operation.targetLevel
+                || operation.targetLevel != operation.expectedLevel + 1 || !payload.confirmIrreversibleMaterialConsumption
+                || !IsValidUpgradePlanFingerprint(payload.planFingerprint) || !IsValidUpgradePlanFingerprint(payload.materialSelectionFingerprint)
+                || payload.materialPlayerEquipmentIds == null || payload.materialPlayerEquipmentIds.Length == 0
+                || payload.materialPlayerEquipmentIds.Any(materialId => materialId <= 0 || materialId == operation.playerEquipmentId)
+                || payload.materialPlayerEquipmentIds.Distinct().Count() != payload.materialPlayerEquipmentIds.Length) return false;
+            operation.materialPlayerEquipmentIds = payload.materialPlayerEquipmentIds;
+            return true;
+        }
+        return false;
+    }
+
+    private bool PersistPendingEquipmentGrowthRequests(long playerId)
+    {
+        try
+        {
+            EquipmentGrowthRequest[] operations = PendingEquipmentGrowth.Values.Where(operation => operation.playerId == playerId).ToArray();
+            string storageKey = EquipmentGrowthStoragePrefix + playerId;
+            if (operations.Length == 0) PlayerPrefs.DeleteKey(storageKey);
+            else PlayerPrefs.SetString(storageKey, JsonUtility.ToJson(new EquipmentGrowthSnapshot
+            {
+                version = 1,
+                playerId = playerId,
+                operations = operations
+            }));
+            PlayerPrefs.Save();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            if (playerId == GameSession.PlayerId)
+                equipmentGrowthPersistenceError = "无法保存升级恢复记录，升级与突破已暂停，请检查设备存储空间后重启游戏";
+            Debug.LogWarning("Equipment recovery snapshot could not be saved: " + exception.GetType().Name, this);
+            return false;
+        }
+    }
+
+    private void CompletePendingEquipmentGrowthRequest(EquipmentGrowthRequest operation)
+    {
+        PendingEquipmentGrowth.Remove(operation.playerEquipmentId);
+        if (!PersistPendingEquipmentGrowthRequests(operation.playerId))
+            PendingEquipmentGrowth[operation.playerEquipmentId] = operation;
+    }
+
+    private IEnumerator RecoverPendingEquipmentGrowthRequests()
+    {
+        long playerId = GameSession.PlayerId;
+        try
+        {
+            while (playerId == GameSession.PlayerId && HasAuthSession() && HasPendingEquipmentGrowthRequest()
+                && string.IsNullOrEmpty(equipmentGrowthPersistenceError))
+            {
+                EquipmentGrowthRequest pending = PendingEquipmentGrowth.Values.FirstOrDefault(operation =>
+                    operation.playerId == playerId && !operation.inFlight && Time.realtimeSinceStartup >= operation.nextRecoveryTime);
+                if (pending == null || equipmentMutationRunning || equipmentRefreshRunning)
+                {
+                    yield return new WaitForSecondsRealtime(0.25f);
+                    continue;
+                }
+                if (pending.resultResolved)
+                    yield return SynchronizeResolvedEquipmentGrowth(pending);
+                else if (pending.responseCompleted || string.IsNullOrEmpty(pending.idempotencyKey))
+                    yield return ReconcileSingleEquipmentUpgrade(pending);
+                else
+                    yield return SendEquipmentGrowthRequest(pending);
+            }
+        }
+        finally
+        {
+            equipmentGrowthRecoveryRunning = false;
+        }
+    }
+
+    private void ScheduleEquipmentGrowthRecovery(EquipmentGrowthRequest operation)
+    {
+        if (!IsPendingEquipmentGrowthRequest(operation)) return;
+        operation.recoveryAttempts++;
+        operation.nextRecoveryTime = Time.realtimeSinceStartup
+            + (operation.recoveryAttempts <= 2 ? 1f : Mathf.Min(30f, 5f * Mathf.Pow(2f, Mathf.Min(operation.recoveryAttempts - 3, 3))));
+        if (operation.playerId == GameSession.PlayerId)
+        {
+            equipmentStatusMessage = operation.recoveryAttempts <= 2
+                ? "正在自动同步升级结果，请稍候..."
+                : "网络暂未恢复，正在后台同步此装备；其他装备可继续操作";
+            ResumePendingEquipmentGrowthRequest();
+        }
+    }
+
+    private IEnumerator SynchronizeResolvedEquipmentGrowth(EquipmentGrowthRequest operation)
+    {
+        if (!IsPendingEquipmentGrowthRequest(operation) || operation.inFlight
+            || equipmentMutationRunning || equipmentRefreshRunning) yield break;
+        string token = GameSession.Token;
+        operation.owner = this;
+        operation.inFlight = true;
+        equipmentMutationRunning = true;
+        try
+        {
+            yield return RefreshEquipmentGrowthState(operation.playerId, token, operation.completionMessage, operation.playerEquipmentId);
+            if (operation.playerId == GameSession.PlayerId && token == GameSession.Token && equipmentGrowthStateReadSucceeded)
+                CompletePendingEquipmentGrowthRequest(operation);
+        }
+        finally
+        {
+            operation.inFlight = false;
+            equipmentMutationRunning = false;
+            equipmentRefreshRunning = false;
+            ScheduleEquipmentGrowthRecovery(operation);
+            RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+        }
     }
 
     private IEnumerator ReconcileSingleEquipmentUpgrade(EquipmentGrowthRequest pending)
     {
+        if (!IsPendingEquipmentGrowthRequest(pending) || pending.inFlight
+            || equipmentMutationRunning || equipmentRefreshRunning) yield break;
         string token = GameSession.Token;
+        bool ownsMutation = false;
         UnityWebRequest request = CreateAuthorizedGet($"/equipment/{pending.playerEquipmentId}/upgrade-preview");
         if (request == null)
         {
             equipmentStatusMessage = requestCreationError;
+            ScheduleEquipmentGrowthRecovery(pending);
             RenderEquipmentScenePanel(GetEquipmentPanelRoot());
             yield break;
         }
-        equipmentMutationRunning = true;
         pending.inFlight = true;
+        pending.owner = this;
+        equipmentStatusMessage = "正在自动同步装备升级结果...";
+        RenderEquipmentScenePanel(GetEquipmentPanelRoot());
         try
         {
             using (request)
@@ -84,46 +308,88 @@ public partial class HomePageUI
                 EquipmentUpgradePreviewApiResponse response = ParseJson<EquipmentUpgradePreviewApiResponse>(request.downloadHandler.text);
                 if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200
                     || response.data == null || response.data.playerEquipmentId != pending.playerEquipmentId
-                    || !IsValidEquipmentSinglePreview(response.data, pending.playerEquipmentId, response.data.currentLevel)
-                    || response.data.currentLevel < pending.expectedLevel)
+                    || response.data.currentLevel < pending.expectedLevel || response.data.maxLevel < response.data.currentLevel)
                 {
-                    equipmentStatusMessage = "暂时无法核对升级结果，请稍后再次核对；不会自动重复升级";
+                    equipmentStatusMessage = "升级结果暂未同步，系统会自动重试";
                     yield break;
                 }
-                PendingEquipmentGrowth.Remove(pending.playerId);
-                string message = response.data.currentLevel > pending.expectedLevel
-                    ? $"服务器装备等级为 Lv.{response.data.currentLevel}，已同步升级结果"
-                    : "服务器装备等级未变化，已重新读取费用；如需升级请重新确认";
-                yield return RefreshEquipmentGrowthState(pending.playerId, token, message);
+                if (CanConfirmEquipmentGrowthSnapshot(pending, response.data.currentLevel))
+                {
+                    while (equipmentMutationRunning || equipmentRefreshRunning)
+                        yield return new WaitForSecondsRealtime(0.1f);
+                    if (pending.playerId != GameSession.PlayerId || token != GameSession.Token) yield break;
+                    equipmentMutationRunning = true;
+                    ownsMutation = true;
+                    string message = response.data.currentLevel > pending.expectedLevel
+                        ? $"装备等级已确认：Lv.{response.data.currentLevel}"
+                        : "本次操作已结束，装备等级未变化，消耗信息已刷新";
+                    pending.resultResolved = true;
+                    pending.completionMessage = message;
+                    PersistPendingEquipmentGrowthRequests(pending.playerId);
+                    yield return RefreshEquipmentGrowthState(pending.playerId, token, message, pending.playerEquipmentId);
+                    if (pending.playerId == GameSession.PlayerId && token == GameSession.Token && equipmentGrowthStateReadSucceeded)
+                        CompletePendingEquipmentGrowthRequest(pending);
+                }
+                else
+                {
+                    equipmentStatusMessage = "正在后台同步此装备的升级结果";
+                }
             }
         }
         finally
         {
             pending.inFlight = false;
-            equipmentMutationRunning = false;
-            equipmentRefreshRunning = false;
+            if (ownsMutation)
+            {
+                equipmentMutationRunning = false;
+                equipmentRefreshRunning = false;
+            }
+            ScheduleEquipmentGrowthRecovery(pending);
             RenderEquipmentScenePanel(GetEquipmentPanelRoot());
         }
     }
 
+    private static bool CanConfirmEquipmentGrowthSnapshot(EquipmentGrowthRequest pending, int level)
+    {
+        return level >= pending.expectedLevel && (pending.responseCompleted
+            || (string.IsNullOrEmpty(pending.idempotencyKey) && level >= pending.targetLevel));
+    }
+
     private IEnumerator SendEquipmentGrowthRequest(EquipmentGrowthRequest operation)
     {
+        LoadPendingEquipmentGrowthRequests();
+        if (!string.IsNullOrEmpty(equipmentGrowthPersistenceError))
+        {
+            equipmentStatusMessage = equipmentGrowthPersistenceError;
+            RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+            yield break;
+        }
         if (operation == null || operation.playerId != GameSession.PlayerId || operation.playerId <= 0
             || equipmentMutationRunning || operation.inFlight) yield break;
-        if (PendingEquipmentGrowth.TryGetValue(operation.playerId, out EquipmentGrowthRequest pending)
+        if (PendingEquipmentGrowth.TryGetValue(operation.playerEquipmentId, out EquipmentGrowthRequest pending)
             && !ReferenceEquals(pending, operation)) yield break;
         if (!TryCreateAuthorizedPost(operation.path, operation.json, out UnityWebRequest request, out string error))
         {
             equipmentStatusMessage = error;
+            ScheduleEquipmentGrowthRecovery(operation);
             RenderEquipmentScenePanel(GetEquipmentPanelRoot());
             yield break;
         }
         if (!string.IsNullOrEmpty(operation.idempotencyKey)) ApiRequestUtility.SetIdempotencyKey(request, operation.idempotencyKey);
+        PendingEquipmentGrowth[operation.playerEquipmentId] = operation;
+        if (!PersistPendingEquipmentGrowthRequests(operation.playerId))
+        {
+            request.Dispose();
+            equipmentStatusMessage = equipmentGrowthPersistenceError;
+            RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+            yield break;
+        }
         string token = GameSession.Token;
-        equipmentMutationRunning = true;
+        bool ownsMutation = operation.recoveryAttempts == 0;
+        if (ownsMutation) equipmentMutationRunning = true;
         operation.inFlight = true;
-        PendingEquipmentGrowth[operation.playerId] = operation;
-        CloseEquipmentBreakthroughPanel();
+        operation.owner = this;
+        if (ownsMutation) CloseEquipmentBreakthroughPanel();
         equipmentStatusMessage = "正在提交装备成长操作...";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
         try
@@ -139,34 +405,38 @@ public partial class HomePageUI
                 bool success = request.result == UnityWebRequest.Result.Success && response != null && response.code == 200;
                 if (!success)
                 {
-                    bool rejected = response != null && response.code != 200
-                        && request.responseCode > 0 && request.responseCode < 500;
+                    bool rejected = response != null && response.code > 0 && response.code != 200
+                        && response.code != 408 && response.code != 429 && (response.code < 500 || response.code >= 600)
+                        && request.responseCode > 0 && request.responseCode < 500
+                        && request.responseCode != 408 && request.responseCode != 429;
                     if (!rejected)
                     {
-                        equipmentStatusMessage = "提交结果尚未确认，请点击“核对上次结果”；不要重复发起新升级";
+                        Debug.LogWarning($"Equipment growth result unresolved: http={request.responseCode}, code={(response != null ? response.code : 0)}, result={request.result}, equipment={operation.playerEquipmentId}, from={operation.expectedLevel}, target={operation.targetLevel}. Original request retained for reconciliation.", this);
+                        equipmentStatusMessage = "升级结果暂未同步，正在自动恢复，请稍候...";
                         yield break;
                     }
-                    PendingEquipmentGrowth.Remove(operation.playerId);
                     completion = EquipmentGrowthError(response.code, GetApiError(response));
                 }
                 else if (operation.path == "/equipment/auto-upgrade")
                 {
+                    operation.responseCompleted = true;
+                    PersistPendingEquipmentGrowthRequests(operation.playerId);
                     AutoUpgradeApiResponse result = ParseJson<AutoUpgradeApiResponse>(json);
                     if (!IsValidEquipmentGrowthResult(result != null ? result.data : null, operation))
                     {
-                        equipmentStatusMessage = "升级响应不完整，请核对上次结果";
+                        Debug.LogWarning("Equipment auto-upgrade returned success with an incompatible result; reconciling the authoritative equipment level.", this);
                         yield break;
                     }
-                    PendingEquipmentGrowth.Remove(operation.playerId);
                     completion = $"装备已升至 Lv.{result.data.reachedLevel}，{FormatAutoUpgradeOutcome(result.data.outcome)}";
                 }
                 else
                 {
+                    operation.responseCompleted = true;
+                    PersistPendingEquipmentGrowthRequests(operation.playerId);
                     EquipmentUpgradeApiResponse result = ParseJson<EquipmentUpgradeApiResponse>(json);
                     if (result == null || result.data == null || result.data.playerEquipmentId != operation.playerEquipmentId
                         || result.data.fromLevel != operation.expectedLevel || result.data.level != operation.targetLevel)
                     {
-                        equipmentStatusMessage = "升级响应不完整，请核对上次结果";
                         yield break;
                     }
                     if (operation.path == "/equipment/breakthrough")
@@ -175,23 +445,38 @@ public partial class HomePageUI
                         EquipmentBreakthroughExecuteRequest payload = ParseJson<EquipmentBreakthroughExecuteRequest>(operation.json);
                         if (!IsValidEquipmentBreakthroughResult(breakthrough != null ? breakthrough.data : null, payload))
                         {
-                            equipmentStatusMessage = "突破响应不完整，请核对上次结果";
                             yield break;
                         }
                     }
-                    PendingEquipmentGrowth.Remove(operation.playerId);
                     SyncEquipmentUpgradeResourceBalances(result.data);
                     completion = (operation.path == "/equipment/breakthrough" ? "突破成功" : "升级成功")
                         + $"，装备 Lv.{result.data.level}，消耗金币 {result.data.goldCost}";
                 }
             }
-            yield return RefreshEquipmentGrowthState(operation.playerId, token, completion);
+            operation.resultResolved = true;
+            operation.completionMessage = completion;
+            PersistPendingEquipmentGrowthRequests(operation.playerId);
+            if (!ownsMutation)
+            {
+                while (equipmentMutationRunning || equipmentRefreshRunning)
+                    yield return new WaitForSecondsRealtime(0.1f);
+                if (operation.playerId != GameSession.PlayerId || token != GameSession.Token) yield break;
+                equipmentMutationRunning = true;
+                ownsMutation = true;
+            }
+            yield return RefreshEquipmentGrowthState(operation.playerId, token, completion, operation.playerEquipmentId);
+            if (operation.playerId == GameSession.PlayerId && token == GameSession.Token && equipmentGrowthStateReadSucceeded)
+                CompletePendingEquipmentGrowthRequest(operation);
         }
         finally
         {
             operation.inFlight = false;
-            equipmentMutationRunning = false;
-            equipmentRefreshRunning = false;
+            if (ownsMutation)
+            {
+                equipmentMutationRunning = false;
+                equipmentRefreshRunning = false;
+            }
+            ScheduleEquipmentGrowthRecovery(operation);
             RenderEquipmentScenePanel(GetEquipmentPanelRoot());
         }
     }
@@ -205,55 +490,116 @@ public partial class HomePageUI
             && result.targetReached == (result.reachedLevel == operation.targetLevel);
     }
 
-    private IEnumerator RefreshEquipmentGrowthState(long playerId, string token, string message)
+    private IEnumerator RefreshEquipmentGrowthState(long playerId, string token, string message, long changedEquipmentId = 0)
     {
-        ResetEquipmentUpgradePreview();
-        ResetEquipmentAutoUpgradePreviews();
-        equipmentRefreshRunning = true;
-        string inventoryError = string.Empty;
-        UnityWebRequest inventoryRequest = CreateAuthorizedGet($"/inventory/list/{playerId}");
-        if (inventoryRequest == null) inventoryError = requestCreationError;
-        else using (inventoryRequest)
+        equipmentGrowthStateReadSucceeded = false;
+        equipmentGrowthPreservesBreakthrough = equipmentBreakthroughPanel != null && equipmentBreakthroughPanel.activeSelf
+            && equipmentBreakthroughPlan != null && equipmentBreakthroughPlan.playerEquipmentId != changedEquipmentId;
+        int preservedBreakthroughVersion = -1;
+        if (equipmentGrowthPreservesBreakthrough)
         {
-            yield return inventoryRequest.SendWebRequest();
-            if (playerId != GameSession.PlayerId || token != GameSession.Token) yield break;
-            if (HandleUnauthorizedResponse(inventoryRequest)) yield break;
-            InventoryListApiResponse inventory = ParseJson<InventoryListApiResponse>(inventoryRequest.downloadHandler.text);
-            if (inventoryRequest.result == UnityWebRequest.Result.Success && inventory != null && inventory.code == 200)
+            equipmentBreakthroughVersion++;
+            preservedBreakthroughVersion = equipmentBreakthroughVersion;
+            equipmentBreakthroughBusy = true;
+            InvalidateEquipmentMaterialSelection();
+            equipmentBreakthroughMessage = "正在同步资源，已保留所选材料；同步后请重新预览";
+            RenderEquipmentBreakthroughPanel();
+        }
+        try
+        {
+            ResetEquipmentUpgradePreview();
+            ResetEquipmentAutoUpgradePreviews();
+            equipmentRefreshRunning = true;
+            string inventoryError = string.Empty;
+            UnityWebRequest inventoryRequest = CreateAuthorizedGet($"/inventory/list/{playerId}");
+            if (inventoryRequest == null) inventoryError = requestCreationError;
+            else using (inventoryRequest)
             {
-                currentInventoryItems = inventory.data ?? new InventoryItemResponse[0];
-                inventoryServerBacked = true;
-                SyncInventoryResourceValues(currentInventoryItems);
+                yield return inventoryRequest.SendWebRequest();
+                if (playerId != GameSession.PlayerId || token != GameSession.Token) yield break;
+                if (HandleUnauthorizedResponse(inventoryRequest)) yield break;
+                InventoryListApiResponse inventory = ParseJson<InventoryListApiResponse>(inventoryRequest.downloadHandler.text);
+                if (inventoryRequest.result == UnityWebRequest.Result.Success && inventory != null && inventory.code == 200)
+                {
+                    currentInventoryItems = inventory.data ?? new InventoryItemResponse[0];
+                    inventoryServerBacked = true;
+                    SyncInventoryResourceValues(currentInventoryItems);
+                }
+                else inventoryError = "余额正在后台重新同步";
             }
-            else inventoryError = "余额同步失败，请刷新";
+            yield return GetEquipmentInventoryList(true);
+            if (playerId != GameSession.PlayerId || token != GameSession.Token) yield break;
+            if (equipmentGrowthPreservesBreakthrough)
+                yield return RevalidateEquipmentBreakthroughAfterGrowth(playerId, token);
+            if (playerId != GameSession.PlayerId || token != GameSession.Token) yield break;
+            equipmentRefreshRunning = false;
+            equipmentGrowthStateReadSucceeded = string.IsNullOrEmpty(inventoryError) && _equipmentDataReadSucceeded;
+            equipmentStatusMessage = message + (string.IsNullOrEmpty(inventoryError) ? string.Empty : "；" + inventoryError)
+                + (_equipmentDataReadSucceeded ? string.Empty : "；装备数据正在后台重新同步");
+            if (!_equipmentDataReadSucceeded)
+            {
+                equipmentUpgradePreview = null;
+                equipmentUpgradePreviewRunning = false;
+                equipmentUpgradePreviewError = "装备数据正在后台重新同步";
+            }
+            SetStatus(equipmentStatusMessage);
         }
-        yield return GetEquipmentInventoryList(true);
-        if (playerId != GameSession.PlayerId || token != GameSession.Token) yield break;
-        equipmentRefreshRunning = false;
-        equipmentStatusMessage = message + (string.IsNullOrEmpty(inventoryError) ? string.Empty : "；" + inventoryError)
-            + (_equipmentDataReadSucceeded ? string.Empty : "；装备或穿戴属性同步失败，请刷新后再操作");
-        if (!_equipmentDataReadSucceeded)
+        finally
         {
-            equipmentUpgradePreview = null;
-            equipmentUpgradePreviewRunning = false;
-            equipmentUpgradePreviewError = "装备同步失败，请重新同步后预览";
+            equipmentGrowthPreservesBreakthrough = false;
+            if (preservedBreakthroughVersion == equipmentBreakthroughVersion)
+            {
+                equipmentBreakthroughBusy = false;
+                RenderEquipmentBreakthroughPanel();
+            }
         }
-        SetStatus(equipmentStatusMessage);
+    }
+
+    private IEnumerator RevalidateEquipmentBreakthroughAfterGrowth(long playerId, string token)
+    {
+        EquipmentUpgradePreviewData previousPlan = equipmentBreakthroughPlan;
+        int version = equipmentBreakthroughVersion;
+        if (previousPlan == null || equipmentBreakthroughPanel == null || !equipmentBreakthroughPanel.activeSelf) yield break;
+        UnityWebRequest request = CreateAuthorizedGet($"/equipment/{previousPlan.playerEquipmentId}/upgrade-preview");
+        if (request == null)
+        {
+            equipmentBreakthroughMessage = "资源同步暂未完成，请稍后重新预览材料";
+            RenderEquipmentBreakthroughPanel();
+            yield break;
+        }
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            if (playerId != GameSession.PlayerId || token != GameSession.Token || version != equipmentBreakthroughVersion) yield break;
+            EquipmentUpgradePreviewApiResponse response = ParseJson<EquipmentUpgradePreviewApiResponse>(request.downloadHandler.text);
+            if (request.result == UnityWebRequest.Result.Success && response != null && response.code == 200
+                && response.data != null && response.data.isBreakthrough
+                && IsValidEquipmentSinglePreview(response.data, previousPlan.playerEquipmentId, previousPlan.currentLevel))
+            {
+                equipmentBreakthroughPlan = response.data;
+                equipmentBreakthroughMessage = "资源已同步，已保留所选材料；请重新预览材料费用";
+            }
+            else
+            {
+                equipmentBreakthroughMessage = "此装备的费用或等级已变化，请重新打开突破界面";
+            }
+        }
+        RenderEquipmentBreakthroughPanel();
     }
 
     private static string EquipmentGrowthError(int code, string message)
     {
         switch (code)
         {
-            case 6204: return "资源不足，已重新读取服务器费用与余额";
+            case 6204: return "资源不足，消耗与余额已刷新";
             case 6207: return "装备等级已变化，请重新预览";
-            case 6208: return "请求号已失效，已清除旧请求，请重新预览并确认";
-            case 6209: return "升级配置已变化，请重新预览";
+            case 6208: return "升级请求已失效，费用已刷新，请重新升级";
+            case 6209: return "升级条件已变化，请重新查看消耗";
             case 6210: return "需要先手动突破，请查看最新预览并选择突破材料";
             case 6211: return "突破材料数量不符，请重新选择";
-            case 6212: return "材料状态已变化，请重新选择服务器提供的候选装备";
+            case 6212: return "材料状态已变化，请重新选择可用装备";
             case 6213: return "需要确认材料及培养投入永久消耗，请重新勾选确认";
-            case 6214: return "材料快照已变化，请重新选择并预览";
+            case 6214: return "材料状态已变化，请重新选择并查看消耗";
             default: return message;
         }
     }
@@ -271,7 +617,8 @@ public partial class HomePageUI
     private void ShowEquipmentBreakthroughPanel(InventoryItemResponse item)
     {
         EquipmentUpgradePreviewData plan = equipmentUpgradePreview;
-        if (item == null || equipmentMutationRunning || equipmentRefreshRunning || HasPendingEquipmentGrowthRequest()
+        if (item == null || equipmentMutationRunning || equipmentRefreshRunning || HasPendingEquipmentGrowthRequest(item.playerEquipmentId)
+            || !string.IsNullOrEmpty(equipmentGrowthPersistenceError)
             || !IsValidEquipmentSinglePreview(plan, item.playerEquipmentId, item.level)
             || !plan.isBreakthrough || !HasEquipmentUpgradeFunds(plan)) return;
         EnsureEquipmentBreakthroughPanel();
@@ -456,11 +803,18 @@ public partial class HomePageUI
         EquipmentUpgradePreviewData plan = equipmentBreakthroughPlan;
         EquipmentBreakthroughSelection selection = equipmentBreakthroughSelection;
         if (plan == null || selection == null || equipmentBreakthroughBusy || equipmentMutationRunning
-            || equipmentRefreshRunning || HasPendingEquipmentGrowthRequest() || !HasEquipmentUpgradeFunds(plan)
+            || equipmentRefreshRunning || HasPendingEquipmentGrowthRequest(plan.playerEquipmentId)
+            || !string.IsNullOrEmpty(equipmentGrowthPersistenceError) || !HasEquipmentUpgradeFunds(plan)
             || equipmentIrreversibleToggle == null || !equipmentIrreversibleToggle.isOn
             || (selection.requiresHighLevelConfirmation && (equipmentHighLevelToggle == null || !equipmentHighLevelToggle.isOn))) return;
         long[] ids = equipmentBreakthroughMaterials.Select(material => material.playerEquipmentId).OrderBy(id => id).ToArray();
         if (!IsValidEquipmentMaterialSelection(selection, plan, ids)) return;
+        if (ids.Any(HasPendingEquipmentGrowthRequest))
+        {
+            equipmentBreakthroughMessage = "所选材料正在同步升级结果，请选择其他装备或稍后再试";
+            RenderEquipmentBreakthroughPanel();
+            return;
+        }
         EquipmentBreakthroughExecuteRequest payload = new EquipmentBreakthroughExecuteRequest
         {
             playerEquipmentId = plan.playerEquipmentId, expectedCurrentLevel = plan.currentLevel,
@@ -472,7 +826,8 @@ public partial class HomePageUI
         {
             playerId = GameSession.PlayerId, playerEquipmentId = plan.playerEquipmentId,
             expectedLevel = plan.currentLevel, targetLevel = plan.targetLevel,
-            path = "/equipment/breakthrough", json = JsonUtility.ToJson(payload), idempotencyKey = Guid.NewGuid().ToString("D")
+            path = "/equipment/breakthrough", json = JsonUtility.ToJson(payload), idempotencyKey = Guid.NewGuid().ToString("D"),
+            materialPlayerEquipmentIds = ids
         }));
     }
 
@@ -538,9 +893,9 @@ public partial class HomePageUI
             SetEquipmentGrowthRect(warning.rectTransform, 0.03f, 0.175f, 0.97f, 0.25f);
             CreateEquipmentGrowthToggle(body.transform, "ConfirmIrreversible", "确认材料及全部培养投入永久消耗，不予返还", 0.13f);
             CreateEquipmentGrowthToggle(body.transform, "ConfirmHighLevel", "再次确认消耗高等级装备及其培养投入", 0.085f);
-            Button preview = CreateButton(body.transform, "BreakthroughPreview", "预览突破", new Color(0.17f, 0.42f, 0.36f), Color.white);
+            Button preview = CreateButton(body.transform, "BreakthroughPreview", "预览突破", Color.clear, Color.white);
             SetEquipmentGrowthRect(preview.GetComponent<RectTransform>(), 0.03f, 0.015f, 0.30f, 0.075f);
-            Button confirm = CreateButton(body.transform, "BreakthroughConfirm", "确认突破", new Color(0.17f, 0.42f, 0.36f), Color.white);
+            Button confirm = CreateButton(body.transform, "BreakthroughConfirm", "确认突破", Color.clear, Color.white);
             SetEquipmentGrowthRect(confirm.GetComponent<RectTransform>(), 0.36f, 0.015f, 0.63f, 0.075f);
             Button cancel = CreateButton(body.transform, "BreakthroughCancel", "取消", Color.gray, Color.white);
             SetEquipmentGrowthRect(cancel.GetComponent<RectTransform>(), 0.70f, 0.015f, 0.97f, 0.075f);
@@ -564,7 +919,10 @@ public partial class HomePageUI
         BindSceneButton(FindSceneComponent<Button>(panel, "MaterialPrevious"), () => StartCoroutine(LoadEquipmentBreakthroughCandidates(Math.Max(1, equipmentMaterialPageNumber - 1))));
         BindSceneButton(FindSceneComponent<Button>(panel, "MaterialNext"), () => StartCoroutine(LoadEquipmentBreakthroughCandidates(equipmentMaterialPageNumber + 1)));
         BindSceneButton(FindSceneComponent<Button>(panel, "MaterialReload"), () => StartCoroutine(LoadEquipmentBreakthroughCandidates(equipmentMaterialPageNumber)));
+        ConfigureEquipmentBreakthroughPresentation(panel);
+        BindSceneButton(FindSceneComponent<Button>(panel, "BreakthroughClose"), CloseEquipmentBreakthroughPanel);
     }
+
 
     private static void SetEquipmentGrowthRect(RectTransform rect, float left, float bottom, float right, float top)
     {
@@ -592,7 +950,16 @@ public partial class HomePageUI
 
     private void OnEquipmentMaterialConfirmationChanged(bool value)
     {
-        RenderEquipmentBreakthroughPanel();
+        if (equipmentBreakthroughPanel != null && equipmentBreakthroughPanel.activeSelf)
+            RefreshEquipmentBreakthroughConfirmation(equipmentBreakthroughPanel.transform);
+    }
+
+    private void RefreshEquipmentBreakthroughConfirmation(Transform root)
+    {
+        bool previewed = equipmentBreakthroughSelection != null;
+        bool highLevel = previewed && equipmentBreakthroughSelection.requiresHighLevelConfirmation;
+        SetEquipmentGrowthButtonEnabled(root, "BreakthroughConfirm", !equipmentBreakthroughBusy && previewed && equipmentIrreversibleToggle != null && equipmentIrreversibleToggle.isOn
+            && (!highLevel || (equipmentHighLevelToggle != null && equipmentHighLevelToggle.isOn)));
     }
 
     private void RenderEquipmentBreakthroughPanel()
@@ -600,13 +967,8 @@ public partial class HomePageUI
         EquipmentUpgradePreviewData plan = equipmentBreakthroughPlan;
         if (plan == null || equipmentBreakthroughPanel == null || !equipmentBreakthroughPanel.activeSelf) return;
         Transform root = equipmentBreakthroughPanel.transform;
-        SetSceneText(root, "BreakthroughTitle", $"{plan.name}  Lv.{plan.currentLevel} → Lv.{plan.targetLevel}");
-        string costs = $"金币 {plan.goldCost}（持有 {plan.availableGold}）";
-        if (plan.resourceCosts != null) foreach (EquipmentUpgradeResourceCostPreviewData cost in plan.resourceCosts)
-            if (cost != null) costs += $"  {cost.itemName ?? cost.itemKey} {cost.amount}（持有 {cost.availableAmount}）";
-        SetSceneText(root, "BreakthroughCost", costs + $"\n材料 {equipmentBreakthroughMaterials.Count}/{plan.requiredMaterialCount}");
-        SetSceneText(root, "BreakthroughWarning", equipmentBreakthroughBusy ? "正在读取服务器数据..." : equipmentBreakthroughMessage);
-        SetSceneText(root, "MaterialPage", $"{equipmentMaterialPageNumber}/{Math.Max(1L, (equipmentMaterialTotal + EquipmentMaterialPageSize - 1) / EquipmentMaterialPageSize)}  共 {equipmentMaterialTotal} 件");
+        RenderEquipmentBreakthroughHeader(root, plan);
+        SetSceneText(root, "MaterialPage", $"{equipmentMaterialPageNumber} / {Math.Max(1L, (equipmentMaterialTotal + EquipmentMaterialPageSize - 1) / EquipmentMaterialPageSize)}");
         Transform slotParent = FindSceneTransform(root, "MaterialSlots");
         if (slotParent != null)
         {
@@ -615,10 +977,10 @@ public partial class HomePageUI
                 Button slot = FindSceneComponent<Button>(slotParent, "MaterialSlot" + index);
                 if (slot == null)
                 {
-                    slot = CreateButton(slotParent, "MaterialSlot" + index, "材料", new Color(0.75f, 0.82f, 0.81f), Color.black);
+                    slot = CreateButton(slotParent, "MaterialSlot" + index, "材料", Color.clear, Color.black);
                     LayoutElement element = slot.gameObject.AddComponent<LayoutElement>();
-                    element.preferredWidth = 205;
-                    element.minWidth = 160;
+                    element.preferredWidth = 228;
+                    element.minWidth = 228;
                 }
                 equipmentMaterialSlots.Add(slot);
             }
@@ -628,7 +990,8 @@ public partial class HomePageUI
                 if (slot == null) continue;
                 slot.gameObject.SetActive(index < plan.requiredMaterialCount);
                 EquipmentBreakthroughMaterial material = index < equipmentBreakthroughMaterials.Count ? equipmentBreakthroughMaterials[index] : null;
-                SetSceneButtonText(slot, material == null ? $"材料 {index + 1}\n未选择" : $"{material.name ?? material.equipmentKey}\nLv.{material.level}  ID {material.playerEquipmentId}\n移除");
+                SetSceneButtonText(slot, material == null ? $"材料 {index + 1}\n未选择" : $"{(string.IsNullOrWhiteSpace(material.name) ? "同款装备" : material.name)}\nLv.{material.level} · 移除");
+                ConfigureEquipmentMaterialPresentation(slot, material, material != null, true);
                 slot.interactable = !equipmentBreakthroughBusy && material != null;
                 BindSceneButton(slot, () => ToggleEquipmentBreakthroughMaterial(material));
             }
@@ -643,8 +1006,11 @@ public partial class HomePageUI
             bool selected = equipmentBreakthroughMaterials.Any(entry => entry.playerEquipmentId == material.playerEquipmentId);
             bool selectable = IsEquipmentMaterialSelectable(material, plan);
             row.interactable = !equipmentBreakthroughBusy && (selected || (selectable && equipmentBreakthroughMaterials.Count < plan.requiredMaterialCount));
-            SetSceneButtonText(row, (selected ? "[已选择] " : "") + $"{material.name ?? material.equipmentKey}   Lv.{material.level}   ID {material.playerEquipmentId}"
-                + (material.level > 1 ? "   含培养投入" : "") + (!selectable ? "   " + material.unavailableReason : ""));
+            SetSceneButtonText(row, $"{(string.IsNullOrWhiteSpace(material.name) ? "同款装备" : material.name)}   Lv.{material.level}"
+                + "\n" + (selected ? "已选择" : !selectable ? material.unavailableReason
+                    : equipmentBreakthroughMaterials.Count >= plan.requiredMaterialCount ? "材料已选满" : "点击选择")
+                + (material.level > 1 ? " · 含培养投入" : ""));
+            ConfigureEquipmentMaterialPresentation(row, material, selected, false);
             BindSceneButton(row, () => ToggleEquipmentBreakthroughMaterial(material));
         }
         bool previewed = equipmentBreakthroughSelection != null;
@@ -660,11 +1026,11 @@ public partial class HomePageUI
             equipmentHighLevelToggle.interactable = !equipmentBreakthroughBusy;
         }
         SetEquipmentGrowthButtonEnabled(root, "BreakthroughPreview", !equipmentBreakthroughBusy && equipmentBreakthroughMaterials.Count == plan.requiredMaterialCount);
-        SetEquipmentGrowthButtonEnabled(root, "BreakthroughConfirm", !equipmentBreakthroughBusy && previewed && equipmentIrreversibleToggle != null && equipmentIrreversibleToggle.isOn
-            && (!highLevel || (equipmentHighLevelToggle != null && equipmentHighLevelToggle.isOn)));
+        RefreshEquipmentBreakthroughConfirmation(root);
         SetEquipmentGrowthButtonEnabled(root, "MaterialPrevious", !equipmentBreakthroughBusy && equipmentMaterialPageNumber > 1);
         SetEquipmentGrowthButtonEnabled(root, "MaterialNext", !equipmentBreakthroughBusy && (long)equipmentMaterialPageNumber * EquipmentMaterialPageSize < equipmentMaterialTotal);
         SetEquipmentGrowthButtonEnabled(root, "MaterialReload", !equipmentBreakthroughBusy);
+        RefreshEquipmentBreakthroughLayout(root, plan.requiredMaterialCount, previewed);
     }
 
     private void SetEquipmentGrowthButtonEnabled(Transform root, string name, bool enabled)
@@ -673,6 +1039,15 @@ public partial class HomePageUI
         if (button != null) button.interactable = enabled;
     }
 
+    [Serializable]
+    private sealed class EquipmentGrowthSnapshot
+    {
+        public int version;
+        public long playerId;
+        public EquipmentGrowthRequest[] operations;
+    }
+
+    [Serializable]
     private sealed class EquipmentGrowthRequest
     {
         public long playerId;
@@ -682,7 +1057,14 @@ public partial class HomePageUI
         public string path;
         public string json;
         public string idempotencyKey;
-        public bool inFlight;
+        [NonSerialized] public bool inFlight;
+        public bool responseCompleted;
+        [NonSerialized] public int recoveryAttempts;
+        [NonSerialized] public float nextRecoveryTime;
+        public long[] materialPlayerEquipmentIds;
+        [NonSerialized] public HomePageUI owner;
+        public bool resultResolved;
+        public string completionMessage;
     }
 
     private static bool IsValidEquipmentBreakthroughResult(EquipmentBreakthroughResult result, EquipmentBreakthroughExecuteRequest payload)

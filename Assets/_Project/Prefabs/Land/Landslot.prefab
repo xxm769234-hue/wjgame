@@ -72,7 +72,7 @@ SpriteRenderer:
   m_LightmapParameters: {fileID: 0}
   m_SortingLayerID: -1658151675
   m_SortingLayer: 2
-  m_SortingOrder: 1020
+  m_SortingOrder: 440
   m_Sprite: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
@@ -163,8 +163,8 @@ SpriteMask:
   m_BackSortingLayerID: -1658151675
   m_FrontSortingLayer: 2
   m_BackSortingLayer: 2
-  m_FrontSortingOrder: 1031
-  m_BackSortingOrder: 1029
+  m_FrontSortingOrder: 452
+  m_BackSortingOrder: 449
   m_IsCustomRangeActive: 1
   m_SpriteSortPoint: 0
 --- !u!1 &1248217622731571644
@@ -239,7 +239,7 @@ SpriteRenderer:
   m_LightmapParameters: {fileID: 0}
   m_SortingLayerID: -1658151675
   m_SortingLayer: 2
-  m_SortingOrder: 1000
+  m_SortingOrder: 420
   m_Sprite: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
@@ -278,7 +278,7 @@ Transform:
   m_GameObject: {fileID: 1385509188888634921}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 1.979375, y: -2.21574468, z: 0}
+  m_LocalPosition: {x: 1.979375, y: -2.2157447, z: 0}
   m_LocalScale: {x: 1.09375, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -309,10 +309,14 @@ MonoBehaviour:
   sortingOrderStep: 10
   outlineWidth: 0.06
   outlineColor: {r: 0, g: 0, b: 0, a: 1}
+  purificationOutlineColor: {r: 0.2, g: 0.76, b: 0.67, a: 0.95}
+  unpurchasedOutlineColor: {r: 0.76, g: 0.79, b: 0.8, a: 0.9}
   outlineSortingOrderOffset: 2
   buildingSortingLayer: Building
   buildingSortingOrderOffset: 5
   npcSortingOrderOffset: 8
+  purificationOverlaySprite: {fileID: 0}
+  purificationOverlayTint: {r: 1, g: 1, b: 1, a: 1}
   resourceBubbleOffset: {x: 0, y: 2.1}
   resourceBubbleSortingOrderOffset: 12
 --- !u!60 &4674810685999828611
@@ -359,10 +363,10 @@ PolygonCollider2D:
   m_AutoTiling: 0
   m_Points:
     m_Paths:
-    - - {x: -1.87021277, y: 2.19361702}
-      - {x: 2.56808511, y: 2.57234043}
-      - {x: 2.56808511, y: -2.57234043}
-      - {x: -2.57234043, y: -2.47446809}
+    - - {x: -1.8702128, y: 2.193617}
+      - {x: 2.5680852, y: 2.5723405}
+      - {x: 2.5680852, y: -2.5723405}
+      - {x: -2.5723405, y: -2.474468}
   m_UseDelaunayMesh: 0
 --- !u!1 &1546697906441975554
 GameObject:
@@ -443,8 +447,8 @@ SpriteMask:
   m_BackSortingLayerID: -1658151675
   m_FrontSortingLayer: 2
   m_BackSortingLayer: 2
-  m_FrontSortingOrder: 1021
-  m_BackSortingOrder: 1019
+  m_FrontSortingOrder: 442
+  m_BackSortingOrder: 439
   m_IsCustomRangeActive: 1
   m_SpriteSortPoint: 0
 --- !u!1 &2265195713997435428
@@ -519,7 +523,7 @@ SpriteRenderer:
   m_LightmapParameters: {fileID: 0}
   m_SortingLayerID: -1658151675
   m_SortingLayer: 2
-  m_SortingOrder: 1010
+  m_SortingOrder: 430
   m_Sprite: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
@@ -606,7 +610,7 @@ Transform:
   m_GameObject: {fileID: 4915112590742210559}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 2.07478723, y: 2.50297872, z: 0}
+  m_LocalPosition: {x: 2.0747871, y: 2.5029788, z: 0}
   m_LocalScale: {x: 1.09375, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -637,10 +641,14 @@ MonoBehaviour:
   sortingOrderStep: 10
   outlineWidth: 0.06
   outlineColor: {r: 0, g: 0, b: 0, a: 1}
+  purificationOutlineColor: {r: 0.2, g: 0.76, b: 0.67, a: 0.95}
+  unpurchasedOutlineColor: {r: 0.76, g: 0.79, b: 0.8, a: 0.9}
   outlineSortingOrderOffset: 2
   buildingSortingLayer: Building
   buildingSortingOrderOffset: 5
   npcSortingOrderOffset: 8
+  purificationOverlaySprite: {fileID: 0}
+  purificationOverlayTint: {r: 1, g: 1, b: 1, a: 1}
   resourceBubbleOffset: {x: 0, y: 2.1}
   resourceBubbleSortingOrderOffset: 12
 --- !u!60 &8802240028932736220
@@ -687,10 +695,10 @@ PolygonCollider2D:
   m_AutoTiling: 0
   m_Points:
     m_Paths:
-    - - {x: -1.61276596, y: 2.19148936}
-      - {x: 2.48085106, y: 2.38297872}
-      - {x: 2.48085106, y: -1.90212766}
-      - {x: -2.48510638, y: -2.3787234}
+    - - {x: -1.6127659, y: 2.1914895}
+      - {x: 2.4808512, y: 2.3829787}
+      - {x: 2.4808512, y: -1.9021276}
+      - {x: -2.4851065, y: -2.3787234}
   m_UseDelaunayMesh: 0
 --- !u!1 &5555062459858926427
 GameObject:
@@ -719,7 +727,7 @@ Transform:
   m_GameObject: {fileID: 5555062459858926427}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -2.35869681, y: 2.31148936, z: 0}
+  m_LocalPosition: {x: -2.3586967, y: 2.3114893, z: 0}
   m_LocalScale: {x: 1.09375, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -750,10 +758,14 @@ MonoBehaviour:
   sortingOrderStep: 10
   outlineWidth: 0.06
   outlineColor: {r: 0, g: 0, b: 0, a: 1}
+  purificationOutlineColor: {r: 0.2, g: 0.76, b: 0.67, a: 0.95}
+  unpurchasedOutlineColor: {r: 0.76, g: 0.79, b: 0.8, a: 0.9}
   outlineSortingOrderOffset: 2
   buildingSortingLayer: Building
   buildingSortingOrderOffset: 5
   npcSortingOrderOffset: 8
+  purificationOverlaySprite: {fileID: 0}
+  purificationOverlayTint: {r: 1, g: 1, b: 1, a: 1}
   resourceBubbleOffset: {x: 0, y: 2.1}
   resourceBubbleSortingOrderOffset: 12
 --- !u!60 &4813292102805706893
@@ -800,10 +812,10 @@ PolygonCollider2D:
   m_AutoTiling: 0
   m_Points:
     m_Paths:
-    - - {x: -2.13617021, y: 2.38297872}
-      - {x: 2.21702128, y: 2.48085106}
-      - {x: 1.34468085, y: -2.09361702}
-      - {x: -2.22553191, y: -2.47234043}
+    - - {x: -2.1361701, y: 2.3829787}
+      - {x: 2.2170212, y: 2.4808512}
+      - {x: 1.3446809, y: -2.093617}
+      - {x: -2.2255318, y: -2.4723403}
   m_UseDelaunayMesh: 0
 --- !u!1 &6322540568474198098
 GameObject:
@@ -884,8 +896,8 @@ SpriteMask:
   m_BackSortingLayerID: -1658151675
   m_FrontSortingLayer: 2
   m_BackSortingLayer: 2
-  m_FrontSortingOrder: 1011
-  m_BackSortingOrder: 1009
+  m_FrontSortingOrder: 432
+  m_BackSortingOrder: 429
   m_IsCustomRangeActive: 1
   m_SpriteSortPoint: 0
 --- !u!1 &7556389282192907232
@@ -915,7 +927,7 @@ Transform:
   m_GameObject: {fileID: 7556389282192907232}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -2.59839096, y: -2.40723404, z: 0}
+  m_LocalPosition: {x: -2.598391, y: -2.407234, z: 0}
   m_LocalScale: {x: 1.09375, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -946,10 +958,14 @@ MonoBehaviour:
   sortingOrderStep: 10
   outlineWidth: 0.06
   outlineColor: {r: 0, g: 0, b: 0, a: 1}
+  purificationOutlineColor: {r: 0.2, g: 0.76, b: 0.67, a: 0.95}
+  unpurchasedOutlineColor: {r: 0.76, g: 0.79, b: 0.8, a: 0.9}
   outlineSortingOrderOffset: 2
   buildingSortingLayer: Building
   buildingSortingOrderOffset: 5
   npcSortingOrderOffset: 8
+  purificationOverlaySprite: {fileID: 0}
+  purificationOverlayTint: {r: 1, g: 1, b: 1, a: 1}
   resourceBubbleOffset: {x: 0, y: 2.1}
   resourceBubbleSortingOrderOffset: 12
 --- !u!60 &6240362999758506535
@@ -996,10 +1012,10 @@ PolygonCollider2D:
   m_AutoTiling: 0
   m_Points:
     m_Paths:
-    - - {x: -2.00638298, y: 2.00212766}
-      - {x: 1.99787234, y: 2.38085106}
-      - {x: 1.4787234, y: -2.28297872}
-      - {x: -2.00638298, y: -2.38085106}
+    - - {x: -2.006383, y: 2.0021276}
+      - {x: 1.9978724, y: 2.380851}
+      - {x: 1.4787234, y: -2.2829788}
+      - {x: -2.006383, y: -2.380851}
   m_UseDelaunayMesh: 0
 --- !u!1 &8333070394365625496
 GameObject:
@@ -1073,7 +1089,7 @@ SpriteRenderer:
   m_LightmapParameters: {fileID: 0}
   m_SortingLayerID: -1658151675
   m_SortingLayer: 2
-  m_SortingOrder: 1030
+  m_SortingOrder: 450
   m_Sprite: {fileID: 0}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
@@ -1164,7 +1180,7 @@ SpriteMask:
   m_BackSortingLayerID: -1658151675
   m_FrontSortingLayer: 2
   m_BackSortingLayer: 2
-  m_FrontSortingOrder: 1001
-  m_BackSortingOrder: 999
+  m_FrontSortingOrder: 422
+  m_BackSortingOrder: 419
   m_IsCustomRangeActive: 1
   m_SpriteSortPoint: 0

@@ -1,16 +1,19 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public sealed class ResourceCollectionManager : MonoBehaviour
 {
+    private const string SimulationSceneName = "Simulation management mode";
+
     public static ResourceCollectionManager Instance { get; private set; }
 
     [Header("Collect All Button")]
     [SerializeField] private bool createRuntimeButton = true;
     [SerializeField] private string buttonObjectName = "Collect All Resources Button";
     [SerializeField] private Vector2 buttonPosition = new Vector2(210f, 70f);
-    [SerializeField] private Vector2 buttonSize = new Vector2(180f, 80f);
+    [SerializeField] private Vector2 buttonSize = new Vector2(72f, 72f);
     [SerializeField, Min(0.05f)] private float refreshInterval = 0.25f;
 
     private Button collectAllButton;
@@ -19,6 +22,7 @@ public sealed class ResourceCollectionManager : MonoBehaviour
 
     public static ResourceCollectionManager EnsureInstance()
     {
+        if (SceneManager.GetActiveScene().name != SimulationSceneName) return null;
         if (Instance != null) return Instance;
 
         ResourceCollectionManager existing = FindFirstObjectByType<ResourceCollectionManager>();
@@ -42,9 +46,24 @@ public sealed class ResourceCollectionManager : MonoBehaviour
         Instance = this;
     }
 
+    private void OnEnable()
+    {
+        SceneManager.activeSceneChanged += OnActiveSceneChanged;
+    }
+
+    private void OnDisable()
+    {
+        SceneManager.activeSceneChanged -= OnActiveSceneChanged;
+        if (collectAllButton != null) collectAllButton.gameObject.SetActive(false);
+    }
+
+    private void OnActiveSceneChanged(Scene previousScene, Scene currentScene)
+    {
+        RefreshButtonState();
+    }
+
     private void Start()
     {
-        if (createRuntimeButton) EnsureCollectAllButton();
         RefreshButtonState();
     }
 
@@ -73,7 +92,8 @@ public sealed class ResourceCollectionManager : MonoBehaviour
 
     public void OnClickCollectAll()
     {
-        if (PlayerOnboardingInputLock.IsGameplayInputBlocked)
+        if (SceneManager.GetActiveScene().name != SimulationSceneName) return;
+        if (PlayerOnboardingInputLock.IsLocked)
         {
             Debug.LogWarning("Onboarding currently locks resource collection input.", this);
             return;
@@ -93,7 +113,11 @@ public sealed class ResourceCollectionManager : MonoBehaviour
             service.CollectAllProductions((success, message, collectedCount) =>
             {
                 if (!success) Debug.LogWarning($"Backend collect-all failed: {message}", this);
-                else Debug.Log($"Backend collect-all gathered {collectedCount} item type(s).", this);
+                else
+                {
+                    Debug.Log($"Backend collect-all gathered {collectedCount} item type(s).", this);
+                    if (collectedCount > 0) PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
+                }
                 RefreshButtonState();
             });
             return;
@@ -102,9 +126,26 @@ public sealed class ResourceCollectionManager : MonoBehaviour
 
     private void EnsureCollectAllButton()
     {
+        Scene activeScene = SceneManager.GetActiveScene();
+        if (activeScene.name != SimulationSceneName) return;
         if (collectAllButton != null) return;
 
-        GameObject existing = GameObject.Find(buttonObjectName);
+        Canvas canvas = null;
+        foreach (Canvas candidate in FindObjectsByType<Canvas>(FindObjectsSortMode.None))
+        {
+            if (candidate.gameObject.scene == activeScene && candidate.isRootCanvas)
+            {
+                canvas = candidate;
+                break;
+            }
+        }
+        if (canvas == null)
+        {
+            Debug.LogWarning("ResourceCollectionManager could not create Collect All button because no simulation Canvas exists.", this);
+            return;
+        }
+
+        Transform existing = canvas.transform.Find(buttonObjectName);
         if (existing != null)
         {
             collectAllButton = existing.GetComponent<Button>();
@@ -114,15 +155,9 @@ public sealed class ResourceCollectionManager : MonoBehaviour
                 collectAllButton.onClick.RemoveListener(OnClickCollectAll);
                 collectAllButton.onClick.AddListener(OnClickCollectAll);
                 ConfigureButtonRect(collectAllButton.GetComponent<RectTransform>());
+                SmallButtonIconUtility.ApplyIconButtonWithLabel(collectAllButton, "一键收取", "一键收取");
                 return;
             }
-        }
-
-        Canvas canvas = FindFirstObjectByType<Canvas>();
-        if (canvas == null)
-        {
-            Debug.LogWarning("ResourceCollectionManager could not create Collect All button because no Canvas exists.", this);
-            return;
         }
 
         GameObject buttonObject = new GameObject(buttonObjectName, typeof(RectTransform), typeof(Image), typeof(Button));
@@ -154,6 +189,7 @@ public sealed class ResourceCollectionManager : MonoBehaviour
         collectAllButtonText.color = Color.white;
         collectAllButtonText.alignment = TextAlignmentOptions.Center;
         collectAllButtonText.enableWordWrapping = true;
+        SmallButtonIconUtility.ApplyIconButtonWithLabel(collectAllButton, "一键收取", "一键收取");
     }
 
     private void ConfigureButtonRect(RectTransform rect)
@@ -169,15 +205,22 @@ public sealed class ResourceCollectionManager : MonoBehaviour
 
     private void RefreshButtonState()
     {
+        if (SceneManager.GetActiveScene().name != SimulationSceneName)
+        {
+            if (collectAllButton != null) collectAllButton.gameObject.SetActive(false);
+            return;
+        }
+
         if (createRuntimeButton) EnsureCollectAllButton();
 
         int readyCount = CountReadyResources();
         if (collectAllButtonText != null)
         {
-            collectAllButtonText.text = readyCount > 0 ? $"Collect All\n({readyCount})" : "Collect All\n(0)";
+            collectAllButtonText.text = "一键收取";
         }
         if (collectAllButton != null)
         {
+            collectAllButton.gameObject.SetActive(true);
             collectAllButton.interactable = readyCount > 0;
         }
     }

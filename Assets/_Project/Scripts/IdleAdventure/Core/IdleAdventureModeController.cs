@@ -22,6 +22,10 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private const string StartCanvasName = "Idle Adventure Start Canvas";
     private const string HudCanvasName = "Idle Adventure Canvas";
     private const string AfkRewardCanvasName = "Idle Adventure AFK Reward Canvas";
+    private const string StartPanelName = "Start Panel";
+    private const string ReturnHomeButtonName = "Return Home Button";
+    private const string IdleAdventureBackgroundResourceName = "IdleAdventureBackground";
+    private const string IdleAdventureCombatBackgroundResourceName = "IdleAdventureCombatBackground";
     private const long BackendBattleFocusBuffPresetId = 16001L;
     private const long BackendArmorBreakBuffPresetId = 16002L;
     private const float FormationRealtimeRefreshDelaySeconds = 0.15f;
@@ -101,6 +105,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     [SerializeField] private Canvas afkRewardCanvas;
     [SerializeField] private IdleAdventureBattleHud battleHudView;
     [SerializeField] private IdleAdventureStartPanel startPanelView;
+    [SerializeField] private IdleAdventureStartPreviewLayout startPreviewView;
     [SerializeField] private IdleAdventureFormationPanel formationPanelView;
     [SerializeField] private IdleAdventureStageEndPanel stageEndPanelView;
     [SerializeField] private IdleAdventurePausePanel pausePanelView;
@@ -115,9 +120,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private TextMeshProUGUI resultText;
     private Button pauseButton;
     private TextMeshProUGUI pauseButtonText;
-    private TextMeshProUGUI staminaText;
-    private TextMeshProUGUI accelerationText;
-    private Button accelerateButton;
+    private IdleAdventureAfkRewardPanel afkRewardPanel;
     private bool interfaceBuildInProgress;
     private bool staminaRequestPending;
     private IdleAdventureAfkRewardStateResponse accelerationPolicyState;
@@ -137,6 +140,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private bool stageFailedPending;
     private bool modePausedByChoice;
     private bool paused;
+    private int battlePresentationVersion;
+    private bool battlePresentationVisible;
     private bool backendModeActive;
     private bool backendRequestPending;
     private bool backendFormationDirty;
@@ -148,12 +153,14 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private int backendNextStage = 1;
     private int selectedReplayStage;
     private IdleAdventurePlayerNpcResponse[] backendAvailableNpcs = new IdleAdventurePlayerNpcResponse[0];
+    private bool backendNpcListLoaded;
     private Coroutine backendHomeLoadRoutine;
     private bool backendHomeLoadRunning;
     private Coroutine backendReferenceDataRoutine;
     private bool backendReferenceDataLoaded;
     private int backendReferenceDataStage;
     private IdleAdventureStageEnemiesResponse backendEnemyPreview;
+    private IdleAdventureStageRewardResponse[] backendStageRewards = new IdleAdventureStageRewardResponse[0];
     private int backendStatePlayerId;
     private string backendStateToken = string.Empty;
     private bool backendStateIdentityInitialized;
@@ -175,6 +182,27 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     public IReadOnlyDictionary<string, int> GrantedRewards => grantedRewards;
     public IReadOnlyDictionary<string, int> PendingRunRewards => pendingRunRewards;
+
+    public bool IsOnboardingBattlePresentationActive => battleStarted && !stageChoicePending && !stageFailedPending;
+
+    public RectTransform ResolveOnboardingTarget(string actionKey)
+    {
+        if (!Application.isPlaying || !isActiveAndEnabled) return null;
+        if (actionKey == "OPEN_ADVENTURE")
+        {
+            if (stageEndPanelView != null && stageEndPanelView.gameObject.activeInHierarchy
+                && stageEndPanelView.EndModeButton != null && (stageChoicePending || stageFailedPending))
+                return stageEndPanelView.EndModeButton.transform as RectTransform;
+            return !battleStarted && startPanelView != null && startPanelView.gameObject.activeInHierarchy
+                && startPanelView.StartButton != null ? startPanelView.StartButton.transform as RectTransform : null;
+        }
+        if (battleStarted) return null;
+        if (actionKey == "OPEN_AFK") return afkRewardPanel != null ? afkRewardPanel.ResolveOnboardingTarget() : null;
+        if (actionKey != "OPEN_FORMATION") return null;
+        if (startPreviewView != null && startPreviewView.gameObject.activeInHierarchy)
+            return startPreviewView.ResolveOnboardingFormationTarget();
+        return null;
+    }
 
     private void Awake()
     {
@@ -293,11 +321,16 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         EnsureBackendAccountIsolation();
         SyncAccelerationPolicyFromService();
+        BattleSceneAnimation.SetPaused(paused);
     }
 
     private void OnDisable()
     {
         if (!Application.isPlaying) return;
+
+        CancelBattleAnimations();
+        BattleSceneAnimation.SetBattleVisible(false);
+        ReleaseBattlePresentationAssets();
 
         if (battleRoutine != null)
         {
@@ -604,6 +637,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         backendReferenceDataLoaded = false;
         backendReferenceDataStage = 0;
         backendEnemyPreview = null;
+        backendStageRewards = new IdleAdventureStageRewardResponse[0];
 
         StopFormationRealtimeConnection();
         formationRealtimeEventIds.Clear();
@@ -621,6 +655,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         backendNextStage = 1;
         selectedReplayStage = 0;
         backendAvailableNpcs = new IdleAdventurePlayerNpcResponse[0];
+        backendNpcListLoaded = false;
         backendRuntimeCombatants.Clear();
         backendStageClearRequests.Clear();
         staminaRequestPending = false;
@@ -795,7 +830,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
             if (result == null || !result.Success || result.Data == null)
             {
-                AddLog("Backend formation realtime refresh failed: " + BackendResultMessage(result));
+                AddLog("服务器编队实时刷新失败：" + BackendResultMessage(result));
                 continue;
             }
 
@@ -808,7 +843,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             ApplyBackendFormation(result.Data);
             if (formationPanelView != null && formationPanelView.HasBindings)
             {
-                formationPanelView.SetStatus("Formation refreshed from server");
+                formationPanelView.SetStatus("编队已更新");
             }
         }
 
@@ -1028,7 +1063,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         InitializeDefaultFormation();
         BuildFriendlyParty(startingFriendlyCount);
         round = 1;
-        AddLog($"Friendly party size changed to {DeployedCount(friendlies)}.");
+        AddLog($"我方队伍人数已调整为 {DeployedCount(friendlies)}。");
         RefreshFormationView();
         RefreshBattleView();
     }
@@ -1044,7 +1079,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         BuildEnemyParty(Mathf.Clamp(count, 1, MaxPartySize));
         round = 1;
-        AddLog($"Enemy party size changed to {DeployedCount(enemies)}.");
+        AddLog($"敌方队伍人数已调整为 {DeployedCount(enemies)}。");
         RefreshBattleView();
     }
 
@@ -1052,8 +1087,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         if (!ShouldUseBackendApi())
         {
-            AddLog("Backend formation auto-fill requires authentication.");
-            if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", "Login is required before editing formation.");
+            AddLog("服务器编队自动填充需要登录。");
+            if (startPanelView != null) startPanelView.SetContent("闯关模式", "登录后才能编辑编队。");
             UpdateButtonStates();
             return;
         }
@@ -1065,8 +1100,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         if (!ShouldUseBackendApi())
         {
-            AddLog("Backend formation clear requires authentication.");
-            if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", "Login is required before editing formation.");
+            AddLog("服务器编队清除需要登录。");
+            if (startPanelView != null) startPanelView.SetContent("闯关模式", "登录后才能编辑编队。");
             UpdateButtonStates();
             return;
         }
@@ -1102,23 +1137,19 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     public void AssignFormationSlot(int slotIndex, int definitionIndex)
     {
+        if (backendRequestPending || battleStarted) return;
         if (slotIndex < 0 || slotIndex >= MaxPartySize) return;
         if (definitionIndex < 0 || definitionIndex >= AvailableFriendlyDefinitionCount()) return;
         if (!ShouldUseBackendApi())
         {
-            AddLog("Backend formation save requires authentication.");
+            AddLog("服务器编队保存需要登录。");
             QueueBackendHomeLoad();
             return;
         }
 
         Debug.Log($"Formation assign requested: slot={slotIndex}, npcIndex={definitionIndex}, backend={ShouldUseBackendApi()}, backendNpcCount={(backendAvailableNpcs != null ? backendAvailableNpcs.Length : 0)}, backendDefinitionId={ResolveBackendDefinitionId(definitionIndex)}", this);
 
-        for (int i = 0; i < MaxPartySize; i++)
-        {
-            if (friendlyFormation[i] == definitionIndex) friendlyFormation[i] = -1;
-        }
-
-        friendlyFormation[slotIndex] = definitionIndex;
+        if (!IdleAdventureFormationPlacement.TryPlace(friendlyFormation, slotIndex, definitionIndex, AvailableFriendlyDefinitionCount())) return;
         backendFormationDirty = true;
         backendFormationRevision++;
         RefreshFormationView();
@@ -1126,12 +1157,31 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         SaveBackendFormationIfAvailable();
     }
 
+    private void ToggleRosterCharacter(int definitionIndex)
+    {
+        if (backendRequestPending || battleStarted) return;
+        if (definitionIndex < 0 || definitionIndex >= AvailableFriendlyDefinitionCount()) return;
+        for (int slotIndex = 0; slotIndex < MaxPartySize; slotIndex++)
+        {
+            if (friendlyFormation[slotIndex] != definitionIndex) continue;
+            ClearFormationSlot(slotIndex);
+            return;
+        }
+        for (int slotIndex = 0; slotIndex < MaxPartySize; slotIndex++)
+        {
+            if (friendlyFormation[slotIndex] >= 0) continue;
+            AssignFormationSlot(slotIndex, definitionIndex);
+            return;
+        }
+        if (startPreviewView != null) startPreviewView.ShowRosterMessage("编队已满，请先下阵");
+    }
+
     public void ClearFormationSlot(int slotIndex)
     {
         if (slotIndex < 0 || slotIndex >= MaxPartySize) return;
         if (!ShouldUseBackendApi())
         {
-            AddLog("Backend formation save requires authentication.");
+            AddLog("服务器编队保存需要登录。");
             QueueBackendHomeLoad();
             return;
         }
@@ -1289,13 +1339,13 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         BackendGameService service = ResolveBackendService();
         if (service == null || !service.IsAuthenticated || string.IsNullOrEmpty(backendSessionKey) || !backendModeActive)
         {
-            AddLog("Backend buff apply requires an active authenticated battle session.");
+            AddLog("应用服务器增益需要已登录且处于进行中的战斗。");
             return false;
         }
 
         if (backendRequestPending)
         {
-            AddLog("Backend is busy. Buff apply skipped.");
+            AddLog("服务器正在处理请求，已跳过增益应用。");
             return false;
         }
 
@@ -1325,11 +1375,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             ApplyBackendBuffTargetState(result.Data.target, targetSide);
             if (!string.IsNullOrEmpty(result.Data.log)) AddLog(result.Data.log);
-            else AddLog($"Backend buff {buffPresetId} applied to {targetSide} slot {slotIndex + 1}.");
+            else AddLog($"服务器增益 {buffPresetId} 已应用到{(targetSide == "FRIENDLY" ? "我方" : "敌方")}第 {slotIndex + 1} 个位置。");
         }
         else
         {
-            AddLog($"Backend buff apply failed: {BackendResultMessage(result)}");
+            AddLog($"服务器增益应用失败：{BackendResultMessage(result)}");
         }
 
         RefreshBattleView();
@@ -1366,8 +1416,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (TryApplyBuff(party, slotIndex, buff))
         {
-            string verb = buff.Category == IdleAdventureBuffCategory.Benefit ? "gained" : "suffered";
-            AddLog($"{party[slotIndex].CombatantName} {verb} {buff.DisplayName} from {buff.SourceLabel}.");
+            string verb = buff.Category == IdleAdventureBuffCategory.Benefit ? "获得" : "受到";
+            AddLog($"{party[slotIndex].CombatantName}{verb}{buff.DisplayName}（来源：{buff.SourceLabel}）。");
             RefreshBattleView();
             return true;
         }
@@ -1506,65 +1556,20 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         EnsureRewardLedger();
         EnsureStageProgress();
-
         Canvas rewardCanvas = EnsureAfkRewardCanvas();
         if (rewardCanvas == null) return;
 
-        IdleAdventureAfkRewardSource existingSource = afkRewardSource != null ? afkRewardSource : rewardCanvas.GetComponentInChildren<IdleAdventureAfkRewardSource>(true);
-        if (existingSource != null && existingSource.HasViewBindings)
+        afkRewardSource = afkRewardSource != null ? afkRewardSource
+            : rewardCanvas.GetComponentInChildren<IdleAdventureAfkRewardSource>(true);
+        if (afkRewardSource == null)
         {
-            afkRewardSource = existingSource;
-            afkRewardSource.SetRewardLedger(rewardLedger);
-            afkRewardSource.SetHighestClearedStage(HighestClearedStage());
-            return;
+            RectTransform root = CreatePanel("AFK Reward Widget", rewardCanvas.transform, Color.clear);
+            root.GetComponent<Image>().raycastTarget = false;
+            afkRewardSource = root.gameObject.AddComponent<IdleAdventureAfkRewardSource>();
         }
 
-        if (existingSource != null) DestroyRuntimeObject(existingSource.gameObject);
-        BuildAfkRewardWidget(rewardCanvas.GetComponent<RectTransform>());
-    }
-
-    private void BuildAfkRewardWidget(RectTransform root)
-    {
-        if (root == null) return;
-
-        RectTransform panel = CreatePanel("AFK Reward Widget", root, new Color(0.10f, 0.12f, 0.14f, 0.94f));
-        Anchor(panel, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-226f, 28f), new Vector2(-28f, 196f));
-
-        Image iconImage = CreateImage("Reward Icon", panel, new Color(0.32f, 0.36f, 0.40f, 1f));
-        Anchor(iconImage.rectTransform, new Vector2(0f, 0.22f), new Vector2(0.58f, 1f), new Vector2(12f, -10f), new Vector2(-8f, -12f));
-
-        Image progressFill = CreateImage("Progress Fill", iconImage.transform, new Color(0.42f, 0.78f, 0.46f, 0.92f));
-        progressFill.type = Image.Type.Filled;
-        progressFill.fillMethod = Image.FillMethod.Horizontal;
-        progressFill.fillOrigin = 0;
-        progressFill.fillAmount = 0f;
-        progressFill.raycastTarget = false;
-        Anchor(progressFill.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 0.16f), Vector2.zero, Vector2.zero);
-
-        Button collectButton = CreateButton("Collect Reward Button", panel, "领取奖励");
-        Anchor(collectButton.GetComponent<RectTransform>(), new Vector2(0f, 0f), new Vector2(0.58f, 0.22f), new Vector2(12f, 4f), new Vector2(-8f, -2f));
-        TextMeshProUGUI collectButtonText = collectButton.GetComponentInChildren<TextMeshProUGUI>(true);
-
-        TextMeshProUGUI iconText = CreateText("Icon Text", iconImage.transform, "G", 34, FontStyles.Bold, TextAlignmentOptions.Center);
-        Stretch(iconText.rectTransform);
-
-        TextMeshProUGUI amountText = CreateText("Amount Text", panel, "x0", 21, FontStyles.Bold, TextAlignmentOptions.Center);
-        Anchor(amountText.rectTransform, new Vector2(0.58f, 0.50f), new Vector2(1f, 0.86f), new Vector2(0f, 0f), new Vector2(-10f, 0f));
-
-        TextMeshProUGUI timerText = CreateText("Timer Text", panel, "30s", 16, FontStyles.Bold, TextAlignmentOptions.Center);
-        Anchor(timerText.rectTransform, new Vector2(0.58f, 0.34f), new Vector2(1f, 0.50f), new Vector2(0f, 0f), new Vector2(-10f, 0f));
-
-        staminaText = CreateText("Stamina Text", panel, "体力 --", 14, FontStyles.Normal, TextAlignmentOptions.Center);
-        Anchor(staminaText.rectTransform, new Vector2(0.58f, 0.86f), new Vector2(1f, 1f), new Vector2(0f, 0f), new Vector2(-10f, 0f));
-
-        accelerateButton = CreateButton("Accelerate Button", panel, "加速");
-        Anchor(accelerateButton.GetComponent<RectTransform>(), new Vector2(0.58f, 0f), new Vector2(1f, 0.18f), new Vector2(0f, 4f), new Vector2(-10f, -2f));
-        accelerateButton.onClick.AddListener(AccelerateAfkReward);
-        accelerationText = CreateText("Acceleration Text", panel, string.Empty, 11, FontStyles.Normal, TextAlignmentOptions.Center);
-        Anchor(accelerationText.rectTransform, new Vector2(0.58f, 0.18f), new Vector2(1f, 0.34f), new Vector2(0f, 0f), new Vector2(-10f, 0f));
-
-        afkRewardSource = panel.gameObject.AddComponent<IdleAdventureAfkRewardSource>();
-        afkRewardSource.Initialize(rewardLedger, collectButton, iconImage, progressFill, iconText, amountText, timerText, collectButtonText);
+        afkRewardPanel = EnsureComponent<IdleAdventureAfkRewardPanel>(afkRewardSource.gameObject);
+        afkRewardPanel.Initialize(afkRewardSource, rewardLedger, AccelerateAfkReward);
         afkRewardSource.SetHighestClearedStage(HighestClearedStage());
         RefreshStaminaView();
     }
@@ -1601,7 +1606,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             RectTransform header = CreatePanel("Header", root, new Color(0.13f, 0.15f, 0.18f, 0.94f));
             Anchor(header, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -74f), new Vector2(0f, 0f));
 
-            stageText = CreateText("Stage Text", header, "Idle Adventure mode", 28, FontStyles.Bold, TextAlignmentOptions.Left);
+            stageText = CreateText("Stage Text", header, "闯关模式", 28, FontStyles.Bold, TextAlignmentOptions.Left);
             Anchor(stageText.rectTransform, new Vector2(0f, 0f), new Vector2(0.58f, 1f), new Vector2(28f, 0f), new Vector2(-8f, 0f));
 
             turnText = CreateText("Turn Text", header, string.Empty, 20, FontStyles.Bold, TextAlignmentOptions.Right);
@@ -1610,31 +1615,36 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             RectTransform battlefield = CreatePanel("Battlefield", root, new Color(0f, 0f, 0f, 0f));
             Anchor(battlefield, new Vector2(0f, 0.23f), new Vector2(1f, 1f), new Vector2(28f, 20f), new Vector2(-28f, -92f));
 
-            RectTransform playerPanel = CreatePanel("Friendly Party Area", battlefield, new Color(0.12f, 0.18f, 0.22f, 0.78f));
+            RectTransform playerPanel = CreatePanel("Friendly Party Area", battlefield, new Color(0f, 0f, 0f, 0f));
             Anchor(playerPanel, new Vector2(0f, 0f), new Vector2(0.48f, 1f), Vector2.zero, Vector2.zero);
 
-            RectTransform enemyPanel = CreatePanel("Enemy Party Area", battlefield, new Color(0.22f, 0.13f, 0.14f, 0.78f));
+            RectTransform enemyPanel = CreatePanel("Enemy Party Area", battlefield, new Color(0f, 0f, 0f, 0f));
             Anchor(enemyPanel, new Vector2(0.52f, 0f), new Vector2(1f, 1f), Vector2.zero, Vector2.zero);
 
             RectTransform friendlySlotsRoot = BuildPartyPanel(playerPanel, true);
             RectTransform enemySlotsRoot = BuildPartyPanel(enemyPanel, false);
 
-            RectTransform footer = CreatePanel("Battle Log Panel", root, new Color(0.12f, 0.12f, 0.14f, 0.94f));
+            RectTransform footer = CreatePanel("Battle Log Panel", root, new Color(0f, 0f, 0f, 0f));
             Anchor(footer, new Vector2(0f, 0f), new Vector2(1f, 0.23f), new Vector2(28f, 24f), new Vector2(-28f, -14f));
 
             logText = CreateText("Battle Log", footer, string.Empty, 18, FontStyles.Normal, TextAlignmentOptions.TopLeft);
             Anchor(logText.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(20f, 18f), new Vector2(-180f, -18f));
+            ConfigureBattleText(logText, true, 12f, 18f);
 
-            pauseButton = CreateButton("Pause Button", footer, "Pause");
+            pauseButton = CreateButton("Pause Button", footer, "暂停");
             Anchor(pauseButton.GetComponent<RectTransform>(), new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-152f, -28f), new Vector2(-20f, 28f));
             pauseButton.onClick.AddListener(TogglePause);
             pauseButtonText = pauseButton.GetComponentInChildren<TextMeshProUGUI>();
 
             resultText = CreateText("Result Text", footer, string.Empty, 18, FontStyles.Bold, TextAlignmentOptions.Center);
             Anchor(resultText.rectTransform, new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(-152f, 16f), new Vector2(-20f, 54f));
+            ConfigureBattleText(resultText, false, 12f, 18f);
 
             battleHudView = canvas.gameObject.AddComponent<IdleAdventureBattleHud>();
             battleHudView.Initialize(canvas, root, stageText, turnText, friendlyCountText, enemyCountText, logText, resultText, pauseButton, pauseButtonText, friendlySlotsRoot, enemySlotsRoot);
+            ConfigureHudSurfaceTransparency(root);
+            ConfigureBattleTopBar(root);
+            HideFriendlyCountText();
 
             BuildStartPanel(startCanvas.GetComponent<RectTransform>());
             BuildEndPanel(root);
@@ -1671,8 +1681,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         turnText = hud.TurnText;
         friendlyCountText = hud.FriendlyCountText;
         enemyCountText = hud.EnemyCountText;
+        HideFriendlyCountText();
         logText = hud.LogText;
         resultText = hud.ResultText;
+        ConfigureBattleText(logText, true, 12f, 18f);
+        ConfigureBattleText(resultText, false, 12f, 18f);
         pauseButton = hud.PauseButton;
         pauseButtonText = hud.PauseButtonText;
 
@@ -1681,6 +1694,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             pauseButton.onClick.RemoveAllListeners();
             pauseButton.onClick.AddListener(TogglePause);
         }
+        ConfigureBattleTopBar(hud.Root);
 
         BindActorViews(hud.FriendlySlotsRoot, true);
         BindActorViews(hud.EnemySlotsRoot, false);
@@ -1708,6 +1722,15 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         Stretch(baseImage.rectTransform);
         baseImage.rectTransform.SetSiblingIndex(0);
 
+        Sprite combatBackgroundSprite = Resources.Load<Sprite>(IdleAdventureCombatBackgroundResourceName);
+        if (combatBackgroundSprite != null)
+        {
+            baseImage.sprite = combatBackgroundSprite;
+            baseImage.color = Color.white;
+            baseImage.type = Image.Type.Simple;
+            baseImage.preserveAspect = false;
+        }
+
         Image distantLight = EnsureImage("Distant Light", root, new Color(0.15f, 0.20f, 0.24f, 0.86f));
         Anchor(distantLight.rectTransform, new Vector2(0f, 0.38f), new Vector2(1f, 0.72f), Vector2.zero, Vector2.zero);
         distantLight.rectTransform.SetSiblingIndex(1);
@@ -1719,6 +1742,15 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         Image centerLane = EnsureImage("Center Lane", root, new Color(0.18f, 0.17f, 0.14f, 0.62f));
         Anchor(centerLane.rectTransform, new Vector2(0.06f, 0.18f), new Vector2(0.94f, 0.28f), Vector2.zero, Vector2.zero);
         centerLane.rectTransform.SetSiblingIndex(3);
+
+        if (combatBackgroundSprite != null)
+        {
+            distantLight.color = new Color(1f, 1f, 1f, 0f);
+            battleGround.color = new Color(1f, 1f, 1f, 0f);
+            centerLane.color = new Color(1f, 1f, 1f, 0f);
+        }
+
+        BattleSceneAnimation.Configure(baseImage);
 
         return backgroundCanvas;
     }
@@ -1740,6 +1772,9 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         }
 
         ConfigureStartCanvas(startCanvas);
+        Transform startPanel = startCanvas.transform.Find(StartPanelName);
+        ApplyStartPanelBackground(startPanel);
+        HideStartStatusStrip(startPanel);
         return startCanvas;
     }
 
@@ -1792,6 +1827,13 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         if (targetCanvas == null) return;
 
+        RectTransform canvasRect = targetCanvas.GetComponent<RectTransform>();
+        if (canvasRect != null)
+        {
+            canvasRect.localRotation = Quaternion.identity;
+            canvasRect.localScale = Vector3.one;
+        }
+
         targetCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
         targetCanvas.overrideSorting = true;
         targetCanvas.sortingOrder = 40;
@@ -1837,15 +1879,83 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         SetChildImageColor(root, "Background", new Color(0f, 0f, 0f, 0f), false);
         SetChildImageColor(root, "Header", new Color(0.13f, 0.15f, 0.18f, 0.94f), true);
-        SetChildImageColor(root, "Battlefield/Friendly Party Area", new Color(0.12f, 0.18f, 0.22f, 0.78f), true);
-        SetChildImageColor(root, "Battlefield/Enemy Party Area", new Color(0.22f, 0.13f, 0.14f, 0.78f), true);
-        SetChildImageColor(root, "Battle Log Panel", new Color(0.12f, 0.12f, 0.14f, 0.94f), true);
+        SetChildImageColor(root, "Battlefield/Friendly Party Area", new Color(0f, 0f, 0f, 0f), false);
+        SetChildImageColor(root, "Battlefield/Enemy Party Area", new Color(0f, 0f, 0f, 0f), false);
+        SetChildImageColor(root, "Battle Log Panel", new Color(0f, 0f, 0f, 0f), false);
+
+        SetChildActive(root, "Battlefield/Friendly Party Area/Friendly Party Title", false);
+        SetChildActive(root, "Battlefield/Enemy Party Area/Enemy Party Title", false);
+        SetChildActive(root, "Battlefield/Enemy Party Area/Enemy Count", false);
+        RectTransform battlefield = root.Find("Battlefield") as RectTransform;
+        if (battlefield != null) Stretch(battlefield);
+        ConfigurePartySlotsRoot(root, "Battlefield/Friendly Party Area/Friendly Slots");
+        ConfigurePartySlotsRoot(root, "Battlefield/Enemy Party Area/Enemy Slots");
+
+        Transform battleLogTransform = root.Find("Battle Log Panel/Battle Log");
+        if (battleLogTransform != null) battleLogTransform.gameObject.SetActive(false);
+    }
+
+    private void ConfigureBattleTopBar(RectTransform root)
+    {
+        RectTransform header = root != null ? root.Find("Header") as RectTransform : null;
+        if (header == null || pauseButton == null) return;
+        RectTransform pauseRect = pauseButton.transform as RectTransform;
+        pauseRect.SetParent(header, false);
+        pauseRect.localRotation = Quaternion.identity;
+        pauseRect.localScale = Vector3.one;
+        Anchor(pauseRect, new Vector2(1f, 0.5f), new Vector2(1f, 0.5f), new Vector2(-272f, -28f), new Vector2(-140f, 28f));
+        if (pauseButton.targetGraphic is Image image)
+        {
+            Sprite sprite = Resources.Load<Sprite>("UI/ApprovedUi/Controls/PauseButton");
+            if (sprite != null)
+            {
+                image.sprite = sprite;
+                image.overrideSprite = null;
+                image.type = Image.Type.Simple;
+                image.color = Color.white;
+            }
+        }
+        ColorBlock colors = pauseButton.colors;
+        colors.normalColor = colors.selectedColor = Color.white;
+        colors.highlightedColor = new Color(1f, .97f, .9f, 1f);
+        colors.pressedColor = new Color(.84f, .81f, .75f, 1f);
+        colors.disabledColor = new Color(.7f, .68f, .64f, 1f);
+        colors.colorMultiplier = 1f;
+        pauseButton.colors = colors;
+        pauseButton.transition = Selectable.Transition.ColorTint;
+        if (pauseButtonText != null)
+        {
+            Anchor(pauseButtonText.rectTransform, Vector2.zero, Vector2.one, new Vector2(22f, 4f), new Vector2(0f, -4f));
+            ConfigureBattleText(pauseButtonText, false, 18f, 20f);
+            pauseButtonText.color = new Color32(73, 55, 34, 255);
+        }
+        if (stageText != null)
+            Anchor(stageText.rectTransform, Vector2.zero, Vector2.one, new Vector2(28f, 0f), new Vector2(-296f, 0f));
+        if (turnText != null)
+        {
+            Anchor(turnText.rectTransform, new Vector2(1f, 0f), Vector2.one, new Vector2(-128f, 0f), new Vector2(-24f, 0f));
+            ConfigureBattleText(turnText, false, 16f, 20f);
+        }
+    }
+
+    private void ConfigurePartySlotsRoot(RectTransform root, string childPath)
+    {
+        RectTransform slotsRoot = root.Find(childPath) as RectTransform;
+        if (slotsRoot == null) return;
+
+        RectTransform partyRoot = slotsRoot.parent as RectTransform;
+        if (partyRoot != null) Stretch(partyRoot);
+        Stretch(slotsRoot);
     }
 
     private void ConfigureCombatScreenVisible(bool visible)
     {
         if (backgroundCanvas != null) backgroundCanvas.gameObject.SetActive(visible);
         if (canvas != null) canvas.gameObject.SetActive(visible);
+        if (!visible) CancelBattleAnimations();
+        BattleSceneAnimation.SetBattleVisible(visible);
+        if (visible) battlePresentationVisible = true;
+        else ReleaseBattlePresentationAssets();
     }
 
     private void ConfigureStartScreenVisible(bool visible)
@@ -1861,6 +1971,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             targetViews[i] = EnsureActorView(slotsRoot, friendlySide, i);
         }
+        SortPartyViews(targetViews);
     }
 
     private IdleAdventureActorView EnsureActorView(RectTransform slotsRoot, bool friendlySide, int index)
@@ -1878,15 +1989,38 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             view = CreateActorSlot(slotsRoot, friendlySide, index);
         }
 
-        bool frontColumn = IsFrontColumnSlot(index);
-        int row = GetFormationRow(index);
-        int column = frontColumn == friendlySide ? 1 : 0;
-        float left = column == 0 ? 0f : 0.52f;
-        float right = column == 0 ? 0.48f : 1f;
-        float top = 1f - row / (float)FormationRows;
-        float bottom = 1f - (row + 1f) / FormationRows;
-        Anchor(view.Root, new Vector2(left, bottom), new Vector2(right, top), new Vector2(6f, 8f), new Vector2(-6f, -8f));
+        ConfigureBattleSlot(view, friendlySide, index);
+        view.ConfigureBattleFootOrigin();
         return view;
+    }
+
+    private static void ConfigureBattleSlot(IdleAdventureActorView view, bool friendlySide, int index, bool soloEnemy = false, bool largeEnemy = false)
+    {
+        if (view == null) return;
+        int row = GetFormationRow(index);
+        float x = IsFrontColumnSlot(index) ? 0.2394f : 0.0875f;
+        if (row == 1) x += 0.0886f;
+        float y = 0.516667f - row * 0.186111f;
+        if (!friendlySide) x = 1f - x;
+        if (soloEnemy)
+        {
+            x = largeEnemy ? 0.71f : 0.80f;
+            y = largeEnemy ? 0.238f : 0.330556f;
+        }
+        RectTransform slot = view.Root;
+        slot.anchorMin = slot.anchorMax = new Vector2(x, y);
+        slot.pivot = new Vector2(0.5f, 0f);
+        slot.sizeDelta = new Vector2(160f, 84f);
+        slot.anchoredPosition = Vector2.zero;
+    }
+
+    private static void SortPartyViews(IdleAdventureActorView[] views)
+    {
+        for (int row = 0; row < FormationRows; row++)
+        {
+            if (views[row + FormationRows] != null) views[row + FormationRows].Root.SetAsLastSibling();
+            if (views[row] != null) views[row].Root.SetAsLastSibling();
+        }
     }
 
     private void EnsurePersistentPanels(RectTransform root)
@@ -1912,16 +2046,20 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             startPanelView.BindStageSelection(SelectPreviousStartStage, SelectNextStartStage);
             formationPanelView.Bind(OpenFormationPanel, CloseFormationPanel, AutoFillFormation, ClearFormation, AssignFormationSlot, ClearFormationSlot);
             formationPanelView.ApplySlotLayout(true);
-            RefreshStartStageSelectionView();
-            RefreshFormationView();
+            ApplyStartActionButtonAppearance(startPanelView.transform);
         }
+
+        EnsureReturnHomeButton(startRoot);
+        EnsureStartPreviewLayout(startPanelView != null ? startPanelView.transform as RectTransform : null);
+        RefreshStartStageSelectionView();
+        RefreshFormationView();
 
         stageEndPanelView = ResolveExistingStageEndPanel(root);
         if (stageEndPanelView == null || !stageEndPanelView.HasBindings) BuildEndPanel(root);
         else
         {
             stageEndPanelView.Bind(ContinueNextStage, EndMode);
-            stageEndPanelView.SetButtonLabels("Continue", "Exit Mode");
+            stageEndPanelView.SetButtonLabels("继续", "退出模式");
         }
         RemoveExtraStageEndPanels(root, stageEndPanelView);
 
@@ -1930,7 +2068,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         else
         {
             pausePanelView.Bind(ResumePausedBattle, ExitPausedBattle);
-            pausePanelView.SetButtonLabels("Continue Battle", "Exit Mode");
+            pausePanelView.SetButtonLabels("继续战斗", "退出模式");
         }
         RemoveExtraPausePanels(root, pausePanelView);
 
@@ -1960,6 +2098,64 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         if (formationPanelView != null && formationPanelView.HasBindings) return formationPanelView;
         return root.GetComponentInChildren<IdleAdventureFormationPanel>(true);
+    }
+
+    private void EnsureStartPreviewLayout(RectTransform startPanel)
+    {
+        if (startPanel == null) return;
+
+        startPreviewView = startPanel.GetComponent<IdleAdventureStartPreviewLayout>();
+        if (startPreviewView == null) startPreviewView = startPanel.gameObject.AddComponent<IdleAdventureStartPreviewLayout>();
+        startPreviewView.EnsureLayout(startPanel);
+        startPreviewView.BindFormationActions(OpenFormationPanel, AutoFillFormation, ClearFormation);
+        startPreviewView.BindRosterAction(ToggleRosterCharacter);
+        startPreviewView.BindFormationDrag(AssignFormationSlot);
+    }
+
+    private void EnsureReturnHomeButton(RectTransform startRoot)
+    {
+        if (startRoot == null) return;
+
+        ReturnToHomeButton returnController = startRoot.GetComponentInChildren<ReturnToHomeButton>(true);
+        Button returnButton = returnController != null ? returnController.GetComponent<Button>() : null;
+        if (returnButton == null)
+        {
+            GameObject buttonObject = new GameObject(
+                ReturnHomeButtonName,
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(Image),
+                typeof(Button));
+            buttonObject.transform.SetParent(startRoot, false);
+            Image background = buttonObject.GetComponent<Image>();
+            background.color = Color.clear;
+            background.raycastTarget = false;
+            returnButton = buttonObject.GetComponent<Button>();
+            returnButton.targetGraphic = background;
+            returnController = buttonObject.AddComponent<ReturnToHomeButton>();
+        }
+        else
+        {
+            returnButton.gameObject.name = ReturnHomeButtonName;
+            if (returnButton.transform.parent != startRoot)
+            {
+                returnButton.transform.SetParent(startRoot, false);
+            }
+        }
+
+        RectTransform returnRect = returnButton.GetComponent<RectTransform>();
+        returnRect.localScale = Vector3.one;
+        returnRect.localRotation = Quaternion.identity;
+        Anchor(
+            returnRect,
+            new Vector2(0.035f, 0.955f),
+            new Vector2(0.035f, 0.955f),
+            Vector2.zero,
+            Vector2.zero);
+        returnRect.pivot = new Vector2(0f, 1f);
+        SmallButtonIconUtility.ApplyIconButtonWithLabel(returnButton, "返回", "返回");
+        returnButton.gameObject.SetActive(true);
+        returnButton.transform.SetAsLastSibling();
     }
 
     private void RemoveLegacyStartPanels(RectTransform hudRoot, RectTransform validStartRoot)
@@ -2027,6 +2223,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         afkRewardSource = null;
         battleHudView = null;
         startPanelView = null;
+        startPreviewView = null;
         stageEndPanelView = null;
         pausePanelView = null;
         formationPanelView = null;
@@ -2056,45 +2253,50 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         RectTransform groundBand = CreatePanel("Start Ground Band", startPanel, new Color(0.08f, 0.11f, 0.10f, 1f));
         Anchor(groundBand, new Vector2(0f, 0f), new Vector2(1f, 0.48f), Vector2.zero, Vector2.zero);
+        ApplyStartPanelBackground(startPanel);
 
         RectTransform titleBlock = CreatePanel("Start Title Block", startPanel, new Color(0f, 0f, 0f, 0f));
         Anchor(titleBlock, new Vector2(0.08f, 0.54f), new Vector2(0.92f, 0.88f), Vector2.zero, Vector2.zero);
 
-        TextMeshProUGUI startPanelTitleText = CreateText("Start Panel Title", titleBlock, "Idle Adventure mode", 54, FontStyles.Bold, TextAlignmentOptions.Center);
+        TextMeshProUGUI startPanelTitleText = CreateText("Start Panel Title", titleBlock, "闯关模式", 54, FontStyles.Bold, TextAlignmentOptions.Center);
+        startPanelTitleText.color = Color.black;
         Anchor(startPanelTitleText.rectTransform, new Vector2(0f, 0.48f), new Vector2(1f, 1f), Vector2.zero, Vector2.zero);
 
-        TextMeshProUGUI startPanelBodyText = CreateText("Start Panel Body Text", titleBlock, "Expedition ready", 24, FontStyles.Normal, TextAlignmentOptions.Center);
+        TextMeshProUGUI startPanelBodyText = CreateText("Start Panel Body Text", titleBlock, "远征准备就绪", 24, FontStyles.Normal, TextAlignmentOptions.Center);
+        startPanelBodyText.color = Color.black;
         Anchor(startPanelBodyText.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 0.42f), new Vector2(20f, 0f), new Vector2(-20f, 0f));
 
         RectTransform statusStrip = CreatePanel("Start Status Strip", startPanel, new Color(0.12f, 0.14f, 0.16f, 0.94f));
         Anchor(statusStrip, new Vector2(0.22f, 0.39f), new Vector2(0.78f, 0.48f), Vector2.zero, Vector2.zero);
+        statusStrip.gameObject.SetActive(false);
 
-        TextMeshProUGUI formationText = CreateText("Formation Status", statusStrip, "Camp prepared  |  Gate open  |  Team ready", 19, FontStyles.Bold, TextAlignmentOptions.Center);
+        TextMeshProUGUI formationText = CreateText("Formation Status", statusStrip, "营地已准备  |  关卡已开放  |  队伍已就绪", 19, FontStyles.Bold, TextAlignmentOptions.Center);
         Stretch(formationText.rectTransform);
 
         RectTransform stageSelector = CreatePanel("Stage Selector", startPanel, new Color(0.10f, 0.12f, 0.15f, 0.96f));
         Anchor(stageSelector, new Vector2(0.28f, 0.24f), new Vector2(0.72f, 0.35f), Vector2.zero, Vector2.zero);
 
-        Button previousStageButton = CreateButton("Previous Stage Button", stageSelector, "Previous");
+        Button previousStageButton = CreateButton("Previous Stage Button", stageSelector, "上一关");
         Anchor(previousStageButton.GetComponent<RectTransform>(), new Vector2(0f, 0f), new Vector2(0.22f, 1f), Vector2.zero, Vector2.zero);
 
-        TextMeshProUGUI stageSelectionText = CreateText("Stage Selection Text", stageSelector, "Loading authoritative progress...", 18, FontStyles.Bold, TextAlignmentOptions.Center);
+        TextMeshProUGUI stageSelectionText = CreateText("Stage Selection Text", stageSelector, "正在读取服务器进度……", 18, FontStyles.Bold, TextAlignmentOptions.Center);
         Anchor(stageSelectionText.rectTransform, new Vector2(0.23f, 0f), new Vector2(0.77f, 1f), new Vector2(8f, 4f), new Vector2(-8f, -4f));
 
-        Button nextStageButton = CreateButton("Next Stage Button", stageSelector, "Next");
+        Button nextStageButton = CreateButton("Next Stage Button", stageSelector, "下一关");
         Anchor(nextStageButton.GetComponent<RectTransform>(), new Vector2(0.78f, 0f), new Vector2(1f, 1f), Vector2.zero, Vector2.zero);
 
-        Button formationButton = CreateButton("Open Formation Button", startPanel, "Formation");
+        Button formationButton = CreateButton("Open Formation Button", startPanel, "编队");
         Anchor(formationButton.GetComponent<RectTransform>(), new Vector2(0.28f, 0.13f), new Vector2(0.44f, 0.19f), Vector2.zero, Vector2.zero);
 
-        Button startButton = CreateButton("Start Battle Button", startPanel, "Start Battle");
+        Button startButton = CreateButton("Start Battle Button", startPanel, "开始战斗");
         Anchor(startButton.GetComponent<RectTransform>(), new Vector2(0.56f, 0.13f), new Vector2(0.72f, 0.19f), Vector2.zero, Vector2.zero);
+        ApplyStartActionButtonAppearance(startPanel);
 
         RectTransform formationWindow = CreatePanel("Formation Window", startPanel, new Color(0.035f, 0.04f, 0.05f, 0.98f));
         Stretch(formationWindow);
         formationWindow.gameObject.SetActive(false);
 
-        TextMeshProUGUI formationTitle = CreateText("Formation Title", formationWindow, "Formation", 42, FontStyles.Bold, TextAlignmentOptions.Center);
+        TextMeshProUGUI formationTitle = CreateText("Formation Title", formationWindow, "编队", 42, FontStyles.Bold, TextAlignmentOptions.Center);
         Anchor(formationTitle.rectTransform, new Vector2(0f, 0.88f), new Vector2(1f, 0.98f), new Vector2(28f, 0f), new Vector2(-28f, 0f));
 
         RectTransform slotArea = CreatePanel("Formation Slot Area", formationWindow, new Color(0.08f, 0.09f, 0.11f, 0.92f));
@@ -2150,13 +2352,14 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             npcDragItems[i] = dragItem;
         }
 
-        Button autoFillButton = CreateButton("Formation Auto Fill Button", formationWindow, "Auto Fill");
+        Button autoFillButton = CreateButton("Formation Auto Fill Button", formationWindow, "自动填充");
         Anchor(autoFillButton.GetComponent<RectTransform>(), new Vector2(0.08f, 0.86f), new Vector2(0.20f, 0.93f), Vector2.zero, Vector2.zero);
 
-        Button clearButton = CreateButton("Formation Clear Button", formationWindow, "Clear");
+        Button clearButton = CreateButton("Formation Clear Button", formationWindow, "清除");
         Anchor(clearButton.GetComponent<RectTransform>(), new Vector2(0.80f, 0.86f), new Vector2(0.92f, 0.93f), Vector2.zero, Vector2.zero);
+        SmallButtonIconUtility.ApplyToButton(clearButton, "一键清除", 38f, 6f, 5f);
 
-        Button closeButton = CreateButton("Formation Close Button", formationWindow, "Confirm");
+        Button closeButton = CreateButton("Formation Close Button", formationWindow, "确认");
         Anchor(closeButton.GetComponent<RectTransform>(), new Vector2(0.42f, 0.86f), new Vector2(0.58f, 0.93f), Vector2.zero, Vector2.zero);
 
         startPanelView = startPanel.gameObject.AddComponent<IdleAdventureStartPanel>();
@@ -2169,6 +2372,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             startButton);
         startPanelView.Bind(StartAdventure);
         startPanelView.BindStageSelection(SelectPreviousStartStage, SelectNextStartStage);
+        EnsureStartPreviewLayout(startPanel);
+        EnsureReturnHomeButton(root);
         RefreshStartStageSelectionView();
 
         formationPanelView = startPanel.gameObject.AddComponent<IdleAdventureFormationPanel>();
@@ -2176,6 +2381,47 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         formationPanelView.Bind(OpenFormationPanel, CloseFormationPanel, AutoFillFormation, ClearFormation, AssignFormationSlot, ClearFormationSlot);
         formationPanelView.ApplySlotLayout(true);
         RefreshFormationView();
+    }
+
+    private void ApplyStartPanelBackground(Transform startPanelTransform)
+    {
+        if (startPanelTransform == null) return;
+
+        Image startPanelImage = startPanelTransform.GetComponent<Image>();
+        if (startPanelImage == null) return;
+
+        Sprite backgroundSprite = Resources.Load<Sprite>(IdleAdventureBackgroundResourceName);
+        if (backgroundSprite == null) return;
+
+        startPanelImage.sprite = backgroundSprite;
+        startPanelImage.color = Color.white;
+        startPanelImage.type = Image.Type.Simple;
+        startPanelImage.preserveAspect = false;
+
+        RectTransform startPanelRect = startPanelTransform as RectTransform;
+        SetChildImageColor(startPanelRect, "Start Sky Band", new Color(1f, 1f, 1f, 0f), false);
+        SetChildImageColor(startPanelRect, "Start Ground Band", new Color(1f, 1f, 1f, 0f), false);
+    }
+
+    private void HideStartStatusStrip(Transform startPanelTransform)
+    {
+        if (startPanelTransform == null) return;
+
+        Transform statusStrip = startPanelTransform.Find("Start Status Strip");
+        if (statusStrip != null) statusStrip.gameObject.SetActive(false);
+    }
+
+    private static void ApplyStartActionButtonAppearance(Transform startPanelTransform)
+    {
+        if (startPanelTransform == null) return;
+
+        Transform formationTransform = startPanelTransform.Find("Open Formation Button");
+        Transform startTransform = startPanelTransform.Find("Start Battle Button");
+        Button formationButton = formationTransform != null ? formationTransform.GetComponent<Button>() : null;
+        Button startButton = startTransform != null ? startTransform.GetComponent<Button>() : null;
+
+        SmallButtonIconUtility.ApplyVerticalIconButton(formationButton, "编队", "编队");
+        SmallButtonIconUtility.ApplyVerticalIconButton(startButton, "对战副", "开始战斗");
     }
 
     private void BuildEndPanel(RectTransform root)
@@ -2186,16 +2432,16 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         RectTransform panelBody = CreatePanel("End Panel Body", endPanel, new Color(0.12f, 0.14f, 0.17f, 1f));
         Anchor(panelBody, new Vector2(0.30f, 0.32f), new Vector2(0.70f, 0.68f), Vector2.zero, Vector2.zero);
 
-        TextMeshProUGUI endPanelTitleText = CreateText("End Panel Title", panelBody, "Stage Cleared", 30, FontStyles.Bold, TextAlignmentOptions.Center);
+        TextMeshProUGUI endPanelTitleText = CreateText("End Panel Title", panelBody, "关卡通关", 30, FontStyles.Bold, TextAlignmentOptions.Center);
         Anchor(endPanelTitleText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(30f, -82f), new Vector2(-30f, -26f));
 
         TextMeshProUGUI endPanelBodyText = CreateText("End Panel Body Text", panelBody, string.Empty, 18, FontStyles.Normal, TextAlignmentOptions.Center);
         Anchor(endPanelBodyText.rectTransform, new Vector2(0f, 0.42f), new Vector2(1f, 0.74f), new Vector2(40f, 0f), new Vector2(-40f, 0f));
 
-        Button continueButton = CreateButton("Continue Stage Button", panelBody, "Continue");
+        Button continueButton = CreateButton("Continue Stage Button", panelBody, "继续");
         Anchor(continueButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(-256f, 44f), new Vector2(-24f, 98f));
 
-        Button endModeButton = CreateButton("End Mode Button", panelBody, "Exit Mode");
+        Button endModeButton = CreateButton("End Mode Button", panelBody, "退出模式");
         Anchor(endModeButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(24f, 44f), new Vector2(256f, 98f));
 
         stageEndPanelView = endPanel.gameObject.AddComponent<IdleAdventureStageEndPanel>();
@@ -2211,22 +2457,22 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         RectTransform panelBody = CreatePanel("Pause Panel Body", pausePanel, new Color(0.10f, 0.12f, 0.15f, 0.98f));
         Anchor(panelBody, new Vector2(0.32f, 0.34f), new Vector2(0.68f, 0.66f), Vector2.zero, Vector2.zero);
 
-        TextMeshProUGUI pausePanelTitleText = CreateText("Pause Panel Title", panelBody, "Battle Paused", 30, FontStyles.Bold, TextAlignmentOptions.Center);
+        TextMeshProUGUI pausePanelTitleText = CreateText("Pause Panel Title", panelBody, "战斗已暂停", 30, FontStyles.Bold, TextAlignmentOptions.Center);
         Anchor(pausePanelTitleText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(30f, -78f), new Vector2(-30f, -24f));
 
-        TextMeshProUGUI pausePanelBodyText = CreateText("Pause Panel Body Text", panelBody, "Continue the current battle or exit back to the mode page.", 18, FontStyles.Normal, TextAlignmentOptions.Center);
+        TextMeshProUGUI pausePanelBodyText = CreateText("Pause Panel Body Text", panelBody, "继续当前战斗，或退出返回模式页面。", 18, FontStyles.Normal, TextAlignmentOptions.Center);
         Anchor(pausePanelBodyText.rectTransform, new Vector2(0f, 0.42f), new Vector2(1f, 0.74f), new Vector2(40f, 0f), new Vector2(-40f, 0f));
 
-        Button resumeButton = CreateButton("Continue Battle Button", panelBody, "Continue Battle");
+        Button resumeButton = CreateButton("Continue Battle Button", panelBody, "继续战斗");
         Anchor(resumeButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(-260f, 42f), new Vector2(-24f, 96f));
 
-        Button exitButton = CreateButton("Exit Battle Button", panelBody, "Exit Mode");
+        Button exitButton = CreateButton("Exit Battle Button", panelBody, "退出模式");
         Anchor(exitButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(24f, 42f), new Vector2(260f, 96f));
 
         pausePanelView = pausePanel.gameObject.AddComponent<IdleAdventurePausePanel>();
         pausePanelView.Initialize(pausePanelTitleText, pausePanelBodyText, resumeButton, exitButton);
         pausePanelView.Bind(ResumePausedBattle, ExitPausedBattle);
-        pausePanelView.SetButtonLabels("Continue Battle", "Exit Mode");
+        pausePanelView.SetButtonLabels("继续战斗", "退出模式");
     }
 
     private void ApplyPendingRoleAcquisitionRoute()
@@ -2299,11 +2545,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (startPanelView != null)
         {
             startPanelView.SetContent(
-                "Idle Adventure mode",
-                $"Guide target: Stage {requestedStage}  Drop pool: {poolKey}. Use the stage selector to replay it.");
+                "闯关模式",
+                $"获取目标：第 {requestedStage} 关，奖励池：{poolKey}。可使用关卡选择重新挑战。");
         }
         RefreshStartStageSelectionView();
-        AddLog($"Acquisition guide target: mode={modeCode}, stage={requestedStage}, pool={poolKey}.");
+        AddLog($"获取目标：模式={modeCode}，关卡={requestedStage}，奖励池={poolKey}。");
         ClearPendingRoleAcquisitionRouteStorage();
     }
 
@@ -2373,13 +2619,13 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         ClearParty(enemies);
         ClearCombatantRootChildren();
 
-        if (pauseButtonText != null) pauseButtonText.text = "Pause";
+        if (pauseButtonText != null) pauseButtonText.text = "暂停";
         if (resultText != null) resultText.text = string.Empty;
         HidePausePanel();
         HideEndPanel();
         ShowStartPanel();
         SetWaitingText();
-        if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", "Loading authoritative progress...");
+        if (startPanelView != null) startPanelView.SetContent("闯关模式", "正在读取闯关进度……");
         RefreshStartStageSelectionView();
         RefreshFormationView();
     }
@@ -2392,7 +2638,9 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         }
 
         int availableCount = AvailableFriendlyDefinitionCount();
-        int deployCount = Mathf.Clamp(startingFriendlyCount, 1, Mathf.Max(1, availableCount));
+        int deployCount = availableCount > 0
+            ? Mathf.Clamp(startingFriendlyCount, 1, availableCount)
+            : 0;
         deployCount = Mathf.Min(deployCount, MaxPartySize);
         for (int i = 0; i < deployCount; i++)
         {
@@ -2402,9 +2650,21 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     private int AvailableFriendlyDefinitionCount()
     {
-        if (backendAvailableNpcs != null && backendAvailableNpcs.Length > 0)
+        if (backendNpcListLoaded)
         {
-            return Mathf.Clamp(backendAvailableNpcs.Length, 1, MaxPartySize);
+            return ShouldUseBackendApi() && backendAvailableNpcs != null
+                ? backendAvailableNpcs.Length
+                : 0;
+        }
+
+        if (ShouldUseBackendApi())
+        {
+            return 0;
+        }
+
+        if (!CanUseLocalCombatSimulation())
+        {
+            return 0;
         }
 
         int configuredCount = modeConfig != null && modeConfig.FriendlyLineup != null ? modeConfig.FriendlyLineup.Length : 0;
@@ -2437,17 +2697,32 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         if (formationPanelView == null || !formationPanelView.HasBindings) return;
 
+        if (ShouldUseBackendApi() && !backendNpcListLoaded)
+        {
+            for (int i = 0; i < MaxPartySize; i++)
+            {
+                friendlyFormation[i] = -1;
+            }
+        }
+
         int deployedCount = FormationDeployedCount();
-        formationPanelView.SetStatus($"{deployedCount}/{MaxPartySize} deployed");
+        formationPanelView.SetStatus($"{deployedCount}/{MaxPartySize} 已上阵");
+        string[] previewNames = new string[MaxPartySize];
+        string[] previewIcons = new string[MaxPartySize];
 
         for (int i = 0; i < MaxPartySize; i++)
         {
             int definitionIndex = friendlyFormation[i];
             bool occupied = definitionIndex >= 0;
             string rowName = $"Row {GetFormationRow(i) + 1}";
-            string columnName = IsFrontColumnSlot(i) ? "Front" : "Back";
-            string unitName = occupied ? ResolveFriendlyFormationName(definitionIndex) : "Empty";
+            string columnName = IsFrontColumnSlot(i) ? "前排" : "后排";
+            string unitName = occupied ? ResolveFriendlyFormationName(definitionIndex) : "空位";
             formationPanelView.SetSlot(i, $"{columnName} {rowName}\n{unitName}", occupied, IsFrontColumnSlot(i));
+            previewNames[i] = occupied ? ResolveFriendlyFormationPreviewName(definitionIndex) : string.Empty;
+            if (occupied && backendAvailableNpcs != null && definitionIndex < backendAvailableNpcs.Length)
+            {
+                previewIcons[i] = backendAvailableNpcs[definitionIndex]?.icon;
+            }
         }
 
         int availableCount = AvailableFriendlyDefinitionCount();
@@ -2456,23 +2731,58 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             bool available = i < availableCount;
             bool assigned = available && IsFriendlyDefinitionAssigned(i, -1);
             string unitName = available ? ResolveFriendlyFormationName(i) : string.Empty;
-            string label = assigned ? $"{unitName}\nAssigned" : unitName;
+            string label = assigned ? $"{unitName}\n已上阵" : unitName;
             formationPanelView.SetNpc(i, label, available, assigned);
+        }
+
+        if (startPreviewView != null)
+        {
+            startPreviewView.SetFormation(previewNames, deployedCount, previewIcons);
+            startPreviewView.SetRoster(backendAvailableNpcs, friendlyFormation, backendNpcListLoaded);
         }
     }
 
     private string ResolveFriendlyFormationName(int definitionIndex)
     {
-        string fallbackName = $"Hero {definitionIndex + 1}";
-        if (backendAvailableNpcs != null && definitionIndex >= 0 && definitionIndex < backendAvailableNpcs.Length && backendAvailableNpcs[definitionIndex] != null)
+        if (backendNpcListLoaded || ShouldUseBackendApi())
         {
-            string backendName = backendAvailableNpcs[definitionIndex].ResolvedCombatantName;
-            return string.IsNullOrEmpty(backendName) ? fallbackName : backendName;
+            if (backendAvailableNpcs == null
+                || definitionIndex < 0
+                || definitionIndex >= backendAvailableNpcs.Length
+                || backendAvailableNpcs[definitionIndex] == null)
+            {
+                return string.Empty;
+            }
+
+            IdleAdventurePlayerNpcResponse backendNpc = backendAvailableNpcs[definitionIndex];
+            string backendName = backendNpc.ResolvedCombatantName;
+            return string.IsNullOrEmpty(backendName) ? backendNpc.ResolvedCombatantKey : backendName;
         }
 
+        if (!CanUseLocalCombatSimulation()) return string.Empty;
+
+        string fallbackName = $"我方角色 {definitionIndex + 1}";
         IdleAdventureCombatantDefinition[] lineup = modeConfig != null ? modeConfig.FriendlyLineup : null;
         if (lineup == null || definitionIndex < 0 || definitionIndex >= lineup.Length || lineup[definitionIndex] == null) return fallbackName;
         return lineup[definitionIndex].ResolveName(fallbackName);
+    }
+
+    private string ResolveFriendlyFormationPreviewName(int definitionIndex)
+    {
+        string unitName = ResolveFriendlyFormationName(definitionIndex);
+        if (string.IsNullOrEmpty(unitName)) return string.Empty;
+
+        if ((backendNpcListLoaded || ShouldUseBackendApi())
+            && backendAvailableNpcs != null
+            && definitionIndex >= 0
+            && definitionIndex < backendAvailableNpcs.Length
+            && backendAvailableNpcs[definitionIndex] != null
+            && backendAvailableNpcs[definitionIndex].level > 0)
+        {
+            return $"Lv.{backendAvailableNpcs[definitionIndex].level} {unitName}";
+        }
+
+        return unitName;
     }
 
     private void ShowStartPanel()
@@ -2516,8 +2826,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         if (pausePanelView == null) return;
 
-        pausePanelView.SetContent("Battle Paused", "Continue the current battle or exit back to the mode page.");
-        pausePanelView.SetButtonLabels("Continue Battle", "Exit Battle");
+        pausePanelView.SetContent("战斗已暂停", "继续当前战斗，或退出返回模式页面。");
+        pausePanelView.SetButtonLabels("继续战斗", "退出战斗");
         pausePanelView.Show();
         UpdateButtonStates();
     }
@@ -2532,7 +2842,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         paused = false;
         modePausedByChoice = false;
-        if (pauseButtonText != null) pauseButtonText.text = "Pause";
+        if (pauseButtonText != null) pauseButtonText.text = "暂停";
         HidePausePanel();
     }
 
@@ -2562,9 +2872,9 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (startPanelView != null)
         {
             string selectionText = selectedReplayStage > 0
-                ? $"Loading Stage {selectedReplayStage} replay preview..."
-                : $"Loading authoritative Stage {backendNextStage} preview...";
-            startPanelView.SetContent("Idle Adventure mode", selectionText);
+                ? $"正在读取第 {selectedReplayStage} 关重打预览……"
+                : $"正在读取服务器第 {backendNextStage} 关预览……";
+            startPanelView.SetContent("闯关模式", selectionText);
         }
         QueueBackendReferenceDataLoad(requestedStage);
     }
@@ -2591,13 +2901,41 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         SanitizeSelectedReplayStage();
         string selection = selectedReplayStage > 0
-            ? $"Replay Stage {selectedReplayStage}"
-            : $"Continue Stage {Mathf.Max(1, backendNextStage)}";
+            ? $"重打第 {selectedReplayStage} 关"
+            : $"继续第 {Mathf.Max(1, backendNextStage)} 关";
         string guide = acquisitionRouteApplied && acquisitionRouteStage > 0
-            ? $"  |  Guide target: Stage {acquisitionRouteStage}"
+            ? $"  |  引导目标：第 {acquisitionRouteStage} 关"
             : string.Empty;
         startPanelView.SetStageSelection(
-            $"{selection}\nHighest cleared: {Mathf.Max(0, backendHighestStage)}{guide}");
+            $"{selection}\n已通关最高关卡：{Mathf.Max(0, backendHighestStage)}{guide}");
+        RefreshStartPreviewStage();
+    }
+
+    private void RefreshStartPreviewStage()
+    {
+        if (startPreviewView == null) return;
+
+        int requestedStage = ResolveSelectedStartStage();
+        IdleAdventureStageEnemiesResponse preview = backendEnemyPreview;
+        if (preview != null && preview.stage > 0 && preview.stage != requestedStage) preview = null;
+
+        string stageName = preview != null ? preview.ResolvedStageName : string.Empty;
+        startPreviewView.SetStage(requestedStage, stageName, selectedReplayStage > 0);
+        startPreviewView.SetEnemyPreview(preview);
+        startPreviewView.SetRewards(
+            ResolveBackendRewardsForStage(requestedStage),
+            modeConfig != null ? modeConfig.RewardsForStage(requestedStage) : null);
+    }
+
+    private IdleAdventureRewardItemResponse[] ResolveBackendRewardsForStage(int requestedStage)
+    {
+        if (backendStageRewards == null) return null;
+        for (int i = 0; i < backendStageRewards.Length; i++)
+        {
+            IdleAdventureStageRewardResponse stageReward = backendStageRewards[i];
+            if (stageReward != null && stageReward.stage == requestedStage) return stageReward.rewards;
+        }
+        return null;
     }
 
     private void StartAdventure()
@@ -2612,9 +2950,9 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         BackendGameService service = ResolveBackendService();
         if (service == null || !service.IsAuthenticated)
         {
-            string message = "Backend session is not authenticated. Login is required before starting Idle Adventure.";
+            string message = "服务器会话未认证，请登录后再开始闯关。";
             AddLog(message);
-            if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", message);
+            if (startPanelView != null) startPanelView.SetContent("闯关模式", message);
             UpdateButtonStates();
             return;
         }
@@ -2628,7 +2966,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (service == null || !service.IsAuthenticated) yield break;
 
         backendRequestPending = true;
-        if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", "Starting from backend...");
+        if (startPanelView != null) startPanelView.SetContent("闯关模式", "正在准备战斗……");
 
         yield return RefreshBackendStamina(service);
         bool homeRefreshSucceeded = false;
@@ -2638,7 +2976,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             backendRequestPending = false;
             if (startPanelView != null)
             {
-                startPanelView.SetContent("Idle Adventure mode", "Unable to refresh authoritative stage progress. Please retry.");
+                startPanelView.SetContent("闯关模式", "无法刷新关卡进度，请重试。");
             }
             UpdateButtonStates();
             yield break;
@@ -2650,19 +2988,19 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             if (endResult == null || !endResult.Success || endResult.Data == null)
             {
                 backendRequestPending = false;
-                AddLog($"Backend active session cleanup failed: {BackendResultMessage(endResult)}");
-                if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", $"Backend cleanup failed: {BackendResultMessage(endResult)}");
+                AddLog($"清理服务器进行中的会话失败：{BackendResultMessage(endResult)}");
+                if (startPanelView != null) startPanelView.SetContent("闯关模式", $"上一场战斗尚未结束：{BackendResultMessage(endResult)}");
                 UpdateButtonStates();
                 yield break;
             }
 
-            AddLog("Previous backend battle session ended before starting a new formation.");
+            AddLog("开始新编队前已结束上一场服务器战斗。");
             backendSessionKey = string.Empty;
             backendRunningSessionKey = string.Empty;
         }
 
         int requestedStage = ResolveSelectedStartStage();
-        yield return StartBackendSessionFromSavedFormation(service, requestedStage, "Backend battle start failed");
+        yield return StartBackendSessionFromSavedFormation(service, requestedStage, "服务器开始战斗失败");
     }
 
     private IEnumerator RefreshBackendHomeBeforeSessionStart(BackendGameService service, Action<bool> onComplete)
@@ -2682,12 +3020,16 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         }
         else
         {
-            AddLog($"Backend home refresh before start failed: {BackendResultMessage(homeResult)}");
+            AddLog($"开始前刷新服务器主页失败：{BackendResultMessage(homeResult)}");
             onComplete?.Invoke(false);
         }
     }
 
-    private IEnumerator StartBackendSessionFromSavedFormation(BackendGameService service, int requestedStage, string failurePrefix)
+    private IEnumerator StartBackendSessionFromSavedFormation(
+        BackendGameService service,
+        int requestedStage,
+        string failurePrefix,
+        bool recoverExistingSession = true)
     {
         IdleAdventureStartSessionRequest request = new IdleAdventureStartSessionRequest
         {
@@ -2702,8 +3044,14 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (result == null || !result.Success || result.Data == null)
         {
+            if (recoverExistingSession && result != null && result.Code == 6505)
+            {
+                yield return RecoverExistingBackendSessionAndRetry(service, requestedStage, failurePrefix);
+                yield break;
+            }
+
             AddLog($"{failurePrefix}: {BackendResultMessage(result)}");
-            if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", $"{failurePrefix}: {BackendResultMessage(result)}");
+            if (startPanelView != null) startPanelView.SetContent("闯关模式", $"{failurePrefix}：{BackendResultMessage(result)}");
             UpdateButtonStates();
             yield break;
         }
@@ -2733,8 +3081,78 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         acquisitionRouteModeCode = string.Empty;
         acquisitionRouteStage = 0;
         acquisitionRoutePoolKey = string.Empty;
-        AddLog(string.IsNullOrEmpty(result.Data.message) ? $"Backend battle started from Stage {stage}." : result.Data.message);
+        AddLog(string.IsNullOrEmpty(result.Data.message) ? $"服务器已从第 {stage} 关开始战斗。" : result.Data.message);
         UpdateButtonStates();
+    }
+
+    private IEnumerator RecoverExistingBackendSessionAndRetry(
+        BackendGameService service,
+        int requestedStage,
+        string failurePrefix)
+    {
+        if (service == null || !service.IsAuthenticated)
+        {
+            backendRequestPending = false;
+            AddLog($"{failurePrefix}：无法验证服务器登录状态。");
+            UpdateButtonStates();
+            yield break;
+        }
+
+        backendRequestPending = true;
+        if (startPanelView != null)
+        {
+            startPanelView.SetContent("闯关模式", "正在结束上一场战斗，请稍候……");
+        }
+
+        backendRunningSessionKey = string.Empty;
+        BackendResult<IdleAdventureHomeResponse> homeResult = null;
+        yield return service.LoadIdleAdventureHome(value => homeResult = value);
+        if (homeResult != null && homeResult.Success && homeResult.Data != null)
+        {
+            ApplyBackendHome(homeResult.Data);
+        }
+
+        if (string.IsNullOrEmpty(backendRunningSessionKey))
+        {
+            BackendResult<IdleAdventureProgressResponse> progressResult = null;
+            yield return service.RefreshIdleAdventureProgress(value => progressResult = value);
+            if (progressResult != null && progressResult.Success && progressResult.Data != null)
+            {
+                ApplyBackendProgress(progressResult.Data);
+            }
+        }
+
+        string existingSessionKey = backendRunningSessionKey;
+        if (string.IsNullOrEmpty(existingSessionKey))
+        {
+            backendRequestPending = false;
+            AddLog($"{failurePrefix}：服务器报告存在进行中的会话，但未返回会话编号，无法自动清理。");
+            if (startPanelView != null)
+            {
+                startPanelView.SetContent("闯关模式", $"{failurePrefix}：无法确认上一场战斗状态，请刷新后重试。");
+            }
+            UpdateButtonStates();
+            yield break;
+        }
+
+        BackendResult<IdleAdventureSessionResponse> endResult = null;
+        yield return service.EndIdleAdventureSession(existingSessionKey, value => endResult = value);
+        if (endResult == null || !endResult.Success || endResult.Data == null)
+        {
+            backendRequestPending = false;
+            AddLog($"清理服务器旧战斗会话失败：{BackendResultMessage(endResult)}");
+            if (startPanelView != null)
+            {
+                startPanelView.SetContent("闯关模式", $"上一场战斗尚未结束：{BackendResultMessage(endResult)}");
+            }
+            UpdateButtonStates();
+            yield break;
+        }
+
+        backendSessionKey = string.Empty;
+        backendRunningSessionKey = string.Empty;
+        AddLog("已清理服务器旧战斗会话，正在重试开始战斗。");
+        yield return StartBackendSessionFromSavedFormation(service, requestedStage, failurePrefix, false);
     }
 
     private void ApplyBackendSessionSnapshot(IdleAdventureSessionResponse session, bool rebuildParties)
@@ -2748,7 +3166,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         backendRunningSessionKey = status == "ENDED" ? string.Empty : backendSessionKey;
         paused = status == "RUNNING" ? false : status == "PAUSED" || session.paused;
         pendingNextStage = session.pending_next_stage > 0 ? session.pending_next_stage : pendingNextStage;
-        if (pauseButtonText != null) pauseButtonText.text = paused ? "Resume" : "Pause";
+        if (pauseButtonText != null) pauseButtonText.text = paused ? "继续" : "暂停";
 
         SyncRewardDictionary(pendingRunRewards, session.pending_rewards);
         SyncRewardDictionary(grantedRewards, session.granted_rewards);
@@ -2791,7 +3209,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             if (ShouldHideBackendCombatantState(state)) continue;
 
             IdleAdventureCombatant combatant = CreateCombatant(
-                string.IsNullOrEmpty(state.combatant_name) ? $"{(isFriendly ? "Hero" : "Enemy")} {state.slot_index + 1}" : state.combatant_name,
+                string.IsNullOrEmpty(state.combatant_name) ? $"{(isFriendly ? "我方角色" : "敌人")} {state.slot_index + 1}" : state.combatant_name,
                 ToInt(state.max_health),
                 ToInt(state.attack),
                 ToInt(state.defense),
@@ -2838,7 +3256,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
                 if (combatant == null)
                 {
                     combatant = CreateCombatant(
-                        string.IsNullOrEmpty(state.combatant_name) ? $"{(isFriendly ? "Hero" : "Enemy")} {state.slot_index + 1}" : state.combatant_name,
+                        string.IsNullOrEmpty(state.combatant_name) ? $"{(isFriendly ? "我方角色" : "敌人")} {state.slot_index + 1}" : state.combatant_name,
                         ToInt(state.max_health),
                         ToInt(state.attack),
                         ToInt(state.defense),
@@ -2868,6 +3286,31 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     {
         if (combatant == null || state == null) return;
 
+        if (isFriendly)
+        {
+            int definitionIndex = FindBackendNpcIndex(state.definition_id);
+            IdleAdventurePlayerNpcResponse appearance = definitionIndex >= 0 ? backendAvailableNpcs[definitionIndex] : null;
+            if (appearance != null && !string.IsNullOrEmpty(appearance.icon))
+                combatant.SetAppearanceKey(appearance.icon);
+            else if (state.definition_id > 0)
+                combatant.SetAppearanceKey(state.definition_id.ToString());
+        }
+        else
+        {
+            BattleAnimationCatalog.Entry appearance = null;
+            if (backendEnemyPreview != null && backendEnemyPreview.slots != null)
+            {
+                foreach (IdleAdventureEnemySlotResponse slot in backendEnemyPreview.slots)
+                {
+                    IdleAdventureEnemyResponse enemy = slot != null ? slot.enemy : null;
+                    if (enemy == null || enemy.ResolvedDefinitionId != state.definition_id) continue;
+                    appearance = BattleActorAnimation.FindEnemyEntry(enemy.ResolvedModelKey, enemy.ResolvedCombatantKey, enemy.icon, enemy.ResolvedCombatantName);
+                    if (appearance != null) break;
+                }
+            }
+            if (appearance == null) appearance = BattleActorAnimation.FindEnemyEntry(state.combatant_name);
+            combatant.SetAppearanceKey(appearance != null ? appearance.key : string.Empty);
+        }
         List<IdleAdventureBattleBuff> buffs = ConvertBackendBuffs(state.active_buffs);
         int currentHealth = state.defeated ? 0 : ToInt(state.current_health);
         combatant.ApplyBackendState(
@@ -2911,7 +3354,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (combatant == null)
         {
             combatant = CreateCombatant(
-                string.IsNullOrEmpty(state.combatant_name) ? $"{(isFriendly ? "Hero" : "Enemy")} {state.slot_index + 1}" : state.combatant_name,
+                string.IsNullOrEmpty(state.combatant_name) ? $"{(isFriendly ? "我方角色" : "敌人")} {state.slot_index + 1}" : state.combatant_name,
                 ToInt(state.max_health),
                 ToInt(state.attack),
                 ToInt(state.defense),
@@ -3136,16 +3579,15 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         modePausedByChoice = false;
         pendingNextStage = stage + 1;
         paused = true;
-        if (pauseButtonText != null) pauseButtonText.text = "Resume";
-        if (resultText != null) resultText.text = "Victory";
+        if (pauseButtonText != null) pauseButtonText.text = "继续";
+        if (resultText != null) resultText.text = "胜利";
 
         if (stageEndPanelView != null)
         {
-            string pendingRewards = FormatRewardSummary(pendingRunRewards);
-            stageEndPanelView.SetContent($"Stage {stage} Cleared", $"Pending rewards: {pendingRewards}\nChoose whether to continue to the next stage or exit this mode.");
-            stageEndPanelView.SetButtonLabels("Continue", "Exit Mode");
+            stageEndPanelView.SetContent($"第 {stage} 关通关", "继续挑战下一关，或退出并领取奖励。", pendingRunRewards, rewardDisplayNames);
+            stageEndPanelView.SetButtonLabels("继续", "退出模式");
         }
-        AddLog($"Stage {stage} cleared. Waiting for player choice.");
+        AddLog($"第 {stage} 关已通关，等待选择。");
         ShowEndPanel();
     }
 
@@ -3156,17 +3598,16 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         modePausedByChoice = false;
         pendingNextStage = -1;
         paused = true;
-        if (pauseButtonText != null) pauseButtonText.text = "Resume";
-        if (resultText != null) resultText.text = "Defeated";
+        if (pauseButtonText != null) pauseButtonText.text = "继续";
+        if (resultText != null) resultText.text = "失败";
 
         if (stageEndPanelView != null)
         {
-            string pendingRewards = FormatRewardSummary(pendingRunRewards);
-            stageEndPanelView.SetContent("Party Defeated", $"Pending rewards: {pendingRewards}\nChoose whether to restart this stage or exit this mode.");
-            stageEndPanelView.SetButtonLabels("Restart", "Exit Mode");
+            stageEndPanelView.SetContent("队伍战败", "可重试本关，或退出并领取已累积的奖励。", pendingRunRewards, rewardDisplayNames);
+            stageEndPanelView.SetButtonLabels("重试", "退出模式");
         }
 
-        AddLog($"Friendly party defeated on Stage {stage}. Waiting for player choice.");
+        AddLog($"我方队伍在第 {stage} 关战败，等待选择。");
         ShowEndPanel();
     }
 
@@ -3181,7 +3622,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (!CanUseLocalCombatSimulation())
         {
-            AddLog("Local stage transition is disabled. Backend session is required.");
+            AddLog("本地关卡切换已禁用，需要服务器会话。");
             UpdateButtonStates();
             return;
         }
@@ -3217,7 +3658,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (!CanUseLocalCombatSimulation())
         {
-            AddLog("Local restart is disabled. Backend retry is required.");
+            AddLog("本地重试已禁用，需要通过服务器重试。");
             UpdateButtonStates();
             return;
         }
@@ -3231,7 +3672,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         HidePausePanel();
         paused = false;
         StartStage(retryStage);
-        AddLog($"Restarting Stage {retryStage}.");
+        AddLog($"正在重试第 {retryStage} 关。");
         UpdateButtonStates();
     }
 
@@ -3246,7 +3687,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (!CanUseLocalCombatSimulation())
         {
-            AddLog("Local reward settlement is disabled. Backend end session is required.");
+            AddLog("本地奖励结算已禁用，需要通过服务器结束会话。");
             UpdateButtonStates();
             return;
         }
@@ -3258,7 +3699,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         pendingNextStage = -1;
         paused = true;
         battleStarted = false;
-        if (pauseButtonText != null) pauseButtonText.text = "Pause";
+        if (pauseButtonText != null) pauseButtonText.text = "暂停";
         if (resultText != null) resultText.text = string.Empty;
 
         ClearParty(friendlies);
@@ -3267,10 +3708,10 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         HideEndPanel();
         HidePausePanel();
         ConfigureCombatScreenVisible(false);
-        AddLog("Idle Adventure battle exited to the mode home page.");
+        AddLog("已退出闯关战斗并返回模式主页。");
         SetWaitingText();
         ShowStartPanel();
-        if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", $"Rewards granted: {rewardSummary}");
+        if (startPanelView != null) startPanelView.SetContent("闯关模式", $"已发放奖励：{rewardSummary}");
         UpdateButtonStates();
     }
 
@@ -3286,13 +3727,13 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (!CanUseLocalCombatSimulation())
         {
-            AddLog("Local resume is disabled. Backend session is required.");
+            AddLog("本地恢复已禁用，需要服务器会话。");
             UpdateButtonStates();
             return;
         }
 
         SetBattleRunningLocally();
-        AddLog("Battle resumed.");
+        AddLog("战斗已恢复。");
         RefreshBattleView();
         UpdateButtonStates();
     }
@@ -3309,7 +3750,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (!CanUseLocalCombatSimulation())
         {
-            AddLog("Local exit is disabled. Backend end session is required.");
+            AddLog("本地退出已禁用，需要通过服务器结束会话。");
             UpdateButtonStates();
             return;
         }
@@ -3330,7 +3771,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (result == null || !result.Success || result.Data == null)
         {
-            AddLog($"Backend resume failed: {BackendResultMessage(result)}");
+            AddLog($"服务器恢复战斗失败：{BackendResultMessage(result)}");
             yield return RefreshBackendSessionAfterCommandFailure("resume");
             UpdateButtonStates();
             yield break;
@@ -3341,14 +3782,14 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             SetBattleRunningLocally();
             RefreshBattleView();
-            AddLog("Battle resumed by backend.");
+            AddLog("服务器已恢复战斗。");
         }
         else if (status == "PAUSED" || result.Data.paused)
         {
             paused = true;
-            if (pauseButtonText != null) pauseButtonText.text = "Resume";
+            if (pauseButtonText != null) pauseButtonText.text = "继续";
             ShowPausePanel();
-            AddLog("Backend battle is still paused.");
+            AddLog("服务器战斗仍处于暂停状态。");
         }
         else
         {
@@ -3372,7 +3813,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (result == null || !result.Success || result.Data == null)
         {
-            AddLog($"Backend continue failed: {BackendResultMessage(result)}");
+            AddLog($"服务器继续关卡失败：{BackendResultMessage(result)}");
             yield return RefreshBackendSessionAfterCommandFailure("continue");
             UpdateButtonStates();
             yield break;
@@ -3403,7 +3844,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (result == null || !result.Success || result.Data == null)
         {
-            AddLog($"Backend retry failed: {BackendResultMessage(result)}");
+            AddLog($"服务器重试失败：{BackendResultMessage(result)}");
             yield return RefreshBackendSessionAfterCommandFailure("retry");
             UpdateButtonStates();
             yield break;
@@ -3434,7 +3875,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (result == null || !result.Success || result.Data == null)
         {
-            AddLog($"Backend end mode failed: {BackendResultMessage(result)}");
+            AddLog($"服务器退出模式失败：{BackendResultMessage(result)}");
             yield return RefreshBackendSessionAfterCommandFailure("end");
             UpdateButtonStates();
             yield break;
@@ -3457,12 +3898,12 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         yield return service.LoadIdleAdventureSession(backendSessionKey, value => sessionResult = value);
         if (sessionResult == null || !sessionResult.Success || sessionResult.Data == null)
         {
-            AddLog($"Backend session refresh after {commandName} failed: {BackendResultMessage(sessionResult)}");
+            AddLog($"服务器在 {commandName} 后刷新会话失败：{BackendResultMessage(sessionResult)}");
             yield break;
         }
 
         string status = NormalizeBackendStatus(sessionResult.Data.status);
-        AddLog($"Backend session after {commandName}: status={status}, stage={sessionResult.Data.stage}, round={sessionResult.Data.round}.");
+        AddLog($"服务器在 {commandName} 后的会话：状态={status}，关卡={sessionResult.Data.stage}，回合={sessionResult.Data.round}。");
         ApplyBackendSessionSnapshot(sessionResult.Data, true);
 
         if (status == "RUNNING" || (IsStageTransitionCommand(commandName) && status == "PAUSED"))
@@ -3507,7 +3948,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             yield break;
         }
 
-        AddLog($"Backend {commandName} entered a paused stage. Resuming battle.");
+        AddLog($"服务器命令 {commandName} 进入暂停关卡，正在恢复战斗。");
         backendRequestPending = true;
         UpdateButtonStates();
         BackendResult<IdleAdventureSessionResponse> resumeResult = null;
@@ -3530,7 +3971,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             yield break;
         }
 
-        AddLog($"Backend resume after {commandName} failed: {BackendResultMessage(resumeResult)}");
+            AddLog($"服务器在 {commandName} 后恢复战斗失败：{BackendResultMessage(resumeResult)}");
         HandleBackendSessionStatus(session);
     }
 
@@ -3559,7 +4000,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         backendModeActive = false;
         backendSessionKey = string.Empty;
         backendRuntimeCombatants.Clear();
-        if (pauseButtonText != null) pauseButtonText.text = "Pause";
+        if (pauseButtonText != null) pauseButtonText.text = "暂停";
         if (resultText != null) resultText.text = string.Empty;
 
         ClearParty(friendlies);
@@ -3570,17 +4011,18 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         ConfigureCombatScreenVisible(false);
         ShowStartPanel();
         SetWaitingText();
-        if (startPanelView != null) startPanelView.SetContent("Idle Adventure mode", $"Rewards granted: {rewardSummary}");
+        if (startPanelView != null) startPanelView.SetContent("闯关模式", $"奖励已发放：{rewardSummary}");
         UpdateButtonStates();
+        PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
     }
 
     private void SetWaitingText()
     {
-        if (stageText != null) stageText.text = "Idle Adventure mode";
-        if (turnText != null) turnText.text = "Waiting to start";
+        if (stageText != null) stageText.text = "闯关模式";
+        if (turnText != null) turnText.text = "等待开始";
         if (resultText != null) resultText.text = string.Empty;
-        if (friendlyCountText != null) friendlyCountText.text = $"0/{MaxPartySize} deployed";
-        if (enemyCountText != null) enemyCountText.text = $"0/{MaxPartySize} present";
+        HideFriendlyCountText();
+        if (enemyCountText != null) enemyCountText.text = $"0/{MaxPartySize} 个单位";
     }
 
     private void ClearRunRewards()
@@ -3680,7 +4122,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (result == null || result.Data == null)
         {
-            AddLog("Idle Adventure reference data refresh failed: " + BackendResultMessage(result));
+            AddLog("闯关参考数据刷新失败：" + BackendResultMessage(result));
             yield break;
         }
 
@@ -3689,7 +4131,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         backendReferenceDataStage = requestedStage;
         if (!result.Success)
         {
-            AddLog("Idle Adventure reference data partially refreshed: " + BackendResultMessage(result));
+            AddLog("闯关参考数据已部分刷新：" + BackendResultMessage(result));
         }
     }
 
@@ -3705,7 +4147,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         }
         else if (result != null)
         {
-            AddLog("Idle Adventure progress refresh failed: " + BackendResultMessage(result));
+            AddLog("闯关进度刷新失败：" + BackendResultMessage(result));
         }
     }
 
@@ -3745,7 +4187,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
                 break;
             }
 
-            AddLog($"Backend home load failed (attempt {attempt + 1}/3): {BackendResultMessage(result)}");
+            AddLog($"服务器主页加载失败（第 {attempt + 1}/3 次）：{BackendResultMessage(result)}");
             if (attempt < 2)
             {
                 yield return new WaitForSecondsRealtime(2f * (attempt + 1));
@@ -3780,51 +4222,17 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         BackendGameService service = BackendGameService.Instance;
         IdleAdventureStaminaResponse stamina = service == null ? null : service.CurrentStamina;
         bool authenticated = service != null && service.IsAuthenticated;
-        if (staminaText != null)
-        {
-            staminaText.text = stamina == null
-                ? "体力 --"
-                : $"体力 {Mathf.Max(0, ToInt(stamina.CurrentStamina))}/{Mathf.Max(0, ToInt(stamina.MaxStamina))}";
-        }
-
-        if (accelerationText != null)
-        {
-            if (!authenticated)
-            {
-                accelerationText.text = "请先登录";
-            }
-            else if (!accelerationPolicyLoaded || stamina == null)
-            {
-                accelerationText.text = "同步加速配置";
-            }
-            else if (!accelerationEnabled)
-            {
-                accelerationText.text = "挂机加速未开放";
-            }
-            else if (accelerationStaminaCost <= 0)
-            {
-                accelerationText.text = "挂机加速配置无效";
-            }
-            else if (stamina.CurrentStamina < accelerationStaminaCost)
-            {
-                accelerationText.text = $"体力不足，需要 {accelerationStaminaCost}";
-            }
-            else
-            {
-                accelerationText.text = $"消耗 {accelerationStaminaCost} 体力 · 下次恢复 {stamina.SecondsToNextRecovery}s";
-            }
-        }
-
-        if (accelerateButton != null)
-        {
-            accelerateButton.interactable = !staminaRequestPending
-                && authenticated
-                && accelerationPolicyLoaded
-                && accelerationEnabled
-                && accelerationStaminaCost > 0
-                && stamina != null
-                && stamina.CurrentStamina >= accelerationStaminaCost;
-        }
+        bool available = !staminaRequestPending && authenticated && accelerationPolicyLoaded
+            && accelerationEnabled && accelerationStaminaCost > 0 && stamina != null
+            && stamina.CurrentStamina >= accelerationStaminaCost;
+        string reason = !authenticated ? "请先登录"
+            : staminaRequestPending ? "正在领取…"
+            : !accelerationPolicyLoaded || stamina == null ? "同步中…"
+            : !accelerationEnabled ? "暂未开放"
+            : accelerationStaminaCost <= 0 ? "暂不可用"
+            : "体力不足";
+        if (afkRewardPanel != null)
+            afkRewardPanel.SetAccelerationState(available, reason);
     }
 
     private void AccelerateAfkReward()
@@ -3867,6 +4275,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         staminaRequestPending = true;
         RefreshStaminaView();
+        if (afkRewardPanel != null) afkRewardPanel.SetStatus("正在领取快速收益…", 0f);
         service.AccelerateIdleAdventure(result =>
         {
             staminaRequestPending = false;
@@ -3874,6 +4283,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             {
                 ApplyAccelerationPolicy(result.Data.state ?? service.CurrentIdleAdventureAfkReward);
                 int cycles = Mathf.Max(0, result.Data.ResolvedAccelerationCycles);
+                if (afkRewardPanel != null) afkRewardPanel.ShowAccelerationResult(result.Data);
                 if (result.Data.ResolvedIdempotentReplay)
                 {
                     AddLog("已恢复上一次挂机加速结果，体力和奖励不会重复结算。");
@@ -3887,6 +4297,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             else
             {
                 string failureMessage = "挂机加速失败：" + BackendResultMessage(result);
+                if (afkRewardPanel != null) afkRewardPanel.SetStatus("快速收益领取失败，请稍后重试", 4f);
                 AddLog(failureMessage);
                 Debug.LogWarning(failureMessage, this);
                 if (result != null && result.Code == 6513)
@@ -3970,11 +4381,12 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             ? resolvedSessionKey
             : string.Empty;
         backendAvailableNpcs = home.available_npc_list;
-        if (backendAvailableNpcs == null || backendAvailableNpcs.Length == 0)
+        if (backendAvailableNpcs == null)
         {
             backendAvailableNpcs = ConvertAvailableNpcSummaries(home.ResolvedAvailableNpcs);
         }
         if (backendAvailableNpcs == null) backendAvailableNpcs = new IdleAdventurePlayerNpcResponse[0];
+        backendNpcListLoaded = true;
 
         if (stageProgress != null) stageProgress.SetProgressFromServer(backendHighestStage);
         if (afkRewardSource != null) afkRewardSource.SetHighestClearedStageFromProgress(backendHighestStage);
@@ -3988,15 +4400,22 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             SanitizeCurrentFormationForBackend();
         }
+        else
+        {
+            for (int i = 0; i < MaxPartySize; i++)
+            {
+                friendlyFormation[i] = -1;
+            }
+        }
 
         if (startPanelView != null)
         {
             string runningText = hasRunningSession && !string.IsNullOrEmpty(resolvedSessionKey)
-                ? "Running session can be resumed from backend"
+                ? "可继续尚未结束的战斗"
                 : acquisitionRouteApplied && acquisitionRouteStage > 0
-                    ? $"Authoritative next stage: {backendNextStage}. Guide target: Stage {acquisitionRouteStage}."
-                    : $"Authoritative next stage: {backendNextStage}.";
-            startPanelView.SetContent("Idle Adventure mode", runningText);
+                    ? $"下一关：第 {backendNextStage} 关。引导目标：第 {acquisitionRouteStage} 关。"
+                    : $"下一关：第 {backendNextStage} 关。";
+            startPanelView.SetContent("闯关模式", runningText);
         }
 
         RefreshStartStageSelectionView();
@@ -4008,6 +4427,12 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private void ApplyBackendProgress(IdleAdventureProgressResponse progress)
     {
         if (progress == null) return;
+
+        string runningSessionKey = progress.ResolvedRunningSessionKey;
+        if (!string.IsNullOrEmpty(runningSessionKey))
+        {
+            backendRunningSessionKey = runningSessionKey;
+        }
 
         int highestStage = Mathf.Max(0, progress.ResolvedHighestStage);
         backendHighestStage = Mathf.Max(backendHighestStage, highestStage);
@@ -4042,7 +4467,13 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (referenceData.player_npcs != null)
         {
             backendAvailableNpcs = referenceData.player_npcs;
+            backendNpcListLoaded = true;
             SanitizeCurrentFormationForBackend();
+        }
+
+        if (referenceData.stage_rewards != null)
+        {
+            backendStageRewards = referenceData.stage_rewards;
         }
 
         if (referenceData.stage_enemies != null)
@@ -4053,11 +4484,12 @@ public sealed class IdleAdventureModeController : MonoBehaviour
                 string preview = FormatBackendEnemyPreview(backendEnemyPreview, requestedStage);
                 if (!string.IsNullOrEmpty(preview))
                 {
-                    startPanelView.SetContent("Idle Adventure mode", preview);
+                    startPanelView.SetContent("闯关模式", startPreviewView != null ? string.Empty : preview);
                 }
             }
         }
 
+        RefreshStartStageSelectionView();
         RefreshFormationView();
         if (!backendRequestPending) UpdateButtonStates();
     }
@@ -4123,19 +4555,18 @@ public sealed class IdleAdventureModeController : MonoBehaviour
                 IdleAdventureEnemySlotResponse slot = preview.slots[i];
                 if (slot == null || slot.enemy == null) continue;
                 string name = slot.enemy.ResolvedCombatantName;
-                if (string.IsNullOrEmpty(name)) name = slot.enemy.ResolvedCombatantKey;
-                if (string.IsNullOrEmpty(name)) name = "Enemy";
-                if (slot.enemy.level > 0) name += " Lv." + slot.enemy.level;
+                if (string.IsNullOrEmpty(name)) name = "敌人";
+                if (slot.enemy.level > 0) name += " 等级 " + slot.enemy.level;
                 names.Add(name);
             }
         }
 
         string stageName = preview.ResolvedStageName;
         string stageLabel = string.IsNullOrEmpty(stageName)
-            ? $"Next stage: {previewStage}"
-            : $"Next stage: {previewStage} - {stageName}";
-        string summary = stageLabel + $"\nEnemy preview: {enemyCount}";
-        return names.Count == 0 ? summary : summary + " (" + string.Join(", ", names.ToArray()) + ")";
+            ? $"下一关：第 {previewStage} 关"
+            : $"下一关：第 {previewStage} 关 - {stageName}";
+        string summary = stageLabel + $"\n敌人预览：{enemyCount}";
+        return names.Count == 0 ? summary : summary + "（" + string.Join("、", names.ToArray()) + "）";
     }
 
     private static IdleAdventurePlayerNpcResponse[] ConvertAvailableNpcSummaries(
@@ -4227,11 +4658,12 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             backendFormationDirty = false;
             ApplyBackendFormation(result.Data);
-            AddLog("Backend formation auto-filled.");
+            AddLog("服务器已自动填充编队。");
+            PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
         }
         else
         {
-            AddLog($"Backend auto-fill failed: {BackendResultMessage(result)}");
+            AddLog($"服务器自动填充失败：{BackendResultMessage(result)}");
         }
     }
 
@@ -4249,11 +4681,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             backendFormationDirty = false;
             ApplyBackendFormation(result.Data);
-            AddLog("Backend formation cleared.");
+            AddLog("服务器已清除编队。");
         }
         else
         {
-            AddLog($"Backend clear formation failed: {BackendResultMessage(result)}");
+            AddLog($"服务器清除编队失败：{BackendResultMessage(result)}");
         }
     }
 
@@ -4276,9 +4708,11 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (service == null || !service.IsAuthenticated) yield break;
 
         backendRequestPending = true;
+        UpdateButtonStates();
         BackendResult<IdleAdventureFormationResponse> result = null;
         yield return service.SaveIdleAdventureFormation(CreateBackendSaveFormationRequest(), value => result = value);
         backendRequestPending = false;
+        UpdateButtonStates();
 
         if (saveRevision != backendFormationRevision)
         {
@@ -4291,11 +4725,12 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             backendFormationDirty = false;
             ApplyBackendFormation(result.Data);
-            AddLog("Backend formation saved.");
+            AddLog("服务器已保存编队。");
+            PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
         }
         else
         {
-            AddLog($"Backend formation save failed: {BackendResultMessage(result)}");
+            AddLog($"服务器保存编队失败：{BackendResultMessage(result)}");
         }
     }
 
@@ -4326,7 +4761,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     private bool HasBackendNpcDefinitionsReady()
     {
-        return backendAvailableNpcs != null && backendAvailableNpcs.Length > 0;
+        return backendNpcListLoaded;
     }
 
     private bool CurrentFormationCanResolveBackendDefinitions()
@@ -4378,7 +4813,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         IdleAdventureRewardItemDefinition[] rewards = modeConfig != null ? modeConfig.RewardsForStage(rewardStage) : null;
         if (rewards == null || rewards.Length == 0)
         {
-            AddLog($"Stage {rewardStage} cleared. No reward configured.");
+            AddLog($"第 {rewardStage} 关已通关，未配置奖励。");
             return;
         }
 
@@ -4389,7 +4824,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             AddRewardToLedger(pendingRunRewards, reward.ItemKey, reward.DisplayName, reward.Quantity);
         }
 
-        AddLog($"Stage {rewardStage} rewards banked: {FormatRewardsForStage(rewards)}.");
+        AddLog($"第 {rewardStage} 关奖励已暂存：{FormatRewardsForStage(rewards)}。");
     }
 
     private string SettlePendingRewards()
@@ -4399,7 +4834,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             EnsureRewardLedger();
             if (rewardLedger != null) rewardLedger.GrantRewards(null, rewardDisplayNames, "None");
             ClearRunRewards();
-            return "None";
+            return "无奖励";
         }
 
         Dictionary<string, int> settlementRewards = new Dictionary<string, int>(pendingRunRewards);
@@ -4414,7 +4849,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         EnsureRewardLedger();
         if (rewardLedger != null) rewardLedger.GrantRewards(settlementRewards, rewardDisplayNames, summary);
 
-        AddLog($"Rewards granted: {summary}.");
+        AddLog($"奖励已发放：{summary}。");
         ClearRunRewards();
         return summary;
     }
@@ -4433,31 +4868,31 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     private string FormatRewardsForStage(IdleAdventureRewardItemDefinition[] rewards)
     {
-        if (rewards == null || rewards.Length == 0) return "None";
+        if (rewards == null || rewards.Length == 0) return "无";
 
         List<string> parts = new List<string>();
         for (int i = 0; i < rewards.Length; i++)
         {
             IdleAdventureRewardItemDefinition reward = rewards[i];
             if (reward == null) continue;
-            parts.Add($"{reward.DisplayName} x{reward.Quantity}");
+            parts.Add($"{reward.DisplayName} ×{reward.Quantity}");
         }
 
-        return parts.Count > 0 ? string.Join(", ", parts) : "None";
+        return parts.Count > 0 ? string.Join("、", parts) : "无";
     }
 
     private string FormatRewardSummary(Dictionary<string, int> rewards)
     {
-        if (rewards == null || rewards.Count == 0) return "None";
+        if (rewards == null || rewards.Count == 0) return "无";
 
         List<string> parts = new List<string>();
         foreach (KeyValuePair<string, int> reward in rewards)
         {
             string displayName = rewardDisplayNames.ContainsKey(reward.Key) ? rewardDisplayNames[reward.Key] : reward.Key;
-            parts.Add($"{displayName} x{reward.Value}");
+            parts.Add($"{displayName} ×{reward.Value}");
         }
 
-        return parts.Count > 0 ? string.Join(", ", parts) : "None";
+        return parts.Count > 0 ? string.Join("、", parts) : "无";
     }
 
     private void UpdateButtonStates()
@@ -4470,6 +4905,10 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             startPanelView.SetInteractable(!backendRequestPending && !battleStarted && FormationDeployedCount() > 0);
             startPanelView.SetStageSelectionInteractable(!backendRequestPending && !battleStarted && backendHighestStage > 0);
         }
+        if (startPreviewView != null)
+        {
+            startPreviewView.SetFormationActionsInteractable(!backendRequestPending && !battleStarted);
+        }
         if (stageEndPanelView != null)
         {
             stageEndPanelView.SetContinueInteractable(!backendRequestPending && battleStarted && !modePausedByChoice && ((stageChoicePending && pendingNextStage > 0) || stageFailedPending));
@@ -4480,8 +4919,9 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     private RectTransform BuildPartyPanel(RectTransform panel, bool friendlySide)
     {
-        TextMeshProUGUI title = CreateText(friendlySide ? "Friendly Party Title" : "Enemy Party Title", panel, friendlySide ? "Friendly Party" : "Enemy Party", 28, FontStyles.Bold, TextAlignmentOptions.Center);
+        TextMeshProUGUI title = CreateText(friendlySide ? "Friendly Party Title" : "Enemy Party Title", panel, string.Empty, 28, FontStyles.Bold, TextAlignmentOptions.Center);
         Anchor(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(20f, -62f), new Vector2(-20f, -18f));
+        title.gameObject.SetActive(false);
 
         TextMeshProUGUI countText = CreateText(friendlySide ? "Friendly Count" : "Enemy Count", panel, string.Empty, 18, FontStyles.Normal, TextAlignmentOptions.Center);
         Anchor(countText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(20f, -96f), new Vector2(-20f, -64f));
@@ -4489,7 +4929,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         else enemyCountText = countText;
 
         RectTransform grid = CreatePanel(friendlySide ? "Friendly Slots" : "Enemy Slots", panel, new Color(0f, 0f, 0f, 0f));
-        Anchor(grid, new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(24f, 28f), new Vector2(-24f, -112f));
+        Stretch(grid);
         BuildPartySlots(grid, friendlySide);
         return grid;
     }
@@ -4499,25 +4939,20 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (grid == null) return;
         for (int i = 0; i < MaxPartySize; i++)
         {
-            bool frontColumn = IsFrontColumnSlot(i);
-            int row = GetFormationRow(i);
-            int column = frontColumn == friendlySide ? 1 : 0;
-            float left = column == 0 ? 0f : 0.52f;
-            float right = column == 0 ? 0.48f : 1f;
-            float top = 1f - row / (float)FormationRows;
-            float bottom = 1f - (row + 1f) / FormationRows;
-
             IdleAdventureActorView view = CreateActorSlot(grid, friendlySide, i);
-            Anchor(view.Root, new Vector2(left, bottom), new Vector2(right, top), new Vector2(6f, 8f), new Vector2(-6f, -8f));
+            ConfigureBattleSlot(view, friendlySide, i);
+            view.ConfigureBattleFootOrigin();
             if (friendlySide) friendlyViews[i] = view;
             else enemyViews[i] = view;
         }
+        SortPartyViews(friendlySide ? friendlyViews : enemyViews);
     }
 
     private IdleAdventureActorView CreateActorSlot(RectTransform parent, bool friendlySide, int index)
     {
         string columnName = IsFrontColumnSlot(index) ? "Front Column" : "Back Column";
-        RectTransform root = CreatePanel($"{(friendlySide ? "Friendly" : "Enemy")} {columnName} Slot {index + 1}", parent, new Color(0.07f, 0.08f, 0.1f, 0.68f));
+        RectTransform root = CreatePanel($"{(friendlySide ? "Friendly" : "Enemy")} {columnName} Slot {index + 1}", parent, new Color(0f, 0f, 0f, 0f));
+        root.GetComponent<Image>().raycastTarget = false;
 
         TextMeshProUGUI nameText = CreateText("Name", root, string.Empty, 17, FontStyles.Bold, TextAlignmentOptions.Center);
         Anchor(nameText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(8f, -30f), new Vector2(-8f, -6f));
@@ -4560,7 +4995,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             buffIconLabels[i] = buffIconLabel;
         }
 
-        TextMeshProUGUI emptyText = CreateText("Empty Text", root, "Empty", 18, FontStyles.Normal, TextAlignmentOptions.Center);
+        TextMeshProUGUI emptyText = CreateText("Empty Text", root, "空位", 18, FontStyles.Normal, TextAlignmentOptions.Center);
         Stretch(emptyText.rectTransform);
         healthBar.SetAsLastSibling();
 
@@ -4577,7 +5012,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             while (!battleStarted || paused || stageChoicePending || stageFailedPending || modePausedByChoice) yield return null;
 
-            if (turnText != null) turnText.text = $"Round {round}: speed order";
+            if (turnText != null) turnText.text = $"第 {round} 回合：速度顺序";
             if (backendModeActive)
             {
                 yield return ResolveBackendRound();
@@ -4589,7 +5024,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             {
                 if (!localSimulationBlockedLogged)
                 {
-                    AddLog("Local Idle Adventure combat simulation is disabled. Start an authenticated backend session instead.");
+                    AddLog("本地闯关战斗模拟已禁用，请启动已认证的服务器战斗会话。");
                     localSimulationBlockedLogged = true;
                 }
 
@@ -4604,14 +5039,14 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             yield return ResolveInitiativeRound();
             if (AllDefeated(enemies))
             {
-                AddLog($"Enemy party defeated. Stage {stage} cleared.");
+                AddLog($"敌方队伍已击败，第 {stage} 关通关。");
                 OpenStageCompletePanel();
                 continue;
             }
 
             if (AllDefeated(friendlies))
             {
-                AddLog("Friendly party was defeated.");
+                AddLog("我方队伍已战败。");
                 OpenStageFailedPanel();
                 continue;
             }
@@ -4625,11 +5060,14 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private IEnumerator ResolveBackendRound()
     {
         if (backendRequestPending || string.IsNullOrEmpty(backendSessionKey)) yield break;
+        int presentationVersion = battlePresentationVersion;
+        string requestedSessionKey = backendSessionKey;
+        if (!IsCurrentBackendPlayback(presentationVersion, requestedSessionKey)) yield break;
 
         BackendGameService service = ResolveBackendService();
         if (service == null || !service.IsAuthenticated)
         {
-            AddLog("Backend session is not authenticated.");
+            AddLog("服务器会话未认证。");
             paused = true;
             UpdateButtonStates();
             yield break;
@@ -4638,12 +5076,13 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         backendRequestPending = true;
         int requestedRound = round;
         BackendResult<IdleAdventureSessionResponse> result = null;
-        yield return service.ResolveIdleAdventureRound(backendSessionKey, requestedRound, value => result = value);
+        yield return service.ResolveIdleAdventureRound(requestedSessionKey, requestedRound, value => result = value);
+        if (!IsCurrentBackendPlayback(presentationVersion, requestedSessionKey)) yield break;
         backendRequestPending = false;
 
         if (result == null || !result.Success || result.Data == null)
         {
-            AddLog($"Backend round failed: {BackendResultMessage(result)}");
+            AddLog($"服务器回合结算失败：{BackendResultMessage(result)}");
             paused = true;
             UpdateButtonStates();
             yield break;
@@ -4652,7 +5091,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (IsBackendRoundOutOfSync(result.Data, requestedRound))
         {
             Debug.LogWarning($"Backend round playback skipped because local round is out of sync: requested={requestedRound}, responseBefore={result.Data.round_before}, responseRound={result.Data.round}. Applying backend snapshot only.", this);
-            AddLog("Backend round replay detected. Synced latest battle state without replaying stale actions.");
+            AddLog("检测到服务器回合重复请求，已同步最新战斗状态并跳过过期行动。");
             ApplyBackendSessionSnapshot(result.Data, false);
             HandleBackendSessionStatus(result.Data);
             yield break;
@@ -4662,16 +5101,23 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         Debug.Log($"Backend resolved round snapshot before playback: round={result.Data.round}, friendlies={FormatBackendStateSlots(result.Data.friendlies)}, enemies={FormatBackendStateSlots(result.Data.enemies)}, actions={FormatBackendActions(result.Data.actions)}.", this);
         if (HasInvalidBackendDamageActions(result.Data.actions))
         {
-            AddLog("Backend returned an invalid same-side damage action. Battle paused before applying the corrupted snapshot.");
+            AddLog("服务器返回了无效的同方伤害行动，已在应用异常快照前暂停战斗。");
             paused = true;
-            if (pauseButtonText != null) pauseButtonText.text = "Resume";
+            if (pauseButtonText != null) pauseButtonText.text = "继续";
             UpdateButtonStates();
             yield break;
         }
 
         yield return PlayBackendActions(result.Data.actions, result.Data.initiative_order);
+        if (!IsCurrentBackendPlayback(presentationVersion, requestedSessionKey)) yield break;
         ApplyBackendSessionSnapshot(result.Data, false);
         HandleBackendSessionStatus(result.Data);
+    }
+
+    private bool IsCurrentBackendPlayback(int presentationVersion, string sessionKey)
+    {
+        return backendModeActive && battleStarted && presentationVersion == battlePresentationVersion
+            && !string.IsNullOrEmpty(sessionKey) && string.Equals(sessionKey, backendSessionKey, StringComparison.Ordinal);
     }
 
     private static bool IsBackendRoundOutOfSync(IdleAdventureSessionResponse session, int requestedRound)
@@ -4689,6 +5135,10 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             IdleAdventureBattleActionResponse action = actions[i];
             if (action == null) continue;
+
+            // Modern target arrays and support skills already identify their real recipients.
+            // Initiative order must not rewrite their actor (including a self-heal).
+            if (action.targets != null || BattleActionContract.IsBenefit(action)) continue;
 
             bool actorMissing = string.IsNullOrEmpty(action.actor_runtime_id) || FindBackendCombatant(action.actor_runtime_id) == null;
             bool invalidSameSide = action.damage > 0 && SameBackendRuntimeSide(action.actor_runtime_id, action.target_runtime_id);
@@ -4754,35 +5204,32 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private IEnumerator PlayBackendActions(IdleAdventureBattleActionResponse[] actions, IdleAdventureInitiativeEntryResponse[] initiative)
     {
         if (actions == null || actions.Length == 0) yield break;
+        int presentationVersion = battlePresentationVersion;
+        string playbackSessionKey = backendSessionKey;
 
         for (int i = 0; i < actions.Length; i++)
         {
-            while (paused) yield return null;
+            while (paused && IsCurrentBackendPlayback(presentationVersion, playbackSessionKey)) yield return null;
+            if (!IsCurrentBackendPlayback(presentationVersion, playbackSessionKey)) yield break;
 
             IdleAdventureBattleActionResponse action = actions[i];
             if (action == null) continue;
 
             IdleAdventureCombatant attacker = FindBackendCombatant(action.actor_runtime_id);
-            IdleAdventureCombatant target = FindBackendCombatant(action.target_runtime_id);
+            IdleAdventureCombatant[] affectedTargets = ResolveBackendActionTargets(action, false);
+            IdleAdventureCombatant[] damagedTargets = ResolveBackendActionTargets(action, true);
 
-            if (attacker == null)
+            if (attacker == null || attacker.IsDefeated)
             {
                 Debug.LogWarning($"Backend action animation skipped because actor is not visible in the current backend snapshot: actor={action.actor_runtime_id}, target={action.target_runtime_id}, order={action.action_order}.", this);
-                ApplyBackendDefeatedRuntimeIds(action.defeated_runtime_ids);
+                ApplyBackendActionResults(action);
+                BeginDefeatedAnimations(friendlies, action.action_order);
+                BeginDefeatedAnimations(enemies, action.action_order);
                 RefreshBattleView();
                 continue;
             }
 
-            if (attacker.IsDefeated)
-            {
-                Debug.LogWarning($"Backend action actor was locally defeated but backend returned an action, correcting local playback state: actor={action.actor_runtime_id}, target={action.target_runtime_id}, order={action.action_order}.", this);
-                attacker.SetCurrentHealth(Mathf.Max(1, attacker.CurrentHealth));
-                RefreshBattleView();
-            }
-
-            IdleAdventureCombatant visualTarget = target != null && !target.IsDefeated
-                ? target
-                : FirstTargetByFormation(attacker.IsFriendly ? enemies : friendlies, attacker.SlotIndex);
+            IdleAdventureCombatant visualTarget = affectedTargets.Length > 0 ? affectedTargets[0] : null;
             if (visualTarget == null)
             {
                 Debug.LogWarning($"Backend action has no visible target, attack animation will still play: actor={action.actor_runtime_id}, target={action.target_runtime_id}, order={action.action_order}.", this);
@@ -4814,31 +5261,64 @@ public sealed class IdleAdventureModeController : MonoBehaviour
                 Debug.LogWarning($"Backend action visual target has no bound view: visualTarget={visualTarget.RuntimeId}, slot={visualTarget.SlotIndex}, actionTarget={action.target_runtime_id}, order={action.action_order}.", this);
             }
 
-            yield return AnimateAttack(attackerView, direction);
-            ApplyBackendActionTargetHealth(target, action);
-            ApplyBackendDefeatedRuntimeIds(action.defeated_runtime_ids);
-            if (visualTargetView != null) yield return AnimateHit(visualTargetView);
-            attackAnimationDuration = previousAttackDuration;
-            hitFlashDuration = previousHitDuration;
+            BattleAnimationAction animationAction = ResolveBackendAnimationAction(action);
+            string skillKey = !string.IsNullOrEmpty(action.skill_name) ? action.skill_name : action.skill_id > 0 ? action.skill_id.ToString() : null;
+            try
+            {
+                yield return AnimateCombatAction(attacker, visualTarget, animationAction, skillKey, action.action_order + action.round, direction, damagedTargets.Length > 0, () =>
+                {
+                    if (!IsCurrentBackendPlayback(presentationVersion, playbackSessionKey)) return;
+                    ApplyBackendActionResults(action);
+                }, affectedTargets, damagedTargets);
+            }
+            finally
+            {
+                attackAnimationDuration = previousAttackDuration;
+                hitFlashDuration = previousHitDuration;
+            }
+            if (!IsCurrentBackendPlayback(presentationVersion, playbackSessionKey)) yield break;
             RefreshBattleView();
 
             yield return new WaitForSeconds(turnInterval * 0.35f);
+            if (!IsCurrentBackendPlayback(presentationVersion, playbackSessionKey)) yield break;
         }
     }
 
-    private void ApplyBackendActionTargetHealth(IdleAdventureCombatant target, IdleAdventureBattleActionResponse action)
+    private IdleAdventureCombatant[] ResolveBackendActionTargets(IdleAdventureBattleActionResponse action, bool damagedOnly)
     {
-        if (target == null || action == null) return;
-
-        int nextHealth = ToInt(action.target_health_after);
-        bool targetDefeatedByAction = RuntimeIdIn(action.defeated_runtime_ids, target.RuntimeId);
-        if (nextHealth <= 0 && !targetDefeatedByAction)
+        List<IdleAdventureCombatant> resolved = new List<IdleAdventureCombatant>();
+        foreach (IdleAdventureBattleTargetResponse result in BattleActionContract.Targets(action))
         {
-            Debug.LogWarning($"Backend action target health was zero but target was not listed as defeated, keeping local target alive: target={target.RuntimeId}, actionTarget={action.target_runtime_id}, order={action.action_order}.", this);
-            return;
+            if (result == null || damagedOnly && result.damage <= 0) continue;
+            IdleAdventureCombatant target = FindBackendCombatant(result.runtime_id);
+            if (target != null && !target.IsDefeated && !resolved.Contains(target)) resolved.Add(target);
         }
+        return resolved.ToArray();
+    }
 
-        target.SetCurrentHealth(nextHealth);
+    private void ApplyBackendActionResults(IdleAdventureBattleActionResponse action)
+    {
+        if (action == null) return;
+        foreach (IdleAdventureBattleTargetResponse result in BattleActionContract.Targets(action))
+        {
+            if (result == null) continue;
+            IdleAdventureCombatant target = FindBackendCombatant(result.runtime_id);
+            if (target == null) continue;
+            bool defeated = result.has_defeated && result.defeated || RuntimeIdIn(action.defeated_runtime_ids, result.runtime_id);
+            if (defeated) { target.SetCurrentHealth(0); continue; }
+            if (!result.has_health_after) continue;
+            // Healing and stale action data cannot resurrect an already defeated actor.
+            if (target.IsDefeated && result.health_after > 0) continue;
+            if (result.health_after < 0)
+            {
+                Debug.LogWarning($"Backend action reported invalid negative HP; waiting for round reconciliation: target={result.runtime_id}, order={action.action_order}.", this);
+                continue;
+            }
+            target.SetCurrentHealth(ToInt(result.health_after));
+        }
+        // Legacy responses may only carry defeat IDs. Modern targets[] is authoritative,
+        // including an explicitly empty array, and cannot be expanded by other metadata.
+        if (action.targets == null) ApplyBackendDefeatedRuntimeIds(action.defeated_runtime_ids);
     }
 
     private bool HasInvalidBackendDamageActions(IdleAdventureBattleActionResponse[] actions)
@@ -4848,8 +5328,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         for (int i = 0; i < actions.Length; i++)
         {
             IdleAdventureBattleActionResponse action = actions[i];
-            if (action == null || action.damage <= 0) continue;
-            if (!SameBackendRuntimeSide(action.actor_runtime_id, action.target_runtime_id)) continue;
+            if (!BattleActionContract.HasSameSideDamage(action)) continue;
 
             Debug.LogError($"Invalid backend damage action: actor={action.actor_runtime_id}, target={action.target_runtime_id}, damage={action.damage}, order={action.action_order}. The frontend will not apply this backend snapshot.", this);
             return true;
@@ -4961,7 +5440,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         else
         {
             paused = status == "PAUSED" || session.paused;
-            if (pauseButtonText != null) pauseButtonText.text = paused ? "Resume" : "Pause";
+            if (pauseButtonText != null) pauseButtonText.text = paused ? "继续" : "暂停";
             if (paused) ShowPausePanel();
             else HidePausePanel();
         }
@@ -4985,18 +5464,17 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         modePausedByChoice = false;
         pendingNextStage = session != null && session.pending_next_stage > 0 ? session.pending_next_stage : stage + 1;
         paused = true;
-        if (pauseButtonText != null) pauseButtonText.text = "Resume";
-        if (resultText != null) resultText.text = "Victory";
+        if (pauseButtonText != null) pauseButtonText.text = "继续";
+        if (resultText != null) resultText.text = "胜利";
         ClearParty(enemies);
 
         if (stageEndPanelView != null)
         {
-            string pendingRewards = FormatRewardSummary(pendingRunRewards);
-            stageEndPanelView.SetContent($"Stage {stage} Cleared", $"Pending rewards: {pendingRewards}\nChoose whether to continue to the next stage or exit this mode.");
-            stageEndPanelView.SetButtonLabels("Continue", "Exit Mode");
+            stageEndPanelView.SetContent($"第 {stage} 关通关", "继续挑战下一关，或退出并领取奖励。", pendingRunRewards, rewardDisplayNames);
+            stageEndPanelView.SetButtonLabels("继续", "退出模式");
         }
 
-        AddLog($"Stage {stage} cleared by backend. Waiting for player choice.");
+        AddLog($"服务器判定第 {stage} 关已通关，等待选择。");
         RefreshBattleView();
         HidePausePanel();
         ShowEndPanel();
@@ -5036,17 +5514,16 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         modePausedByChoice = false;
         pendingNextStage = -1;
         paused = true;
-        if (pauseButtonText != null) pauseButtonText.text = "Resume";
-        if (resultText != null) resultText.text = "Defeated";
+            if (pauseButtonText != null) pauseButtonText.text = "继续";
+        if (resultText != null) resultText.text = "失败";
 
         if (stageEndPanelView != null)
         {
-            string pendingRewards = FormatRewardSummary(pendingRunRewards);
-            stageEndPanelView.SetContent("Party Defeated", $"Pending rewards: {pendingRewards}\nChoose whether to restart this stage or exit this mode.");
-            stageEndPanelView.SetButtonLabels("Restart", "Exit Mode");
+            stageEndPanelView.SetContent("队伍战败", "可重试本关，或退出并领取已累积的奖励。", pendingRunRewards, rewardDisplayNames);
+            stageEndPanelView.SetButtonLabels("重试", "退出模式");
         }
 
-        AddLog("Friendly party was defeated by backend. Waiting for player choice.");
+        AddLog("服务器判定我方队伍战败，等待选择。");
         HidePausePanel();
         ShowEndPanel();
     }
@@ -5054,7 +5531,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
     private IEnumerator ResolveInitiativeRound()
     {
         List<IdleAdventureCombatant> turnOrder = BuildInitiativeOrder();
-        AddLog($"Round {round} order: {FormatInitiativeOrder(turnOrder)}");
+        AddLog($"第 {round} 回合行动顺序：{FormatInitiativeOrder(turnOrder)}");
 
         for (int i = 0; i < turnOrder.Count; i++)
         {
@@ -5069,18 +5546,25 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
             IdleAdventureBattleSkill skill = attacker.FirstReadySkill();
             int damage = CalculateDamage(attacker, target, skill != null ? skill.Definition : null);
-            string actionName = skill != null ? skill.Definition.SkillName : "Attack";
-            AddLog($"{attacker.CombatantName} (SPD {attacker.EffectiveSpeed}) uses {actionName} on {target.CombatantName} for {damage}.");
-            yield return AnimateAttack(GetView(attacker), attacker.IsFriendly ? 1f : -1f);
-            target.TakeDamage(damage);
-            ApplySkillBuffs(attacker, target, skill);
-            if (skill != null) skill.TriggerCooldown();
-            yield return AnimateHit(GetView(target));
+            string actionName = skill != null ? skill.Definition.SkillName : "攻击";
+            AddLog($"{attacker.CombatantName}（速度 {attacker.EffectiveSpeed}）对 {target.CombatantName} 使用{actionName}，造成 {damage} 点伤害。");
+            BattleAnimationAction animationAction = skill == null ? BattleAnimationAction.NormalAttack
+                : damage <= 0 && skill.Definition.HasSelfBuff ? BattleAnimationAction.Buff : BattleAnimationAction.SkillAttack;
+            List<IdleAdventureCombatant> localRecipients = new List<IdleAdventureCombatant>();
+            if (damage > 0 || skill != null && skill.Definition.HasTargetBuff) localRecipients.Add(target);
+            if (skill != null && skill.Definition.HasSelfBuff) localRecipients.Add(attacker);
+            IdleAdventureCombatant presentationTarget = animationAction == BattleAnimationAction.Buff ? attacker : target;
+            yield return AnimateCombatAction(attacker, presentationTarget, animationAction, skill != null ? skill.Definition.SkillName : null, round + i, attacker.IsFriendly ? 1f : -1f, damage > 0, () =>
+            {
+                target.TakeDamage(damage);
+                ApplySkillBuffs(attacker, target, skill);
+                if (skill != null) skill.TriggerCooldown();
+            }, localRecipients.ToArray(), damage > 0 ? new[] { target } : Array.Empty<IdleAdventureCombatant>());
             RefreshBattleView();
 
             if (target.IsDefeated)
             {
-                AddLog($"{target.CombatantName} is defeated.");
+                AddLog($"{target.CombatantName} 已战败。");
                 RefreshBattleView();
             }
 
@@ -5142,7 +5626,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         modePausedByChoice = false;
         pendingNextStage = -1;
         paused = false;
-        if (pauseButtonText != null) pauseButtonText.text = "Pause";
+        if (pauseButtonText != null) pauseButtonText.text = "暂停";
         if (resultText != null) resultText.text = string.Empty;
         HideEndPanel();
         HidePausePanel();
@@ -5150,7 +5634,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         BuildFriendlyParty(Mathf.Clamp(startingFriendlyCount, 1, MaxPartySize));
         BuildEnemyParty(CalculateEnemyCountForStage(stage));
 
-        AddLog($"Stage {stage} begins. {DeployedCount(friendlies)} friendly unit(s) vs {DeployedCount(enemies)} enemy unit(s).");
+        AddLog($"第 {stage} 关开始：我方 {DeployedCount(friendlies)} 个单位对敌方 {DeployedCount(enemies)} 个单位。");
         RefreshBattleView();
         UpdateButtonStates();
     }
@@ -5179,11 +5663,13 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     private IdleAdventureCombatant CreateFriendlyCombatantForFormation(int definitionIndex, int slotIndex)
     {
+        if (backendNpcListLoaded || ShouldUseBackendApi() || !CanUseLocalCombatSimulation()) return null;
+
         IdleAdventureCombatantDefinition[] lineup = modeConfig != null ? modeConfig.FriendlyLineup : null;
         IdleAdventureCombatantDefinition definition = lineup != null && definitionIndex >= 0 && definitionIndex < lineup.Length ? lineup[definitionIndex] : null;
         if (definition != null)
         {
-            string combatantName = definition.ResolveName($"Hero {definitionIndex + 1}");
+            string combatantName = definition.ResolveName($"我方角色 {definitionIndex + 1}");
             return CreateCombatant(combatantName, Mathf.Max(1, definition.MaxHealth), Mathf.Max(0, definition.Attack), Mathf.Max(0, definition.Defense), Mathf.Max(1, definition.Speed), true, slotIndex, definition.SkillSlots, definition.AttributeType);
         }
 
@@ -5191,7 +5677,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         int attack = friendlyBaseAttack + definitionIndex * 3;
         int defense = friendlyBaseDefense + definitionIndex;
         int speed = friendlyBaseSpeed + (MaxPartySize - definitionIndex);
-        return CreateCombatant($"Hero {definitionIndex + 1}", health, attack, defense, speed, true, slotIndex);
+        return CreateCombatant($"我方角色 {definitionIndex + 1}", health, attack, defense, speed, true, slotIndex);
     }
 
     private IdleAdventureCombatant CreateEnemyCombatantForSlot(int slotIndex)
@@ -5201,7 +5687,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         if (definition != null)
         {
             int stageOffset = stage - 1;
-            string combatantName = definition.ResolveName($"Enemy {stage}-{slotIndex + 1}");
+            string combatantName = definition.ResolveName($"敌人 {stage}-{slotIndex + 1}");
             int health = Mathf.Max(1, definition.MaxHealth + stageOffset * enemyHealthPerStage);
             int attack = Mathf.Max(0, definition.Attack + stageOffset * enemyAttackPerStage);
             int defense = Mathf.Max(0, definition.Defense + Mathf.Max(0, stage / 3));
@@ -5213,7 +5699,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         int fallbackAttack = enemyBaseAttack + (stage - 1) * enemyAttackPerStage + slotIndex * 2;
         int fallbackDefense = enemyBaseDefense + Mathf.Max(0, stage / 3) + slotIndex / 2;
         int fallbackSpeed = enemyBaseSpeed + (stage - 1) * enemySpeedPerStage + (MaxPartySize - slotIndex);
-        return CreateCombatant($"Enemy {stage}-{slotIndex + 1}", fallbackHealth, fallbackAttack, fallbackDefense, fallbackSpeed, false, slotIndex);
+        return CreateCombatant($"敌人 {stage}-{slotIndex + 1}", fallbackHealth, fallbackAttack, fallbackDefense, fallbackSpeed, false, slotIndex);
     }
 
     private int AddConfiguredCombatants(List<IdleAdventureCombatant> party, IdleAdventureCombatantDefinition[] lineup, int requestedCount, bool isFriendly)
@@ -5232,7 +5718,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
             int attack = Mathf.Max(0, definition.Attack + stageOffset * enemyAttackPerStage);
             int defense = Mathf.Max(0, definition.Defense + (isFriendly ? 0 : Mathf.Max(0, stage / 3)));
             int speed = Mathf.Max(1, definition.Speed + stageOffset * enemySpeedPerStage);
-            string fallbackName = isFriendly ? $"Hero {slotIndex + 1}" : $"Enemy {stage}-{slotIndex + 1}";
+            string fallbackName = isFriendly ? $"我方角色 {slotIndex + 1}" : $"敌人 {stage}-{slotIndex + 1}";
             party.Add(CreateCombatant(definition.ResolveName(fallbackName), health, attack, defense, speed, isFriendly, slotIndex, definition.SkillSlots, definition.AttributeType));
         }
 
@@ -5266,6 +5752,8 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         for (int i = 0; i < party.Count; i++)
         {
             if (party[i] == null) continue;
+            IdleAdventureActorView view = GetView(party[i]);
+            if (view != null) view.CancelAnimation();
             DestroyRuntimeObject(party[i].gameObject);
         }
 
@@ -5308,29 +5796,37 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         round = 1;
         paused = false;
         if (resultText != null) resultText.text = string.Empty;
-        AddLog($"Friendly party recovered. Retrying Stage {stage}.");
+        AddLog($"我方队伍已恢复，正在重试第 {stage} 关。");
         RefreshBattleView();
         UpdateButtonStates();
     }
 
     private void RefreshBattleView()
     {
-        if (stageText != null) stageText.text = $"Idle Adventure mode  |  Stage {stage}";
-        if (turnText != null) turnText.text = $"Round {round}  |  Allies {LivingCount(friendlies)}/{DeployedCount(friendlies)}  Enemies {LivingCount(enemies)}/{DeployedCount(enemies)}";
-        if (friendlyCountText != null) friendlyCountText.text = $"{DeployedCount(friendlies)}/{MaxPartySize} deployed";
-        if (enemyCountText != null) enemyCountText.text = $"{DeployedCount(enemies)}/{MaxPartySize} present";
+        if (stageText != null) stageText.text = $"闯关模式  |  第 {stage} 关";
+        if (turnText != null) turnText.text = $"第 {round} 回合  |  我方 {LivingCount(friendlies)}/{DeployedCount(friendlies)}  敌方 {LivingCount(enemies)}/{DeployedCount(enemies)}";
+        HideFriendlyCountText();
+        if (enemyCountText != null) enemyCountText.text = $"{DeployedCount(enemies)}/{MaxPartySize} 个单位";
 
         RefreshPartyViews(friendlies, friendlyViews);
         RefreshPartyViews(enemies, enemyViews);
-        if (logText != null) logText.text = string.Join("\n", battleLog.ToArray());
+        if (logText != null) logText.text = FrontendTextLocalization.Normalize(string.Join("\n", battleLog.ToArray()));
     }
 
     private void RefreshPartyViews(List<IdleAdventureCombatant> party, IdleAdventureActorView[] views)
     {
+        bool soloEnemy = views == enemyViews && DeployedCount(party) == 1;
         for (int i = 0; i < MaxPartySize; i++)
         {
             IdleAdventureCombatant combatant = i < party.Count ? party[i] : null;
-            if (views[i] != null) views[i].Apply(combatant);
+            if (views[i] != null)
+            {
+                BattleAnimationCatalog.Entry appearance = soloEnemy && combatant != null
+                    ? BattleActorAnimation.FindEnemyEntry(combatant.AppearanceKey, combatant.CombatantName) : null;
+                ConfigureBattleSlot(views[i], views == friendlyViews, i, soloEnemy, appearance != null && appearance.visualScale > 1.5f);
+                views[i].SetPauseQuery(() => paused);
+                views[i].Apply(combatant);
+            }
         }
     }
 
@@ -5467,10 +5963,10 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     private static string BackendResultMessage<T>(BackendResult<T> result)
     {
-        if (result == null) return "No backend response.";
-        string message = string.IsNullOrEmpty(result.Message) ? "No backend message." : result.Message;
-        string businessCode = result.Code > 0 ? $", code {result.Code}" : string.Empty;
-        return $"HTTP {result.HttpStatus}{businessCode}: {message}";
+        if (result == null) return "暂时无法连接，请稍后重试。";
+        if (result.HttpStatus >= 400)
+            Debug.LogWarning($"Idle adventure request failed: http={result.HttpStatus}, code={result.Code}, message={result.Message}");
+        return FrontendTextLocalization.NormalizePlayerMessage(result.Message);
     }
 
     private int CalculateDamage(IdleAdventureCombatant attacker, IdleAdventureCombatant target, IdleAdventureSkillDefinition skill)
@@ -5541,9 +6037,133 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         IdleAdventureBattleBuff buff = preset.CreateRuntimeBuff();
         target.AddBuff(buff);
-        string verb = buff.Category == IdleAdventureBuffCategory.Benefit ? "gained" : "suffered";
-        AddLog($"{target.CombatantName} {verb} {buff.DisplayName} from {buff.SourceLabel}.");
+        string verb = buff.Category == IdleAdventureBuffCategory.Benefit ? "获得" : "受到";
+        AddLog($"{target.CombatantName}{verb}{buff.DisplayName}（来源：{buff.SourceLabel}）。");
         return true;
+    }
+
+    private static BattleAnimationAction ResolveBackendAnimationAction(IdleAdventureBattleActionResponse action)
+    {
+        string actionType = action.action_type ?? string.Empty;
+        if (BattleActionContract.IsBenefit(action) || actionType.IndexOf("BUFF", StringComparison.OrdinalIgnoreCase) >= 0 || actionType.IndexOf("HEAL", StringComparison.OrdinalIgnoreCase) >= 0 || !BattleActionContract.HasDamage(action) && action.applied_buffs != null && action.applied_buffs.Length > 0)
+            return BattleAnimationAction.Buff;
+        if (actionType.IndexOf("NORMAL", StringComparison.OrdinalIgnoreCase) >= 0 || actionType.IndexOf("BASIC", StringComparison.OrdinalIgnoreCase) >= 0 || string.Equals(actionType, "ATTACK", StringComparison.OrdinalIgnoreCase))
+            return BattleAnimationAction.NormalAttack;
+        if (actionType.IndexOf("SKILL", StringComparison.OrdinalIgnoreCase) >= 0 || action.skill_id > 0 || !string.IsNullOrEmpty(action.skill_name))
+            return BattleAnimationAction.SkillAttack;
+        return BattleAnimationAction.NormalAttack;
+    }
+
+    private IEnumerator AnimateCombatAction(IdleAdventureCombatant attacker, IdleAdventureCombatant target, BattleAnimationAction action, string skillKey, int variantSeed, float direction, bool damaging, Action applyGameplay, IdleAdventureCombatant[] affectedTargets = null, IdleAdventureCombatant[] damagedTargets = null)
+    {
+        IdleAdventureActorView attackerView = GetView(attacker);
+        IdleAdventureActorView targetView = GetView(target);
+        BattleActorAnimation player = attackerView != null ? attackerView.Animation : null;
+        BattleActorAnimation targetPlayer = targetView != null ? targetView.Animation : null;
+        int presentationVersion = battlePresentationVersion;
+        if (!string.IsNullOrEmpty(skillKey))
+        {
+            int stableSeed = 17;
+            foreach (char character in skillKey) stableSeed = unchecked(stableSeed * 31 + character);
+            variantSeed = stableSeed;
+        }
+        BattleAnimationSequence selected = player != null ? player.Resolve(action, skillKey, variantSeed) : null;
+        IdleAdventureCombatant[] recipients = affectedTargets ?? (target != null ? new[] { target } : Array.Empty<IdleAdventureCombatant>());
+        IdleAdventureCombatant[] hitRecipients = damagedTargets ?? (damaging ? recipients : Array.Empty<IdleAdventureCombatant>());
+        BattleActionImpactGate impactGate = new BattleActionImpactGate(selected != null && selected.impactFrames != null ? selected.impactFrames.Length : 0);
+        Action commit = () =>
+        {
+            applyGameplay?.Invoke();
+            BeginDefeatedAnimations(friendlies, variantSeed);
+            BeginDefeatedAnimations(enemies, variantSeed);
+        };
+        Action<int> impact = impactIndex =>
+        {
+            if (presentationVersion != battlePresentationVersion) return;
+            BattleHitFeedbackProfile feedback = player != null ? player.FeedbackAt(impactIndex) : null;
+            if (damaging && feedback != null && player != null) player.HoldFor(feedback.hitStop);
+            if (damaging && (impactIndex == 0 || selected != null && selected.restartTargetHitOnImpact))
+                foreach (IdleAdventureCombatant recipient in hitRecipients)
+                {
+                    if (recipient == null || recipient.IsDefeated) continue;
+                    IdleAdventureActorView view = GetView(recipient);
+                    if (view != null && view.Animation != null) view.Animation.React(false, variantSeed, feedback, direction);
+                }
+            impactGate.TryCommit(impactIndex, commit);
+            RefreshBattleView();
+        };
+        if (selected != null)
+        {
+            BattleActorAnimation[] allies = AnimationPlayers(attacker.IsFriendly ? friendlyViews : enemyViews);
+            BattleActorAnimation[] opponents = AnimationPlayers(attacker.IsFriendly ? enemyViews : friendlyViews);
+            List<BattleActorAnimation> targetPlayers = new List<BattleActorAnimation>();
+            foreach (IdleAdventureCombatant recipient in recipients)
+            {
+                IdleAdventureActorView view = GetView(recipient);
+                if (view != null && view.Animation != null && !recipient.IsDefeated) targetPlayers.Add(view.Animation);
+            }
+            yield return player.PlayAction(selected, targetPlayer, allies, opponents, variantSeed, impact, targetPlayers.ToArray());
+        }
+        else
+        {
+            yield return AnimateAttack(attackerView, direction);
+        }
+        if (presentationVersion != battlePresentationVersion) yield break;
+        if (impactGate.Complete(commit)) RefreshBattleView();
+        if (damaging)
+            foreach (IdleAdventureCombatant recipient in hitRecipients)
+            {
+                if (recipient == null || recipient.IsDefeated) continue;
+                IdleAdventureActorView view = GetView(recipient);
+                if (view != null && (view.Animation == null || !view.Animation.IsBound)) yield return AnimateHit(view);
+            }
+        while (presentationVersion == battlePresentationVersion && (AnyReactionPlaying(friendlyViews) || AnyReactionPlaying(enemyViews))) yield return null;
+    }
+
+    private void BeginDefeatedAnimations(List<IdleAdventureCombatant> party, int variantSeed)
+    {
+        foreach (IdleAdventureCombatant combatant in party)
+        {
+            if (combatant == null || !combatant.IsDefeated) continue;
+            IdleAdventureActorView view = GetView(combatant);
+            BattleActorAnimation player = view != null ? view.Animation : null;
+            if (player != null && !player.IsDead && !player.IsPlayingDeath) player.React(true, variantSeed);
+        }
+    }
+
+    private static BattleActorAnimation[] AnimationPlayers(IdleAdventureActorView[] views)
+    {
+        List<BattleActorAnimation> players = new List<BattleActorAnimation>();
+        foreach (IdleAdventureActorView view in views)
+        {
+            BattleActorAnimation player = view != null ? view.Animation : null;
+            if (player != null && player.IsBound && player.isActiveAndEnabled && !player.IsDead) players.Add(player);
+        }
+        return players.ToArray();
+    }
+
+    private static bool AnyReactionPlaying(IdleAdventureActorView[] views)
+    {
+        foreach (IdleAdventureActorView view in views)
+            if (view != null && view.Animation != null && view.Animation.IsPlayingAction && view.Animation.isActiveAndEnabled) return true;
+        return false;
+    }
+
+    private void CancelBattleAnimations()
+    {
+        battlePresentationVersion++;
+        if (friendlyViews != null)
+            foreach (IdleAdventureActorView view in friendlyViews) if (view != null) view.CancelAnimation();
+        if (enemyViews != null)
+            foreach (IdleAdventureActorView view in enemyViews) if (view != null) view.CancelAnimation();
+    }
+
+    private void ReleaseBattlePresentationAssets()
+    {
+        if (!battlePresentationVisible) return;
+        battlePresentationVisible = false;
+        BattleAnimationCatalog.ReleaseCachedSequences();
+        Resources.UnloadUnusedAssets();
     }
 
     private IEnumerator AnimateAttack(IdleAdventureActorView attacker, float direction)
@@ -5554,16 +6174,26 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         Vector2 start = rectTransform.anchoredPosition;
         Vector2 lunge = start + new Vector2(36f * direction, 8f);
         float halfDuration = attackAnimationDuration * 0.5f;
-
-        yield return MoveRect(rectTransform, start, lunge, halfDuration);
-        yield return MoveRect(rectTransform, lunge, start, halfDuration);
+        int presentationVersion = battlePresentationVersion;
+        try
+        {
+            yield return MoveRect(rectTransform, start, lunge, halfDuration);
+            if (presentationVersion == battlePresentationVersion) yield return MoveRect(rectTransform, lunge, start, halfDuration);
+        }
+        finally
+        {
+            if (rectTransform != null) rectTransform.anchoredPosition = start;
+        }
     }
 
     private IEnumerator MoveRect(RectTransform rectTransform, Vector2 from, Vector2 to, float duration)
     {
         float elapsed = 0f;
+        int presentationVersion = battlePresentationVersion;
         while (elapsed < duration)
         {
+            while (paused && presentationVersion == battlePresentationVersion) yield return null;
+            if (presentationVersion != battlePresentationVersion || rectTransform == null) yield break;
             elapsed += Time.deltaTime;
             float t = Mathf.Clamp01(elapsed / duration);
             t = 1f - Mathf.Pow(1f - t, 3f);
@@ -5580,15 +6210,24 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         Color originalColor = target.Body.color;
         target.Body.color = Color.white;
-        yield return new WaitForSeconds(hitFlashDuration);
+        float elapsed = 0f;
+        int presentationVersion = battlePresentationVersion;
+        while (elapsed < hitFlashDuration && presentationVersion == battlePresentationVersion)
+        {
+            if (!paused) elapsed += Time.deltaTime;
+            yield return null;
+        }
         target.Body.color = originalColor;
     }
 
     private void AddLog(string message)
     {
-        battleLog.Enqueue(message);
+        string playerMessage = FrontendTextLocalization.NormalizePlayerMessage(message);
+        if (!string.Equals(playerMessage, FrontendTextLocalization.Normalize(message), StringComparison.Ordinal))
+            Debug.Log(message, this);
+        battleLog.Enqueue(playerMessage);
         while (battleLog.Count > 5) battleLog.Dequeue();
-        if (logText != null) logText.text = string.Join("\n", battleLog.ToArray());
+        if (logText != null) logText.text = FrontendTextLocalization.Normalize(string.Join("\n", battleLog.ToArray()));
     }
 
     private void TogglePause()
@@ -5603,16 +6242,16 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
         if (!CanUseLocalCombatSimulation())
         {
-            AddLog("Local pause is disabled. Backend session is required.");
+            AddLog("本地暂停已禁用，需要服务器会话。");
             UpdateButtonStates();
             return;
         }
 
         paused = !paused;
-        if (pauseButtonText != null) pauseButtonText.text = paused ? "Resume" : "Pause";
+        if (pauseButtonText != null) pauseButtonText.text = paused ? "继续" : "暂停";
         if (paused) ShowPausePanel();
         else HidePausePanel();
-        AddLog(paused ? "Battle paused." : "Battle resumed.");
+        AddLog(paused ? "战斗已暂停。" : "战斗已恢复。");
         UpdateButtonStates();
     }
 
@@ -5633,14 +6272,14 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         {
             string status = NormalizeBackendStatus(result.Data.status);
             paused = status == "PAUSED" || (result.Data.paused && status != "RUNNING");
-            if (pauseButtonText != null) pauseButtonText.text = paused ? "Resume" : "Pause";
+            if (pauseButtonText != null) pauseButtonText.text = paused ? "继续" : "暂停";
             if (paused) ShowPausePanel();
             else HidePausePanel();
-            AddLog(paused ? "Battle paused by backend." : "Battle resumed by backend.");
+            AddLog(paused ? "服务器已暂停战斗。" : "服务器已恢复战斗。");
         }
         else
         {
-            AddLog($"Backend pause toggle failed: {BackendResultMessage(result)}");
+            AddLog($"服务器切换暂停状态失败：{BackendResultMessage(result)}");
         }
 
         UpdateButtonStates();
@@ -5708,6 +6347,12 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         image.raycastTarget = raycastTarget;
     }
 
+    private static void SetChildActive(RectTransform root, string childPath, bool active)
+    {
+        Transform child = root != null ? root.Find(childPath) : null;
+        if (child != null) child.gameObject.SetActive(active);
+    }
+
     private static T EnsureComponent<T>(GameObject target) where T : Component
     {
         if (target == null) return null;
@@ -5721,7 +6366,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         GameObject textObject = new GameObject(objectName, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
         textObject.transform.SetParent(parent, false);
         TextMeshProUGUI label = textObject.GetComponent<TextMeshProUGUI>();
-        label.text = text;
+        label.text = FrontendTextLocalization.Normalize(text);
         label.font = RuntimeFontAssetProvider.Resolve();
         label.fontSize = fontSize;
         label.fontStyle = style;
@@ -5730,6 +6375,25 @@ public sealed class IdleAdventureModeController : MonoBehaviour
         label.raycastTarget = false;
         label.enableWordWrapping = true;
         return label;
+    }
+
+    private static void ConfigureBattleText(TextMeshProUGUI label, bool wrap, float minimum, float maximum)
+    {
+        if (label == null) return;
+        label.enableWordWrapping = wrap;
+        label.overflowMode = TextOverflowModes.Ellipsis;
+        label.enableAutoSizing = true;
+        label.fontSizeMin = minimum;
+        label.fontSizeMax = maximum;
+        label.margin = new Vector4(8f, 3f, 8f, 3f);
+    }
+
+    private void HideFriendlyCountText()
+    {
+        if (friendlyCountText == null) return;
+
+        friendlyCountText.text = string.Empty;
+        friendlyCountText.gameObject.SetActive(false);
     }
 
     private Button CreateButton(string objectName, Transform parent, string labelText)
@@ -5753,6 +6417,7 @@ public sealed class IdleAdventureModeController : MonoBehaviour
 
     private static void Anchor(RectTransform rectTransform, Vector2 anchorMin, Vector2 anchorMax, Vector2 offsetMin, Vector2 offsetMax)
     {
+        if (rectTransform == null) return;
         rectTransform.anchorMin = anchorMin;
         rectTransform.anchorMax = anchorMax;
         rectTransform.offsetMin = offsetMin;

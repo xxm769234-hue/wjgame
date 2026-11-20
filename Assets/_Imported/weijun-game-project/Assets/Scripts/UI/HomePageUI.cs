@@ -159,6 +159,7 @@ public partial class HomePageUI : MonoBehaviour
     private void Build()
     {
         RectTransform root = GetOrCreateBookHomeRoot();
+        ConfigureHomePanelReadability();
         HomePageBookView view = root.GetComponent<HomePageBookView>();
         if (view != null && view.MainPage != null)
         {
@@ -180,6 +181,7 @@ public partial class HomePageUI : MonoBehaviour
     {
         boundBookView = view;
         mainPageTransform = view.MainPage;
+        view.ApplyApprovedEntryIcons();
         ConfigureHomeFeatureButtonHitAreas(view);
         avatarButton = view.AvatarButton;
         statusText = view.StatusText;
@@ -189,8 +191,9 @@ public partial class HomePageUI : MonoBehaviour
 
         if (view.AvatarNameText != null)
         {
-            string fallbackName = string.IsNullOrEmpty(view.AvatarNameText.text) ? "Player" : view.AvatarNameText.text;
+            string fallbackName = string.IsNullOrEmpty(view.AvatarNameText.text) ? "玩家" : view.AvatarNameText.text;
             view.AvatarNameText.text = PlayerPrefs.GetString("PlayerNickname", fallbackName);
+            ConfigureReadableText(view.AvatarNameText, "BookAvatarName");
         }
 
         bookAvatarLevelText = view.AvatarLevelText;
@@ -374,6 +377,7 @@ public partial class HomePageUI : MonoBehaviour
         if (bookAvatarLevelText != null)
         {
             bookAvatarLevelText.text = $"Lv.{level}";
+            ConfigureReadableText(bookAvatarLevelText, "BookAvatarLevel");
         }
 
         int currentExperience = Mathf.Max(0, PlayerPrefs.GetInt("PlayerCurrentLevelExperience", 0));
@@ -404,6 +408,7 @@ public partial class HomePageUI : MonoBehaviour
                 : requiredExperience > 0
                     ? $"{currentExperience}/{requiredExperience}"
                     : currentExperience.ToString();
+            ConfigureReadableText(bookAvatarExperienceText, "BookAvatarExperienceText");
         }
     }
 
@@ -516,6 +521,11 @@ public partial class HomePageUI : MonoBehaviour
         }
 
         panelsRoot.localScale = Vector3.one;
+        CanvasScaler panelsScaler = panelsRoot.GetComponent<CanvasScaler>();
+        if (panelsScaler != null)
+        {
+            panelsScaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
+        }
         bookRoot.SetAsFirstSibling();
         Stretch(bookRoot);
 
@@ -1477,7 +1487,7 @@ public partial class HomePageUI : MonoBehaviour
         }
         mailShowingNotifications = false;
 
-        SetLeftContent("邮件", "正在读取服务器邮件...", "正在请求邮件接口");
+            SetLeftContent("邮件", "正在加载邮件...", "正在加载邮件...");
         StartCoroutine(GetMailList());
     }
 
@@ -1488,7 +1498,7 @@ public partial class HomePageUI : MonoBehaviour
         selectedInventoryItemKey = string.Empty;
         ResetResourceSaleForInventory();
 
-        ShowInventoryPanel(new InventoryItemResponse[0], true, "正在读取服务器背包...");
+        ShowInventoryPanel(new InventoryItemResponse[0], true, "正在加载背包...");
         StartCoroutine(GetInventoryList(false));
     }
 
@@ -1523,7 +1533,7 @@ public partial class HomePageUI : MonoBehaviour
     {
         MarkTaskProgress("TaskRechargeOpened");
 
-        SetLeftContent("充值", "正在读取充值商品...", "正在请求充值商品接口");
+        SetLeftContent("充值", "正在加载充值商品...", "正在加载充值商品...");
         StartCoroutine(GetPaymentProducts());
     }
 
@@ -1919,10 +1929,10 @@ public partial class HomePageUI : MonoBehaviour
 
     private string GetTaskCategoryNote(string category)
     {
-        if (category == "main") return HasAuthSession() ? "每周任务按服务端北京时间周期刷新" : "推进领地基础功能，奖励仅可领取一次";
+        if (category == "main") return HasAuthSession() ? "每周任务按北京时间周期刷新" : "推进领地基础功能，奖励仅可领取一次";
         if (category == "growth") return "达到资源与等级目标后即可领取";
         if (category == "activity") return "参与签到、抽奖与商店活动";
-        return HasAuthSession() ? "每日任务按服务端北京时间周期刷新" : "每日 00:00 刷新完成状态与奖励";
+        return HasAuthSession() ? "每日任务按北京时间周期刷新" : "每日 00:00 刷新完成状态与奖励";
     }
 
     private bool IsTaskClaimed(TaskDisplayItem task)
@@ -2534,7 +2544,7 @@ public partial class HomePageUI : MonoBehaviour
             return;
         }
 
-        string serverSuffix = inventoryServerBacked ? "（仅改变当前显示，服务器数据未修改）" : string.Empty;
+        string serverSuffix = string.Empty;
         inventoryStatusMessage = mergedGroupCount > 0
             ? $"整理完成：合并 {mergedGroupCount} 组物品，释放 {releasedSlotCount} 个背包格{serverSuffix}"
             : "整理完成：未发现可合并物品，已按数量从多到少排列" + serverSuffix;
@@ -2892,7 +2902,7 @@ public partial class HomePageUI : MonoBehaviour
         Text quantity = CreateMailText("InventoryDetailQuantity", detail.transform, $"数量  {item.quantity}", 19, FontStyle.Bold, new Color(1f, 0.90f, 0.66f, 1f), TextAnchor.MiddleLeft);
         SetRect(quantity.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(36f, -222f), new Vector2(244f, 32f));
 
-        Text description = CreateMailText("InventoryDetailDescription", detail.transform, item.description ?? "服务器物品配置未提供额外说明", 15, FontStyle.Normal, new Color(1f, 0.84f, 0.60f, 0.94f), TextAnchor.UpperLeft);
+        Text description = CreateMailText("InventoryDetailDescription", detail.transform, item.description ?? "暂无物品说明", 15, FontStyle.Normal, new Color(1f, 0.84f, 0.60f, 0.94f), TextAnchor.UpperLeft);
         SetRect(description.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(32f, -304f), new Vector2(244f, 210f));
 
         Button sell = CreateButton(detail.transform, "InventorySellAction", "出售", new Color(0.91f, 0.37f, 0.13f, 1f), Color.white);
@@ -2947,7 +2957,7 @@ public partial class HomePageUI : MonoBehaviour
 
         if (inventoryServerBacked)
         {
-            inventoryStatusMessage = "当前接口只提供背包查询，使用物品接口尚未开放，未修改服务器库存";
+            inventoryStatusMessage = "物品使用暂未开放，物品未消耗";
             RenderInventoryPanel();
             return;
         }
@@ -3080,7 +3090,7 @@ public partial class HomePageUI : MonoBehaviour
     {
         if (inventoryServerBacked)
         {
-            inventoryStatusMessage = "服务器背包扩容接口尚未开放，当前只能查看锁定格子";
+            inventoryStatusMessage = "背包扩容暂未开放";
             RenderInventoryPanel();
             return;
         }
@@ -3115,7 +3125,7 @@ public partial class HomePageUI : MonoBehaviour
         SelectHomeMode(
             "battle",
             "对战模式",
-            "已选择对战模式。\n\n当前状态：准备进入对战玩法\n\n功能内容\n1. 竞技场入口\n2. 匹配入口\n3. 防守阵容\n4. 赛季奖励\n\n说明：当前项目还没有独立对战场景和对战接口，这里先完成首页模式选择，后续可根据 HomeSelectedMode=battle 跳转到对战场景。"
+            "对战模式暂未开放，敬请期待。"
         );
     }
 
@@ -3159,77 +3169,34 @@ public partial class HomePageUI : MonoBehaviour
         announcementPanelView = FindSceneAnnouncementPanel();
         if (announcementPanelView == null)
         {
-            SetLeftContent("公告", BuildAnnouncementBody(), "场景公告组件未找到，已使用文本模式显示");
+            SetLeftContent("公告", BuildAnnouncementBody(), "公告暂时无法打开");
             return;
         }
 
         if (!EnsureAnnouncementPanelHierarchyActive())
         {
-            SetLeftContent("游戏公告", BuildAnnouncementBody(), "公告面板无法显示，请检查场景层级");
+            SetLeftContent("游戏公告", BuildAnnouncementBody(), "公告页面暂时无法打开，请稍后重试");
             return;
         }
 
         announcementPanelView.transform.SetAsLastSibling();
         if (HasAuthSession())
         {
-            announcementPanelView.SetStatus("正在同步服务器公告", "正在读取当前有效公告...");
+            announcementPanelView.SetStatus("正在加载公告", "正在读取当前公告...");
             announcementPanelView.BindClose(HideAnnouncementPanel);
             StartCoroutine(GetServerAnnouncements());
-            SetStatus("正在读取服务器公告");
+            SetStatus("正在加载公告...");
             return;
         }
 
-        announcementPanelView.SetStatus("请先登录", "登录后查看服务器公告");
+        announcementPanelView.SetStatus("请先登录", "登录后查看最新公告");
         announcementPanelView.BindClose(HideAnnouncementPanel);
         SetStatus("已打开游戏公告");
     }
 
     private string BuildAnnouncementBody()
     {
-        return string.Join("\n", new[]
-        {
-            "《微郡》7月版本更新公告",
-            string.Empty,
-            "亲爱的领主：",
-            "本次首页与领地系统更新已经完成。重新进入首页后，即可体验以下新增内容。",
-            string.Empty,
-            "---------- 版本更新 ----------",
-            "一、全新书页主页",
-            "1. 首页采用领地手册与地图书页布局，主要入口重新分类排列。",
-            "2. 玩家头像、资源概览、设置、邮件等常用信息集中展示。",
-            "3. 建造、对战、经营三个模式已加入右侧功能区。",
-            string.Empty,
-            "二、系统功能补充",
-            "1. 背包支持装备、药品和其它分类，可进行使用、出售、整理与扩容。",
-            "2. 任务列表包含每日任务、主线任务、成长任务和活动任务。",
-            "3. 系统邮件、充值商店和幸运抽奖界面已补充完整。",
-            string.Empty,
-            "---------- 活动公告 ----------",
-            "活动一：每日签到",
-            "活动时间：长期开放",
-            "活动说明：连续签到以两周为一个周期，可领取金币、资源和稀有道具。",
-            string.Empty,
-            "活动二：新手三日签到",
-            "活动时间：新角色创建后开放",
-            "活动说明：累计签到三天，可领取资源补给与装备宝箱。",
-            string.Empty,
-            "活动三：幸运抽奖",
-            "活动时间：长期开放",
-            "活动说明：消耗抽奖机会参与翻牌，奖励以当前抽奖结算结果为准。",
-            string.Empty,
-            "---------- 优化与修复 ----------",
-            "1. 优化书页背景、按钮尺寸和文字清晰度。",
-            "2. 修复部分面板重叠、内容超出边框和关闭按钮不可见的问题。",
-            "3. 背包界面已改为 Unity Prefab 组件，后续可直接替换图片和样式。",
-            string.Empty,
-            "温馨提示：",
-            "账号模式会读取服务器数据；本地任务、活动任务和抽奖记录仅用于对应功能的本地流程。",
-            string.Empty,
-            "感谢各位领主的支持，祝您游戏愉快！",
-            string.Empty,
-            "微郡运营组",
-            "2026年7月21日"
-        });
+        return "《书屿梦行》公告\n\n暂时无法读取最新公告，请稍后重试。";
     }
 
     private void ShowRechargePanel(PaymentProductResponse[] products, string status, bool disabled)
@@ -3237,7 +3204,7 @@ public partial class HomePageUI : MonoBehaviour
         if (GetRegisteredScenePanel(HomePageScenePanelType.Recharge) == null)
         {
             Debug.LogWarning("RechargeScenePanel is missing. Restore the authored scene panel to open recharge.", this);
-            SetStatus("充值面板未配置，请检查场景中的 RechargeScenePanel。");
+            SetStatus("充值页面暂时无法打开，请稍后重试。");
             return;
         }
 
@@ -3305,7 +3272,7 @@ public partial class HomePageUI : MonoBehaviour
     {
         if (disabled)
         {
-            SetStatus("当前不能充值：请使用账号或微信登录，并确认后端支付服务可用。");
+            SetStatus("充值暂不可用，请先登录账号后重试。");
             return;
         }
 
@@ -3624,7 +3591,7 @@ public partial class HomePageUI : MonoBehaviour
 
         Button prizeButton = CreateButton(panel.transform, "LotteryPrizeButton", string.Empty, new Color(1f, 0.92f, 0.74f, 1f), new Color(0.38f, 0.18f, 0.08f, 1f));
         SetRect(prizeButton.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(126f, -704f), new Vector2(96f, 92f));
-        prizeButton.onClick.AddListener(() => ShowLotteryPanel("奖品池：金币、木材、石材、铁矿，后续可接入服务器奖池", rewardName, rewardValue, hasResult));
+        prizeButton.onClick.AddListener(() => ShowLotteryPanel("体验奖池：金币、木材、石材、铁矿", rewardName, rewardValue, hasResult));
         AddGiftIcon(prizeButton.transform, new Vector2(22f, -10f), new Vector2(52f, 48f));
         Text prizeText = CreateMailText("PrizeText", prizeButton.transform, "奖品", 17, FontStyle.Bold, new Color(0.36f, 0.18f, 0.08f, 1f), TextAnchor.MiddleCenter);
         SetRect(prizeText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(14f, -60f), new Vector2(68f, 24f));
@@ -4237,11 +4204,7 @@ public partial class HomePageUI : MonoBehaviour
             Text itemTitle = CreateMailText("Title", card.transform, title, 19, FontStyle.Bold, InkColor, TextAnchor.MiddleLeft);
             SetRect(itemTitle.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(38f, -10f), new Vector2(258f, 28f));
 
-            string sender = string.IsNullOrEmpty(mail.senderName) ? "系统" : mail.senderName;
-            string attachment = mail.hasAttachment ? (mail.attachmentClaimed ? "附件已领" : "可领取") : "无附件";
-            string type = string.IsNullOrEmpty(mail.mailType) ? "SYSTEM" : mail.mailType;
-            string expiry = string.IsNullOrEmpty(mail.expireTime) ? string.Empty : $"  Expires: {mail.expireTime}";
-            Text itemMeta = CreateMailText("Meta", card.transform, $"{sender}  {type}  {attachment}{expiry}", 15, FontStyle.Normal, MutedColor, TextAnchor.MiddleLeft);
+            Text itemMeta = CreateMailText("Meta", card.transform, BuildCompactMailMeta(mail), 15, FontStyle.Normal, MutedColor, TextAnchor.MiddleLeft);
             SetRect(itemMeta.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(38f, -42f), new Vector2(258f, 24f));
 
             MailResponse capturedMail = mail;
@@ -4258,11 +4221,14 @@ public partial class HomePageUI : MonoBehaviour
         string title = string.IsNullOrEmpty(mail.title) ? "系统邮件" : mail.title;
         string sender = string.IsNullOrEmpty(mail.senderName) ? "系统" : mail.senderName;
         string content = string.IsNullOrEmpty(mail.content) ? "暂无详细内容，正在读取邮件详情..." : mail.content;
-        string attachment = mail.hasAttachment ? (mail.attachmentClaimed ? "附件状态：已领取" : "附件状态：可领取") : "附件状态：无附件";
+        string attachment = mail.expired ? "附件状态：已过期" : mail.hasAttachment ? (mail.attachmentClaimed ? "附件状态：已领取" : "附件状态：可领取") : "附件状态：无附件";
         string time = string.IsNullOrEmpty(mail.createTime) ? "时间：未知" : $"时间：{mail.createTime}";
+        string expiry = string.IsNullOrEmpty(mail.expireTime) ? string.Empty : $"\n有效期至：{mail.expireTime}";
 
         detailTitle.text = title;
-        detailBody.text = $"{content}\n\n发件人：{sender}\n{time}\n{attachment}\n{BuildMailAttachmentSummary(mail)}";
+        detailBody.text = $"{content}\n\n发件人：{sender}\n{time}{expiry}\n{attachment}\n{BuildMailAttachmentSummary(mail)}";
+        ConfigureReadableText(detailTitle, "MailDetailTitle");
+        ConfigureReadableText(detailBody, "MailDetailBody");
 
         Button claimButton = mailPanelObject == null
             ? null
@@ -4634,7 +4600,7 @@ public partial class HomePageUI : MonoBehaviour
             return request;
         }
 
-        requestCreationError = error;
+        requestCreationError = FrontendTextLocalization.NormalizePlayerMessage(error);
         return null;
     }
 
@@ -4647,7 +4613,7 @@ public partial class HomePageUI : MonoBehaviour
             string errorMessage = requestCreationError;
             if (equipmentOnly)
             {
-                SetLeftContent("装备", errorMessage, "接口配置错误");
+                SetLeftContent("装备", errorMessage, "暂时无法连接，请稍后重试");
             }
             else
             {
@@ -4667,10 +4633,10 @@ public partial class HomePageUI : MonoBehaviour
 
             if (request.result != UnityWebRequest.Result.Success)
             {
-                string errorMessage = $"请求失败：{ApiRequestUtility.GetErrorMessage(request, "服务器连接失败")}\n\n接口地址：{ApiRuntimeConfig.GetDisplayBaseUrl()}";
+                string errorMessage = "暂时无法加载装备，请检查网络后重试。";
                 if (equipmentOnly)
                 {
-                    SetLeftContent("装备", errorMessage, "接口请求失败");
+                    SetLeftContent("装备", errorMessage, "装备加载失败");
                 }
                 else if (inventoryPanelObject != null)
                 {
@@ -4685,7 +4651,7 @@ public partial class HomePageUI : MonoBehaviour
                 string errorMessage = GetApiError(response);
                 if (equipmentOnly)
                 {
-                    SetLeftContent("装备", errorMessage, "接口返回失败");
+                    SetLeftContent("装备", errorMessage, "装备加载失败");
                 }
                 else if (inventoryPanelObject != null)
                 {
@@ -4700,7 +4666,7 @@ public partial class HomePageUI : MonoBehaviour
             }
             else if (inventoryPanelObject != null)
             {
-                ShowInventoryPanel(response.data ?? new InventoryItemResponse[0], true, "服务器背包同步完成");
+                ShowInventoryPanel(response.data ?? new InventoryItemResponse[0], true, string.Empty);
             }
         }
     }
@@ -4726,7 +4692,7 @@ public partial class HomePageUI : MonoBehaviour
 
             if (request.result != UnityWebRequest.Result.Success)
             {
-                ShowSystemMailPanel(null, $"请求失败：{ApiRequestUtility.GetErrorMessage(request, "服务器连接失败")}\n\n接口地址：{ApiRuntimeConfig.GetDisplayBaseUrl()}");
+                ShowSystemMailPanel(null, "邮件加载失败，请检查网络后重试。");
                 yield break;
             }
 
@@ -4762,7 +4728,7 @@ public partial class HomePageUI : MonoBehaviour
 
             if (request.result != UnityWebRequest.Result.Success)
             {
-                ShowRechargePanel(Array.Empty<PaymentProductResponse>(), $"请求失败：{ApiRequestUtility.GetErrorMessage(request, "服务器连接失败")}\n接口地址：{ApiRuntimeConfig.GetDisplayBaseUrl()}", true);
+                ShowRechargePanel(Array.Empty<PaymentProductResponse>(), "充值商品加载失败，请稍后重试。", true);
                 yield break;
             }
 
@@ -4779,7 +4745,7 @@ public partial class HomePageUI : MonoBehaviour
             {
                 string message = response.data == null || response.data.Length == 0
                     ? "支付功能暂未开启。"
-                    : "充值商品配置无效，请联系运营人员检查钻石商品配置。";
+                    : "充值商品暂不可用，请稍后重试。";
                 ShowRechargePanel(products, message, true);
                 yield break;
             }
@@ -4792,10 +4758,10 @@ public partial class HomePageUI : MonoBehaviour
     {
         if (response == null)
         {
-            return "接口返回数据为空或格式错误。";
+            return "暂时未能读取完整信息，请稍后重试。";
         }
 
-        return string.IsNullOrEmpty(response.message) ? $"接口返回错误：code={response.code}" : response.message;
+        return string.IsNullOrEmpty(response.message) ? "操作未完成，请稍后重试。" : FrontendTextLocalization.NormalizePlayerMessage(response.message);
     }
 
     private string BuildInventoryText(InventoryItemResponse[] items, bool equipmentOnly)
@@ -4821,7 +4787,7 @@ public partial class HomePageUI : MonoBehaviour
 
         if (equipmentOnly && count == 0)
         {
-            return "当前背包中没有装备类物品。\n\n说明：接口文档没有独立装备接口，当前从背包接口筛选装备类物品。";
+            return "当前背包中没有装备。";
         }
 
         return text;
@@ -4900,7 +4866,7 @@ public partial class HomePageUI : MonoBehaviour
     {
         if (products == null || products.Length == 0)
         {
-            return "当前没有可购买商品。\n\n如果后端已开启支付，请检查 PAYMENT_ENABLED 和商品配置。";
+            return "暂无可购买商品。";
         }
 
         string text = "充值商品\n\n";
@@ -4910,7 +4876,6 @@ public partial class HomePageUI : MonoBehaviour
             text += $"{i + 1}. {product.name}\n   编码：{product.productCode}\n   价格：{product.priceFen / 100f:0.##} {product.currency}\n   奖励：{product.rewardItemName} x{GetShopRewardAmount(product)}\n";
         }
 
-        text += "\n创建订单和微信支付需要商品按钮/订单确认弹窗，当前已接入商品列表接口。";
         return text;
     }
 
@@ -5058,17 +5023,17 @@ public partial class HomePageUI : MonoBehaviour
         buttonLayout.childForceExpandHeight = false;
 
         Button settingsButton = CreateButton(buttonBlock.transform, "SettingsButton", "设置", new Color(0.91f, 0.88f, 0.80f, 1f), InkColor);
-        settingsButton.onClick.AddListener(() => SetStatus("设置功能待接入"));
+        settingsButton.onClick.AddListener(() => SetStatus("设置暂不可用"));
         SetLayout(settingsButton.gameObject, 0f, 26f);
         ShrinkButtonLabel(settingsButton, 16);
 
         Button mailButton = CreateButton(buttonBlock.transform, "MailButton", "邮件", new Color(0.91f, 0.88f, 0.80f, 1f), InkColor);
-        mailButton.onClick.AddListener(() => SetStatus("邮件功能待接入"));
+        mailButton.onClick.AddListener(() => SetStatus("邮件暂不可用"));
         SetLayout(mailButton.gameObject, 0f, 26f);
         ShrinkButtonLabel(mailButton, 16);
 
         Button bagButton = CreateButton(buttonBlock.transform, "BagButton", "背包", new Color(0.91f, 0.88f, 0.80f, 1f), InkColor);
-        bagButton.onClick.AddListener(() => SetStatus("背包功能待接入"));
+        bagButton.onClick.AddListener(() => SetStatus("背包暂不可用"));
         SetLayout(bagButton.gameObject, 0f, 26f);
         ShrinkButtonLabel(bagButton, 16);
 
@@ -5242,7 +5207,7 @@ public partial class HomePageUI : MonoBehaviour
         AddMapImage(page, GetArea("snow"), "Sprites/Arts/png/snow.png", new Vector2(310f, -618f), new Vector2(500f, 225f), 0f);
 
         Button closeButton = CreateButton(page, "RightCloseButton", "X", new Color(0.32f, 0.18f, 0.10f, 0.90f), new Color(1f, 0.86f, 0.58f, 1f));
-        closeButton.onClick.AddListener(() => SetStatus("关闭按钮待接入"));
+        closeButton.onClick.AddListener(() => SetStatus("暂时无法关闭此页面，请稍后重试"));
         SetRect(closeButton.GetComponent<RectTransform>(), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-6f, -4f), new Vector2(24f, 24f));
         ShrinkButtonLabel(closeButton, 22);
     }
@@ -5420,7 +5385,7 @@ public partial class HomePageUI : MonoBehaviour
             return;
         }
 
-        SetStatus("Please sign in before entering management mode.");
+        SetStatus("请先登录，再进入模拟经营。");
     }
 
     private string GetSelectedModeSceneName()
@@ -5443,7 +5408,8 @@ public partial class HomePageUI : MonoBehaviour
     {
         if (statusText != null)
         {
-            statusText.text = message;
+            statusText.text = string.IsNullOrWhiteSpace(message) ? string.Empty
+                : FrontendTextLocalization.NormalizePlayerMessage(message);
         }
     }
 
@@ -5491,7 +5457,7 @@ public partial class HomePageUI : MonoBehaviour
         label.color = color;
         label.alignment = ConvertTextAlignment(alignment);
         label.enableAutoSizing = true;
-        label.fontSizeMin = 12;
+        label.fontSizeMin = Mathf.Min(size, 16);
         label.fontSizeMax = size;
         label.raycastTarget = false;
         return label;
@@ -5584,7 +5550,7 @@ public partial class HomePageUI : MonoBehaviour
 
         label.fontSize = fontSize;
         label.enableAutoSizing = true;
-        label.fontSizeMin = 10;
+        label.fontSizeMin = Mathf.Min(fontSize, 16);
         label.fontSizeMax = fontSize;
     }
 
@@ -5598,7 +5564,7 @@ public partial class HomePageUI : MonoBehaviour
         label.fontSize = fontSize;
         label.enableAutoSizing = false;
         label.enableWordWrapping = true;
-        label.overflowMode = TextOverflowModes.Truncate;
+        label.overflowMode = TextOverflowModes.Ellipsis;
     }
 
     private void ConfigureClearButtonLabel(Button button, int fontSize)

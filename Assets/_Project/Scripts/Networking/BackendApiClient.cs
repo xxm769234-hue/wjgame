@@ -80,16 +80,19 @@ public static class BackendApiClient
                 ApiResponse<T> response = JsonUtility.FromJson<ApiResponse<T>>(responseText);
                 if (response == null)
                 {
-                    onComplete?.Invoke(new BackendResult<T>(false, status, 0, "Backend returned an empty response.", default));
+                    onComplete?.Invoke(new BackendResult<T>(false, status, 0, FrontendTextLocalization.Normalize("Backend returned an empty response."), default));
                     yield break;
                 }
+
+                if ((object)response.data is IdleAdventureSessionResponse battleSession)
+                    BackendBattleActionJson.RestoreActionPresence(responseText, battleSession);
 
                 bool success = response.code == 200;
                 onComplete?.Invoke(new BackendResult<T>(success, status, response.code, response.message, response.data));
             }
             catch (Exception exception)
             {
-                onComplete?.Invoke(new BackendResult<T>(false, status, 0, $"Failed to parse backend response: {exception.Message}", default));
+                onComplete?.Invoke(new BackendResult<T>(false, status, 0, FrontendTextLocalization.Normalize($"Failed to parse backend response: {exception.Message}"), default));
             }
         }
     }
@@ -116,7 +119,7 @@ public static class BackendApiClient
             }
         }
 
-        return string.IsNullOrEmpty(request.error) ? $"HTTP {(int)request.responseCode}" : request.error;
+        return FrontendTextLocalization.Normalize(string.IsNullOrEmpty(request.error) ? $"HTTP {(int)request.responseCode}" : request.error);
     }
 
     private static int ExtractResponseCode(string responseText)

@@ -1,0 +1,38 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 201f0ee8395392343b511a44f8ef8d2f, type: 3}
+  m_Name: Light
+  m_EditorClassIdentifier: 
+  priority: 10
+  hitStop: 0.03
+  shakePixels: 0
+  shakeDuration: 0.09
+  recoilPixels: 1.8
+  recoilAttack: 0.035
+  recoilReturn: 0.11
+  flashAmount: 0.4
+  flashDuration: 0.04
+  afterglowDuration: 0.08
+  flashBodyFraction: 0.28
+  sparkPixels: 12
+  sparkDuration: 0.14
+  contactColor: {r: 1, g: 0.78, b: 0.37, a: 1}
+  windupSounds:
+  - {fileID: 8300000, guid: 362e3bb4e1aa55959f4b32adbb4d2f6c, type: 3}
+  contactSounds:
+  - {fileID: 8300000, guid: 337350fb365152938b28a7ad2e87f90f, type: 3}
+  - {fileID: 8300000, guid: 63f8d55471c75fba8f391d8a3bb4fc6e, type: 3}
+  - {fileID: 8300000, guid: b58bedb04f105696b8354089a738a187, type: 3}
+  tailSounds:
+  - {fileID: 8300000, guid: 7e38efa64b3656a29c8545a3dc66c947, type: 3}
+  sustainSound: {fileID: 0}
+  windupLead: 0.12

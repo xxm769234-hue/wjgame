@@ -5,6 +5,8 @@ using UnityEngine.UI;
 
 public sealed class IdleAdventureStartPanel : MonoBehaviour
 {
+    private const string DisplayTitle = "闯关模式";
+
     [SerializeField] private TextMeshProUGUI titleText;
     [SerializeField] private TextMeshProUGUI bodyText;
     [SerializeField] private TextMeshProUGUI stageSelectionText;
@@ -34,6 +36,8 @@ public sealed class IdleAdventureStartPanel : MonoBehaviour
         previousStageButton = previousStageButtonControl;
         nextStageButton = nextStageButtonControl;
         startButton = startButtonControl;
+        ConfigureBodyText();
+        ConfigureStageSelectionText();
     }
 
     public void Bind(Action onStart)
@@ -64,6 +68,16 @@ public sealed class IdleAdventureStartPanel : MonoBehaviour
         gameObject.SetActive(true);
     }
 
+    private void OnEnable()
+    {
+        SceneBackgroundMusic.SetPreparationVisible(true);
+    }
+
+    private void OnDisable()
+    {
+        SceneBackgroundMusic.SetPreparationVisible(false);
+    }
+
     public void Hide()
     {
         gameObject.SetActive(false);
@@ -76,7 +90,11 @@ public sealed class IdleAdventureStartPanel : MonoBehaviour
 
     public void SetStageSelection(string content)
     {
-        if (stageSelectionText != null) stageSelectionText.text = content;
+        if (stageSelectionText != null)
+        {
+            stageSelectionText.text = FrontendTextLocalization.Normalize(content);
+            ConfigureStageSelectionText();
+        }
     }
 
     public void SetStageSelectionInteractable(bool interactable)
@@ -87,7 +105,39 @@ public sealed class IdleAdventureStartPanel : MonoBehaviour
 
     public void SetContent(string title, string body)
     {
-        if (titleText != null) titleText.text = title;
-        if (bodyText != null) bodyText.text = body;
+        if (titleText != null)
+        {
+            titleText.color = Color.black;
+            titleText.text = FrontendTextLocalization.Normalize(DisplayTitle);
+        }
+        if (bodyText != null)
+        {
+            bodyText.color = Color.black;
+            bodyText.text = string.IsNullOrWhiteSpace(body) ? string.Empty : FrontendTextLocalization.NormalizePlayerMessage(body);
+            ConfigureBodyText();
+        }
+    }
+
+    private void ConfigureBodyText()
+    {
+        if (bodyText == null) return;
+        bodyText.enableWordWrapping = true;
+        bodyText.overflowMode = TextOverflowModes.Ellipsis;
+        bodyText.enableAutoSizing = true;
+        bodyText.fontSizeMin = 12f;
+        bodyText.fontSizeMax = Mathf.Min(24f, bodyText.fontSizeMax > 0f ? bodyText.fontSizeMax : 24f);
+        bodyText.alignment = TextAlignmentOptions.Center;
+        bodyText.margin = new Vector4(12f, 4f, 12f, 4f);
+    }
+
+    private void ConfigureStageSelectionText()
+    {
+        if (stageSelectionText == null) return;
+        stageSelectionText.enableWordWrapping = false;
+        stageSelectionText.overflowMode = TextOverflowModes.Ellipsis;
+        stageSelectionText.enableAutoSizing = true;
+        stageSelectionText.fontSizeMin = 12f;
+        stageSelectionText.fontSizeMax = Mathf.Min(18f, stageSelectionText.fontSizeMax > 0f ? stageSelectionText.fontSizeMax : 18f);
+        stageSelectionText.margin = new Vector4(8f, 2f, 8f, 2f);
     }
 }

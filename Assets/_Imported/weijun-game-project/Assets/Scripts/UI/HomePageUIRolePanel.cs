@@ -130,7 +130,7 @@ public partial class HomePageUI
         ResetRoleBreakthroughPreview();
         ResetRoleLoadoutState();
         roleStatusMessage = HasAuthSession()
-            ? "\u6b63\u5728\u540c\u6b65\u670d\u52a1\u5668\u89d2\u8272\u6570\u636e..."
+            ? "正在加载角色..."
             : "\u8bf7\u5148\u767b\u5f55\u8d26\u53f7\u540e\u67e5\u770b\u89d2\u8272\u6570\u636e";
         RenderRolePanel();
 
@@ -224,7 +224,7 @@ public partial class HomePageUI
             }
         }
 
-        roleStatusMessage = $"已同步 {roleCatalogEntries.Length} 个角色配置，拥有 {rolePlayerEntries.Length} 个角色";
+        roleStatusMessage = string.Empty;
         RenderRolePanel();
         onLoaded?.Invoke();
     }
@@ -268,7 +268,7 @@ public partial class HomePageUI
                     {
                         if (state.catalogEntries[index] != null && state.catalogEntries[index].contractVersion > 1)
                         {
-                            state.catalogError = "角色图鉴协议版本过高，请更新客户端";
+                            state.catalogError = "当前版本暂不支持此内容，请更新游戏";
                             break;
                         }
                     }
@@ -872,6 +872,9 @@ public partial class HomePageUI
         SetSceneText(root, "RoleGrowthStatus", growthStatus);
         SetSceneText(root, "RoleEquipmentStatus", roleLoadoutLoading ? "正在读取已穿戴装备..."
             : string.IsNullOrEmpty(roleLoadoutError) ? string.Empty : "装备读取失败：" + roleLoadoutError);
+        ApplyPresentationButton(equipment, false, 23f);
+        ApplyPresentationButton(growth, true, 23f);
+        ConfigureRoleActionPresentation(root);
     }
 
     private void OpenRoleActionPanel(Transform root, bool growth)
@@ -972,7 +975,7 @@ public partial class HomePageUI
         string sessionToken = GameSession.Token;
         roleUpgradeRunning = true;
         roleGrowthItemsRequestVersion++;
-        roleStatusMessage = "正在请求服务器升级角色...";
+        roleStatusMessage = "正在升级角色...";
         RenderRolePanel();
         if (!TryCreateAuthorizedPost("/npc/upgrade", "{\"playerNpcId\":" + playerNpcId + "}", out UnityWebRequest request, out string error))
         {
@@ -1019,9 +1022,10 @@ public partial class HomePageUI
 
             if (response.data.playerNpcId != playerNpcId)
             {
-                roleStatusMessage = "服务器返回的角色不一致，正在重新同步";
+                roleStatusMessage = "升级结果需要确认，正在刷新角色...";
             }
-            else roleStatusMessage = $"{response.data.name} 已升级到 Lv.{response.data.level}，资源已由服务器结算";
+            else roleStatusMessage = $"{response.data.name} 已升级到 Lv.{response.data.level}";
+            PlayerOnboardingManager.NotifyBusinessSucceeded();
         }
 
         yield return RefreshRoleGrowthState(sessionPlayerId, sessionToken);
@@ -1282,7 +1286,7 @@ public partial class HomePageUI
         }));
 
         if (previewFailed) SetSceneText(root, "RoleStatus", roleBreakthroughPreviewError);
-        else if (ready && !slotsReady) SetSceneText(root, "RoleStatus", "突破资源框未配置");
+        else if (ready && !slotsReady) SetSceneText(root, "RoleStatus", "暂时无法展示突破消耗，请稍后重试");
     }
 
     private IEnumerator LoadRoleBreakthroughPreview(long npcId, int currentLevel, int version)
@@ -1486,7 +1490,7 @@ public partial class HomePageUI
             {
                 bool rejected = response != null && response.code != 200 && request.responseCode > 0 && request.responseCode < 500;
                 roleStatusMessage = response == null ? ApiRequestUtility.GetErrorMessage(request, "请求结果未确认，请重试")
-                    : response.code == 200 ? "服务器升级结果不完整，请使用原请求重试确认" : GetApiError(response);
+                    : response.code == 200 ? "升级结果尚未确认，请点击重试查询本次结果" : GetApiError(response);
                 if (rejected)
                 {
                     rolePendingGrowthRequest = null;
@@ -1507,7 +1511,8 @@ public partial class HomePageUI
             }
             rolePendingGrowthRequest = null;
             roleStatusMessage = $"角色已升级到 Lv.{reachedLevel}"
-                + (response.data.outcome == "BREAKTHROUGH_REQUIRED" ? "，请先手动突破" : "，资源已由服务器结算");
+                + (response.data.outcome == "BREAKTHROUGH_REQUIRED" ? "，请先突破" : string.Empty);
+            PlayerOnboardingManager.NotifyBusinessSucceeded();
         }
         yield return RefreshRoleGrowthState(operation.playerId, token);
     }
@@ -2021,7 +2026,7 @@ public partial class HomePageUI
             DateTime expiresAt = default(DateTime);
             if (guide.contractVersion > 1)
             {
-                roleStatusMessage = "角色获取协议版本过高，请更新客户端";
+                roleStatusMessage = "当前版本暂不支持此内容，请更新游戏";
                 RenderRolePanel();
                 yield break;
             }
@@ -2055,7 +2060,7 @@ public partial class HomePageUI
 
             if (!string.Equals(guide.action, "REDIRECT", StringComparison.OrdinalIgnoreCase))
             {
-                roleStatusMessage = "服务器返回了不支持的获取动作";
+                roleStatusMessage = "此获取方式暂不可用";
                 RenderRolePanel();
                 yield break;
             }
@@ -2688,6 +2693,7 @@ public partial class HomePageUI
 
     private void ConfigureRoleBattleStats(Transform root, RoleDisplayEntry entry)
     {
+        ConfigureRoleStatsPresentation(root);
         Transform statsRoot = FindSceneTransform(root, "RoleDetailBattleStats");
         if (statsRoot == null)
         {
@@ -2749,7 +2755,7 @@ public partial class HomePageUI
         if (rolePanelLoading || roleLoadoutLoading || roleCombatProfilesLoading
             || roleUpgradeRunning || rolePendingGrowthRequest != null) return "读取中";
         if (!string.IsNullOrEmpty(roleLoadoutError) || !string.IsNullOrEmpty(roleCombatProfilesError)) return "读取失败";
-        return "未配置";
+        return "暂无说明";
     }
 
     private string ResolveRoleSpeedText(RoleDisplayEntry entry, bool hasStats)
@@ -2804,7 +2810,7 @@ public partial class HomePageUI
 
         if (roleLoadoutLoading && roleLoadoutNpcId == entry.player.playerNpcId)
         {
-            return "已穿戴装备  正在读取服务器数据...";
+            return "已穿戴装备  正在加载...";
         }
 
         if (!string.IsNullOrEmpty(roleLoadoutError) && roleLoadoutNpcId == entry.player.playerNpcId)
@@ -2814,7 +2820,7 @@ public partial class HomePageUI
 
         if (roleLoadoutData == null || roleLoadoutNpcId != entry.player.playerNpcId)
         {
-            return "已穿戴装备  暂无服务器数据";
+            return "已穿戴装备  暂未读取到信息";
         }
 
         if (roleLoadoutData.equipment == null || roleLoadoutData.equipment.Length == 0)
@@ -2858,7 +2864,7 @@ public partial class HomePageUI
         Transform equipmentParent = equipmentLabelRoot.Find("EquipmentP");
         if (entry == null || entry.player == null || !entry.owned || equipmentParent == null)
         {
-            SetSceneText(equipmentLabelRoot, "RoleDetailEquipment", "暂无装备");
+            SetSceneText(equipmentLabelRoot, "RoleDetailEquipment", "尚未穿戴装备");
             if (equipmentParent != null)
             {
                 equipmentParent.gameObject.SetActive(false);
@@ -2882,7 +2888,7 @@ public partial class HomePageUI
             ? Array.FindAll(roleLoadoutData.equipment, item => item != null) : null;
         if (equipment == null || equipment.Length == 0)
         {
-            SetSceneText(equipmentLabelRoot, "RoleDetailEquipment", "暂无装备");
+            SetSceneText(equipmentLabelRoot, "RoleDetailEquipment", "尚未穿戴装备");
             equipmentParent.gameObject.SetActive(false);
             SetRoleEquipmentSlots(equipmentParent, null);
             return;
@@ -2996,17 +3002,17 @@ public partial class HomePageUI
         int maxLevel = entry.catalog.maxLevel > 0 ? entry.catalog.maxLevel : 100;
         if (currentLevel >= maxLevel)
         {
-            return "升级预览  已达到服务器等级上限";
+            return "已达等级上限";
         }
 
         if (roleAutoUpgradePreviewNpcId != entry.player.playerNpcId)
         {
-            return "升级预览  等待服务器返回...";
+            return "正在计算升级消耗...";
         }
 
         if (roleAutoUpgradePreviewRunning)
         {
-            return "升级预览  正在读取服务器升级方案...";
+            return "正在计算升级消耗...";
         }
 
         if (!string.IsNullOrEmpty(roleAutoUpgradePreviewError))
@@ -3016,7 +3022,7 @@ public partial class HomePageUI
 
         if (roleAutoUpgradePreview == null)
         {
-            return "升级预览  暂无服务器升级方案";
+            return "暂时无法获取升级信息，请稍后重试";
         }
 
         string preview = $"升级预览  Lv.{roleAutoUpgradePreview.currentLevel} → Lv.{roleAutoUpgradePreview.payableTargetLevel} / 目标 Lv.{roleAutoUpgradePreview.requestedTargetLevel}";
@@ -3075,7 +3081,7 @@ public partial class HomePageUI
     {
         if (entry == null || entry.owned || entry.catalog.acquisition == null)
         {
-            return entry != null && entry.owned ? "获取方式  已获得" : "获取方式  暂无服务器说明";
+            return entry != null && entry.owned ? "已获得" : "获取方式  暂无说明";
         }
 
         NpcAcquisitionEntry acquisition = entry.catalog.acquisition;

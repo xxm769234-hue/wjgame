@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using TMPro;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -105,7 +106,7 @@ public partial class HomePageUI
     {
         activeTaskCategory = NormalizeServerTaskCategory(category);
         pendingServerTaskCode = (taskCode ?? string.Empty).Trim();
-        string message = serverTaskListRunning ? "正在同步服务器任务..." : "正在读取服务器任务...";
+        string message = serverTaskListRunning ? "正在刷新任务..." : "正在加载任务...";
         ShowTaskPanel(activeTaskCategory, message);
         if (!serverTaskListRunning)
         {
@@ -158,11 +159,10 @@ public partial class HomePageUI
                 }
             }
             serverTaskListRunning = false;
-            string period = activeTaskCategory == "main" ? response.data.weeklyPeriodKey : response.data.dailyPeriodKey;
             ShowTaskPanel(activeTaskCategory, BuildTaskRefreshStatus(
                 claimFailureMessage,
                 true,
-                $"服务器周期 {period} · {response.data.businessTime}"));
+                string.Empty));
         }
     }
 
@@ -243,7 +243,7 @@ public partial class HomePageUI
 
             result.Add(new TaskDisplayItem(
                 string.IsNullOrEmpty(task.taskCode) ? task.id.ToString() : task.taskCode,
-                string.IsNullOrEmpty(task.taskName) ? "服务器任务" : task.taskName,
+                string.IsNullOrEmpty(task.taskName) ? "任务" : task.taskName,
                 description,
                 ClampLongToInt(task.progressAmount, 0),
                 ClampLongToInt(task.targetAmount, 1),
@@ -320,6 +320,7 @@ public partial class HomePageUI
             serverTaskClaimRunning = false;
             long granted = response.data.experienceGrant != null ? response.data.experienceGrant.grantedExperience : 0L;
             ShowTaskPanel(activeTaskCategory, granted > 0 ? $"领取成功：经验 +{granted}" : "任务奖励已领取");
+            PlayerOnboardingManager.NotifyBusinessSucceeded();
         }
     }
 
@@ -589,7 +590,7 @@ public partial class HomePageUI
         serverSignInOverview = null;
         serverSignOverviewReady = false;
         serverSignFocusCurrentDay = true;
-        serverSignStatus = "正在读取服务器签到配置...";
+        serverSignStatus = "正在加载签到奖励...";
         ShowCurrentServerSignPanel();
         if (!serverSignOverviewRunning)
         {
@@ -684,7 +685,7 @@ public partial class HomePageUI
                     serverSignOverviewRunning = false;
                     bool versionRejected = request.responseCode == 426 || response != null && response.code == 6009;
                     serverSignStatus = versionRejected
-                        ? "当前客户端版本不支持签到配置，请更新客户端"
+                        ? "请更新游戏版本后领取签到奖励"
                         : "签到同步失败：" + (response == null
                             ? ApiRequestUtility.GetErrorMessage(request, "返回数据格式错误")
                             : GetApiError(response));
@@ -729,8 +730,8 @@ public partial class HomePageUI
                 else if (!IsSignInPlanVersionSupported(plan))
                 {
                     serverSignStatus = !string.IsNullOrEmpty(resultStatus)
-                        ? resultStatus + "；签到配置需要更新客户端"
-                        : "签到配置需要更新客户端";
+                        ? resultStatus + "；请更新游戏版本后查看签到奖励"
+                        : "请更新游戏版本后查看签到奖励";
                     Debug.LogWarning(
                         "签到计划版本高于客户端：plan=" + plan.planCode
                         + ", contractVersion=" + plan.contractVersion
@@ -740,7 +741,7 @@ public partial class HomePageUI
                 }
                 else
                 {
-                    serverSignStatus = !string.IsNullOrEmpty(resultStatus) ? resultStatus : "签到配置已同步";
+                    serverSignStatus = !string.IsNullOrEmpty(resultStatus) ? resultStatus : string.Empty;
                 }
                 if ((focusCurrentDay || serverSignFocusCurrentDay) && plan != null && IsMonthlySignPlan(serverSignPlanCode) && plan.currentDay > 0)
                 {
@@ -894,7 +895,7 @@ public partial class HomePageUI
         if (dailyCards != null) FocusDailySignDay(root, days);
         string mutation = serverSignMutationRunning ? "正在提交..." : status;
         string cost = !plan.allowMakeup ? " · 补签未开放" : plan.makeupCost == null
-            ? " · 暂无补签费用配置"
+            ? " · 补签暂不可用"
             : " · 补签消耗 " + FormatSignInCost(plan.makeupCost);
         SetSceneText(
             root,
@@ -1235,7 +1236,7 @@ public partial class HomePageUI
         if (!string.IsNullOrWhiteSpace(plan.activityDescription)) return plan.activityDescription;
         if (!string.IsNullOrWhiteSpace(plan.description)) return plan.description;
         if (string.Equals(plan.planCode, "NEWBIE", StringComparison.OrdinalIgnoreCase)) return "首次登录后连续签到领取新手奖励";
-        return "活动期间每日签到领取服务器配置的活动奖励";
+        return "活动期间每日签到，即可领取对应奖励";
     }
 
     private void ConfigureActivityPaging(Transform root, int pageCount)
@@ -1373,11 +1374,11 @@ public partial class HomePageUI
         }
         switch (response.code)
         {
-            case 6001: return "签到计划未开放，已重新查询配置";
+            case 6001: return "本期签到暂未开放";
             case 6002: return "该日期奖励已领取，不会重复扣费或发奖";
             case 6003: return "签到活动已结束";
             case 6004: return "该日期暂无可领取奖励";
-            case 6005: return "奖励配置异常，暂时无法领取，请稍后再试";
+            case 6005: return "奖励暂时无法领取，请稍后再试";
             case 6006: return "当前计划未开启补签";
             case 6007: return "该日期当前不可补签，请按最新签到状态重新选择";
             case 6008: return "补签所需资源不足，本次未扣费，请获取资源后重试";
@@ -1406,7 +1407,7 @@ public partial class HomePageUI
         TMPro.TMP_Text details = FindSceneComponent<TMPro.TMP_Text>(existing, "SignMakeupDetails");
         if (existing == null || cancelButton == null || confirmButton == null || details == null)
         {
-            serverSignStatus = "补签确认界面未配置完整，请检查场景中的 SignMakeupConfirmation 节点";
+            serverSignStatus = "补签页面暂时无法打开，请稍后重试";
             Debug.LogWarning(serverSignStatus, signPanelObject);
             RefreshVisibleServerSignPanel();
             return;
@@ -1694,7 +1695,14 @@ public partial class HomePageUI
         {
             Image image = CreateImage("SignAvailableBadge", button.transform, new Color(0.85f, 0.12f, 0.12f, 1f));
             image.raycastTarget = false;
-            SetRect(image.rectTransform, Vector2.one, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(-8f, -8f), new Vector2(14f, 14f));
+            Sprite badgeSprite = Resources.Load<Sprite>("UI/ApprovedUi/Controls/18_alert_dot");
+            if (badgeSprite != null)
+            {
+                image.sprite = badgeSprite;
+                image.preserveAspect = true;
+                image.color = Color.white;
+            }
+            SetRect(image.rectTransform, Vector2.one, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(-8f, -8f), badgeSprite != null ? new Vector2(26f, 26f) : new Vector2(14f, 14f));
             badge = image.transform;
         }
         if (badge != null) badge.gameObject.SetActive(available);
@@ -1789,6 +1797,7 @@ public partial class HomePageUI
                 }
 
                 serverSignStatus = BuildSignClaimResult(response.data);
+                PlayerOnboardingManager.NotifyBusinessSucceeded();
                 yield return RefreshSignInRewardState(response.data);
                 if (!string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal)) yield break;
                 yield return RefreshSignInAccountSnapshot();
@@ -2168,10 +2177,11 @@ public partial class HomePageUI
 
     private void OpenServerLottery(string poolCode, int highlightNpcId)
     {
+        RestoreCardDrawIntent();
         pendingCardDrawPoolCode = (poolCode ?? string.Empty).Trim();
         pendingCardDrawHighlightNpcId = Math.Max(0, highlightNpcId);
         cardDrawRoutePoolMismatch = false;
-        serverLotteryStatus = "正在读取服务器奖池...";
+        serverLotteryStatus = "正在加载奖池...";
         serverLotteryRewardName = string.Empty;
         serverLotteryRewardAmount = 0;
         serverLotteryHasResult = false;
@@ -2235,6 +2245,24 @@ public partial class HomePageUI
             return;
         }
 
+        RestoreCardDrawIntent();
+        if (cardDrawPersistenceBlocked)
+        {
+            ShowServerLotteryState();
+            return;
+        }
+        if (!string.IsNullOrEmpty(pendingCardDrawKey))
+        {
+            if (pendingCardDrawOption != optionCode)
+            {
+                serverLotteryStatus = "上次召唤结果尚未确认，请先重试原来的召唤档位";
+                ShowServerLotteryState();
+                return;
+            }
+            StartCoroutine(DrawServerCards(optionCode, pendingCardDrawKey));
+            return;
+        }
+
         if (cardDrawRoutePoolMismatch)
         {
             serverLotteryStatus = "当前奖池已变化，请重新打开获取指引";
@@ -2250,25 +2278,30 @@ public partial class HomePageUI
             return;
         }
 
-        if (string.IsNullOrEmpty(pendingCardDrawKey) || pendingCardDrawOption != optionCode)
+        if (PlayerPrefs.GetString("weijun.onboarding.stepCode", string.Empty) == "FIRST_CARD_DRAW"
+            && (option.optionCode != "SINGLE" || option.drawCount != 1 || option.costAmount <= 0 || option.costItemKey != "diamond"))
         {
-            pendingCardDrawKey = Guid.NewGuid().ToString();
-            pendingCardDrawOption = optionCode;
+            serverLotteryStatus = "当前普通池尚未提供可用的彩墨单抽，请稍后重试或跳过此教程";
+            ShowServerLotteryState();
+            return;
         }
+
+        if (!SaveCardDrawIntent(optionCode)) { ShowServerLotteryState(); return; }
 
         StartCoroutine(DrawServerCards(optionCode, pendingCardDrawKey));
     }
 
     private IEnumerator DrawServerCards(string optionCode, string idempotencyKey)
     {
+        int requestPlayerId = GameSession.PlayerId;
+        string requestToken = GameSession.Token;
         serverCardDrawRunning = true;
         serverLotteryStatus = optionCode == "TEN"
             ? "正在执行十连抽..."
             : optionCode == "FIVE" ? "正在执行五连抽..." : "正在执行单抽...";
         ShowServerLotteryState(true);
 
-        CardDrawRequest payload = new CardDrawRequest { optionCode = optionCode };
-        if (!TryCreateAuthorizedPost("/card-draw/draw", JsonUtility.ToJson(payload), out UnityWebRequest request, out string error))
+        if (!TryCreateAuthorizedPost("/card-draw/draw", pendingCardDrawJson, out UnityWebRequest request, out string error))
         {
             serverCardDrawRunning = false;
             serverLotteryStatus = error;
@@ -2280,6 +2313,11 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
+            if (requestPlayerId != GameSession.PlayerId || requestToken != GameSession.Token)
+            {
+                serverCardDrawRunning = false;
+                yield break;
+            }
             if (HandleUnauthorizedResponse(request))
             {
                 serverCardDrawRunning = false;
@@ -2289,11 +2327,11 @@ public partial class HomePageUI
             CardDrawApiResponse response = ParseJson<CardDrawApiResponse>(request.downloadHandler.text);
             if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
-                bool serverResponded = request.responseCode > 0 && request.result != UnityWebRequest.Result.ConnectionError;
+                bool serverResponded = request.responseCode >= 400 && request.responseCode < 500
+                    && request.responseCode != 408 && request.responseCode != 429 && response != null && response.code != 200;
                 if (serverResponded)
                 {
-                    pendingCardDrawKey = string.Empty;
-                    pendingCardDrawOption = string.Empty;
+                    ClearCardDrawIntent(requestPlayerId);
                 }
 
                 serverCardDrawRunning = false;
@@ -2302,13 +2340,12 @@ public partial class HomePageUI
                     : GetApiError(response);
                 serverLotteryStatus = serverResponded
                     ? "抽奖失败：" + failure
-                    : "网络状态未知，再次点击会使用同一请求号重试：" + failure;
+                    : "抽取结果尚未确认，再次点击将查询本次结果，请勿重复抽取";
                 ShowServerLotteryState();
                 yield break;
             }
 
-            pendingCardDrawKey = string.Empty;
-            pendingCardDrawOption = string.Empty;
+            ClearCardDrawIntent(requestPlayerId);
             serverCardDrawRunning = false;
             if (response.data.cards != null && response.data.cards.Length > 0)
             {
@@ -2337,6 +2374,7 @@ public partial class HomePageUI
             ShowServerLotteryState();
             ShowLotteryRewardConfirm(response.data);
             StartCoroutine(RefreshCardDrawRewardState(response.data));
+            PlayerOnboardingManager.NotifyBusinessSucceeded();
         }
     }
 
@@ -2666,10 +2704,11 @@ public partial class HomePageUI
         SetSceneText(root, "LotteryDiamondText", $"钻石 {diamond}");
         SetSceneText(root, "LotteryPrizeHint", serverCardDrawPool == null
             ? "正在同步奖池"
-            : $"奖项 {cards.Length} 个 · 服务器配置");
+            : $"共 {cards.Length} 项奖励");
         SetSceneText(root, "LotteryStatus", string.IsNullOrEmpty(status) ? serverLotteryStatus : status);
 
         Transform poolPanel = FindSceneTransform(root, "LotteryPoolPanel");
+        SetSceneText(poolPanel, "LotteryPoolNote", "奖励内容与概率");
         Transform rewardPanel = FindSceneTransform(root, "LotteryRewardConfirmPanel");
         bool poolVisible = poolPanel != null && poolPanel.gameObject.activeSelf;
         bool rewardVisible = rewardPanel != null && rewardPanel.gameObject.activeSelf;
@@ -2684,21 +2723,30 @@ public partial class HomePageUI
         Button singleButton = FindSceneComponent<Button>(root, "LotterySingleButton");
         if (singleButton != null)
         {
-            singleButton.interactable = single != null && !serverCardDrawRunning && !serverCardDrawPoolRunning && !poolVisible && !rewardVisible;
+            singleButton.interactable = !cardDrawPersistenceBlocked && (single != null || pendingCardDrawOption == "SINGLE")
+                && (string.IsNullOrEmpty(pendingCardDrawKey) || pendingCardDrawOption == "SINGLE")
+                && !serverCardDrawRunning && !serverCardDrawPoolRunning && !poolVisible && !rewardVisible;
         }
-        SetSceneButtonText(singleButton, serverCardDrawRunning ? "抽取中..." : FormatDrawOption(single, "单抽"));
+        SetSceneButtonText(singleButton, serverCardDrawRunning ? "抽取中..."
+            : pendingCardDrawOption == "SINGLE" ? "重试上次单抽" : FormatDrawOption(single, "单抽"));
         BindSceneButton(singleButton, singleButton != null && singleButton.interactable ? (Action)(() => BeginServerCardDraw("SINGLE")) : null);
 
         Button multiButton = FindSceneComponent<Button>(root, "LotteryTenButton");
+        string retryMultiOption = !string.IsNullOrEmpty(pendingCardDrawKey) && pendingCardDrawOption != "SINGLE"
+            ? pendingCardDrawOption : null;
+        string selectedMultiOption = retryMultiOption ?? (multi != null ? multi.optionCode : null);
         if (multiButton != null)
         {
-            multiButton.interactable = multi != null && !serverCardDrawRunning && !serverCardDrawPoolRunning && !poolVisible && !rewardVisible;
+            multiButton.interactable = !cardDrawPersistenceBlocked && !string.IsNullOrEmpty(selectedMultiOption)
+                && (string.IsNullOrEmpty(pendingCardDrawKey) || pendingCardDrawOption == selectedMultiOption)
+                && !serverCardDrawRunning && !serverCardDrawPoolRunning && !poolVisible && !rewardVisible;
         }
-        SetSceneButtonText(multiButton, FormatDrawOption(multi, multiLabel));
+        SetSceneButtonText(multiButton, retryMultiOption == null ? FormatDrawOption(multi, multiLabel)
+            : retryMultiOption == "TEN" ? "重试上次十连抽" : "重试上次五连抽");
         BindSceneButton(
             multiButton,
-            multiButton != null && multiButton.interactable && multi != null
-                ? (Action)(() => BeginServerCardDraw(multi.optionCode))
+            multiButton != null && multiButton.interactable
+                ? (Action)(() => BeginServerCardDraw(selectedMultiOption))
                 : null);
 
         Button poolButton = FindSceneComponent<Button>(root, "LotteryPoolButton");
@@ -2814,7 +2862,7 @@ public partial class HomePageUI
         Transform template = FindSceneTransform(root, "LotteryPoolRowTemplate");
         if (poolPanel == null || content == null || template == null)
         {
-            SetStatus("奖池面板节点不完整，请在 Unity 中重新生成抽奖面板");
+            SetStatus("奖池页面暂时无法打开，请稍后重试");
             return;
         }
 
@@ -2898,7 +2946,7 @@ public partial class HomePageUI
 
         CardDrawResultResponse[] results = OrderCardDrawResults(data.results);
         SetSceneText(rewardPanel, "LotteryRewardConfirmTitle", data.drawCount > 1 ? "连抽结果" : "抽奖结果");
-        SetSceneText(rewardPanel, "LotteryRewardConfirmSummary", "奖励已按服务器抽奖结果发放，确认后关闭此提示");
+        SetSceneText(rewardPanel, "LotteryRewardConfirmSummary", "奖励已发放");
         for (int i = 0; i < results.Length; i++)
         {
             CardDrawResultResponse result = results[i];
@@ -2913,7 +2961,8 @@ public partial class HomePageUI
             SetSceneText(rowObject.transform, "LotteryRewardRowSequence", result.drawSequence.ToString());
             SetSceneText(rowObject.transform, "LotteryRewardRowName", GetCardDrawResultName(result));
             SetSceneText(rowObject.transform, "LotteryRewardRowAmount", "x" + Mathf.Max(0, result.grantedRewardAmount));
-            SetSceneText(rowObject.transform, "LotteryRewardRowNote", result.duplicateNpcConverted ? "重复 NPC 已转碎片" : GetRewardCategoryLabel(result.grantedRewardType));
+            SetSceneText(rowObject.transform, "LotteryRewardRowNote", result.duplicateNpcConverted ? "重复角色已转为碎片" : GetRewardCategoryLabel(result.grantedRewardType));
+            ConfigureLotteryResultPresentation(rowObject.transform, result);
         }
 
         rewardPanel.gameObject.SetActive(true);
@@ -2922,8 +2971,35 @@ public partial class HomePageUI
         if (confirm != null)
         {
             confirm.interactable = !serverCardDrawRunning;
+            SetSceneButtonText(confirm, "确定");
         }
         BindSceneButton(confirm, !serverCardDrawRunning ? (Action)ConfirmLotteryReward : null);
+    }
+
+    private void ConfigureLotteryResultPresentation(Transform row, CardDrawResultResponse result)
+    {
+        Image icon = FindSceneComponent<Image>(row, "LotteryRewardIcon");
+        if (icon == null)
+        {
+            icon = CreateImage("LotteryRewardIcon", row, Color.white);
+            icon.gameObject.layer = row.gameObject.layer;
+        }
+        icon.sprite = ResolveLotteryPrizeSprite(new CardDrawCardResponse
+        {
+            rewardType = result.grantedRewardType,
+            rewardKey = result.grantedRewardKey,
+            rewardName = GetCardDrawResultName(result),
+            icon = result.grantedRewardIcon
+        });
+        icon.type = Image.Type.Simple;
+        icon.preserveAspect = true;
+        icon.raycastTarget = false;
+        icon.gameObject.SetActive(icon.sprite != null);
+        SetRect(icon.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(18f, 0f), new Vector2(58f, 58f));
+        SetSceneObjectActive(row, "LotteryRewardRowSequence", icon.sprite == null);
+        ConfigurePresentationLabel(FindSceneComponent<TMP_Text>(row, "LotteryRewardRowName"), 22f, true);
+        ConfigurePresentationLabel(FindSceneComponent<TMP_Text>(row, "LotteryRewardRowAmount"), 22f, true);
+        ConfigurePresentationLabel(FindSceneComponent<TMP_Text>(row, "LotteryRewardRowNote"), 18f, false);
     }
 
     private void ConfirmLotteryReward()
@@ -3058,7 +3134,7 @@ public partial class HomePageUI
 
             announcementPanelView.SetAnnouncements(BuildAnnouncementPanelItems(announcements));
             announcementPanelView.BindClose(HideAnnouncementPanel);
-            SetStatus($"已读取 {announcements.Length} 条服务器公告");
+            SetStatus(string.Empty);
 
             for (int i = 0; i < announcements.Length; i++)
             {
@@ -3192,7 +3268,7 @@ public partial class HomePageUI
     {
         if (!HasAuthSession())
         {
-            SetStatus("请先登录账号后领取服务器广告奖励。 ");
+            SetStatus("请登录后领取广告奖励。");
             return;
         }
 
@@ -3208,7 +3284,7 @@ public partial class HomePageUI
     private IEnumerator GetRewardAdConfigAndPrepare(string scene)
     {
         rewardAdRunning = true;
-        SetStatus("正在读取激励广告配置...");
+        SetStatus("正在加载奖励广告...");
         UnityWebRequest configRequest = CreateAuthorizedGet("/ad/reward/config");
         if (configRequest == null)
         {
@@ -3230,7 +3306,7 @@ public partial class HomePageUI
             if (configRequest.result != UnityWebRequest.Result.Success || response == null || response.code != 200)
             {
                 rewardAdRunning = false;
-                SetStatus("广告配置读取失败：" + (response == null
+                SetStatus("广告暂不可用：" + (response == null
                     ? ApiRequestUtility.GetErrorMessage(configRequest, "请求失败")
                     : GetApiError(response)));
                 yield break;
@@ -3252,7 +3328,7 @@ public partial class HomePageUI
             if (!configured)
             {
                 rewardAdRunning = false;
-                SetStatus("服务器未开放金币激励广告。 ");
+                SetStatus("金币奖励广告暂未开放。");
                 yield break;
             }
         }

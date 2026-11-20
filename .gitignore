@@ -42,3 +42,10 @@ sysinfo.txt
 
 # Plastic SCM local metadata
 .plastic/
+
+# Local project backups and Python caches
+/书屿梦行_Unity项目备份_*.zip
+/_Backups/
+__pycache__/
+*.py[cod]
+*.tmp

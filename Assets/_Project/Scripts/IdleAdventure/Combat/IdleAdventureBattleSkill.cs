@@ -4,7 +4,7 @@ using UnityEngine;
 [Serializable]
 public sealed class IdleAdventureSkillDefinition
 {
-    [SerializeField] private string skillName = "Skill";
+    [SerializeField] private string skillName = "技能";
     [SerializeField, Min(0)] private int cooldownRounds = 2;
     [SerializeField, Min(0f)] private float skillMultiplier = 1.2f;
     [SerializeField] private IdleAdventureDamageAttribute damageAttribute = IdleAdventureDamageAttribute.Physical;
@@ -35,7 +35,7 @@ public sealed class IdleAdventureSkillDefinition
         this.targetBuffPresetIndex = targetBuffPresetIndex;
     }
 
-    public string SkillName => string.IsNullOrEmpty(skillName) ? "Skill" : skillName;
+    public string SkillName => string.IsNullOrEmpty(skillName) ? "技能" : skillName;
     public int CooldownRounds => Mathf.Max(0, cooldownRounds);
     public float SkillMultiplier => Mathf.Max(0f, skillMultiplier);
     public IdleAdventureDamageAttribute DamageAttribute => damageAttribute == IdleAdventureDamageAttribute.None ? IdleAdventureDamageAttribute.Physical : damageAttribute;
@@ -70,7 +70,7 @@ public sealed class IdleAdventureBattleSkill
 
     public string FormatSummary(int slotNumber)
     {
-        if (Definition == null) return $"S{slotNumber}:Empty";
-        return CooldownRemaining > 0 ? $"S{slotNumber}:{Definition.SkillName}({CooldownRemaining})" : $"S{slotNumber}:{Definition.SkillName}";
+        if (Definition == null) return $"技能{slotNumber}：空";
+        return CooldownRemaining > 0 ? $"技能{slotNumber}：{Definition.SkillName}（{CooldownRemaining}）" : $"技能{slotNumber}：{Definition.SkillName}";
     }
 }

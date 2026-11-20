@@ -1,34 +1,143 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 /// <summary>
-/// Resolves the fallback TMP font without replacing fonts assigned in the scene.
+/// Resolves the shared Source Han Sans TMP font and applies it to loaded UI text.
 /// </summary>
 public sealed class RuntimeFontAssetProvider : MonoBehaviour
 {
     [SerializeField] private TMP_FontAsset fontAsset;
+    [SerializeField] private Font legacyFont;
     private static TMP_FontAsset cachedFontAsset;
+    private static Font cachedLegacyFont;
+    private static RuntimeFontAssetProvider runtimeWatcher;
+    private float nextTextScanTime;
 
     /// <summary>Returns the font assigned to this provider component.</summary>
     public TMP_FontAsset FontAsset => fontAsset;
+    public Font LegacyFont => legacyFont;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void ApplyFontToLoadedTexts()
     {
-        TMP_FontAsset resolvedFont = Resolve();
-        if (resolvedFont == null)
+        ScanLoadedTexts();
+
+        if (runtimeWatcher != null)
         {
             return;
         }
 
-        TMP_Text[] texts = FindObjectsOfType<TMP_Text>(true);
-        foreach (TMP_Text text in texts)
+        GameObject watcherObject = new GameObject("FrontendTextLocalizationRuntime");
+        Object.DontDestroyOnLoad(watcherObject);
+        runtimeWatcher = watcherObject.AddComponent<RuntimeFontAssetProvider>();
+    }
+
+    private void Update()
+    {
+        if (Time.unscaledTime < nextTextScanTime)
         {
-            if (text != null && text.font == null)
+            return;
+        }
+
+        nextTextScanTime = Time.unscaledTime + 0.25f;
+        ScanLoadedTexts();
+    }
+
+    private static void ScanLoadedTexts()
+    {
+        TMP_FontAsset resolvedFont = Resolve();
+        TMP_Text[] texts = FindObjectsOfType<TMP_Text>(true);
+        for (int i = 0; i < texts.Length; i++)
+        {
+            if (texts[i] != null)
             {
-                text.font = resolvedFont;
+                if (!UsesLocalPresentation(texts[i].gameObject))
+                {
+                    if (resolvedFont != null && texts[i].font == null) texts[i].font = resolvedFont;
+                    continue;
+                }
+
+                if (IsEditableInputText(texts[i]))
+                {
+                    continue;
+                }
+
+                if (resolvedFont != null && texts[i].font != resolvedFont)
+                {
+                    texts[i].font = resolvedFont;
+                }
+
+                if (PreservesAuthoredContent(texts[i].transform)) continue;
+                string normalized = FrontendTextLocalization.Normalize(texts[i].text);
+                if (texts[i].text != normalized)
+                {
+                    texts[i].text = normalized;
+                }
             }
         }
+
+        Font resolvedLegacyFont = ResolveLegacy();
+        Text[] legacyTexts = FindObjectsOfType<Text>(true);
+        for (int i = 0; i < legacyTexts.Length; i++)
+        {
+            if (legacyTexts[i] != null)
+            {
+                if (!UsesLocalPresentation(legacyTexts[i].gameObject)) continue;
+
+                if (IsEditableInputText(legacyTexts[i]))
+                {
+                    continue;
+                }
+
+                if (resolvedLegacyFont != null && legacyTexts[i].font != resolvedLegacyFont)
+                {
+                    legacyTexts[i].font = resolvedLegacyFont;
+                }
+
+                if (PreservesAuthoredContent(legacyTexts[i].transform)) continue;
+                string normalized = FrontendTextLocalization.Normalize(legacyTexts[i].text);
+                if (legacyTexts[i].text != normalized)
+                {
+                    legacyTexts[i].text = normalized;
+                }
+            }
+        }
+    }
+
+    private static bool UsesLocalPresentation(GameObject target)
+    {
+        string sceneName = target.scene.name;
+        if (sceneName == "DontDestroyOnLoad") sceneName = SceneManager.GetActiveScene().name;
+        return sceneName == "Launch" || sceneName == "Simulation management mode" || sceneName == "Idle Adventure mode";
+    }
+
+    private static bool PreservesAuthoredContent(Transform target)
+    {
+        for (Transform current = target; current != null; current = current.parent)
+        {
+            string objectName = current.name.ToLowerInvariant();
+            if (objectName.Contains("nickname") || objectName.Contains("avatarname")
+                || objectName.Contains("playername") || objectName.Contains("friendname")
+                || objectName.Contains("privacy") || objectName.Contains("agreement")
+                || objectName.Contains("agerating") || objectName.Contains("agerecommendation")
+                || objectName.Contains("personalinfopopup") || objectName.Contains("realnamepanel")
+                || objectName.Contains("minornoticeoverlay")) return true;
+        }
+        return false;
+    }
+
+    private static bool IsEditableInputText(TMP_Text text)
+    {
+        TMP_InputField input = text.GetComponentInParent<TMP_InputField>(true);
+        return input != null && input.textComponent == text;
+    }
+
+    private static bool IsEditableInputText(Text text)
+    {
+        InputField input = text.GetComponentInParent<InputField>(true);
+        return input != null && input.textComponent == text;
     }
 
     /// <summary>Loads the project-wide Source Han Sans TMP font.</summary>
@@ -44,5 +153,17 @@ public sealed class RuntimeFontAssetProvider : MonoBehaviour
             ? provider.fontAsset
             : TMP_Settings.defaultFontAsset;
         return cachedFontAsset;
+    }
+
+    public static Font ResolveLegacy()
+    {
+        if (cachedLegacyFont != null)
+        {
+            return cachedLegacyFont;
+        }
+
+        RuntimeFontAssetProvider provider = Resources.Load<RuntimeFontAssetProvider>("UI/SourceHanSansSC-Normal SDF");
+        cachedLegacyFont = provider != null ? provider.legacyFont : null;
+        return cachedLegacyFont;
     }
 }

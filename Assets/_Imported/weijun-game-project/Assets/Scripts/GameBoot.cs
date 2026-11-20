@@ -1,15 +1,11 @@
 using System;
 using System.Collections;
 using System.Globalization;
-using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
-using Text = TMPro.TMP_Text;
-using InputField = TMPro.TMP_InputField;
-using Font = TMPro.TMP_FontAsset;
 
 public partial class GameBoot : MonoBehaviour
 {
@@ -39,6 +35,9 @@ public partial class GameBoot : MonoBehaviour
     private InputField passwordInput;
     private Toggle rememberToggle;
     private Text statusText;
+    private Button startGameButton;
+    private GameObject loginDialog;
+    private Button loginDialogCloseButton;
     private Button loginButton;
     private Button registerButton;
     private Button weChatButton;
@@ -54,7 +53,7 @@ public partial class GameBoot : MonoBehaviour
 
     private void Start()
     {
-        defaultFont = RuntimeFontAssetProvider.Resolve();
+        defaultFont = RuntimeFontAssetProvider.ResolveLegacy();
         BuildLoginUI();
         string complianceBlockedMessage = PlayerPrefs.GetString("ComplianceBlockedMessage", string.Empty);
         if (!string.IsNullOrEmpty(complianceBlockedMessage))
@@ -68,15 +67,23 @@ public partial class GameBoot : MonoBehaviour
 
     private void Update()
     {
-        if ((privacyPolicyOverlay != null && privacyPolicyOverlay.activeSelf)
+        if (IsAgreementNoticeOpen
+            || (privacyPolicyOverlay != null && privacyPolicyOverlay.activeSelf)
             || (accountManagementPanel != null && accountManagementPanel.activeSelf)
-            || (realNamePanel != null && realNamePanel.activeSelf))
+            || (realNamePanel != null && realNamePanel.activeSelf)
+            || (settingsPanel != null && settingsPanel.activeSelf))
         {
             return;
         }
 
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
         {
+            if (loginDialog != null && !loginDialog.activeSelf)
+            {
+                ShowLoginDialog();
+                return;
+            }
+
             TryLogin();
         }
     }
@@ -117,6 +124,9 @@ public partial class GameBoot : MonoBehaviour
             return false;
         }
 
+        startGameButton = contentView.StartGameButton;
+        loginDialog = contentView.LoginDialog;
+        loginDialogCloseButton = contentView.LoginDialogCloseButton;
         accountInput = contentView.AccountInput;
         nicknameInput = contentView.NicknameInput;
         passwordInput = contentView.PasswordInput;
@@ -127,17 +137,99 @@ public partial class GameBoot : MonoBehaviour
         weChatButton = contentView.WeChatLoginButton;
         settingsPanel = contentView.SettingsPanel;
 
+        startGameButton.onClick.AddListener(ShowLoginDialog);
+        loginDialogCloseButton.onClick.AddListener(HideLoginDialog);
         loginButton.onClick.AddListener(TryLogin);
         registerButton.onClick.AddListener(TryRegister);
         weChatButton.onClick.AddListener(TryWeChatLogin);
         contentView.SettingsButton.onClick.AddListener(ShowSettingsPanel);
         contentView.MailButton.onClick.AddListener(() => ShowError("登录后可在首页查看系统邮件"));
         contentView.SettingsCloseButton.onClick.AddListener(HideSettingsPanel);
+        ApplyLoginDialogVisuals(contentView);
 
+        loginDialog.SetActive(false);
         settingsPanel.SetActive(false);
         InitializeLoginFields();
         SetStatus(string.Empty, ErrorColor);
         return true;
+    }
+
+    private void ApplyLoginDialogVisuals(LoginContentView contentView)
+    {
+        Image paper = loginDialog.transform.Find("DialogPanel")?.GetComponent<Image>();
+        LoginCanvasStyle.ApplyDialogPaper(paper);
+        Transform shadow = loginDialog.transform.Find("DialogShadow");
+        if (shadow != null) shadow.gameObject.SetActive(false);
+        LoginCanvasStyle.ApplyDialogInput(accountInput);
+        LoginCanvasStyle.ApplyDialogInput(nicknameInput);
+        LoginCanvasStyle.ApplyDialogInput(passwordInput);
+        LoginCanvasStyle.ApplyDialogButton(loginButton, true);
+        LoginCanvasStyle.ApplyDialogButton(registerButton, false);
+        LoginCanvasStyle.ApplyDialogButton(weChatButton, false);
+        LoginCanvasStyle.ApplyDialogButton(contentView.SettingsButton, false);
+        LoginCanvasStyle.ApplyDialogButton(contentView.MailButton, false);
+        LoginCanvasStyle.ApplyDialogPaper(settingsPanel.GetComponent<Image>());
+        LoginCanvasStyle.ApplyDialogButton(contentView.SettingsCloseButton, true);
+        if (loginDialogCloseButton.targetGraphic is Image closeImage)
+        {
+            LoginCanvasStyle.ApplyDialogCloseButton(loginDialogCloseButton);
+            RectTransform closeRect = closeImage.rectTransform;
+            closeRect.anchoredPosition = new Vector2(350f, 264f);
+            closeRect.sizeDelta = new Vector2(64f, 80f);
+            Transform closeShadow = closeRect.parent.Find(loginDialogCloseButton.name + "Shadow");
+            if (closeShadow != null) closeShadow.gameObject.SetActive(false);
+        }
+        foreach (Text label in loginDialog.GetComponentsInChildren<Text>(true))
+        {
+            if (label.name.EndsWith("InputLabel", StringComparison.Ordinal)) label.color = new Color(0.40f, 0.25f, 0.14f, 1f);
+            if (label.name == "DialogSubtitle") label.color = new Color(0.49f, 0.38f, 0.27f, 1f);
+        }
+        LoginCanvasStyle.ApplyCheckbox(rememberToggle);
+        if (rememberToggle.targetGraphic != null)
+            rememberToggle.targetGraphic.rectTransform.sizeDelta = new Vector2(28f, 28f);
+        if (rememberToggle.graphic != null)
+            rememberToggle.graphic.rectTransform.sizeDelta = new Vector2(20f, 20f);
+        Image rememberHitArea = rememberToggle.GetComponent<Image>();
+        if (rememberHitArea == null) rememberHitArea = rememberToggle.gameObject.AddComponent<Image>();
+        rememberHitArea.color = Color.clear;
+        rememberHitArea.raycastTarget = true;
+        Text rememberLabel = rememberToggle.GetComponentInChildren<Text>(true);
+        if (rememberLabel != null)
+        {
+            rememberLabel.color = new Color32(88, 66, 47, 255);
+            rememberLabel.fontSize = rememberLabel.resizeTextMaxSize = 20;
+            rememberLabel.resizeTextMinSize = 18;
+            rememberLabel.rectTransform.offsetMin = new Vector2(42f, 0f);
+        }
+    }
+
+    private void ShowLoginDialog()
+    {
+        if (loginDialog == null)
+        {
+            return;
+        }
+
+        loginDialog.SetActive(true);
+        loginDialog.transform.SetAsLastSibling();
+        PlacePrivacyControlsInLogin(true);
+        if (accountInput != null)
+        {
+            accountInput.Select();
+            accountInput.ActivateInputField();
+        }
+    }
+
+    private void HideLoginDialog()
+    {
+        if (requestRunning || loginDialog == null)
+        {
+            return;
+        }
+
+        HideSettingsPanel();
+        loginDialog.SetActive(false);
+        PlacePrivacyControlsInLogin(false);
     }
 
     private void InitializeLoginFields()
@@ -200,7 +292,7 @@ public partial class GameBoot : MonoBehaviour
 
         CreateSpacer(brandPanel.transform, 14f);
 
-        Text brandFoot = CreateText("BrandFoot", brandPanel.transform, "WJ Game Project", 13, FontStyle.Normal, new Color(1f, 1f, 1f, 0.72f), TextAnchor.MiddleLeft);
+        Text brandFoot = CreateText("BrandFoot", brandPanel.transform, "维钧游戏", 13, FontStyle.Normal, new Color(1f, 1f, 1f, 0.72f), TextAnchor.MiddleLeft);
         SetLayout(brandFoot.gameObject, 0f, 20f);
 
         VerticalLayoutGroup formLayout = formPanel.gameObject.AddComponent<VerticalLayoutGroup>();
@@ -383,10 +475,10 @@ public partial class GameBoot : MonoBehaviour
         settingsPanel = panel.gameObject;
         SetRect(panel.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), Vector2.zero, new Vector2(460f, 320f));
 
-        Text title = CreateText("Title", panel.transform, "设置", 30, FontStyle.Bold, FieldTextColor, TextAnchor.MiddleCenter);
+        Text title = CreateText("Title", panel.transform, "音频状态", 30, FontStyle.Bold, FieldTextColor, TextAnchor.MiddleCenter);
         SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(0f, 46f));
 
-        Text body = CreateText("Body", panel.transform, "音乐：开启\n音效：开启\n画质：标准\n\n后续可在这里接入更多设置项。", 20, FontStyle.Normal, FieldTextColor, TextAnchor.UpperLeft);
+        Text body = CreateText("Body", panel.transform, string.Empty, 20, FontStyle.Normal, FieldTextColor, TextAnchor.UpperLeft);
         SetRect(body.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -86f), new Vector2(-72f, 150f));
 
         Button closeButton = CreateFixedButton(panel.transform, "CloseButton", "关闭", new Vector2(0f, -118f), new Vector2(130f, 46f), new Color(0.55f, 0.34f, 0.18f, 1f), Color.white, 18);
@@ -399,6 +491,23 @@ public partial class GameBoot : MonoBehaviour
     {
         if (settingsPanel != null)
         {
+            Text title = settingsPanel.transform.Find("Title")?.GetComponent<Text>();
+            if (title != null) title.text = "音频状态";
+            Transform bodyTransform = settingsPanel.transform.Find("Body");
+            Text body = bodyTransform != null ? bodyTransform.GetComponent<Text>() : null;
+            if (body != null)
+            {
+                string music = GameSettingsRuntime.MusicEnabled && GameSettingsRuntime.MusicVolume > 0
+                    ? GameSettingsRuntime.MusicVolume + "%" : "已静音";
+                string sound = GameSettingsRuntime.SoundEnabled && GameSettingsRuntime.SoundVolume > 0
+                    ? GameSettingsRuntime.SoundVolume + "%" : "已静音";
+                body.text = "背景音乐  " + music + "\n游戏音效  " + sound + "\n\n可在主页设置中调整音量。";
+                body.fontSize = 20;
+                body.lineSpacing = 1.15f;
+                body.horizontalOverflow = HorizontalWrapMode.Wrap;
+                body.verticalOverflow = VerticalWrapMode.Truncate;
+                SetRect(body.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -84f), new Vector2(-72f, 150f));
+            }
             settingsPanel.SetActive(true);
             settingsPanel.transform.SetAsLastSibling();
         }
@@ -426,9 +535,8 @@ public partial class GameBoot : MonoBehaviour
         {
             int resolvedFontSize = ResolveFontSize(fontSize);
             label.fontSize = resolvedFontSize;
-            label.enableAutoSizing = true;
-            label.fontSizeMin = Mathf.Max(8, resolvedFontSize - 8);
-            label.fontSizeMax = resolvedFontSize;
+            label.resizeTextMinSize = Mathf.Max(8, resolvedFontSize - 8);
+            label.resizeTextMaxSize = resolvedFontSize;
         }
 
         return button;
@@ -541,7 +649,7 @@ public partial class GameBoot : MonoBehaviour
         if (string.IsNullOrEmpty(code))
         {
             SetBusyState(false, string.Empty);
-            ShowError("微信登录 code 为空");
+            ShowError("微信登录凭证为空");
             return;
         }
 
@@ -593,13 +701,13 @@ public partial class GameBoot : MonoBehaviour
     {
         if (!privacyPolicyLoaded || string.IsNullOrEmpty(currentPolicyVersion))
         {
-            ShowError("隐私政策尚未加载完成，请稍后重试。");
+            ShowError("隐私协议尚未加载完成，请稍后重试。");
             return false;
         }
 
         if (privacyConsentToggle == null || !privacyConsentToggle.isOn)
         {
-            ShowError("请阅读并勾选同意当前隐私政策后再登录。");
+            ShowError("请阅读并勾选同意当前隐私协议后再登录。");
             ShowPrivacyPolicyOverlay();
             return false;
         }
@@ -657,7 +765,7 @@ public partial class GameBoot : MonoBehaviour
                 if (response != null && response.code == 7703)
                 {
                     privacyConsentRequestId = NewRequestId();
-                    SetBusyState(false, "隐私政策已更新，请重新阅读并确认。");
+                    SetBusyState(false, "隐私协议已更新，请重新阅读并确认。");
                     yield return LoadPrivacyPolicies();
                     if (!runtimePolicyBlocked)
                     {
@@ -668,7 +776,7 @@ public partial class GameBoot : MonoBehaviour
 
                 if (response != null && response.code == 7702)
                 {
-                    SetBusyState(false, "请先阅读并同意当前隐私政策");
+                    SetBusyState(false, "请先阅读并同意当前隐私协议");
                     ShowPrivacyPolicyOverlay();
                     yield break;
                 }
@@ -690,7 +798,7 @@ public partial class GameBoot : MonoBehaviour
 
             if (response.code == 7702)
             {
-                SetBusyState(false, "请先阅读并同意当前隐私政策");
+                SetBusyState(false, "请先阅读并同意当前隐私协议");
                 ShowPrivacyPolicyOverlay();
                 yield break;
             }
@@ -705,7 +813,7 @@ public partial class GameBoot : MonoBehaviour
             if (response.code == 7703)
             {
                 privacyConsentRequestId = NewRequestId();
-                SetBusyState(false, "隐私政策已更新，请重新阅读并确认。");
+                SetBusyState(false, "隐私协议已更新，请重新阅读并确认。");
                 yield return LoadPrivacyPolicies();
                 if (!runtimePolicyBlocked)
                 {
@@ -738,13 +846,13 @@ public partial class GameBoot : MonoBehaviour
                 && !response.data.privacyConsentRequired
                 && response.data.compliance == null)
             {
-                SetBusyState(false, "服务器未返回实名和防沉迷准入状态，暂不能进入游戏。");
+                SetBusyState(false, "实名与防沉迷状态暂时无法确认，请稍后重试。");
                 yield break;
             }
 
             if (response.data == null || string.IsNullOrEmpty(response.data.token) || response.data.user == null)
             {
-                SetBusyState(false, "登录成功但缺少 token 或玩家信息");
+                SetBusyState(false, "登录成功但缺少登录凭证或玩家信息");
                 yield break;
             }
 
@@ -761,7 +869,7 @@ public partial class GameBoot : MonoBehaviour
             yield break;
         }
 
-        SetBusyState(true, "正在检查客户端版本和服务器状态...");
+        SetBusyState(true, "正在检查版本与登录状态...");
         string path = string.Format(
             CultureInfo.InvariantCulture,
             "/client/runtime-policy?platform=UNITY&channel={0}&versionCode={1}",
@@ -795,8 +903,8 @@ public partial class GameBoot : MonoBehaviour
                 || response.data == null)
             {
                 runtimePolicyBlocked = true;
-                SetBusyState(false, "启动策略读取失败，暂时无法登录：" + ApiRequestUtility.GetErrorMessage(request, "请求失败"));
-                ShowRuntimePolicyOverlay("启动策略不可用", "客户端启动策略或隐私政策暂时不可用，请稍后重试。", string.Empty);
+                SetBusyState(false, "暂时无法登录：" + ApiRequestUtility.GetErrorMessage(request, "请稍后重试"));
+                ShowRuntimePolicyOverlay("暂时无法登录", "登录检查或隐私协议暂时不可用，请稍后重试。", string.Empty);
                 yield break;
             }
 
@@ -806,7 +914,7 @@ public partial class GameBoot : MonoBehaviour
                 runtimePolicyBlocked = true;
                 SetBusyState(false, string.Empty);
                 ShowRuntimePolicyOverlay(
-                    "需要更新客户端",
+                    "需要更新游戏",
                     string.IsNullOrWhiteSpace(policy.message)
                         ? $"当前版本需要更新到 {policy.minimumVersionName ?? policy.latestVersionName} 后才能继续。"
                         : policy.message,
@@ -863,8 +971,8 @@ public partial class GameBoot : MonoBehaviour
         SetRect(titleText.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, 92f), new Vector2(620f, 64f));
 
         Text messageText = CreateText("PolicyMessage", card.transform, message, 20, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleCenter);
-        messageText.enableWordWrapping = true;
-        messageText.overflowMode = TextOverflowModes.Overflow;
+        messageText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        messageText.verticalOverflow = VerticalWrapMode.Overflow;
         SetRect(messageText.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, 5f), new Vector2(620f, 120f));
 
         if (!string.IsNullOrWhiteSpace(updateUrl))
@@ -941,6 +1049,8 @@ public partial class GameBoot : MonoBehaviour
         if (nicknameInput != null) nicknameInput.interactable = !busy;
         if (passwordInput != null) passwordInput.interactable = !busy;
         if (rememberToggle != null) rememberToggle.interactable = !busy;
+        if (startGameButton != null) startGameButton.interactable = !busy;
+        if (loginDialogCloseButton != null) loginDialogCloseButton.interactable = !busy;
         if (loginButton != null) loginButton.interactable = !busy;
         if (registerButton != null) registerButton.interactable = !busy;
         if (weChatButton != null) weChatButton.interactable = !busy;
@@ -966,7 +1076,7 @@ public partial class GameBoot : MonoBehaviour
         if (statusText != null)
         {
             statusText.color = color;
-            statusText.text = message ?? string.Empty;
+            statusText.text = string.IsNullOrWhiteSpace(message) ? string.Empty : FrontendTextLocalization.NormalizePlayerMessage(message);
         }
     }
 
@@ -991,38 +1101,23 @@ public partial class GameBoot : MonoBehaviour
 
     private Text CreateText(string name, Transform parent, string text, int size, FontStyle fontStyle, Color color, TextAnchor alignment)
     {
-        GameObject obj = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+        GameObject obj = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
         obj.transform.SetParent(parent, false);
 
         Text label = obj.GetComponent<Text>();
         LoginCanvasStyle style = LoginStyle;
         int resolvedFontSize = ResolveFontSize(size);
         label.font = style != null ? style.ResolveFont(defaultFont) : defaultFont;
-        label.text = text;
+        label.text = FrontendTextLocalization.Normalize(text);
         label.fontSize = resolvedFontSize;
-        label.fontStyle = style != null ? style.ResolveFontStyle(name, fontStyle) : ConvertFontStyle(fontStyle);
+        label.fontStyle = style != null ? style.ResolveFontStyle(name, fontStyle) : fontStyle;
         label.color = style != null ? style.ResolveTextColor(name, color) : color;
-        label.alignment = ResolveComplianceAlignment(alignment);
-        label.enableAutoSizing = true;
-        label.fontSizeMin = Mathf.Clamp(resolvedFontSize - 4, 8, resolvedFontSize);
-        label.fontSizeMax = resolvedFontSize;
+        label.alignment = alignment;
+        label.resizeTextForBestFit = true;
+        label.resizeTextMinSize = Mathf.Clamp(resolvedFontSize - 4, 8, resolvedFontSize);
+        label.resizeTextMaxSize = resolvedFontSize;
         label.raycastTarget = false;
         return label;
-    }
-
-    private static FontStyles ConvertFontStyle(FontStyle style)
-    {
-        switch (style)
-        {
-            case FontStyle.Bold:
-                return FontStyles.Bold;
-            case FontStyle.Italic:
-                return FontStyles.Italic;
-            case FontStyle.BoldAndItalic:
-                return FontStyles.Bold | FontStyles.Italic;
-            default:
-                return FontStyles.Normal;
-        }
     }
 
     private InputField CreateInputField(Transform parent, string name, string placeholder)
@@ -1082,6 +1177,7 @@ public partial class GameBoot : MonoBehaviour
 
         toggle.targetGraphic = box;
         toggle.graphic = checkmark;
+        LoginCanvasStyle.ApplyCheckbox(toggle);
 
         Text label = CreateText("Label", obj.transform, "记住账号", 13, FontStyle.Normal, MutedTextColor, TextAnchor.MiddleLeft);
         RectTransform labelRect = label.rectTransform;

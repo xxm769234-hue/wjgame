@@ -72,6 +72,7 @@ public partial class HomePageUI
         {
             panel.transform.SetAsLastSibling();
         }
+        ConfigurePanelPresentation(panel);
         return panel;
     }
 
@@ -292,6 +293,7 @@ public partial class HomePageUI
         {
             BindSceneButton(actionButton, null);
         }
+        ConfigureTaskRowPresentation(row, task);
     }
 
     private static Color GetTaskSceneRewardColor(string rewardKey)
@@ -403,7 +405,7 @@ public partial class HomePageUI
             SetSceneText(card, "ProductName", productName);
             SetSceneText(card, "HeaderText", $"{rewardName}x{rewardQuantity}");
             SetSceneText(card, "RewardAmount", rewardQuantity.ToString());
-            SetSceneText(card, "BonusText", string.IsNullOrWhiteSpace(product.description) ? "后端定价商品" : product.description);
+            SetSceneText(card, "BonusText", product.description ?? string.Empty);
 
             Button priceButton = FindSceneComponent<Button>(card, "RechargePriceButton");
             SetSceneButtonText(priceButton, FormatRechargePrice(product));
@@ -445,7 +447,7 @@ public partial class HomePageUI
         };
         ConfigureLotteryPrizeRail(root, localCards);
         SetSceneText(root, "LotteryDiamondText", $"钻石 {PlayerPrefs.GetInt("Crystal", 0)}");
-        SetSceneText(root, "LotteryPrizeHint", "游客模式使用本地演示奖品");
+        SetSceneText(root, "LotteryPrizeHint", "游客体验奖池");
         SetSceneText(root, "LotteryStatus", status);
 
         Button closeButton = FindSceneComponent<Button>(root, "LotteryCloseButton");
@@ -460,7 +462,7 @@ public partial class HomePageUI
         {
             singleButton.interactable = !isRolling;
         }
-        SetSceneButtonText(singleButton, isRolling ? "抽取中..." : "单抽（本地演示）");
+        SetSceneButtonText(singleButton, isRolling ? "抽取中..." : "体验单抽");
         BindSceneButton(singleButton, isRolling ? null : (Action)PerformLotteryDraw);
 
         Button multiButton = FindSceneComponent<Button>(root, "LotteryTenButton");
@@ -476,7 +478,7 @@ public partial class HomePageUI
         {
             poolButton.interactable = false;
         }
-        SetSceneButtonText(poolButton, "服务器奖池");
+        SetSceneButtonText(poolButton, "奖励一览");
         BindSceneButton(poolButton, null);
 
         SetStatus(status);
@@ -501,7 +503,7 @@ public partial class HomePageUI
         }
 
         PrepareDailySignSceneCards(root, 0);
-        SetSceneText(root, "DailySignStatus", "请登录后查看服务器签到奖励");
+        SetSceneText(root, "DailySignStatus", "请登录后领取签到奖励");
         SetStatus(status);
         return true;
     }
@@ -579,6 +581,7 @@ public partial class HomePageUI
         SetSceneObjectActive(root, "DeleteMailButton", true);
         SetSceneObjectActive(root, "NotificationPreviousButton", false);
         SetSceneObjectActive(root, "NotificationNextButton", false);
+        SetSceneObjectActive(root, "NotificationActionButton", false);
         BindSceneButton(FindSceneComponent<Button>(root, "SystemMailCloseButton"), HideSystemMailPanel);
         Button claimAllButton = FindSceneComponent<Button>(root, "ClaimAllButton");
         Button claimButton = FindSceneComponent<Button>(root, "ClaimMailButton");
@@ -634,12 +637,8 @@ public partial class HomePageUI
 
             MailResponse mail = validMails[i];
             string title = string.IsNullOrEmpty(mail.title) ? "系统邮件" : mail.title;
-            string sender = string.IsNullOrEmpty(mail.senderName) ? "系统" : mail.senderName;
-            string attachment = mail.hasAttachment ? (mail.attachmentClaimed ? "附件已领" : "可领取") : "无附件";
             SetSceneText(itemButton.transform, "MailItemTitle", title);
-            string type = string.IsNullOrEmpty(mail.mailType) ? "SYSTEM" : mail.mailType;
-            string expiry = string.IsNullOrEmpty(mail.expireTime) ? string.Empty : $"  Expires: {mail.expireTime}";
-            SetSceneText(itemButton.transform, "MailItemMeta", $"{sender}  {type}  {attachment}{expiry}");
+            SetSceneText(itemButton.transform, "MailItemMeta", BuildCompactMailMeta(mail));
             SetSceneMailUnreadMark(itemButton.transform, mail);
 
             int selectedIndex = i;
@@ -700,11 +699,12 @@ public partial class HomePageUI
         string title = string.IsNullOrEmpty(mail.title) ? "系统邮件" : mail.title;
         string sender = string.IsNullOrEmpty(mail.senderName) ? "系统" : mail.senderName;
         string content = string.IsNullOrEmpty(mail.content) ? "暂无详细内容，正在读取邮件详情..." : mail.content;
-        string attachment = mail.hasAttachment ? (mail.attachmentClaimed ? "附件状态：已领取" : "附件状态：可领取") : "附件状态：无附件";
+        string attachment = mail.expired ? "附件状态：已过期" : mail.hasAttachment ? (mail.attachmentClaimed ? "附件状态：已领取" : "附件状态：可领取") : "附件状态：无附件";
         string time = string.IsNullOrEmpty(mail.createTime) ? "时间：未知" : $"时间：{mail.createTime}";
+        string expiry = string.IsNullOrEmpty(mail.expireTime) ? string.Empty : $"\n有效期至：{mail.expireTime}";
 
         SetSceneText(root, "MailDetailTitle", title);
-        SetSceneText(root, "MailDetailBody", $"{content}\n\n发件人：{sender}\n{time}\n{attachment}");
+        SetSceneText(root, "MailDetailBody", $"{content}\n\n发件人：{sender}\n{time}{expiry}\n{attachment}");
         RefreshSceneMailRewardSlots(root, mail);
         SetSceneText(root, "MailStatus", mailDetailLoadingId == mail.mailId ? "正在读取邮件详情..." : attachment);
 
@@ -1493,49 +1493,76 @@ public partial class HomePageUI
         }
 
         Toggle musicToggle = FindSceneComponent<Toggle>(root, "SettingsMusicToggle");
-        ConfigureSettingsToggle(musicToggle, GameSettingsRuntime.MusicEnabled);
         BindSceneToggle(musicToggle, value =>
         {
             GameSettingsRuntime.SetMusicEnabled(value);
-            RefreshSettingsScenePanel(root, value ? "背景音乐已开启" : "背景音乐已关闭");
+            RefreshSettingsAudioState(root);
+            SetSceneText(root, "SettingsStatus", value ? "背景音乐已开启" : "背景音乐已关闭");
         });
 
         Slider musicSlider = FindSceneComponent<Slider>(root, "SettingsMusicSlider");
-        if (musicSlider != null)
-        {
-            musicSlider.SetValueWithoutNotify(GameSettingsRuntime.MusicVolume);
-        }
         BindSceneSlider(musicSlider, value =>
         {
             GameSettingsRuntime.SetMusicVolume(Mathf.RoundToInt(value));
-            SetSceneText(root, "SettingsMusicValue", $"{GameSettingsRuntime.MusicVolume}%");
+            RefreshSettingsAudioState(root);
             SetSceneText(root, "SettingsStatus", "背景音乐音量已调整");
         });
-        SetSceneText(root, "SettingsMusicValue", $"{GameSettingsRuntime.MusicVolume}%");
 
         Toggle soundToggle = FindSceneComponent<Toggle>(root, "SettingsSoundToggle");
-        ConfigureSettingsToggle(soundToggle, GameSettingsRuntime.SoundEnabled);
         BindSceneToggle(soundToggle, value =>
         {
             GameSettingsRuntime.SetSoundEnabled(value);
-            RefreshSettingsScenePanel(root, value ? "游戏音效已开启" : "游戏音效已关闭");
+            RefreshSettingsAudioState(root);
+            SetSceneText(root, "SettingsStatus", value ? "游戏音效已开启" : "游戏音效已关闭");
         });
 
         Slider soundSlider = FindSceneComponent<Slider>(root, "SettingsSoundSlider");
-        if (soundSlider != null)
-        {
-            soundSlider.SetValueWithoutNotify(GameSettingsRuntime.SoundVolume);
-        }
         BindSceneSlider(soundSlider, value =>
         {
             GameSettingsRuntime.SetSoundVolume(Mathf.RoundToInt(value));
-            SetSceneText(root, "SettingsSoundValue", $"{GameSettingsRuntime.SoundVolume}%");
+            RefreshSettingsAudioState(root);
             SetSceneText(root, "SettingsStatus", "游戏音效音量已调整");
         });
-        SetSceneText(root, "SettingsSoundValue", $"{GameSettingsRuntime.SoundVolume}%");
 
+        RefreshSettingsAudioState(root);
         BindSceneButton(FindSceneComponent<Button>(root, "SettingsCloseButton"), HideSettingsPanel);
         SetSceneText(root, "SettingsStatus", status);
+    }
+
+    private static void RefreshSettingsAudioState(Transform root)
+    {
+        RefreshSettingsAudioChannel(root, "Music", GameSettingsRuntime.MusicEnabled, GameSettingsRuntime.MusicVolume);
+        RefreshSettingsAudioChannel(root, "Sound", GameSettingsRuntime.SoundEnabled, GameSettingsRuntime.SoundVolume);
+    }
+
+    private static void RefreshSettingsAudioChannel(Transform root, string channel, bool enabled, int volume)
+    {
+        bool audible = enabled && volume > 0;
+        ConfigureSettingsToggle(FindSceneComponent<Toggle>(root, "Settings" + channel + "Toggle"), audible);
+        Slider slider = FindSceneComponent<Slider>(root, "Settings" + channel + "Slider");
+        if (slider != null)
+        {
+            slider.SetValueWithoutNotify(volume);
+            SetSettingsVisualAlpha(slider, audible);
+        }
+
+        Text label = FindSceneComponent<Text>(root, "Settings" + channel + "Value");
+        if (label != null)
+        {
+            label.text = $"{volume}%";
+            SetSettingsVisualAlpha(label, audible);
+        }
+    }
+
+    private static void SetSettingsVisualAlpha(Component target, bool audible)
+    {
+        CanvasGroup group = target.GetComponent<CanvasGroup>();
+        if (group == null)
+        {
+            group = target.gameObject.AddComponent<CanvasGroup>();
+        }
+
+        group.alpha = audible ? 1f : 0.65f;
     }
 
     private static void ConfigureSettingsToggle(Toggle toggle, bool isOn)
@@ -1546,6 +1573,13 @@ public partial class HomePageUI
         }
 
         toggle.SetIsOnWithoutNotify(isOn);
+        ConfigureSettingsTogglePresentation(toggle, isOn);
+        SettingsAudioToggleIcon icon = toggle.GetComponent<SettingsAudioToggleIcon>();
+        if (icon != null)
+        {
+            toggle.graphic = null;
+            icon.Refresh(isOn);
+        }
 
         Text label = FindSceneComponent<Text>(toggle.transform, "ToggleLabel");
         if (label != null)
@@ -1631,15 +1665,27 @@ public partial class HomePageUI
         Text label = FindSceneComponent<Text>(root, objectName);
         if (label != null)
         {
-            label.text = value ?? string.Empty;
+            label.text = LocalizeHomePanelLabel(objectName, value);
+            ConfigureReadableText(label, objectName);
             return;
         }
 
         TMP_Text tmpLabel = FindSceneComponent<TMP_Text>(root, objectName);
         if (tmpLabel != null)
         {
-            tmpLabel.text = value ?? string.Empty;
+            tmpLabel.text = LocalizeHomePanelLabel(objectName, value);
+            ConfigureReadableText(tmpLabel, objectName);
         }
+    }
+
+    private static string LocalizeHomePanelLabel(string objectName, string value)
+    {
+        if (objectName.EndsWith("Status", StringComparison.Ordinal)
+            || objectName.EndsWith("Warning", StringComparison.Ordinal)
+            || objectName.EndsWith("Hint", StringComparison.Ordinal))
+            return string.IsNullOrWhiteSpace(value) ? string.Empty
+                : FrontendTextLocalization.NormalizePlayerMessage(value);
+        return value ?? string.Empty;
     }
 
     private static void SetSceneButtonText(Button button, string value)

@@ -147,11 +147,60 @@ public sealed partial class BackendGameService
             return null;
         }
 
-        return StartCoroutine(LoadIdleAdventureReferenceEndpointRoutine(
-            $"idle-adventure/players/{PlayerId}/npcs",
-            value => IdleAdventureAvailableNpcs = value,
-            onComplete,
-            "Idle Adventure player NPCs"));
+        return StartCoroutine(LoadIdleAdventureNpcsWithLevels(onComplete));
+    }
+
+    private IEnumerator LoadIdleAdventureNpcsWithLevels(Action<BackendResult<IdleAdventurePlayerNpcResponse[]>> onComplete)
+    {
+        SessionRequestSnapshot session = CaptureSessionRequest();
+        BackendResult<IdleAdventurePlayerNpcResponse[]> result = null;
+        yield return BackendApiClient.Get<IdleAdventurePlayerNpcResponse[]>(baseUrl, session.Token,
+            $"idle-adventure/players/{session.PlayerId}/npcs", value => result = value);
+        if (IsSessionRequestCurrent(session) && result != null && result.Success && result.Data != null)
+            yield return LoadIdleAdventureNpcLevels(result.Data, session);
+        if (!IsSessionRequestCurrent(session))
+        {
+            onComplete?.Invoke(Failed<IdleAdventurePlayerNpcResponse[]>("Backend session changed while NPC levels were loading."));
+            yield break;
+        }
+        if (result != null && result.Success) IdleAdventureAvailableNpcs = result.Data;
+        onComplete?.Invoke(result);
+    }
+
+    private IEnumerator LoadIdleAdventureNpcLevels(IdleAdventurePlayerNpcResponse[] combatants, SessionRequestSnapshot session)
+    {
+        if (combatants == null || combatants.Length == 0) yield break;
+        BackendResult<NpcResponse[]> owned = null;
+        yield return BackendApiClient.Get<NpcResponse[]>(baseUrl, session.Token,
+            $"npc/list/{session.PlayerId}", value => owned = value);
+        if (!IsSessionRequestCurrent(session) || owned == null || !owned.Success || owned.Data == null) yield break;
+        PlayerNpcs = owned.Data;
+        MergeIdleAdventureNpcLevels(combatants, owned.Data);
+    }
+
+    private static void MergeIdleAdventureNpcLevels(IdleAdventurePlayerNpcResponse[] combatants, NpcResponse[] owned)
+    {
+        if (combatants == null || owned == null) return;
+        foreach (IdleAdventurePlayerNpcResponse combatant in combatants)
+        {
+            if (combatant == null) continue;
+            NpcResponse match = null;
+            foreach (NpcResponse candidate in owned)
+            {
+                if (candidate == null) continue;
+                bool matches = combatant.ResolvedPlayerNpcId > 0
+                    ? candidate.playerNpcId == combatant.ResolvedPlayerNpcId
+                    : candidate.npcId > 0 && candidate.npcId == combatant.ResolvedDefinitionId;
+                if (!matches) continue;
+                if (match != null) { match = null; break; }
+                match = candidate;
+            }
+            if (match != null && match.level > 0)
+            {
+                combatant.level = match.level;
+                combatant.playerNpcId = match.playerNpcId;
+            }
+        }
     }
 
     public Coroutine LoadIdleAdventureStageEnemies(

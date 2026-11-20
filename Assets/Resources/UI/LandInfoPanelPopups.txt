@@ -1,0 +1,5 @@
+# x, y-from-top, width, height
+BuildingListPanel=16,16,807,808
+NpcListPanel=839,16,588,793
+ListItem=16,840,1010,330
+ConfirmPanel=1042,840,569,421

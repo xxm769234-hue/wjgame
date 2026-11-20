@@ -1,0 +1,11 @@
+{
+  "name": "shuyu-mengxing-user-manual",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "node build-user-manual-docx.js"
+  },
+  "dependencies": {
+    "docx": "9.5.1"
+  }
+}

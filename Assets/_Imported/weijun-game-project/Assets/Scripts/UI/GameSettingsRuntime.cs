@@ -7,8 +7,10 @@ public static class GameSettingsRuntime
 {
     private const string MusicEnabledKey = "MusicEnabled";
     private const string MusicVolumeKey = "MusicVolume";
+    private const string MusicLastVolumeKey = "MusicLastNonZeroVolume";
     private const string SoundEnabledKey = "SoundEnabled";
     private const string SoundVolumeKey = "SoundVolume";
+    private const string SoundLastVolumeKey = "SoundLastNonZeroVolume";
     private const string QualityLevelKey = "SettingsQualityLevel";
     private const string FullScreenKey = "SettingsFullScreen";
     private const string TargetFrameRateKey = "SettingsTargetFrameRate";
@@ -18,6 +20,22 @@ public static class GameSettingsRuntime
 
     private static readonly Dictionary<AudioSource, AudioSourceState> AudioSourceStates =
         new Dictionary<AudioSource, AudioSourceState>();
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetAudioSourceStates()
+    {
+        List<KeyValuePair<AudioSource, AudioSourceState>> registered = new List<KeyValuePair<AudioSource, AudioSourceState>>();
+        foreach (KeyValuePair<AudioSource, AudioSourceState> entry in AudioSourceStates)
+        {
+            if (entry.Key == null) continue;
+            entry.Key.volume = entry.Value.Volume;
+            entry.Key.mute = entry.Value.Muted;
+            if (entry.Value.IsMusic.HasValue) registered.Add(entry);
+        }
+        AudioSourceStates.Clear();
+        foreach (KeyValuePair<AudioSource, AudioSourceState> entry in registered)
+            AudioSourceStates[entry.Key] = entry.Value;
+    }
 
     public static bool MusicEnabled => PlayerPrefs.GetInt(MusicEnabledKey, 1) == 1;
     public static int MusicVolume => Mathf.Clamp(PlayerPrefs.GetInt(MusicVolumeKey, DefaultVolume), 0, 100);
@@ -71,25 +89,51 @@ public static class GameSettingsRuntime
 
     public static void SetMusicEnabled(bool enabled)
     {
-        PlayerPrefs.SetInt(MusicEnabledKey, enabled ? 1 : 0);
-        ApplyAudioSettings();
+        SetAudioEnabled(MusicEnabledKey, MusicVolumeKey, MusicLastVolumeKey, enabled);
     }
 
     public static void SetMusicVolume(int volume)
     {
-        PlayerPrefs.SetInt(MusicVolumeKey, Mathf.Clamp(volume, 0, 100));
-        ApplyAudioSettings();
+        SetAudioVolume(MusicEnabledKey, MusicVolumeKey, MusicLastVolumeKey, volume);
     }
 
     public static void SetSoundEnabled(bool enabled)
     {
-        PlayerPrefs.SetInt(SoundEnabledKey, enabled ? 1 : 0);
-        ApplyAudioSettings();
+        SetAudioEnabled(SoundEnabledKey, SoundVolumeKey, SoundLastVolumeKey, enabled);
     }
 
     public static void SetSoundVolume(int volume)
     {
-        PlayerPrefs.SetInt(SoundVolumeKey, Mathf.Clamp(volume, 0, 100));
+        SetAudioVolume(SoundEnabledKey, SoundVolumeKey, SoundLastVolumeKey, volume);
+    }
+
+    private static void SetAudioEnabled(string enabledKey, string volumeKey, string lastVolumeKey, bool enabled)
+    {
+        int volume = Mathf.Clamp(PlayerPrefs.GetInt(volumeKey, DefaultVolume), 0, 100);
+        if (volume > 0)
+        {
+            PlayerPrefs.SetInt(lastVolumeKey, volume);
+        }
+        else if (enabled)
+        {
+            PlayerPrefs.SetInt(volumeKey, Mathf.Clamp(PlayerPrefs.GetInt(lastVolumeKey, DefaultVolume), 1, 100));
+        }
+
+        PlayerPrefs.SetInt(enabledKey, enabled ? 1 : 0);
+        ApplyAudioSettings();
+    }
+
+    private static void SetAudioVolume(string enabledKey, string volumeKey, string lastVolumeKey, int volume)
+    {
+        int previousVolume = Mathf.Clamp(PlayerPrefs.GetInt(volumeKey, DefaultVolume), 0, 100);
+        int nextVolume = Mathf.Clamp(volume, 0, 100);
+        if (nextVolume > 0 || previousVolume > 0)
+        {
+            PlayerPrefs.SetInt(lastVolumeKey, nextVolume > 0 ? nextVolume : previousVolume);
+        }
+
+        PlayerPrefs.SetInt(volumeKey, nextVolume);
+        PlayerPrefs.SetInt(enabledKey, nextVolume > 0 ? 1 : 0);
         ApplyAudioSettings();
     }
 
@@ -115,8 +159,10 @@ public static class GameSettingsRuntime
     {
         PlayerPrefs.SetInt(MusicEnabledKey, 1);
         PlayerPrefs.SetInt(MusicVolumeKey, DefaultVolume);
+        PlayerPrefs.SetInt(MusicLastVolumeKey, DefaultVolume);
         PlayerPrefs.SetInt(SoundEnabledKey, 1);
         PlayerPrefs.SetInt(SoundVolumeKey, DefaultVolume);
+        PlayerPrefs.SetInt(SoundLastVolumeKey, DefaultVolume);
         PlayerPrefs.SetInt(QualityLevelKey, GetQualityLevelForPreset(1));
         PlayerPrefs.SetInt(FullScreenKey, 1);
         PlayerPrefs.SetInt(TargetFrameRateKey, DefaultTargetFrameRate);
@@ -132,6 +178,22 @@ public static class GameSettingsRuntime
     public static void Save()
     {
         PlayerPrefs.Save();
+    }
+
+    [UnityEngine.Scripting.Preserve]
+    public static void RegisterAudioSource(AudioSource source, bool isMusic, float baseVolume)
+    {
+        if (source == null) return;
+        AudioSourceState state = new AudioSourceState(Mathf.Clamp01(baseVolume), false, isMusic);
+        AudioSourceStates[source] = state;
+        ApplyAudioSource(source, state);
+    }
+
+    [UnityEngine.Scripting.Preserve]
+    public static void UnregisterAudioSource(AudioSource source)
+    {
+        if (ReferenceEquals(source, null)) return;
+        AudioSourceStates.Remove(source);
     }
 
     private static int GetQualityLevelForPreset(int preset)
@@ -191,12 +253,17 @@ public static class GameSettingsRuntime
                 AudioSourceStates[source] = state;
             }
 
-            bool isMusic = IsMusicSource(source);
-            bool enabled = isMusic ? MusicEnabled : SoundEnabled;
-            float volume = (isMusic ? MusicVolume : SoundVolume) / 100f;
-            source.volume = state.Volume * volume;
-            source.mute = state.Muted || !enabled || volume <= 0f;
+            ApplyAudioSource(source, state);
         }
+    }
+
+    private static void ApplyAudioSource(AudioSource source, AudioSourceState state)
+    {
+        bool isMusic = state.IsMusic ?? IsMusicSource(source);
+        bool enabled = isMusic ? MusicEnabled : SoundEnabled;
+        float volume = (isMusic ? MusicVolume : SoundVolume) / 100f;
+        source.volume = state.Volume * volume;
+        source.mute = state.Muted || !enabled || volume <= 0f;
     }
 
     private static bool IsMusicSource(AudioSource source)
@@ -213,13 +280,15 @@ public static class GameSettingsRuntime
 
     private sealed class AudioSourceState
     {
-        public AudioSourceState(float volume, bool muted)
+        public AudioSourceState(float volume, bool muted, bool? isMusic = null)
         {
             Volume = volume;
             Muted = muted;
+            IsMusic = isMusic;
         }
 
         public float Volume { get; }
         public bool Muted { get; }
+        public bool? IsMusic { get; }
     }
 }

@@ -34,6 +34,7 @@ public sealed class InventorySlotView : MonoBehaviour
         UpgradeFontAsset();
         UpgradeLegacyTextComponents();
         ResolveTextReferences();
+        ConfigureTextLayout();
     }
 
     public void ShowEmpty()
@@ -75,6 +76,8 @@ public sealed class InventorySlotView : MonoBehaviour
             itemIconImage.overrideSprite = null;
             itemIconImage.sprite = itemSprite;
             itemIconImage.enabled = itemSprite != null;
+            itemIconImage.preserveAspect = true;
+            itemIconImage.raycastTarget = false;
         }
 
         bool useFallback = itemSprite == null;
@@ -226,6 +229,27 @@ public sealed class InventorySlotView : MonoBehaviour
         }
 
         return null;
+    }
+
+    private void ConfigureTextLayout()
+    {
+        if (fallbackText != null)
+        {
+            fallbackText.enableAutoSizing = true;
+            fallbackText.enableWordWrapping = true;
+            fallbackText.overflowMode = TextOverflowModes.Ellipsis;
+            fallbackText.raycastTarget = false;
+        }
+        if (quantityText != null)
+        {
+            quantityText.enableAutoSizing = true;
+            quantityText.fontSizeMin = 10f;
+            quantityText.fontSizeMax = 16f;
+            quantityText.enableWordWrapping = false;
+            quantityText.overflowMode = TextOverflowModes.Ellipsis;
+            quantityText.alignment = TextAlignmentOptions.MidlineRight;
+            quantityText.raycastTarget = false;
+        }
     }
 
     private static TextAlignmentOptions ConvertAlignment(TextAnchor alignment)

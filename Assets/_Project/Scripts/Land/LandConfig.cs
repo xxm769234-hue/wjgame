@@ -30,9 +30,10 @@ public sealed class LandConfig : ScriptableObject
 
 public enum LandType
 {
-    Grassland,
-    Forest,
-    Mountain,
-    Water,
-    Desert
+    Grassland = 0,
+    Forest = 1,
+    Mountain = 2,
+    Ocean = 3,
+    Snowfield = 4,
+    Volcano = 5
 }

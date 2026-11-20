@@ -1,0 +1,93 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject:
+    fileID: 0
+  m_PrefabInstance:
+    fileID: 0
+  m_PrefabAsset:
+    fileID: 0
+  m_GameObject:
+    fileID: 0
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
+  m_Name: Monster4_Spider_Attack
+  m_EditorClassIdentifier: ''
+  sequenceId: Monster4_Spider_Attack
+  sourceFolder: D:/怪物动画/怪物4_蜘蛛/攻击_20261112_00382/Frames
+  action: 2
+  frames:
+  - fileID: 21300000
+    guid: d8df0edc5b085069ab96252775b172be
+    type: 3
+  - fileID: 21300000
+    guid: 747380c704145437b15e56877b3e6099
+    type: 3
+  - fileID: 21300000
+    guid: 76d54b932c105bd19355209c4b97babf
+    type: 3
+  - fileID: 21300000
+    guid: 098bb7782e315369945460161d618a5f
+    type: 3
+  - fileID: 21300000
+    guid: 1b189a312a7c5627b0a0b61d66a577c6
+    type: 3
+  - fileID: 21300000
+    guid: 309a1aed511951a08c02070799e7db4c
+    type: 3
+  - fileID: 21300000
+    guid: 39bd5d04643852449990d09771b13af2
+    type: 3
+  - fileID: 21300000
+    guid: 95f351eaf2f15c25be6d09b1b1418505
+    type: 3
+  - fileID: 21300000
+    guid: 66a6a713239c5785a2f618c7aa9b2ffc
+    type: 3
+  - fileID: 21300000
+    guid: 8ff5656dba8b5925b70f5b5abe73a466
+    type: 3
+  - fileID: 21300000
+    guid: 059d30e66f3b502e8e9b002f80e15dfe
+    type: 3
+  - fileID: 21300000
+    guid: 85d15cc0268b5afca6450012322798fa
+    type: 3
+  - fileID: 21300000
+    guid: 855961d7218e5501b6c9f0558abc903b
+    type: 3
+  - fileID: 21300000
+    guid: 6645027d912e574b96788ec2ffbe382a
+    type: 3
+  - fileID: 21300000
+    guid: 02e1f65765a3522681178fd35d24359d
+    type: 3
+  - fileID: 21300000
+    guid: abac880139e7594aa665a58fca4eb226
+    type: 3
+  - fileID: 21300000
+    guid: 449991c8222b59a3abfbae64b0cbf40d
+    type: 3
+  - fileID: 21300000
+    guid: 0673b223837e550f8a6ae46c21dd2076
+    type: 3
+  - fileID: 21300000
+    guid: 4da637b28dc3507b8df859da42fd3c6d
+    type: 3
+  - fileID: 21300000
+    guid: 3ee8a47920dd5b23ac2eb65673fe3946
+    type: 3
+  - fileID: 21300000
+    guid: c0c06d7d15e155408b6037c045b96b61
+    type: 3
+  - fileID: 21300000
+    guid: 2234141583c757069847d048809111bb
+    type: 3
+  frameRate: 30
+  playbackDuration: 0.7333333333333333
+  loop: 0
+  impactFrames:
+  - 11

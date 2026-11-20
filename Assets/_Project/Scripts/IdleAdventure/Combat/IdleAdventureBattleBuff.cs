@@ -63,8 +63,8 @@ public sealed class IdleAdventureBattleBuff
     public float NormalDamageMultiplier { get; }
     public float AttributeDamageMultiplier { get; }
     public IdleAdventureDamageAttribute AffectedAttribute { get; }
-    public string SourceLabel => Source == IdleAdventureBuffSource.CharacterSkill ? "Skill" : "Other";
-    public string SourceShortLabel => Source == IdleAdventureBuffSource.CharacterSkill ? "S" : "O";
+    public string SourceLabel => Source == IdleAdventureBuffSource.CharacterSkill ? "角色技能" : "其他来源";
+    public string SourceShortLabel => Source == IdleAdventureBuffSource.CharacterSkill ? "技" : "其";
     public string EffectShortLabel
     {
         get
@@ -72,11 +72,11 @@ public sealed class IdleAdventureBattleBuff
             switch (EffectType)
             {
                 case IdleAdventureBuffEffectType.AttributeDamage:
-                    return "A";
+                    return "属";
                 case IdleAdventureBuffEffectType.Field:
-                    return "F";
+                    return "场";
                 default:
-                    return "N";
+                    return "普";
             }
         }
     }

@@ -71,8 +71,8 @@ public static class PlayerOnboardingInputLock
 public sealed class PlayerOnboardingManager : MonoBehaviour
 {
     private const string LaunchSceneName = "Launch";
-    private const int SupportedContractVersion = 1;
-    private const float BusinessRefreshIntervalSeconds = 2f;
+    private const int SupportedContractVersion = 2;
+    private const float BusinessRefreshIntervalSeconds = 8f;
     private const float QueryRetryDelaySeconds = 5f;
     private const float TargetRefreshDelaySeconds = 0.75f;
     private const float TargetResolveIntervalSeconds = 0.25f;
@@ -81,6 +81,34 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private static readonly Color ShadeColor = new Color(0.03f, 0.04f, 0.05f, 0.62f);
     private static readonly Dictionary<string, RectTransform> RegisteredTargets =
         new Dictionary<string, RectTransform>(StringComparer.OrdinalIgnoreCase);
+    private static readonly string[] GuideCodes =
+    {
+        "MAIN_FLOW", "PRODUCTION_FLOW", "NPC_SETTLEMENT_FLOW", "EQUIPMENT_FLOW", "SUPPLY_FLOW",
+        "EXPANSION_FLOW", "TASK_FLOW", "SIGN_IN_FLOW", "AFK_FLOW", "SHOP_FLOW", "MAIL_FLOW", "SOCIAL_FLOW"
+    };
+    private static readonly HashSet<string> SupportedActions = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "CONFIRM", "OPEN_HOME_MAP", "OPEN_LAND_PLACEMENT", "OPEN_BUILDING_PANEL", "FOCUS_BUILDING",
+        "FOCUS_FREE_LAND", "PLACE_LAND", "START_BUILDING",
+        "OPEN_GENDER_SELECTION", "OPEN_CARD_DRAW", "OPEN_NPC_UPGRADE", "OPEN_FORMATION", "OPEN_ADVENTURE",
+        "OPEN_PRODUCTION", "OPEN_NPC_SETTLEMENT", "OPEN_EQUIPMENT", "OPEN_SUPPLY", "OPEN_EXPANSION",
+        "OPEN_TASKS", "OPEN_SIGN_IN", "OPEN_AFK", "OPEN_SHOP", "OPEN_MAIL", "OPEN_FRIENDS"
+    };
+    private static readonly HashSet<string> SupportedTargets = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "NAV_HOME_MAP", "PLAYER_BUILDING_FARM", "HOME_MAP_ENTRY", "FREE_GRASSLAND_TILE", "HOME_FREE_LAND_SLOT", "LAND_BUILD_BUTTON", "BUILDING_FARM_CARD", "BUILDING_FARM_INSTANCE",
+        "GENDER_SELECTION", "CARD_DRAW_SINGLE", "NPC_UPGRADE", "ADVENTURE_FORMATION", "ADVENTURE_START",
+        "PRODUCTION_COLLECT", "NPC_SETTLEMENT", "EQUIPMENT_EQUIP", "PRODUCTION_SUPPLY", "LAND_EXPANSION",
+        "TASK_CLAIM", "SIGN_IN_CLAIM", "AFK_COLLECT", "SHOP_ENTRY", "MAIL_CLAIM", "FRIEND_ENTRY"
+    };
+    private static readonly HashSet<string> HomePageActions = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "OPEN_GENDER_SELECTION", "OPEN_CARD_DRAW", "OPEN_NPC_UPGRADE", "OPEN_EQUIPMENT", "OPEN_TASKS",
+        "OPEN_SIGN_IN", "OPEN_SHOP", "OPEN_MAIL", "OPEN_FRIENDS"
+    };
+    private readonly Dictionary<string, OnboardingCurrentData> guideSnapshots =
+        new Dictionary<string, OnboardingCurrentData>(StringComparer.Ordinal);
+    private readonly HashSet<string> requestedGuides = new HashSet<string>(StringComparer.Ordinal);
 
     [SerializeField] private Sprite panelBackground;
     [SerializeField] private Sprite actionButtonBackground;
@@ -100,6 +128,8 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private TMP_Text titleText;
     private TMP_Text stepText;
     private TMP_Text contentText;
+    private ScrollRect contentScroll;
+    private string displayedContent;
     private TMP_Text targetText;
     private TMP_Text stateText;
     private Button acknowledgeButton;
@@ -123,6 +153,26 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private string missingTargetWarningSignature = string.Empty;
     private TMP_Text targetArrow;
     private Vector2 authoredPanelPosition;
+    private Vector2 authoredPanelSize;
+    private bool compactPresentation;
+    private Image panelSurface;
+    private Sprite authoredPanelSprite;
+    private Color authoredPanelColor;
+    private Image.Type authoredPanelType;
+    private RectTransform compactPanelFrame;
+    private readonly Dictionary<RectTransform, PanelElementLayout> authoredElementLayouts = new Dictionary<RectTransform, PanelElementLayout>();
+    private bool panelLayoutCached;
+    private Rect cachedPanelTarget;
+    private Rect cachedPanelBounds;
+    private RectTransform cachedPanelTargetTransform;
+    private string cachedPanelContent;
+    private int cachedPanelButtons;
+    private float nextPanelLayoutCheckTime;
+    private Vector2 appliedCompactSize;
+    private int appliedCompactButtons;
+    private float measuredCompactWidth;
+    private string measuredCompactContent;
+    private float measuredCompactHeight;
     private int snapshotPlayerId;
     private string snapshotToken;
     private string pendingMutationPath;
@@ -130,13 +180,72 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private bool pendingRetryBlocked;
     private MethodInfo resolveGameplayTarget;
     private MethodInfo gameplayStepReady;
+    private MethodInfo gameplayOpenPage;
+    private MethodInfo gameplayPresentationSuspended;
     private bool gameplayBridgeResolved;
     private float nextPendingRetryTime;
     private bool returnToUpdateFlow;
     private string lastSnapshotDiagnostic;
+    private string pendingMutationGuideCode;
+    private bool refreshAllRequested;
+    private bool legacyMainRoute;
+    private float nextQueryTime;
+    private int queryFailureCount;
+    private bool presentationUnsupported;
+    private bool presentationSuspended;
+    private int pendingRetryAttempts;
+    private bool retryPendingOnClick;
+    private bool targetMissing;
+    private string deferredStepIdentity;
+    private string navigationStepIdentity;
+    private float nextNavigationTime;
+    private int navigationAttempts;
+    private bool accessCheckPending;
+    private AsyncOperation homeNavigation;
+    private string homeNavigationIdentity;
+    private bool recoveryMessageMode;
+    private bool recoveryCanRetry;
+    private bool recoveryDismissed;
+    private string snoozedStepIdentity;
 
     /// <summary>Returns the persistent onboarding manager instance.</summary>
     public static PlayerOnboardingManager Instance => instance;
+
+    public static void NotifyBusinessSucceeded()
+    {
+        if (GameSession.IsAuthenticated) EnsureInstance().RefreshCurrent();
+    }
+
+    public void SnoozeCurrentStep()
+    {
+        if (currentSnapshot == null) return;
+        snoozedStepIdentity = StepIdentity(currentSnapshot);
+        deferredStepIdentity = snoozedStepIdentity;
+        HideOverlay();
+    }
+
+    public void ResumeCurrentStep()
+    {
+        FindObjectOfType<HomePageUI>()?.ResumeStarterSelection();
+        snoozedStepIdentity = null;
+        deferredStepIdentity = null;
+        recoveryDismissed = false;
+        navigationAttempts = 0;
+        nextNavigationTime = 0f;
+        RefreshCurrent();
+    }
+
+    public void RefreshGuide(string guideCode)
+    {
+        if (!IsKnownGuide(guideCode)) return;
+        if (snapshotPlayerId != GameSession.PlayerId || snapshotToken != GameSession.Token)
+        {
+            RefreshCurrent();
+            return;
+        }
+        requestedGuides.Add(guideCode);
+        QueueRefresh();
+    }
 
     /// <summary>Realtime messages are refresh hints, never authoritative step snapshots.</summary>
     public void HandleRealtimeHint(string json)
@@ -145,10 +254,12 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         OnboardingRealtimeData data = envelope == null ? null : envelope.data;
         if (!GameSession.IsAuthenticated || data == null || data.playerId != GameSession.PlayerId
             || envelope.playerId != GameSession.PlayerId) return;
-        if (currentSnapshot != null && snapshotPlayerId == GameSession.PlayerId
-            && data.instanceId == currentSnapshot.instanceId && data.guideVersion == currentSnapshot.guideVersion
-            && data.stateVersion <= currentSnapshot.stateVersion) return;
-        RefreshCurrent();
+        string guideCode = string.IsNullOrEmpty(data.guideCode) ? "MAIN_FLOW" : data.guideCode;
+        if (!IsKnownGuide(guideCode)) return;
+        if (guideSnapshots.TryGetValue(guideCode, out OnboardingCurrentData snapshot)
+            && data.instanceId == snapshot.instanceId && data.guideVersion == snapshot.guideVersion
+            && data.stateVersion <= snapshot.stateVersion) return;
+        RefreshGuide(guideCode);
     }
 
     internal static void RegisterTarget(string targetKey, RectTransform target)
@@ -230,6 +341,8 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     {
         if (hasFocus)
         {
+            deferredStepIdentity = null;
+            recoveryDismissed = false;
             RefreshCurrent();
         }
     }
@@ -238,6 +351,8 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     {
         if (!paused)
         {
+            deferredStepIdentity = null;
+            recoveryDismissed = false;
             RefreshCurrent();
         }
     }
@@ -245,6 +360,8 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     /// <summary>Refreshes the current server snapshot.</summary>
     public void RefreshCurrent()
     {
+        if (accessCheckPending && SceneManager.GetActiveScene().name == LaunchSceneName) return;
+        accessCheckPending = false;
         if (snapshotPlayerId != GameSession.PlayerId || snapshotToken != GameSession.Token)
         {
             StopAllCoroutines();
@@ -261,19 +378,45 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
             return;
         }
 
+        refreshAllRequested = true;
+        QueueRefresh();
+    }
+
+    private void QueueRefresh()
+    {
+        if (!GameSession.IsAuthenticated) return;
         if (queryRunning)
         {
             queryQueued = true;
             return;
         }
-
+        if (Time.unscaledTime < nextQueryTime)
+        {
+            ScheduleQueryRetry();
+            return;
+        }
         StartCoroutine(RequestCurrentRoutine());
     }
 
     private void Update()
     {
+        RefreshButtonTextContrast();
         if (snapshotPlayerId != GameSession.PlayerId || snapshotToken != GameSession.Token)
             RefreshCurrent();
+        if (currentSnapshot == null || messageMode || !IsSupportedStep(currentSnapshot.currentStep)) return;
+        if (snoozedStepIdentity == StepIdentity(currentSnapshot)) return;
+        bool suspended = IsGameplaySuspended(currentSnapshot.currentStep);
+        if (suspended && !presentationSuspended)
+        {
+            presentationSuspended = true;
+            HideOverlay();
+            EnsureBusinessPollingState();
+        }
+        else if (!suspended && presentationSuspended)
+        {
+            presentationSuspended = false;
+            RenderSnapshot();
+        }
     }
 
     private IEnumerator RefreshAfterStartup()
@@ -284,6 +427,10 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
     private void HandleSceneLoaded(Scene scene, LoadSceneMode mode)
     {
+        deferredStepIdentity = null;
+        recoveryDismissed = false;
+        navigationAttempts = 0;
+        nextNavigationTime = 0f;
         ResetTargetPresentation();
         RefreshCurrent();
     }
@@ -302,10 +449,24 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
             int requestPlayerId = GameSession.PlayerId;
             string requestToken = GameSession.Token;
+            bool requestList = refreshAllRequested || requestedGuides.Count == 0;
+            string requestGuide = null;
+            if (requestList)
+            {
+                refreshAllRequested = false;
+                requestedGuides.Clear();
+            }
+            else
+            {
+                foreach (string guideCode in GuideCodes)
+                    if (requestedGuides.Remove(guideCode)) { requestGuide = guideCode; break; }
+            }
+            string path = legacyMainRoute ? "/onboarding/current" : requestList ? "/onboarding/guides"
+                : "/onboarding/guides/" + UnityWebRequest.EscapeURL(requestGuide) + "/current";
 
             UnityWebRequest request;
             string requestError;
-            if (!ApiRequestUtility.TryCreateGet("/onboarding/current", true, out request, out requestError))
+            if (!ApiRequestUtility.TryCreateGet(path, true, out request, out requestError))
             {
                 Debug.LogWarning("新手引导查询请求创建失败：" + requestError, this);
                 ScheduleQueryRetry();
@@ -327,82 +488,122 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
                     break;
                 }
 
-                OnboardingCurrentEnvelope response = ParseResponse<OnboardingCurrentEnvelope>(request.downloadHandler.text);
-                if (request.result == UnityWebRequest.Result.Success
-                    && response != null
-                    && response.code == 200
-                    && response.data != null)
+                if (!legacyMainRoute && request.responseCode == 404)
                 {
+                    legacyMainRoute = true;
+                    refreshAllRequested = queryQueued = true;
+                    continue;
+                }
+                OnboardingCurrentEnvelope response = null;
+                OnboardingListEnvelope list = null;
+                if (requestList && !legacyMainRoute) list = ParseResponse<OnboardingListEnvelope>(request.downloadHandler.text);
+                else response = ParseResponse<OnboardingCurrentEnvelope>(request.downloadHandler.text);
+                bool valid = list != null && list.code == 200 && list.data != null
+                    || response != null && response.code == 200 && response.data != null;
+                if (request.result == UnityWebRequest.Result.Success && valid)
+                {
+                    queryFailureCount = 0;
+                    nextQueryTime = 0f;
                     StopQueryRetry();
-                    ApplySnapshot(response.data);
-                    if (hasPendingMutation && !mutationRunning && !pendingRetryBlocked && Time.unscaledTime >= nextPendingRetryTime
-                        && response.data.available && response.data.contractVersion <= SupportedContractVersion
-                        && response.data.minimumClientVersionCode <= ApiRuntimeConfig.GetClientVersionCode()
-                        && response.data.status != "PAUSED")
+                    if (list != null)
+                    {
+                        foreach (OnboardingCurrentData snapshot in list.data) StoreSnapshot(snapshot, null);
+                    }
+                    else StoreSnapshot(response.data, legacyMainRoute ? "MAIN_FLOW" : requestGuide);
+                    ReconcilePendingMutation();
+                    SelectActiveSnapshot();
+                    if (hasPendingMutation && !mutationRunning && !pendingRetryBlocked && pendingRetryAttempts < 3 && Time.unscaledTime >= nextPendingRetryTime
+                        && guideSnapshots.TryGetValue(pendingMutationGuideCode, out OnboardingCurrentData pendingSnapshot)
+                        && IsSupportedSnapshot(pendingSnapshot) && pendingSnapshot.available
+                        && pendingSnapshot.status != "PAUSED")
                     {
                         StartCoroutine(MutateRoutine(pendingMutationIsSkip));
                     }
                     else if (hasPendingMutation && !mutationRunning && !pendingRetryBlocked)
                     {
-                        ScheduleQueryRetry();
+                        if (pendingRetryAttempts >= 3) ShowPendingRecovery();
+                        else ScheduleQueryRetry();
                     }
                 }
                 else
                 {
-                    int code = response == null ? 0 : response.code;
+                    OnboardingErrorEnvelope error = ParseResponse<OnboardingErrorEnvelope>(request.downloadHandler.text);
+                    int code = error == null ? 0 : error.code;
                     HandleQueryFailure(code, request);
                 }
             }
+            queryQueued |= refreshAllRequested || requestedGuides.Count > 0;
         }
-        while (queryQueued && GameSession.IsAuthenticated);
+        while (queryQueued && GameSession.IsAuthenticated && Time.unscaledTime >= nextQueryTime);
 
         queryRunning = false;
     }
 
     private void ApplySnapshot(OnboardingCurrentData snapshot)
     {
-        if (snapshot == null)
+        StoreSnapshot(snapshot, null);
+        SelectActiveSnapshot();
+    }
+
+    private bool StoreSnapshot(OnboardingCurrentData snapshot, string expectedGuide)
+    {
+        if (snapshot == null) return false;
+        if (string.IsNullOrEmpty(snapshot.guideCode)) snapshot.guideCode = expectedGuide ?? "MAIN_FLOW";
+        if (!IsKnownGuide(snapshot.guideCode) || expectedGuide != null && expectedGuide != snapshot.guideCode) return false;
+        if (guideSnapshots.TryGetValue(snapshot.guideCode, out OnboardingCurrentData previous)
+            && (snapshot.guideVersion < previous.guideVersion
+                || snapshot.guideVersion == previous.guideVersion && snapshot.stateVersion < previous.stateVersion
+                || IsTerminalStatus(previous.status) && !IsTerminalStatus(snapshot.status)))
         {
+            Debug.LogWarning("丢弃较旧的引导快照：" + snapshot.guideCode, this);
+            return false;
+        }
+        guideSnapshots[snapshot.guideCode] = snapshot;
+        return true;
+    }
+
+    private void SelectActiveSnapshot()
+    {
+        OnboardingCurrentData selected = null;
+        foreach (string guideCode in GuideCodes)
+        {
+            if (!guideSnapshots.TryGetValue(guideCode, out OnboardingCurrentData candidate)) continue;
+            if (candidate.available && !IsTerminalStatus(candidate.status)) { selected = candidate; break; }
+            if (guideCode == "MAIN_FLOW" && !IsTerminalStatus(candidate.status)) break;
+        }
+        if (hasPendingMutation && guideSnapshots.TryGetValue(pendingMutationGuideCode, out OnboardingCurrentData pendingSnapshot)
+            && !IsTerminalStatus(pendingSnapshot.status)) selected = pendingSnapshot;
+        currentSnapshot = selected;
+        if (snoozedStepIdentity != StepIdentity(selected)) snoozedStepIdentity = null;
+        messageMode = false;
+        presentationUnsupported = false;
+        if (selected == null)
+        {
+            FindObjectOfType<HomePageUI>(true)?.HideStarterSelection();
+            HideOverlay();
+            EnsureBusinessPollingState();
             return;
         }
-
-        messageMode = false;
-
-        if (snapshot.contractVersion > SupportedContractVersion
-            || snapshot.minimumClientVersionCode > ApiRuntimeConfig.GetClientVersionCode())
+        if (!IsSupportedSnapshot(selected))
         {
-            currentSnapshot = null;
+            FindObjectOfType<HomePageUI>(true)?.HideStarterSelection();
             PlayerOnboardingInputLock.SetState(false, false, string.Empty);
             ShowMessage(
-                "新手引导需要更新客户端",
-                "当前客户端不支持服务器下发的新手引导版本，请更新后再继续游戏。",
+                "需要更新游戏",
+                "当前版本暂不支持此引导，请更新游戏后继续。",
                 true,
                 false);
             returnToUpdateFlow = true;
-            if (acknowledgeButtonText != null) acknowledgeButtonText.text = "检查客户端更新";
+            if (acknowledgeButtonText != null) acknowledgeButtonText.text = "检查更新";
             Debug.LogWarning(
-                "新手引导版本不受支持：contractVersion=" + snapshot.contractVersion
-                + ", minimumClientVersionCode=" + snapshot.minimumClientVersionCode,
+                "新手引导版本不受支持：contractVersion=" + selected.contractVersion
+                + ", minimumClientVersionCode=" + selected.minimumClientVersionCode,
                 this);
             return;
         }
 
-        if (currentSnapshot != null
-            && string.Equals(snapshot.guideCode, currentSnapshot.guideCode, StringComparison.Ordinal)
-            && (snapshot.guideVersion < currentSnapshot.guideVersion
-                || (snapshot.guideVersion == currentSnapshot.guideVersion
-                    && snapshot.stateVersion < currentSnapshot.stateVersion)))
-        {
-            Debug.LogWarning(
-                "丢弃较旧的新手引导快照：localStateVersion=" + currentSnapshot.stateVersion
-                + ", responseStateVersion=" + snapshot.stateVersion,
-                this);
-            return;
-        }
-
-        currentSnapshot = snapshot;
-        string diagnostic = "available=" + snapshot.available + ", status=" + snapshot.status
-            + ", step=" + (snapshot.currentStep == null ? "null" : snapshot.currentStep.stepCode);
+        string diagnostic = "guide=" + selected.guideCode + ", status=" + selected.status
+            + ", step=" + (selected.currentStep == null ? "null" : selected.currentStep.stepCode);
         if (lastSnapshotDiagnostic != diagnostic)
         {
             lastSnapshotDiagnostic = diagnostic;
@@ -410,7 +611,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         }
         if (pendingRetryBlocked)
         {
-            ShowMessage("引导请求需检查", "待处理请求已保留，暂时停止自动操作，请联系客服。", false, false);
+            ShowRecoveryMessage("引导进度待确认", "当前进度暂时无法确认。可以收起提示继续游戏，稍后联系客服。", false);
             return;
         }
         RenderSnapshot();
@@ -425,6 +626,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
         if (!CanDisplayStep(currentSnapshot))
         {
+            FindObjectOfType<HomePageUI>(true)?.HideStarterSelection();
             HideOverlay();
             EnsureBusinessPollingState();
             if (currentSnapshot != null && string.Equals(currentSnapshot.status, "PAUSED", StringComparison.OrdinalIgnoreCase))
@@ -433,11 +635,46 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         }
 
         OnboardingStepData step = currentSnapshot.currentStep;
+        if (deferredStepIdentity == StepIdentity(currentSnapshot) || snoozedStepIdentity == StepIdentity(currentSnapshot))
+        {
+            HideOverlay();
+            EnsureBusinessPollingState();
+            return;
+        }
         EnsureOverlay();
         if (overlayObject == null)
         {
             return;
         }
+
+        if (!IsSupportedStep(step))
+        {
+            presentationUnsupported = true;
+            ShowMessage("引导内容暂不支持", "此步骤需要更新引导内容。可以暂时收起，或跳过当前教程。", true, currentSnapshot.allowSkip, false);
+            acknowledgeButtonText.text = "暂时收起";
+            Debug.LogWarning("引导展示键不受支持：" + currentSnapshot.guideCode + "/" + step.stepCode
+                + ", action=" + step.actionKey + ", presentation=" + step.presentationType, this);
+            return;
+        }
+        if (IsGameplaySuspended(step))
+        {
+            presentationSuspended = true;
+            HideOverlay();
+            EnsureBusinessPollingState();
+            return;
+        }
+
+        if (step.actionKey == "OPEN_GENDER_SELECTION")
+        {
+            ResolveTarget(step);
+            if (FindObjectOfType<HomePageUI>() != null)
+            {
+                HideOverlay();
+                EnsureBusinessPollingState();
+                return;
+            }
+        }
+        else FindObjectOfType<HomePageUI>(true)?.HideStarterSelection();
 
         bool isClientAck = string.Equals(step.completionType, "CLIENT_ACK", StringComparison.OrdinalIgnoreCase);
         bool isBusinessEvent = string.Equals(step.completionType, "BUSINESS_EVENT", StringComparison.OrdinalIgnoreCase);
@@ -445,9 +682,9 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         bool targetOnly = !IsExplanationStep(step) && string.Equals(step.inputMode, "ALLOW_TARGET_ONLY", StringComparison.OrdinalIgnoreCase);
         bool needsMap = NeedsMapNavigation(step);
 
-        titleText.text = string.IsNullOrEmpty(step.title) ? "新手引导" : step.title;
+        titleText.text = FrontendTextLocalization.NormalizePlayerMessage(step.title, "新手引导");
         stepText.text = step.sequence > 0 ? "第 " + step.sequence + " 步" : "新手引导";
-        contentText.text = string.IsNullOrEmpty(step.content) ? "请按照当前提示完成操作。" : step.content;
+        SetContentText(string.IsNullOrEmpty(step.content) ? "请按照当前提示完成操作。" : step.content);
         targetText.text = string.Empty;
         stateText.text = isBusinessEvent
             ? "完成目标操作后继续"
@@ -459,7 +696,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
         skipButton.gameObject.SetActive(currentSnapshot.allowSkip);
         skipButton.interactable = !mutationRunning;
-        skipButtonText.text = "跳过引导";
+        skipButtonText.text = currentSnapshot.guideCode == "MAIN_FLOW" ? "跳过引导" : "跳过此教程";
 
         ShowOverlayHierarchy();
         transform.SetAsLastSibling();
@@ -496,7 +733,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
             && string.Equals(currentSnapshot.currentStep.completionType, "BUSINESS_EVENT", StringComparison.OrdinalIgnoreCase))
         {
             yield return new WaitForSecondsRealtime(BusinessRefreshIntervalSeconds);
-            RefreshCurrent();
+            if (currentSnapshot != null) RefreshGuide(currentSnapshot.guideCode);
         }
 
         businessPollingCoroutine = null;
@@ -557,17 +794,11 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         GameObject highlightObject = new GameObject(
             "TargetHighlight",
             typeof(RectTransform),
-            typeof(Image),
-            typeof(Outline));
+            typeof(Image));
         highlightObject.transform.SetParent(overlayObject.transform, false);
         targetHighlight = highlightObject.GetComponent<Image>();
-        targetHighlight.sprite = targetFrame;
-        targetHighlight.color = targetFrame != null ? Color.white : new Color(1f, 0.77f, 0.18f, 0.10f);
+        targetHighlight.color = Color.clear;
         targetHighlight.raycastTarget = false;
-        Outline highlightOutline = highlightObject.GetComponent<Outline>();
-        highlightOutline.enabled = targetFrame == null;
-        highlightOutline.effectColor = new Color(1f, 0.78f, 0.20f, 0.95f);
-        highlightOutline.effectDistance = new Vector2(4f, -4f);
         highlightObject.SetActive(false);
 
         GameObject panelObject = new GameObject("Panel", typeof(RectTransform), typeof(Image));
@@ -638,6 +869,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         targetArrow.color = new Color(0.20f, 0.39f, 0.43f, 1f);
         targetArrow.gameObject.SetActive(false);
         panelRect.SetAsLastSibling();
+        ConfigureTextLayout();
     }
 
     private bool BindSceneOverlay(Transform canvas)
@@ -649,7 +881,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         overlayImage = overlay.GetComponent<Image>();
         titleText = panel.Find("Title")?.GetComponent<TMP_Text>();
         stepText = panel.Find("Step")?.GetComponent<TMP_Text>();
-        contentText = panel.Find("Content")?.GetComponent<TMP_Text>();
+        contentText = (panel.Find("Content") ?? panel.Find("ContentViewport/Content"))?.GetComponent<TMP_Text>();
         targetText = panel.Find("Target")?.GetComponent<TMP_Text>();
         stateText = panel.Find("State")?.GetComponent<TMP_Text>();
         acknowledgeButton = panel.Find("AcknowledgeButton")?.GetComponent<Button>();
@@ -663,8 +895,8 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
         overlayObject = overlay.gameObject;
         authoredPanelPosition = panelRect.anchoredPosition;
-        targetHighlight = canvas.Find("TargetHighlight")?.GetComponent<Image>();
-        targetArrow = canvas.Find("TargetArrow")?.GetComponent<TMP_Text>();
+        targetHighlight = (overlay.Find("TargetHighlight") ?? canvas.Find("TargetHighlight"))?.GetComponent<Image>();
+        targetArrow = (overlay.Find("TargetArrow") ?? canvas.Find("TargetArrow"))?.GetComponent<TMP_Text>();
         if (targetHighlight != null) targetHighlight.raycastTarget = false;
         if (targetArrow != null) targetArrow.raycastTarget = false;
         foreach (TMP_Text text in panel.GetComponentsInChildren<TMP_Text>(true))
@@ -686,7 +918,324 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         }
         acknowledgeButton.onClick.AddListener(AcknowledgeCurrentStep);
         skipButton.onClick.AddListener(SkipCurrentOnboarding);
+        ConfigureTextLayout();
         return true;
+    }
+
+    private void ConfigureTextLayout()
+    {
+        ConfigureShortText(titleText, 20f, 30f);
+        ConfigureShortText(stepText, 16f, 20f);
+        ConfigureShortText(targetText, 16f, 18f);
+        ConfigureShortText(stateText, 17f, 20f);
+        ConfigureShortText(acknowledgeButtonText, 18f, 23f);
+        ConfigureShortText(skipButtonText, 18f, 23f);
+        ConfigureButtonContrast(acknowledgeButton);
+        ConfigureButtonContrast(skipButton);
+        ApplySecondaryButtonStyle();
+        RefreshButtonTextContrast();
+        RectTransform contentRect = contentText.rectTransform;
+        Transform existingViewport = panelRect.Find("ContentViewport");
+        if (existingViewport == null)
+        {
+            GameObject viewportObject = new GameObject("ContentViewport", typeof(RectTransform), typeof(Image), typeof(RectMask2D), typeof(ScrollRect));
+            viewportObject.layer = contentText.gameObject.layer;
+            RectTransform viewport = viewportObject.GetComponent<RectTransform>();
+            viewport.SetParent(contentRect.parent, false);
+            viewport.SetSiblingIndex(contentRect.GetSiblingIndex());
+            viewport.anchorMin = contentRect.anchorMin;
+            viewport.anchorMax = contentRect.anchorMax;
+            viewport.pivot = contentRect.pivot;
+            viewport.sizeDelta = contentRect.sizeDelta;
+            viewport.anchoredPosition = contentRect.anchoredPosition;
+            viewport.localRotation = contentRect.localRotation;
+            viewport.localScale = contentRect.localScale;
+            viewportObject.GetComponent<Image>().color = Color.clear;
+            contentRect.SetParent(viewport, false);
+            contentScroll = viewportObject.GetComponent<ScrollRect>();
+            contentScroll.viewport = viewport;
+            contentScroll.content = contentRect;
+            contentScroll.horizontal = false;
+            contentScroll.vertical = true;
+            contentScroll.movementType = ScrollRect.MovementType.Clamped;
+            contentScroll.scrollSensitivity = 28f;
+        }
+        else
+        {
+            contentScroll = existingViewport.GetComponent<ScrollRect>();
+        }
+        contentRect.anchorMin = new Vector2(0f, 1f);
+        contentRect.anchorMax = Vector2.one;
+        contentRect.pivot = new Vector2(0.5f, 1f);
+        contentRect.anchoredPosition = Vector2.zero;
+        contentRect.sizeDelta = Vector2.zero;
+        contentText.enableAutoSizing = false;
+        contentText.fontSize = 22f;
+        contentText.enableWordWrapping = true;
+        contentText.overflowMode = TextOverflowModes.Overflow;
+        contentText.alignment = TextAlignmentOptions.TopLeft;
+        contentText.margin = new Vector4(2f, 2f, 20f, 2f);
+        ContentSizeFitter fitter = contentRect.GetComponent<ContentSizeFitter>();
+        if (fitter == null) fitter = contentRect.gameObject.AddComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        EnsureContentScrollbar();
+        CapturePanelLayout();
+        ConfigureTargetHighlight();
+    }
+
+    private sealed class PanelElementLayout
+    {
+        public Vector2 anchorMin;
+        public Vector2 anchorMax;
+        public Vector2 pivot;
+        public Vector2 position;
+        public Vector2 size;
+        public bool active;
+    }
+
+    private void CapturePanelLayout()
+    {
+        if (panelSurface != null) return;
+        panelSurface = panelRect.GetComponent<Image>();
+        authoredPanelSize = panelRect.sizeDelta;
+        authoredPanelSprite = panelSurface.sprite;
+        authoredPanelColor = panelSurface.color;
+        authoredPanelType = panelSurface.type;
+        foreach (Transform child in panelRect)
+        {
+            if (!(child is RectTransform element)) continue;
+            authoredElementLayouts[element] = new PanelElementLayout
+            {
+                anchorMin = element.anchorMin, anchorMax = element.anchorMax, pivot = element.pivot,
+                position = element.anchoredPosition, size = element.sizeDelta, active = element.gameObject.activeSelf
+            };
+        }
+        GameObject border = new GameObject("CompactPanelFrame", typeof(RectTransform));
+        compactPanelFrame = border.GetComponent<RectTransform>();
+        compactPanelFrame.SetParent(panelRect, false);
+        SetStretch(compactPanelFrame);
+        CreateFrameEdges(compactPanelFrame, new Color(.48f, .36f, .18f, .75f), 1.5f, false);
+        border.SetActive(false);
+    }
+
+    private void ConfigureTargetHighlight()
+    {
+        if (targetHighlight == null)
+        {
+            GameObject highlight = new GameObject("TargetHighlight", typeof(RectTransform), typeof(Image));
+            targetHighlight = highlight.GetComponent<Image>();
+        }
+        targetHighlight.transform.SetParent(overlayObject.transform, false);
+        targetHighlight.transform.localScale = Vector3.one;
+        targetHighlight.transform.localRotation = Quaternion.identity;
+        targetHighlight.sprite = null;
+        targetHighlight.color = Color.clear;
+        targetHighlight.raycastTarget = false;
+        foreach (BaseMeshEffect effect in targetHighlight.GetComponents<BaseMeshEffect>()) effect.enabled = false;
+        if (targetHighlight.transform.childCount == 0)
+            CreateFrameEdges(targetHighlight.rectTransform, new Color(.96f, .78f, .36f, .95f), 2.5f, true);
+        foreach (Graphic graphic in targetHighlight.GetComponentsInChildren<Graphic>(true)) graphic.raycastTarget = false;
+        if (targetArrow != null)
+        {
+            targetArrow.transform.SetParent(overlayObject.transform, false);
+            targetArrow.raycastTarget = false;
+        }
+        panelRect.SetAsLastSibling();
+        targetHighlight.gameObject.SetActive(false);
+    }
+
+    private static void CreateFrameEdges(RectTransform parent, Color color, float thickness, bool cornersOnly)
+    {
+        for (int cornerIndex = 0; cornerIndex < 4; cornerIndex++)
+        {
+            bool right = cornerIndex % 2 == 1;
+            bool top = cornerIndex >= 2;
+            Vector2 corner = new Vector2(right ? 1f : 0f, top ? 1f : 0f);
+            for (int directionIndex = 0; directionIndex < 2; directionIndex++)
+            {
+                if (!cornersOnly && directionIndex == 1) continue;
+                GameObject stroke = new GameObject("FrameStroke" + cornerIndex + "_" + directionIndex, typeof(RectTransform), typeof(Image));
+                RectTransform strokeRect = stroke.GetComponent<RectTransform>();
+                strokeRect.SetParent(parent, false);
+                Image image = stroke.GetComponent<Image>();
+                image.color = color;
+                image.raycastTarget = false;
+                if (cornersOnly)
+                {
+                    strokeRect.anchorMin = strokeRect.anchorMax = corner;
+                    strokeRect.pivot = corner;
+                    strokeRect.sizeDelta = directionIndex == 0 ? new Vector2(30f, thickness) : new Vector2(thickness, 30f);
+                    strokeRect.anchoredPosition = Vector2.zero;
+                }
+                else
+                {
+                    bool horizontal = cornerIndex < 2;
+                    strokeRect.anchorMin = horizontal ? new Vector2(0f, right ? 1f : 0f) : new Vector2(top && right ? 1f : 0f, 0f);
+                    strokeRect.anchorMax = horizontal ? new Vector2(1f, right ? 1f : 0f) : new Vector2(top && right ? 1f : 0f, 1f);
+                    strokeRect.pivot = new Vector2(.5f, .5f);
+                    strokeRect.sizeDelta = horizontal ? new Vector2(0f, thickness) : new Vector2(thickness, 0f);
+                    strokeRect.anchoredPosition = Vector2.zero;
+                }
+            }
+        }
+    }
+
+    private void UseFullPanelLayout()
+    {
+        if (panelSurface == null || !compactPresentation) return;
+        compactPresentation = false;
+        panelLayoutCached = false;
+        panelRect.sizeDelta = authoredPanelSize;
+        panelSurface.sprite = authoredPanelSprite;
+        panelSurface.color = authoredPanelColor;
+        panelSurface.type = authoredPanelType;
+        compactPanelFrame.gameObject.SetActive(false);
+        foreach (KeyValuePair<RectTransform, PanelElementLayout> pair in authoredElementLayouts)
+        {
+            RectTransform element = pair.Key;
+            if (element == null) continue;
+            PanelElementLayout layout = pair.Value;
+            element.anchorMin = layout.anchorMin;
+            element.anchorMax = layout.anchorMax;
+            element.pivot = layout.pivot;
+            element.anchoredPosition = layout.position;
+            element.sizeDelta = layout.size;
+            if (element.name == "GuideIcon" || element == targetText.rectTransform) element.gameObject.SetActive(layout.active);
+        }
+        titleText.alignment = TextAlignmentOptions.Center;
+        ConfigureShortText(titleText, 20f, 30f);
+        ConfigureShortText(stepText, 16f, 20f);
+        ConfigureShortText(stateText, 17f, 20f);
+        ConfigureShortText(acknowledgeButtonText, 18f, 23f);
+        ConfigureShortText(skipButtonText, 18f, 23f);
+        acknowledgeButtonText.margin = skipButtonText.margin = new Vector4(24f, 8f, 24f, 8f);
+        contentText.fontSize = 22f;
+    }
+
+    private void UseCompactPanelLayout(Vector2 size)
+    {
+        if (panelSurface == null) return;
+        int buttonVisibility = (acknowledgeButton.gameObject.activeSelf ? 1 : 0) | (skipButton.gameObject.activeSelf ? 2 : 0);
+        if (compactPresentation && appliedCompactSize == size && appliedCompactButtons == buttonVisibility) return;
+        compactPresentation = true;
+        appliedCompactSize = size;
+        appliedCompactButtons = buttonVisibility;
+        panelRect.sizeDelta = size;
+        panelSurface.sprite = null;
+        panelSurface.type = Image.Type.Simple;
+        panelSurface.color = new Color(.98f, .95f, .86f, .99f);
+        compactPanelFrame.gameObject.SetActive(true);
+        Transform icon = panelRect.Find("GuideIcon");
+        if (icon != null) icon.gameObject.SetActive(false);
+        targetText.gameObject.SetActive(false);
+        float width = size.x;
+        float height = size.y;
+        SetRect(titleText.rectTransform, new Vector2(22f, height - 50f), new Vector2(width - 110f, height - 18f));
+        SetRect(stepText.rectTransform, new Vector2(width - 102f, height - 48f), new Vector2(width - 20f, height - 20f));
+        SetRect(contentScroll.viewport, new Vector2(22f, 98f), new Vector2(width - 22f, height - 58f));
+        SetRect(stateText.rectTransform, new Vector2(22f, 68f), new Vector2(width - 22f, 90f));
+        bool bothButtons = acknowledgeButton.gameObject.activeSelf && skipButton.gameObject.activeSelf;
+        float buttonWidth = bothButtons ? (width - 56f) * .5f : Mathf.Min(228f, width - 44f);
+        float left = bothButtons ? 22f : (width - buttonWidth) * .5f;
+        SetRect(skipButton.transform as RectTransform, new Vector2(left, 16f), new Vector2(left + buttonWidth, 60f));
+        float acknowledgeLeft = bothButtons ? width - 22f - buttonWidth : left;
+        SetRect(acknowledgeButton.transform as RectTransform, new Vector2(acknowledgeLeft, 16f), new Vector2(acknowledgeLeft + buttonWidth, 60f));
+        titleText.alignment = TextAlignmentOptions.MidlineLeft;
+        ConfigureShortText(titleText, 20f, 25f);
+        ConfigureShortText(stepText, 16f, 18f);
+        ConfigureShortText(stateText, 16f, 18f);
+        ConfigureShortText(acknowledgeButtonText, 17f, 21f);
+        ConfigureShortText(skipButtonText, 17f, 21f);
+        acknowledgeButtonText.margin = skipButtonText.margin = new Vector4(14f, 4f, 14f, 4f);
+        contentText.fontSize = 21f;
+    }
+
+    private void EnsureContentScrollbar()
+    {
+        if (contentScroll == null || contentScroll.verticalScrollbar != null) return;
+        GameObject barObject = new GameObject("ContentScrollbar", typeof(RectTransform), typeof(Image), typeof(Scrollbar));
+        barObject.layer = contentText.gameObject.layer;
+        RectTransform barRect = barObject.GetComponent<RectTransform>();
+        barRect.SetParent(contentScroll.viewport, false);
+        barRect.anchorMin = new Vector2(1f, 0f);
+        barRect.anchorMax = Vector2.one;
+        barRect.offsetMin = new Vector2(-10f, 3f);
+        barRect.offsetMax = new Vector2(-2f, -3f);
+        Image track = barObject.GetComponent<Image>();
+        track.color = new Color(0.48f, 0.34f, 0.20f, 0.16f);
+
+        GameObject handleObject = new GameObject("Handle", typeof(RectTransform), typeof(Image));
+        handleObject.layer = barObject.layer;
+        RectTransform handleRect = handleObject.GetComponent<RectTransform>();
+        handleRect.SetParent(barRect, false);
+        handleRect.anchorMin = Vector2.zero;
+        handleRect.anchorMax = Vector2.one;
+        handleRect.offsetMin = Vector2.zero;
+        handleRect.offsetMax = Vector2.zero;
+        Image handle = handleObject.GetComponent<Image>();
+        handle.color = new Color(0.48f, 0.34f, 0.20f, 0.62f);
+        Scrollbar scrollbar = barObject.GetComponent<Scrollbar>();
+        scrollbar.direction = Scrollbar.Direction.BottomToTop;
+        scrollbar.handleRect = handleRect;
+        scrollbar.targetGraphic = handle;
+        contentScroll.verticalScrollbar = scrollbar;
+        contentScroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
+    }
+
+    private static void ConfigureShortText(TMP_Text text, float minimum, float maximum)
+    {
+        if (text == null) return;
+        text.enableWordWrapping = false;
+        text.enableAutoSizing = true;
+        text.fontSizeMin = minimum;
+        text.fontSizeMax = maximum;
+        text.overflowMode = TextOverflowModes.Ellipsis;
+    }
+
+    private static void ConfigureButtonContrast(Button button)
+    {
+        if (button == null) return;
+        ColorBlock colors = button.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1f, 0.97f, 0.9f, 1f);
+        colors.selectedColor = Color.white;
+        colors.pressedColor = new Color(0.88f, 0.84f, 0.76f, 1f);
+        colors.disabledColor = new Color(0.82f, 0.82f, 0.82f, 1f);
+        colors.colorMultiplier = 1f;
+        button.colors = colors;
+    }
+
+    private void RefreshButtonTextContrast()
+    {
+        if (skipButtonText != null)
+            skipButtonText.color = skipButton != null && skipButton.interactable
+                ? new Color(73f / 255f, 55f / 255f, 34f / 255f, 1f) : new Color(0.35f, 0.29f, 0.23f, 1f);
+        if (acknowledgeButtonText != null)
+            acknowledgeButtonText.color = acknowledgeButton != null && acknowledgeButton.interactable
+                ? new Color(1f, 0.96f, 0.85f, 1f) : new Color(0.92f, 0.88f, 0.8f, 1f);
+    }
+
+    private void SetContentText(string value)
+    {
+        value = FrontendTextLocalization.NormalizePlayerMessage(value, "请按照当前提示完成操作。");
+        bool changed = !string.Equals(displayedContent, value, StringComparison.Ordinal);
+        contentText.text = value;
+        displayedContent = value;
+        if (!changed || contentScroll == null) return;
+        contentScroll.StopMovement();
+        contentScroll.content.anchoredPosition = Vector2.zero;
+    }
+
+    private void ApplySecondaryButtonStyle()
+    {
+        if (skipButton == null || !(skipButton.targetGraphic is Image image)) return;
+        Sprite sprite = Resources.Load<Sprite>("UI/ApprovedUi/Controls/SecondaryButton");
+        if (sprite == null) return;
+        image.sprite = sprite;
+        image.overrideSprite = null;
+        image.color = Color.white;
+        image.type = Image.Type.Simple;
     }
 
     private TMP_Text CreateText(string objectName, Transform parent, float fontSize, TextAlignmentOptions alignment)
@@ -780,10 +1329,10 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
             if (acknowledgeButton != null)
             {
                 bool needsMap = NeedsMapNavigation(step);
-                acknowledgeButton.gameObject.SetActive(isClientAck || needsMap);
+                acknowledgeButton.gameObject.SetActive(targetMissing || isClientAck || needsMap);
                 acknowledgeButton.interactable = !mutationRunning && !pendingRetryBlocked
-                    && (needsMap || (isClientAck && IsStepReady(step)));
-                acknowledgeButtonText.text = mutationRunning ? "提交中..." : needsMap ? "前往经营地图" : GetAcknowledgeLabel(step);
+                    && (targetMissing || needsMap || (isClientAck && IsStepReady(step)));
+                acknowledgeButtonText.text = mutationRunning ? "提交中..." : targetMissing ? "暂时收起" : needsMap ? "前往经营地图" : GetAcknowledgeLabel(step);
             }
             yield return null;
         }
@@ -798,7 +1347,23 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
             return;
         }
 
-        bool needsTarget = targetOnly || IsTargetPresentation(step.presentationType)
+        bool useCompact = !IsExplanationStep(step)
+            && (targetOnly || IsTargetPresentation(step.presentationType) || !string.IsNullOrEmpty(step.actionKey));
+        if (useCompact)
+        {
+            if (!compactPresentation) UseCompactPanelLayout(new Vector2(520f, 220f));
+        }
+        else UseFullPanelLayout();
+        PlayerOnboardingInputLock.SetState(blocksAllInput, targetOnly, step.actionKey, step.uiTargetKey, step.sceneCode);
+        targetMissing = false;
+        if (IsExplanationStep(step))
+        {
+            SetBackdrop(true, ShadeColor);
+            DisableInputBlockers();
+            ResetPanelPosition();
+            return;
+        }
+        bool needsTarget = targetOnly || IsTargetPresentation(step.presentationType) || !string.IsNullOrEmpty(step.actionKey)
             || step.stepCode == "OPEN_HOME_MAP" || step.stepCode == "FOCUS_FREE_LAND";
         if (needsTarget)
         {
@@ -809,9 +1374,11 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
                 BindTargetButton(step, resolvedTarget);
             }
         }
+        targetMissing = needsTarget && resolvedTarget == null;
 
         if (step.stepCode == "OPEN_HOME_MAP" && IsStepReady(step))
         {
+            UseFullPanelLayout();
             SetBackdrop(true, ShadeColor);
             DisableInputBlockers();
             ResetPanelPosition();
@@ -834,9 +1401,12 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
                 return;
             }
 
-            SetBackdrop(true, ShadeColor);
+            SetBackdrop(false, new Color(ShadeColor.r, ShadeColor.g, ShadeColor.b, 0.18f));
+            targetMissing = true;
+            PlayerOnboardingInputLock.SetState(false, false, string.Empty);
             DisableInputBlockers();
             ApplyTargetPresentation(step, false);
+            stateText.text = "正在寻找操作入口，也可先浏览页面或跳过此教程";
             WarnMissingTarget(step);
             return;
         }
@@ -890,6 +1460,8 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         }
 
         PositionPanelAwayFrom(targetRect);
+        stateText.text = string.Equals(step.completionType, "BUSINESS_EVENT", StringComparison.OrdinalIgnoreCase)
+            ? "完成目标操作后继续" : "准备好后，继续下一步";
         if (targetArrow != null)
         {
             targetArrow.gameObject.SetActive(string.Equals(step.presentationType, "ARROW", StringComparison.OrdinalIgnoreCase));
@@ -907,19 +1479,50 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
     private RectTransform ResolveTarget(OnboardingStepData step)
     {
-        if (step == null)
+        if (step == null || !IsSupportedStep(step))
         {
             return null;
         }
 
+        HomePageUI home = FindObjectOfType<HomePageUI>(true);
+        RectTransform rewardConfirmation = home != null ? home.ResolveOnboardingRewardConfirmation() : null;
+        if (rewardConfirmation != null) return rewardConfirmation;
+        bool activate = ShouldActivateNavigation(step);
+        if (home == null && activate && HomePageActions.Contains(step.actionKey) && !IsBattlePresentationActive()
+            && (homeNavigation == null || homeNavigation.isDone) && homeNavigationIdentity != StepIdentity(currentSnapshot)
+            && SceneManager.GetActiveScene().name != "HomeScene" && Application.CanStreamedLevelBeLoaded("HomeScene"))
+        {
+            homeNavigationIdentity = StepIdentity(currentSnapshot);
+            homeNavigation = SceneManager.LoadSceneAsync("HomeScene");
+            return null;
+        }
+        if (home != null && !string.IsNullOrEmpty(step.actionKey))
+        {
+            RectTransform navigationTarget = home.ResolveOnboardingNavigationTarget(JsonUtility.ToJson(step), activate);
+            if (navigationTarget != null)
+            {
+                navigationAttempts = 3;
+                return navigationTarget;
+            }
+        }
+
         ResolveGameplayBridge();
+        if (gameplayOpenPage != null && activate && !string.IsNullOrEmpty(step.actionKey))
+        {
+            try { gameplayOpenPage.Invoke(null, new object[] { step.actionKey, GameSession.PlayerId, GameSession.Token }); }
+            catch (Exception exception) { Debug.LogWarning("引导页面暂不可用：" + exception.GetBaseException().Message, this); }
+        }
         if (resolveGameplayTarget != null)
         {
             try
             {
                 RectTransform gameplayTarget = resolveGameplayTarget.Invoke(null,
                     new object[] { JsonUtility.ToJson(step), GameSession.PlayerId, GameSession.Token }) as RectTransform;
-                if (gameplayTarget != null) return gameplayTarget;
+                if (gameplayTarget != null)
+                {
+                    navigationAttempts = 3;
+                    return gameplayTarget;
+                }
             }
             catch (Exception exception)
             {
@@ -935,36 +1538,14 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
         if (registeredTarget != null)
         {
-            return PromoteTargetToButton(registeredTarget);
+            navigationAttempts = 3;
+            return registeredTarget;
         }
 
         RectTransform actionTarget = ResolveBuiltInActionTarget(step.actionKey);
         if (actionTarget != null)
         {
             return PromoteTargetToButton(actionTarget);
-        }
-
-        string normalizedTargetKey = NormalizeKey(step.uiTargetKey);
-        if (string.IsNullOrEmpty(normalizedTargetKey))
-        {
-            return null;
-        }
-
-        RectTransform[] candidates = FindObjectsOfType<RectTransform>(true);
-        for (int index = 0; index < candidates.Length; index++)
-        {
-            RectTransform candidate = candidates[index];
-            if (candidate == null
-                || !candidate.gameObject.activeInHierarchy
-                || (overlayObject != null && candidate.IsChildOf(overlayObject.transform)))
-            {
-                continue;
-            }
-
-            if (NormalizeKey(candidate.name) == normalizedTargetKey)
-            {
-                return PromoteTargetToButton(candidate);
-            }
         }
 
         return null;
@@ -991,7 +1572,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private RectTransform ResolveBuiltInActionTarget(string actionKey)
     {
         string normalizedAction = NormalizeKey(actionKey);
-        if (string.IsNullOrEmpty(normalizedAction))
+        if (normalizedAction != "OPEN_HOME_MAP")
         {
             return null;
         }
@@ -1196,25 +1777,111 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         }
 
         Rect bounds = overlayObject.GetComponent<RectTransform>().rect;
-        Rect authoredBounds = new Rect(authoredPanelPosition - panelRect.rect.size * panelRect.pivot, panelRect.rect.size);
-        if (!authoredBounds.Overlaps(targetRect))
+        if (!compactPresentation)
         {
             panelRect.anchoredPosition = authoredPanelPosition;
             return;
         }
-        float halfHeight = panelRect.rect.height * 0.5f;
-        float margin = 24f;
-        float upperY = bounds.yMax - halfHeight - margin;
-        float lowerY = bounds.yMin + halfHeight + margin;
-        bool targetBelowCenter = targetRect.center.y <= bounds.center.y;
-        panelRect.anchoredPosition = new Vector2(0f, targetBelowCenter ? upperY : lowerY);
+        int buttonVisibility = (acknowledgeButton.gameObject.activeSelf ? 1 : 0) | (skipButton.gameObject.activeSelf ? 2 : 0);
+        if (panelLayoutCached && cachedPanelTarget == targetRect && cachedPanelBounds == bounds
+            && cachedPanelTargetTransform == resolvedTarget && cachedPanelContent == contentText.text
+            && cachedPanelButtons == buttonVisibility && Time.unscaledTime < nextPanelLayoutCheckTime) return;
+        panelLayoutCached = true;
+        cachedPanelTarget = targetRect;
+        cachedPanelBounds = bounds;
+        cachedPanelTargetTransform = resolvedTarget;
+        cachedPanelContent = contentText.text;
+        cachedPanelButtons = buttonVisibility;
+        nextPanelLayoutCheckTime = Time.unscaledTime + .25f;
+        Rect safe = Rect.MinMaxRect(bounds.xMin + 24f, bounds.yMin + 24f, bounds.xMax - 24f, bounds.yMax - 24f);
+        Rect[] spaces =
+        {
+            Rect.MinMaxRect(safe.xMin, Mathf.Max(safe.yMin, targetRect.yMax + 18f), safe.xMax, safe.yMax),
+            Rect.MinMaxRect(safe.xMin, safe.yMin, safe.xMax, Mathf.Min(safe.yMax, targetRect.yMin - 18f)),
+            Rect.MinMaxRect(safe.xMin, safe.yMin, Mathf.Min(safe.xMax, targetRect.xMin - 18f), safe.yMax),
+            Rect.MinMaxRect(Mathf.Max(safe.xMin, targetRect.xMax + 18f), safe.yMin, safe.xMax, safe.yMax)
+        };
+        Rect chosen = default;
+        float bestScore = float.NegativeInfinity;
+        for (int spaceIndex = 0; spaceIndex < spaces.Length; spaceIndex++)
+        {
+            Rect space = spaces[spaceIndex];
+            if (space.width < 320f || space.height < 188f) continue;
+            float width = Mathf.Min(540f, space.width);
+            float preferredHeight = CompactPanelHeight(width);
+            float height = Mathf.Min(preferredHeight, space.height);
+            Vector2 center = new Vector2(
+                Mathf.Clamp(targetRect.center.x, space.xMin + width * .5f, space.xMax - width * .5f),
+                Mathf.Clamp(targetRect.center.y, space.yMin + height * .5f, space.yMax - height * .5f));
+            float score = width / 540f + height / preferredHeight - Vector2.Distance(center, targetRect.center) * .0001f;
+            if (score <= bestScore) continue;
+            bestScore = score;
+            chosen = new Rect(center - new Vector2(width, height) * .5f, new Vector2(width, height));
+        }
+        if (float.IsNegativeInfinity(bestScore))
+        {
+            Vector2 size = new Vector2(Mathf.Min(480f, safe.width), Mathf.Min(220f, safe.height));
+            List<Rect> controls = new List<Rect>();
+            List<Rect> labels = new List<Rect>();
+            if (resolvedTarget != null)
+            {
+                foreach (Selectable control in resolvedTarget.GetComponentsInChildren<Selectable>())
+                    if (control.isActiveAndEnabled && TryGetTargetRect(control.transform as RectTransform, out Rect controlRect)) controls.Add(controlRect);
+                foreach (TMP_Text label in resolvedTarget.GetComponentsInChildren<TMP_Text>())
+                    if (label.isActiveAndEnabled && !string.IsNullOrEmpty(label.text) && TryGetTargetRect(label.rectTransform, out Rect labelRect)) labels.Add(labelRect);
+            }
+            float leastObstruction = float.PositiveInfinity;
+            for (int columnIndex = 0; columnIndex < 5; columnIndex++)
+            {
+                for (int rowIndex = 0; rowIndex < 5; rowIndex++)
+                {
+                    Vector2 minimum = new Vector2(Mathf.Lerp(safe.xMin, safe.xMax - size.x, columnIndex / 4f),
+                        Mathf.Lerp(safe.yMax - size.y, safe.yMin, rowIndex / 4f));
+                    Rect candidate = new Rect(minimum, size);
+                    float obstruction = PanelOverlap(candidate, targetRect) * .01f;
+                    foreach (Rect control in controls) obstruction += PanelOverlap(candidate, control) * 100f;
+                    foreach (Rect label in labels) obstruction += PanelOverlap(candidate, label) * 2f;
+                    if (obstruction >= leastObstruction) continue;
+                    leastObstruction = obstruction;
+                    chosen = candidate;
+                }
+            }
+        }
+        UseCompactPanelLayout(chosen.size);
+        SetRect(panelRect, chosen);
+        panelRect.SetAsLastSibling();
+    }
+
+    private float CompactPanelHeight(float width)
+    {
+        if (measuredCompactWidth == width && measuredCompactContent == contentText.text) return measuredCompactHeight;
+        float bodyHeight = contentText.GetPreferredValues(contentText.text, Mathf.Max(200f, width - 66f), float.PositiveInfinity).y;
+        measuredCompactWidth = width;
+        measuredCompactContent = contentText.text;
+        measuredCompactHeight = 156f + Mathf.Clamp(bodyHeight + 4f, 44f, 112f);
+        return measuredCompactHeight;
+    }
+
+    private static float PanelOverlap(Rect panel, Rect target)
+    {
+        return Mathf.Max(0f, Mathf.Min(panel.xMax, target.xMax) - Mathf.Max(panel.xMin, target.xMin))
+            * Mathf.Max(0f, Mathf.Min(panel.yMax, target.yMax) - Mathf.Max(panel.yMin, target.yMin));
     }
 
     private void ResetPanelPosition()
     {
+        panelLayoutCached = false;
         if (panelRect != null)
         {
-            panelRect.anchoredPosition = authoredPanelPosition;
+            if (compactPresentation && overlayObject != null)
+            {
+                Rect bounds = overlayObject.GetComponent<RectTransform>().rect;
+                float width = Mathf.Min(520f, bounds.width - 48f);
+                UseCompactPanelLayout(new Vector2(width, CompactPanelHeight(width)));
+                panelRect.anchoredPosition = new Vector2(bounds.xMax - panelRect.rect.width * .5f - 24f,
+                    bounds.yMax - panelRect.rect.height * .5f - 24f);
+            }
+            else panelRect.anchoredPosition = authoredPanelPosition;
         }
 
         if (targetHighlight != null)
@@ -1236,7 +1903,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
     private void WarnMissingTarget(OnboardingStepData step)
     {
-        string signature = (step.stepCode ?? string.Empty) + "|" + (step.uiTargetKey ?? string.Empty);
+        string signature = StepIdentity(currentSnapshot) + "|" + (step.uiTargetKey ?? string.Empty);
         if (missingTargetWarningSignature == signature)
         {
             return;
@@ -1244,16 +1911,17 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
         missingTargetWarningSignature = signature;
         Debug.LogWarning(
-            "引导步骤 " + step.stepCode
+            "引导 " + (currentSnapshot == null ? "" : currentSnapshot.guideCode + "/" + currentSnapshot.guideVersion)
+            + " 步骤 " + step.stepCode
             + " 要求仅允许目标输入，但未找到 UI 目标 " + step.uiTargetKey
-            + "；保持输入保护，等待地图和目标加载。",
+            + "；已降级普通提示，不自动确认步骤。",
             this);
     }
 
     private static bool IsTargetPresentation(string presentationType)
     {
         string normalizedType = NormalizeKey(presentationType);
-        return normalizedType == "SPOTLIGHT" || normalizedType == "ARROW";
+        return normalizedType == "SPOTLIGHT" || normalizedType == "ARROW" || normalizedType == "TOOLTIP";
     }
 
     private static string NormalizeKey(string value)
@@ -1265,6 +1933,33 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
     private void AcknowledgeCurrentStep()
     {
+        if (retryPendingOnClick && !mutationRunning)
+        {
+            retryPendingOnClick = false;
+            pendingRetryAttempts = 0;
+            SavePendingMutation();
+            messageMode = false;
+            RefreshGuide(pendingMutationGuideCode);
+            return;
+        }
+        if (recoveryMessageMode && !mutationRunning)
+        {
+            if (recoveryCanRetry)
+            {
+                recoveryMessageMode = false;
+                messageMode = false;
+                recoveryDismissed = false;
+                RefreshCurrent();
+            }
+            else DismissRecoveryMessage();
+            return;
+        }
+        if ((targetMissing || presentationUnsupported) && !mutationRunning && currentSnapshot != null)
+        {
+            deferredStepIdentity = StepIdentity(currentSnapshot);
+            HideOverlay();
+            return;
+        }
         if (returnToUpdateFlow)
         {
             returnToUpdateFlow = false;
@@ -1300,7 +1995,12 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
     private void SkipCurrentOnboarding()
     {
-        if (currentSnapshot == null || !currentSnapshot.allowSkip || mutationRunning || messageMode)
+        if (recoveryMessageMode)
+        {
+            DismissRecoveryMessage();
+            return;
+        }
+        if (currentSnapshot == null || !currentSnapshot.allowSkip || mutationRunning || messageMode && !presentationUnsupported)
         {
             return;
         }
@@ -1310,7 +2010,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
     private void BeginMutation(bool skip)
     {
-        if (!CanDisplayStep(currentSnapshot))
+        if (!CanDisplayStep(currentSnapshot) || !IsSupportedSnapshot(currentSnapshot) || !skip && !IsSupportedStep(currentSnapshot.currentStep))
         {
             return;
         }
@@ -1323,8 +2023,11 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         }
 
         if (pendingRetryBlocked) return;
+        if (hasPendingMutation && pendingMutationGuideCode != currentSnapshot.guideCode) return;
         if (!hasPendingMutation)
         {
+            pendingMutationGuideCode = currentSnapshot.guideCode;
+            pendingRetryAttempts = 0;
             pendingMutationIsSkip = skip;
             pendingMutationStepCode = stepCode;
             pendingMutationKey = Guid.NewGuid().ToString("D");
@@ -1334,8 +2037,10 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
                 expectedStateVersion = currentSnapshot.stateVersion
             };
             hasPendingMutation = true;
-            pendingMutationPath = skip ? "/onboarding/skip"
-                : "/onboarding/steps/" + UnityWebRequest.EscapeURL(stepCode) + "/ack";
+            string route = legacyMainRoute && pendingMutationGuideCode == "MAIN_FLOW" ? "/onboarding"
+                : "/onboarding/guides/" + UnityWebRequest.EscapeURL(pendingMutationGuideCode);
+            pendingMutationPath = skip ? route + "/skip"
+                : route + "/steps/" + UnityWebRequest.EscapeURL(stepCode) + "/ack";
             pendingMutationJson = JsonUtility.ToJson(pendingMutationRequest);
             SavePendingMutation();
         }
@@ -1343,33 +2048,62 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         StartCoroutine(MutateRoutine(pendingMutationIsSkip));
     }
 
-    private static string PendingStorageKey(int playerId)
+    private static string PendingStorageKey(int playerId, string guideCode)
     {
-        return "weijun.onboarding.pending." + playerId;
+        return "weijun.onboarding.pending." + playerId + "." + guideCode;
     }
 
     private void SavePendingMutation()
     {
-        PlayerPrefs.SetString(PendingStorageKey(GameSession.PlayerId), JsonUtility.ToJson(new PendingIntent
+        PlayerPrefs.SetString(PendingStorageKey(GameSession.PlayerId, pendingMutationGuideCode), JsonUtility.ToJson(new PendingIntent
         {
+            guideCode = pendingMutationGuideCode,
             key = pendingMutationKey,
             path = pendingMutationPath,
             body = pendingMutationJson,
             stepCode = pendingMutationStepCode,
             skip = pendingMutationIsSkip,
-            blocked = pendingRetryBlocked
+            blocked = pendingRetryBlocked,
+            attempts = pendingRetryAttempts
         }));
         PlayerPrefs.Save();
     }
 
     private void RestorePendingMutation()
     {
-        PendingIntent intent = ParseResponse<PendingIntent>(PlayerPrefs.GetString(PendingStorageKey(GameSession.PlayerId), string.Empty));
-        if (intent == null) return;
+        if (hasPendingMutation) return;
+        string legacyKey = "weijun.onboarding.pending." + GameSession.PlayerId;
+        string mainKey = PendingStorageKey(GameSession.PlayerId, "MAIN_FLOW");
+        if (PlayerPrefs.HasKey(legacyKey) && !PlayerPrefs.HasKey(mainKey))
+        {
+            PlayerPrefs.SetString(mainKey, PlayerPrefs.GetString(legacyKey));
+            PlayerPrefs.DeleteKey(legacyKey);
+            PlayerPrefs.Save();
+        }
+        foreach (string guideCode in GuideCodes)
+        {
+            string json = PlayerPrefs.GetString(PendingStorageKey(GameSession.PlayerId, guideCode), string.Empty);
+            if (string.IsNullOrEmpty(json)) continue;
+            RestorePendingIntent(json, guideCode);
+            return;
+        }
+    }
+
+    private void RestorePendingIntent(string json, string guideCode)
+    {
+        pendingMutationGuideCode = guideCode;
+        PendingIntent intent = ParseResponse<PendingIntent>(json);
+        if (intent == null)
+        {
+            pendingRetryBlocked = true;
+            return;
+        }
         OnboardingMutationRequest body = ParseResponse<OnboardingMutationRequest>(intent.body);
-        string expectedPath = intent.skip ? "/onboarding/skip"
-            : "/onboarding/steps/" + UnityWebRequest.EscapeURL(intent.stepCode ?? string.Empty) + "/ack";
-        if (!Guid.TryParseExact(intent.key, "D", out _) || body == null || intent.path != expectedPath
+        string suffix = intent.skip ? "/skip" : "/steps/" + UnityWebRequest.EscapeURL(intent.stepCode ?? string.Empty) + "/ack";
+        string expectedPath = "/onboarding/guides/" + guideCode + suffix;
+        bool validPath = intent.path == expectedPath || guideCode == "MAIN_FLOW" && intent.path == "/onboarding" + suffix;
+        if (!Guid.TryParseExact(intent.key, "D", out _) || body == null || !validPath
+            || !string.IsNullOrEmpty(intent.guideCode) && intent.guideCode != guideCode
             || body.expectedGuideVersion <= 0 || body.expectedStateVersion <= 0)
         {
             pendingRetryBlocked = true;
@@ -1383,15 +2117,33 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         pendingMutationIsSkip = intent.skip;
         pendingMutationRequest = body;
         pendingRetryBlocked = intent.blocked;
+        pendingRetryAttempts = Mathf.Clamp(intent.attempts, 0, 3);
         hasPendingMutation = true;
     }
 
     private void ClearPendingMutation(int playerId)
     {
-        PlayerPrefs.DeleteKey(PendingStorageKey(playerId));
+        if (IsKnownGuide(pendingMutationGuideCode)) PlayerPrefs.DeleteKey(PendingStorageKey(playerId, pendingMutationGuideCode));
         PlayerPrefs.Save();
         hasPendingMutation = false;
         pendingRetryBlocked = false;
+        retryPendingOnClick = false;
+        pendingRetryAttempts = 0;
+    }
+
+    private void ReconcilePendingMutation()
+    {
+        if (!hasPendingMutation || mutationRunning || pendingRetryBlocked || pendingMutationRequest == null) return;
+        if (!guideSnapshots.TryGetValue(pendingMutationGuideCode, out OnboardingCurrentData snapshot)) return;
+        if (snapshot.guideVersion == pendingMutationRequest.expectedGuideVersion
+            && snapshot.stateVersion > pendingMutationRequest.expectedStateVersion
+            && (IsTerminalStatus(snapshot.status) || snapshot.currentStep != null && snapshot.currentStep.stepCode != pendingMutationStepCode))
+        {
+            ClearPendingMutation(GameSession.PlayerId);
+            pendingMutationKey = string.Empty;
+            pendingMutationRequest = null;
+            RestorePendingMutation();
+        }
     }
 
     private void ResolveGameplayBridge()
@@ -1406,6 +2158,31 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         }
         resolveGameplayTarget = bridge.GetMethod("ResolveTarget", BindingFlags.Public | BindingFlags.Static);
         gameplayStepReady = bridge.GetMethod("IsStepReady", BindingFlags.Public | BindingFlags.Static);
+        gameplayOpenPage = bridge.GetMethod("OpenPage", BindingFlags.Public | BindingFlags.Static);
+        gameplayPresentationSuspended = bridge.GetMethod("IsPresentationSuspended", BindingFlags.Public | BindingFlags.Static);
+    }
+
+    private bool IsGameplaySuspended(OnboardingStepData step)
+    {
+        if (step == null || !IsSupportedStep(step)) return false;
+        HomePageUI home = FindObjectOfType<HomePageUI>();
+        if (step.actionKey != "OPEN_GENDER_SELECTION" && home != null && home.HasActiveStarterSelection) return true;
+        ResolveGameplayBridge();
+        try
+        {
+            return gameplayPresentationSuspended != null && (bool)gameplayPresentationSuspended.Invoke(null,
+                new object[] { JsonUtility.ToJson(step), GameSession.PlayerId, GameSession.Token });
+        }
+        catch (Exception) { return false; }
+    }
+
+    private bool IsBattlePresentationActive()
+    {
+        return IsGameplaySuspended(new OnboardingStepData
+        {
+            stepCode = "FIRST_BATTLE_REWARD", actionKey = "OPEN_ADVENTURE", uiTargetKey = "ADVENTURE_START",
+            completionType = "BUSINESS_EVENT", presentationType = "SPOTLIGHT", inputMode = "ALLOW_TARGET_ONLY"
+        });
     }
 
     private static bool NeedsMapNavigation(OnboardingStepData step)
@@ -1418,9 +2195,12 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
     private bool IsStepReady(OnboardingStepData step)
     {
-        if (step == null || pendingRetryBlocked) return false;
-        if (step.stepCode == "WELCOME" || step.stepCode == "FINISH") return true;
-        if (step.stepCode != "OPEN_HOME_MAP" && step.stepCode != "FOCUS_FREE_LAND") return false;
+        if (step == null || pendingRetryBlocked || !IsSupportedStep(step)) return false;
+        if (IsExplanationStep(step)) return true;
+        HomePageUI home = FindObjectOfType<HomePageUI>(true);
+        if (HomePageActions.Contains(step.actionKey ?? string.Empty))
+            return home != null && home.IsOnboardingNavigationReady(JsonUtility.ToJson(step));
+        if (home != null && home.IsOnboardingNavigationReady(JsonUtility.ToJson(step))) return true;
         ResolveGameplayBridge();
         try
         {
@@ -1437,12 +2217,14 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     [Serializable]
     private sealed class PendingIntent
     {
+        public string guideCode;
         public string key;
         public string path;
         public string body;
         public string stepCode;
         public bool skip;
         public bool blocked;
+        public int attempts;
     }
 
     private IEnumerator MutateRoutine(bool skip)
@@ -1450,6 +2232,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         mutationRunning = true;
         int requestPlayerId = GameSession.PlayerId;
         string requestToken = GameSession.Token;
+        string requestGuide = pendingMutationGuideCode;
         int retryCount = 0;
         bool complete = false;
 
@@ -1472,6 +2255,8 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
             }
 
             ApiRequestUtility.SetIdempotencyKey(request, pendingMutationKey);
+            pendingRetryAttempts++;
+            SavePendingMutation();
             using (request)
             {
                 yield return request.SendWebRequest();
@@ -1494,14 +2279,22 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
                     continue;
                 }
 
-                OnboardingMutationEnvelope response = ParseResponse<OnboardingMutationEnvelope>(request.downloadHandler.text);
+                OnboardingCurrentEnvelope response = ParseResponse<OnboardingCurrentEnvelope>(request.downloadHandler.text);
                 if (request.result == UnityWebRequest.Result.Success
                     && response != null
                     && response.code == 200
                     && response.data != null)
                 {
+                    if (!string.IsNullOrEmpty(response.data.guideCode) && response.data.guideCode != requestGuide)
+                    {
+                        Debug.LogWarning("引导写响应教程不匹配，保留原请求并重新查询。", this);
+                        nextPendingRetryTime = Time.unscaledTime + QueryRetryDelaySeconds;
+                        RefreshGuide(requestGuide);
+                        complete = true;
+                        continue;
+                    }
                     ClearPendingMutation(requestPlayerId);
-                    ApplyMutationResponse(response.data);
+                    ApplyMutationResponse(response.data, requestGuide);
                     hasPendingMutation = false;
                     pendingMutationKey = string.Empty;
                     pendingMutationStepCode = string.Empty;
@@ -1519,10 +2312,10 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
                 }
                 bool uncertain = IsRetryable(request) || (request.result == UnityWebRequest.Result.Success
                     && (response == null || (response.code == 200 && response.data == null)));
-                if (uncertain && retryCount < MaxMutationRetries)
+                if (uncertain && retryCount < MaxMutationRetries && pendingRetryAttempts < 3)
                 {
                     retryCount++;
-                    yield return new WaitForSecondsRealtime(Mathf.Pow(2f, retryCount - 1));
+                    yield return new WaitForSecondsRealtime(GetRetryDelay(request, Mathf.Pow(2f, retryCount - 1)));
                     continue;
                 }
 
@@ -1554,45 +2347,55 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         }
 
         mutationRunning = false;
+        if (!hasPendingMutation) RestorePendingMutation();
+        if (hasPendingMutation && !pendingRetryBlocked && pendingRetryAttempts >= 3)
+        {
+            ShowPendingRecovery();
+            yield break;
+        }
         RenderSnapshot();
     }
 
-    private void ApplyMutationResponse(OnboardingMutationData response)
+    private void ApplyMutationResponse(OnboardingCurrentData response, string requestGuide)
     {
-        if (currentSnapshot == null || response == null)
+        if (response == null || !IsKnownGuide(requestGuide))
         {
             RefreshCurrent();
             return;
         }
 
-        if (!CanApplyWriteResponse(currentSnapshot.guideVersion, currentSnapshot.stateVersion,
-            response.guideVersion, response.stateVersion))
+        if (string.IsNullOrEmpty(response.guideCode) && requestGuide == "MAIN_FLOW") response.guideCode = "MAIN_FLOW";
+        if (response.guideCode != requestGuide || !guideSnapshots.TryGetValue(requestGuide, out OnboardingCurrentData previous)
+            || !CanApplyWriteResponse(previous.guideVersion, previous.stateVersion, response.guideVersion, response.stateVersion))
         {
             Debug.LogWarning("新手引导写响应版本过旧，重新查询当前快照。", this);
             RefreshCurrent();
             return;
         }
 
-        currentSnapshot.available = response.available;
-        currentSnapshot.guideVersion = response.guideVersion;
-        currentSnapshot.stateVersion = response.stateVersion;
-        currentSnapshot.status = response.status;
-        currentSnapshot.currentStep = response.currentStep;
-        RenderSnapshot();
+        ApplySnapshot(response);
         RefreshCurrent();
     }
 
     private void HandleQueryFailure(int code, UnityWebRequest request)
     {
         string message = ApiRequestUtility.GetErrorMessage(request, "新手引导查询失败");
+        queryFailureCount++;
+        nextQueryTime = Time.unscaledTime + GetRetryDelay(request,
+            Mathf.Min(60f, QueryRetryDelaySeconds * Mathf.Pow(2f, Mathf.Min(queryFailureCount - 1, 4))));
+        if (request != null && request.responseCode == 403 && code != 8006)
+        {
+            ReturnToAccessCheck();
+            return;
+        }
         if (code == 8001)
         {
-            ShowMessage("新手引导暂不可用", "引导配置暂时不可用，请稍后重新查询。", false, false);
+            ShowRecoveryMessage("新手引导暂不可用", "引导配置暂时不可用，请稍后重新查询。可以先收起提示继续游戏。", true);
             ScheduleQueryRetry();
         }
         else if (code == 8004)
         {
-            ShowMessage("引导状态同步中", "正在重新查询当前进度，请稍候。", false, false);
+            ShowRecoveryMessage("引导状态同步中", "正在重新查询当前进度，可以先收起提示。", true);
             ScheduleQueryRetry();
         }
         else
@@ -1603,7 +2406,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
                 || request.responseCode >= 500))
             {
                 if (currentSnapshot != null)
-                    ShowMessage("引导连接恢复中", "暂时无法同步引导进度，请稍候。", false, false);
+                    ShowRecoveryMessage("引导连接恢复中", "暂时无法同步引导进度，可以重试查询或先收起提示。", true);
                 ScheduleQueryRetry();
             }
         }
@@ -1612,6 +2415,11 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private void HandleMutationFailure(int code, UnityWebRequest request)
     {
         string message = ApiRequestUtility.GetErrorMessage(request, "新手引导操作失败");
+        if (request != null && request.responseCode == 403 && code != 8006)
+        {
+            ReturnToAccessCheck();
+            return;
+        }
         if (code == 409
             || (code >= 4090 && code < 4100)
             || code == 8002
@@ -1625,14 +2433,15 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
             pendingMutationKey = string.Empty;
             pendingMutationStepCode = string.Empty;
             pendingMutationRequest = null;
-            ShowMessage("引导状态同步中", "正在重新查询当前进度，请稍候。", false, false);
+            ShowRecoveryMessage("引导状态同步中", "正在重新查询当前进度，可以先收起提示。", true);
             RefreshCurrent();
             return;
         }
 
         if (code == 8001)
         {
-            ShowMessage("新手引导暂不可用", "引导配置暂时不可用，请稍后重试。", false, false);
+            nextQueryTime = Time.unscaledTime + GetRetryDelay(request, QueryRetryDelaySeconds);
+            ShowRecoveryMessage("新手引导暂不可用", "暂时无法读取引导内容。可以稍后重试或先收起提示。", true);
             ScheduleQueryRetry();
             return;
         }
@@ -1641,7 +2450,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         {
             pendingRetryBlocked = true;
             SavePendingMutation();
-            ShowMessage("引导请求冲突", "原请求已保留，请联系客服处理后重试。", false, false);
+            ShowRecoveryMessage("引导进度待确认", "当前进度暂时无法确认。可以先收起提示继续游戏，并联系客服处理。", false);
             Debug.LogWarning("新手引导幂等键被重复用于不同请求：" + message, this);
             return;
         }
@@ -1660,12 +2469,16 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         }
 
         messageMode = true;
+        recoveryMessageMode = false;
         returnToUpdateFlow = false;
+        targetMissing = false;
+        retryPendingOnClick = false;
         PlayerPrefs.SetString("weijun.onboarding.stepCode", string.Empty);
+        UseFullPanelLayout();
         ResetTargetPresentation();
-        titleText.text = title;
+        titleText.text = FrontendTextLocalization.NormalizePlayerMessage(title, "温馨提示");
         stepText.text = string.Empty;
-        contentText.text = message;
+        SetContentText(message);
         targetText.text = string.Empty;
         stateText.text = string.Empty;
         acknowledgeButton.gameObject.SetActive(showAcknowledge);
@@ -1711,7 +2524,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private static bool IsExplanationStep(OnboardingStepData step)
     {
         return step != null && string.Equals(step.completionType, "CLIENT_ACK", StringComparison.OrdinalIgnoreCase)
-            && (step.stepCode == "WELCOME" || step.stepCode == "FINISH");
+            && (step.stepCode == "WELCOME" || step.stepCode == "INTRO" || step.stepCode == "FINISH");
     }
 
     private void HideOverlay()
@@ -1730,7 +2543,23 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
     private void ClearSnapshot()
     {
+        FindObjectOfType<HomePageUI>(true)?.HideStarterSelection();
         currentSnapshot = null;
+        snoozedStepIdentity = null;
+        guideSnapshots.Clear();
+        requestedGuides.Clear();
+        refreshAllRequested = false;
+        legacyMainRoute = false;
+        nextQueryTime = 0f;
+        queryFailureCount = 0;
+        presentationSuspended = false;
+        deferredStepIdentity = null;
+        navigationStepIdentity = null;
+        homeNavigationIdentity = null;
+        targetMissing = false;
+        retryPendingOnClick = false;
+        recoveryMessageMode = false;
+        recoveryDismissed = false;
         pendingRetryBlocked = false;
         nextPendingRetryTime = 0f;
         queryQueued = false;
@@ -1739,6 +2568,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         pendingMutationKey = string.Empty;
         pendingMutationStepCode = string.Empty;
         pendingMutationRequest = null;
+        pendingMutationGuideCode = null;
         HideOverlay();
     }
 
@@ -1752,7 +2582,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
 
     private IEnumerator RetryQueryRoutine()
     {
-        yield return new WaitForSecondsRealtime(QueryRetryDelaySeconds);
+        yield return new WaitForSecondsRealtime(Mathf.Max(QueryRetryDelaySeconds, nextQueryTime - Time.unscaledTime));
         queryRetryCoroutine = null;
         RefreshCurrent();
     }
@@ -1807,6 +2637,100 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         return guideVersion == responseGuideVersion && responseStateVersion >= stateVersion;
     }
 
+    private static bool IsKnownGuide(string guideCode)
+    {
+        return !string.IsNullOrEmpty(guideCode) && Array.IndexOf(GuideCodes, guideCode) >= 0;
+    }
+
+    private static bool IsSupportedSnapshot(OnboardingCurrentData snapshot)
+    {
+        return snapshot != null && snapshot.contractVersion >= 1 && snapshot.contractVersion <= SupportedContractVersion
+            && snapshot.minimumClientVersionCode <= ApiRuntimeConfig.GetClientVersionCode();
+    }
+
+    private static bool IsSupportedStep(OnboardingStepData step)
+    {
+        if (step == null) return false;
+        bool presentation = step.presentationType == "DIALOG" || step.presentationType == "SPOTLIGHT"
+            || step.presentationType == "TOOLTIP" || step.presentationType == "ARROW";
+        bool input = step.inputMode == "BLOCK_ALL" || step.inputMode == "ALLOW_TARGET_ONLY" || step.inputMode == "ALLOW_ALL";
+        return presentation && input && (step.completionType == "CLIENT_ACK" || step.completionType == "BUSINESS_EVENT")
+            && (string.IsNullOrEmpty(step.actionKey) || SupportedActions.Contains(step.actionKey))
+            && (string.IsNullOrEmpty(step.uiTargetKey) || SupportedTargets.Contains(step.uiTargetKey));
+    }
+
+    private static string StepIdentity(OnboardingCurrentData snapshot)
+    {
+        return snapshot == null ? string.Empty : snapshot.guideCode + "/" + snapshot.guideVersion + "/"
+            + snapshot.stateVersion + "/" + (snapshot.currentStep == null ? "" : snapshot.currentStep.stepCode);
+    }
+
+    private bool ShouldActivateNavigation(OnboardingStepData step)
+    {
+        if (IsExplanationStep(step) || string.IsNullOrEmpty(step.actionKey)) return false;
+        string identity = StepIdentity(currentSnapshot);
+        if (navigationStepIdentity != identity)
+        {
+            navigationStepIdentity = identity;
+            navigationAttempts = 0;
+            nextNavigationTime = 0f;
+        }
+        if (navigationAttempts >= 3 || Time.unscaledTime < nextNavigationTime) return false;
+        navigationAttempts++;
+        nextNavigationTime = Time.unscaledTime + 3f;
+        return true;
+    }
+
+    private static float GetRetryDelay(UnityWebRequest request, float fallback)
+    {
+        string header = request == null ? null : request.GetResponseHeader("Retry-After");
+        if (float.TryParse(header, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float seconds))
+            return Mathf.Clamp(Mathf.Max(fallback, seconds), 1f, 300f);
+        return fallback;
+    }
+
+    private void ShowPendingRecovery()
+    {
+        ShowRecoveryMessage("引导进度待确认", "网络未能确认刚才的操作，请重试确认。重试不会重复推进引导。", true);
+        if (recoveryDismissed) return;
+        retryPendingOnClick = true;
+        acknowledgeButtonText.text = "重试确认";
+    }
+
+    private void ShowRecoveryMessage(string title, string message, bool canRetry)
+    {
+        if (recoveryDismissed)
+        {
+            HideOverlay();
+            return;
+        }
+        ShowMessage(title, message, true, canRetry, false);
+        recoveryMessageMode = true;
+        recoveryCanRetry = canRetry;
+        acknowledgeButtonText.text = canRetry ? "重新查询" : "暂时收起";
+        skipButtonText.text = "暂时收起";
+        acknowledgeButton.interactable = true;
+        skipButton.interactable = true;
+    }
+
+    private void DismissRecoveryMessage()
+    {
+        recoveryDismissed = true;
+        deferredStepIdentity = StepIdentity(currentSnapshot);
+        recoveryMessageMode = false;
+        retryPendingOnClick = false;
+        HideOverlay();
+    }
+
+    private void ReturnToAccessCheck()
+    {
+        ClearSnapshot();
+        accessCheckPending = true;
+        snapshotPlayerId = GameSession.PlayerId;
+        snapshotToken = GameSession.Token;
+        if (SceneManager.GetActiveScene().name != LaunchSceneName) SceneManager.LoadScene(LaunchSceneName);
+    }
+
     [Serializable]
     private sealed class OnboardingRealtimeEnvelope
     {
@@ -1818,6 +2742,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     private sealed class OnboardingRealtimeData
     {
         public int playerId;
+        public string guideCode;
         public long instanceId;
         public long guideVersion;
         public long stateVersion;
@@ -1894,11 +2819,18 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     }
 
     [Serializable]
-    private sealed class OnboardingMutationEnvelope
+    private sealed class OnboardingListEnvelope
     {
         public int code;
         public string message;
-        public OnboardingMutationData data;
+        public OnboardingCurrentData[] data;
+    }
+
+    [Serializable]
+    private sealed class OnboardingErrorEnvelope
+    {
+        public int code;
+        public string message;
     }
 
     [Serializable]
@@ -1913,17 +2845,6 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         public long stateVersion;
         public string status;
         public bool allowSkip;
-        public OnboardingStepData currentStep;
-        public string serverTime;
-    }
-
-    [Serializable]
-    private sealed class OnboardingMutationData
-    {
-        public bool available;
-        public long guideVersion;
-        public long stateVersion;
-        public string status;
         public OnboardingStepData currentStep;
         public string serverTime;
     }
@@ -1951,6 +2872,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         public string highlightColor;
         public string arrowDirection;
         public string animation;
+        public string optionCode;
     }
 
     [Serializable]

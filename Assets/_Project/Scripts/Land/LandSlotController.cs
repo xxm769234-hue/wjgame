@@ -6,7 +6,7 @@ using UnityEngine.Rendering;
 
 /// <summary>Owns one map shape, its mask range, and the land currently built there.</summary>
 [RequireComponent(typeof(PolygonCollider2D))]
-public sealed class LandSlotController : MonoBehaviour
+public sealed partial class LandSlotController : MonoBehaviour
 {
     private const int UnassignedSortingOrder = int.MinValue;
     private static int nextRuntimeSortingOffset;
@@ -48,6 +48,7 @@ public sealed class LandSlotController : MonoBehaviour
     private NpcConfig currentNpc;
     private SpriteRenderer buildingRenderer;
     private SpriteRenderer npcRenderer;
+    private SpriteRenderer simulationShapeRenderer;
     private SpriteRenderer purificationOverlayRenderer;
     private ResourceBubbleController resourceBubble;
     private LineRenderer outlineRenderer;
@@ -80,7 +81,6 @@ public sealed class LandSlotController : MonoBehaviour
     private bool hasRemoteUnlockState;
     private bool hasRuntimeLayoutGridPosition;
     private TextMeshPro purchaseIndicator;
-    private bool runtimePurchaseIndicatorStyle;
     private int purificationPanelOpenedFrame = -1;
     private readonly List<ProductionResponse> latestProductions = new List<ProductionResponse>();
     private static Material outlineMaterial;
@@ -196,14 +196,15 @@ public sealed class LandSlotController : MonoBehaviour
                 if (!success)
                 {
                     Debug.LogWarning($"Backend production collect failed: {message}", this);
-                    if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetProductionMessage($"Production failed: {message}");
+                    if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetProductionMessage($"生产收取失败：{message}");
                 }
+                else PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
             });
             return;
         }
 
         Debug.LogWarning("Backend production collect failed: Backend session is not authenticated.", this);
-        if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetProductionMessage("Production failed: Backend session is not authenticated.");
+        if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetProductionMessage("请先登录账号再收取产出。");
     }
 
     public bool CanReceiveMovedBuilding(BuildingConfig config, out string reason)
@@ -211,17 +212,17 @@ public sealed class LandSlotController : MonoBehaviour
         reason = string.Empty;
         if (!IsBuilt)
         {
-            reason = "Target land is not placed.";
+            reason = "目标地块尚未购买。";
             return false;
         }
         if (HasBuilding)
         {
-            reason = "Target land already has a building.";
+            reason = "目标地块已有建筑。";
             return false;
         }
         if (!AllowsBuildingType(config))
         {
-            reason = "Target land does not allow this building type.";
+            reason = "目标地块不允许建造此类型的建筑。";
             return false;
         }
         return true;
@@ -240,6 +241,80 @@ public sealed class LandSlotController : MonoBehaviour
         gridPosition = value;
         hasGridPosition = true;
         hasRuntimeLayoutGridPosition = true;
+    }
+
+    public void SetSimulationShapeSprite(Sprite sprite, Vector3 centerWorld)
+    {
+        ResolveReferences(false);
+        if (sprite == null)
+        {
+            if (simulationShapeRenderer != null) simulationShapeRenderer.enabled = false;
+            ConfigureRenderingLayers();
+            return;
+        }
+
+        if (simulationShapeRenderer == null)
+        {
+            Transform existing = transform.Find("Simulation Shape Renderer");
+            if (existing != null) simulationShapeRenderer = existing.GetComponent<SpriteRenderer>();
+        }
+        if (simulationShapeRenderer == null)
+        {
+            GameObject rendererObject = new GameObject("Simulation Shape Renderer");
+            rendererObject.transform.SetParent(transform, false);
+            simulationShapeRenderer = rendererObject.AddComponent<SpriteRenderer>();
+        }
+
+        transform.position = new Vector3(centerWorld.x, centerWorld.y, transform.position.z);
+        transform.localScale = Vector3.one;
+        ApplySpritePhysicsShape(sprite);
+
+        simulationShapeRenderer.sprite = sprite;
+        simulationShapeRenderer.color = Color.white;
+        simulationShapeRenderer.maskInteraction = SpriteMaskInteraction.None;
+        simulationShapeRenderer.sortingLayerName = landSortingLayer;
+        simulationShapeRenderer.sortingOrder = GetRuntimeSortingOrder() - 2;
+        simulationShapeRenderer.transform.localPosition = Vector3.zero;
+        simulationShapeRenderer.transform.localScale = Vector3.one;
+        simulationShapeRenderer.enabled = true;
+
+        if (spriteMask != null)
+        {
+            spriteMask.sprite = sprite;
+            spriteMask.transform.localPosition = Vector3.zero;
+            spriteMask.transform.localScale = Vector3.one;
+        }
+        ConfigureRenderingLayers();
+        FitLandRendererToCollider();
+    }
+
+    private void ApplySpritePhysicsShape(Sprite sprite)
+    {
+        if (polygonCollider == null || sprite == null) return;
+
+        int physicsShapeCount = sprite.GetPhysicsShapeCount();
+        if (physicsShapeCount <= 0)
+        {
+            Bounds bounds = sprite.bounds;
+            polygonCollider.pathCount = 1;
+            polygonCollider.SetPath(0, new[]
+            {
+                new Vector2(bounds.min.x, bounds.min.y),
+                new Vector2(bounds.min.x, bounds.max.y),
+                new Vector2(bounds.max.x, bounds.max.y),
+                new Vector2(bounds.max.x, bounds.min.y)
+            });
+            return;
+        }
+
+        List<Vector2> path = new List<Vector2>();
+        polygonCollider.pathCount = physicsShapeCount;
+        for (int shapeIndex = 0; shapeIndex < physicsShapeCount; shapeIndex++)
+        {
+            path.Clear();
+            sprite.GetPhysicsShape(shapeIndex, path);
+            polygonCollider.SetPath(shapeIndex, path);
+        }
     }
 
     public void SetRuntimeUnlockState(int unitIndex, int requiredPlayerLevel, bool unlocked, bool requiresGoldPurchase)
@@ -444,6 +519,7 @@ public sealed class LandSlotController : MonoBehaviour
 
         currentNpc = null;
         if (npcRenderer != null) npcRenderer.enabled = false;
+        HideResidentPortraitFrame();
     }
 
     public void ClearLandStateFromBackend()
@@ -463,12 +539,9 @@ public sealed class LandSlotController : MonoBehaviour
 
     private void OnMouseDown()
     {
-        if (!PlayerOnboardingInputLock.IsSlotAllowed(this)) return;
-        if (!PlayerOnboardingInputLock.IsTargetAllowed("FREE_LAND")
-            && !PlayerOnboardingInputLock.IsTargetAllowed("LAND_SLOT")) return;
-        if (EventSystem.current != null
-            && EventSystem.current.IsPointerOverGameObject()) return;
+        if (PlayerOnboardingInputLock.IsGameplayInputBlocked) return;
         if (TryOpenPurificationPanel()) return;
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
         if (currentLand == null)
         {
             if (runtimePurchaseAvailable)
@@ -527,7 +600,7 @@ public sealed class LandSlotController : MonoBehaviour
             && IsPurified
             && runtimeRequiresGoldPurchase
             && !runtimePurchased;
-        if (IsBuilt) SetOutlineVisible(true, outlineColor);
+        if (IsBuilt) SetOutlineVisible(false);
         else if (showPurificationOutline) SetOutlineVisible(true, purificationOutlineColor);
         else if (showUnpurchasedOutline) SetOutlineVisible(true, unpurchasedOutlineColor);
         else SetOutlineVisible(false);
@@ -545,7 +618,6 @@ public sealed class LandSlotController : MonoBehaviour
         {
             Transform existing = transform.Find("Land Purchase Indicator");
             if (existing != null) purchaseIndicator = existing.GetComponent<TextMeshPro>();
-            runtimePurchaseIndicatorStyle = false;
         }
         if (purchaseIndicator == null)
         {
@@ -555,11 +627,14 @@ public sealed class LandSlotController : MonoBehaviour
             purchaseIndicator.font = RuntimeFontAssetProvider.Resolve();
             purchaseIndicator.alignment = TextAlignmentOptions.Center;
             purchaseIndicator.enableWordWrapping = false;
+            purchaseIndicator.enableAutoSizing = true;
+            purchaseIndicator.fontSizeMin = 0.62f;
+            purchaseIndicator.fontSizeMax = 1.25f;
+            purchaseIndicator.overflowMode = TextOverflowModes.Ellipsis;
             purchaseIndicator.fontSize = 1.25f;
             purchaseIndicator.fontStyle = FontStyles.Bold;
             purchaseIndicator.color = new Color(1f, 0.78f, 0.2f, 1f);
             purchaseIndicator.rectTransform.sizeDelta = new Vector2(3.2f, 1f);
-            runtimePurchaseIndicatorStyle = true;
         }
 
         Vector3 localCenter = polygonCollider != null
@@ -568,14 +643,13 @@ public sealed class LandSlotController : MonoBehaviour
         purchaseIndicator.transform.localPosition = new Vector3(localCenter.x, localCenter.y, -0.15f);
         purchaseIndicator.sortingLayerID = SortingLayer.NameToID(buildingSortingLayer);
         purchaseIndicator.sortingOrder = GetRuntimeSortingOrder() + npcSortingOrderOffset + 1;
-        if (runtimePurchaseIndicatorStyle)
-        {
-            purchaseIndicator.fontSize = showPurificationAction ? 1f : 1.25f;
-            purchaseIndicator.color = showPurificationAction
-                ? new Color(0.42f, 1f, 0.86f, 1f)
-                : new Color(1f, 0.78f, 0.2f, 1f);
-        }
-        purchaseIndicator.text = showPurificationAction ? "PURIFY" : $"{runtimePurchaseGoldCost:N0} G";
+        float indicatorFontSize = showPurificationAction ? 1f : 1.25f;
+        purchaseIndicator.fontSize = indicatorFontSize;
+        purchaseIndicator.fontSizeMax = indicatorFontSize;
+        purchaseIndicator.color = showPurificationAction
+            ? new Color(0.42f, 1f, 0.86f, 1f)
+            : new Color(1f, 0.78f, 0.2f, 1f);
+        purchaseIndicator.text = showPurificationAction ? "净化" : $"{runtimePurchaseGoldCost:N0} 金币";
         purchaseIndicator.gameObject.SetActive(true);
     }
 
@@ -592,7 +666,13 @@ public sealed class LandSlotController : MonoBehaviour
         foreach (SpriteRenderer candidate in renderers)
         {
             if (candidate == null || candidate.GetComponent<SpriteMask>() != null) continue;
-            if (candidate == purificationOverlayRenderer || candidate.name == "Unpurified Overlay") continue;
+            if (candidate == purificationOverlayRenderer
+                || candidate.name == "Unpurified Overlay"
+                || candidate.name == "Simulation Shape Renderer"
+                || candidate.name == "Building Renderer"
+                || candidate.name == "NPC Renderer"
+                || candidate.name == "Resident Portrait Frame"
+                || candidate.GetComponentInParent<ResourceBubbleController>() != null) continue;
             return candidate;
         }
         return null;
@@ -605,7 +685,13 @@ public sealed class LandSlotController : MonoBehaviour
 
     private void FitSpriteRendererToCollider(SpriteRenderer renderer)
     {
-        if (renderer == null || renderer.sprite == null || polygonCollider == null) return;
+        if (renderer == null) return;
+        FitSpriteTransformToCollider(renderer.transform, renderer.sprite);
+    }
+
+    private void FitSpriteTransformToCollider(Transform target, Sprite sprite)
+    {
+        if (target == null || sprite == null || polygonCollider == null) return;
 
         Vector2[] path = ShapeHelper.GetLargestPath(polygonCollider);
         if (path.Length == 0) return;
@@ -618,14 +704,14 @@ public sealed class LandSlotController : MonoBehaviour
             max = Vector2.Max(max, path[i]);
         }
 
-        Vector2 spriteSize = renderer.sprite.bounds.size;
+        Vector2 spriteSize = sprite.bounds.size;
         if (spriteSize.x <= 0.0001f || spriteSize.y <= 0.0001f) return;
 
         Vector2 targetSize = max - min;
         float scale = Mathf.Max(targetSize.x / spriteSize.x, targetSize.y / spriteSize.y);
         Vector2 center = (min + max) * 0.5f;
-        renderer.transform.localPosition = new Vector3(center.x, center.y, renderer.transform.localPosition.z);
-        renderer.transform.localScale = new Vector3(scale, scale, 1f);
+        target.localPosition = new Vector3(center.x, center.y, target.localPosition.z);
+        target.localScale = new Vector3(scale, scale, 1f);
     }
 
     private void ConfigureRenderingLayers()
@@ -783,6 +869,12 @@ public sealed class LandSlotController : MonoBehaviour
         }
         if (buildingRenderer == null) return;
 
+        if (UsesSimulationComicShape)
+        {
+            ConfigureComicBuildingScene();
+            return;
+        }
+
         Vector3 localCenter = polygonCollider != null ? polygonCollider.transform.InverseTransformPoint(CenterWorld) : Vector3.zero;
         buildingRenderer.transform.localPosition = new Vector3(
             localCenter.x + currentBuilding.visualOffset.x,
@@ -813,6 +905,13 @@ public sealed class LandSlotController : MonoBehaviour
             npcRenderer = npcObject.AddComponent<SpriteRenderer>();
         }
         if (npcRenderer == null) return;
+
+        if (UsesSimulationComicShape)
+        {
+            ConfigureComicResidentPortrait();
+            return;
+        }
+        HideResidentPortraitFrame();
 
         Vector3 localCenter = polygonCollider != null ? polygonCollider.transform.InverseTransformPoint(CenterWorld) : Vector3.zero;
         npcRenderer.transform.localPosition = new Vector3(
@@ -929,6 +1028,7 @@ public sealed class LandSlotController : MonoBehaviour
             {
                 Debug.LogWarning($"Backend building sync failed: {ResultMessage(result)}. {BuildDebugSummary()}", this);
             }
+            else if (IsBuildingCompleted) PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
             if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.RefreshIfShowing(this);
         });
     }
@@ -942,8 +1042,8 @@ public sealed class LandSlotController : MonoBehaviour
 
     private static string ResultMessage<T>(BackendResult<T> result)
     {
-        if (result == null) return "No backend response.";
-        return string.IsNullOrEmpty(result.Message) ? $"HTTP {result.HttpStatus}" : result.Message;
+        if (result == null) return "未收到服务器响应。";
+        return FrontendTextLocalization.Normalize(string.IsNullOrEmpty(result.Message) ? $"请求状态：{result.HttpStatus}" : result.Message);
     }
 
     private void ClearBuildingTimer()
@@ -970,6 +1070,7 @@ public sealed class LandSlotController : MonoBehaviour
         HideResourceBubble();
         if (buildingRenderer != null) buildingRenderer.enabled = false;
         if (npcRenderer != null) npcRenderer.enabled = false;
+        HideResidentPortraitFrame();
     }
 
     private string GetDisplayedResourceName()
@@ -992,11 +1093,12 @@ public sealed class LandSlotController : MonoBehaviour
         if (spriteMask != null) spriteMask.enabled = true;
         if (landRenderer != null)
         {
-            if (config.landSprite != null) landRenderer.sprite = config.landSprite;
+            Sprite terrainSprite = LandTerrainCatalog.GetTerrain(config);
+            landRenderer.sprite = terrainSprite != null ? terrainSprite : config.landSprite;
             FitLandRendererToCollider();
             landRenderer.enabled = landRenderer.sprite != null;
         }
-        SetOutlineVisible(true);
+        SetOutlineVisible(false);
     }
 
     private void ApplyRemoteBuildingTimer(BuildingResponse response)

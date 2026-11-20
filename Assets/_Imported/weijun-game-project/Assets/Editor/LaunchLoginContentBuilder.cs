@@ -1,17 +1,18 @@
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
-using TMPro;
-using Text = TMPro.TMP_Text;
-using Font = TMPro.TMP_FontAsset;
-using InputField = TMPro.TMP_InputField;
 
 public static class LaunchLoginContentBuilder
 {
     private const string LaunchScenePath = "Assets/_Project/Scenes/Launch.unity";
-    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
+    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal.otf";
+    private const string TmpFontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
+    private const string BackgroundSpritePath = "Assets/_Imported/weijun-game-project/Assets/UI/背景/c9a90ac012534a68af69a6c031d102ca.png";
+    private const string LogoSpritePath = "Assets/_Project/Art/UI/Login/书屿梦行.png";
+    private const string StartGameButtonSpritePath = "Assets/_Project/Art/UI/Login/按键xuanli.png";
 
     private static readonly Color BackgroundColor = new Color(0.48f, 0.30f, 0.16f, 1f);
     private static readonly Color ShadowColor = new Color(0.18f, 0.10f, 0.05f, 0.28f);
@@ -80,9 +81,12 @@ public static class LaunchLoginContentBuilder
             style = contentRoot.gameObject.AddComponent<LoginCanvasStyle>();
         }
 
-        Font font = AssetDatabase.LoadAssetAtPath<Font>(FontPath)
-            ?? RuntimeFontAssetProvider.Resolve();
+        Font font = AssetDatabase.LoadAssetAtPath<Font>(FontPath);
         style.EditorSetFont(font);
+        style.EditorSetLoginSprites(
+            AssetDatabase.LoadAssetAtPath<Sprite>(BackgroundSpritePath),
+            AssetDatabase.LoadAssetAtPath<Sprite>(LogoSpritePath),
+            AssetDatabase.LoadAssetAtPath<Sprite>(StartGameButtonSpritePath));
 
         ClearChildren(contentRoot);
         BuildLoginContent(contentRoot, contentView, style);
@@ -103,49 +107,83 @@ public static class LaunchLoginContentBuilder
     {
         Image background = CreateImage("Background", contentRoot, BackgroundColor);
         style.ApplyBackground(background);
+        background.raycastTarget = false;
         Stretch(background.rectTransform);
 
-        RectTransform decoration = CreateRectObject("Decoration", contentRoot);
-        Stretch(decoration);
-        CreateDecorLine("TopLeftLine", decoration, new Vector2(-650f, 380f), style);
-        CreateDecorLine("TopRightLine", decoration, new Vector2(650f, 380f), style);
-        CreateDecorLine("BottomLeftLine", decoration, new Vector2(-650f, -380f), style);
-        CreateDecorLine("BottomRightLine", decoration, new Vector2(650f, -380f), style);
+        RectTransform landingContent = CreateRectObject("LandingContent", contentRoot);
+        Stretch(landingContent);
+        Image logo = CreateImage("GameLogo", landingContent, Color.white);
+        style.ApplyLogo(logo);
+        logo.preserveAspect = true;
+        logo.raycastTarget = false;
+        SetCentered(logo.rectTransform, new Vector2(0f, 210f), new Vector2(620f, 465f));
 
-        Image cardShadow = CreateImage("LoginCardShadow", contentRoot, style.ShadowColor);
+        Button startGameButton = CreateStartGameButton(landingContent, style);
+        Toggle privacyConsentToggle = CreatePrivacyConsentToggle(contentRoot, style);
+        SetCentered(privacyConsentToggle.GetComponent<RectTransform>(), new Vector2(-95f, -355f), new Vector2(490f, 38f));
+        CreateFixedButton(contentRoot, "PrivacyPolicyButton", "查看隐私协议", new Vector2(270f, -355f), new Vector2(180f, 42f), PaperColor, style.PaperTextColor, 15, style);
+
+        Text healthAdvice = CreateText(
+            "HealthyGamingAdvice",
+            contentRoot,
+            "抵制不良游戏，拒绝盗版游戏。注意自我保护，谨防受骗上当。\n适度游戏益脑，沉迷游戏伤身。合理安排时间，享受健康生活。",
+            21,
+            FontStyle.Bold,
+            Color.white,
+            TextAnchor.MiddleCenter,
+            style);
+        SetRect(healthAdvice.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 16f), new Vector2(1280f, 68f));
+        Outline healthOutline = healthAdvice.gameObject.AddComponent<Outline>();
+        healthOutline.effectColor = new Color(0.24f, 0.13f, 0.07f, 0.92f);
+        healthOutline.effectDistance = new Vector2(2f, -2f);
+
+        Image loginDialogOverlay = CreateImage("LoginDialog", contentRoot, new Color(0.05f, 0.03f, 0.02f, 0.68f));
+        loginDialogOverlay.raycastTarget = true;
+        Stretch(loginDialogOverlay.rectTransform);
+
+        Image cardShadow = CreateImage("DialogShadow", loginDialogOverlay.transform, style.ShadowColor);
         cardShadow.raycastTarget = false;
-        SetCentered(cardShadow.rectTransform, new Vector2(10f, -10f), new Vector2(850f, 960f));
+        SetCentered(cardShadow.rectTransform, new Vector2(12f, -12f), new Vector2(860f, 740f));
 
-        Image card = CreateImage("LoginCard", contentRoot, PanelColor);
-        style.ApplyPanel(card);
-        card.raycastTarget = false;
-        SetCentered(card.rectTransform, Vector2.zero, new Vector2(850f, 960f));
+        Image card = CreateImage("DialogPanel", loginDialogOverlay.transform, PaperColor);
+        style.ApplyPaper(card);
+        card.raycastTarget = true;
+        SetCentered(card.rectTransform, Vector2.zero, new Vector2(860f, 740f));
+        Outline cardOutline = card.gameObject.AddComponent<Outline>();
+        cardOutline.effectColor = new Color(0.22f, 0.12f, 0.06f, 0.72f);
+        cardOutline.effectDistance = new Vector2(3f, -3f);
 
-        BuildLogo(card.transform, style);
-        InputField accountInput = BuildLoginInput(card.transform, "AccountField", "AccountInput", "账号", "请输入登录账号", 232f, 50, style);
-        InputField nicknameInput = BuildLoginInput(card.transform, "NicknameField", "NicknameInput", "昵称", "注册或首次微信登录时填写", 124f, 50, style);
-        InputField passwordInput = BuildLoginInput(card.transform, "PasswordField", "PasswordInput", "密码", "请输入密码", 16f, 255, style);
+        Text dialogTitle = CreateText("DialogTitle", card.transform, "账号登录", 36, FontStyle.Bold, style.PaperTextColor, TextAnchor.MiddleCenter, style);
+        SetCentered(dialogTitle.rectTransform, new Vector2(0f, 318f), new Vector2(600f, 54f));
+        Text dialogSubtitle = CreateText("DialogSubtitle", card.transform, "登录后继续你的书屿旅程", 17, FontStyle.Normal, MutedTextColor, TextAnchor.MiddleCenter, style);
+        SetCentered(dialogSubtitle.rectTransform, new Vector2(0f, 278f), new Vector2(600f, 36f));
+        Button loginDialogCloseButton = CreateFixedButton(card.transform, "LoginDialogCloseButton", "×", new Vector2(382f, 320f), new Vector2(54f, 48f), new Color(0.55f, 0.34f, 0.18f, 1f), Color.white, 28, style);
+
+        InputField accountInput = BuildLoginInput(card.transform, "AccountField", "AccountInput", "账号", "请输入登录账号", 186f, 50, style);
+        InputField nicknameInput = BuildLoginInput(card.transform, "NicknameField", "NicknameInput", "昵称", "注册或首次微信登录时填写", 81f, 50, style);
+        InputField passwordInput = BuildLoginInput(card.transform, "PasswordField", "PasswordInput", "密码", "请输入密码", -24f, 255, style);
         passwordInput.contentType = InputField.ContentType.Password;
 
         Toggle rememberToggle = CreateRememberToggle(card.transform, style);
-        SetCentered(rememberToggle.GetComponent<RectTransform>(), new Vector2(-214f, -56f), new Vector2(220f, 28f));
+        SetCentered(rememberToggle.GetComponent<RectTransform>(), new Vector2(-214f, -82f), new Vector2(220f, 28f));
 
         RectTransform actions = CreateRectObject("LoginActions", card.transform);
         Stretch(actions);
-        Button loginButton = CreateFixedButton(actions, "LoginButton", "登录", new Vector2(-158f, -132f), new Vector2(290f, 54f), PrimaryColor, Color.white, 22, style);
-        Button registerButton = CreateFixedButton(actions, "RegisterButton", "注册并登录", new Vector2(158f, -132f), new Vector2(290f, 54f), new Color(0.76f, 0.83f, 0.92f, 1f), new Color(0.12f, 0.22f, 0.34f, 1f), 21, style);
-        Button weChatButton = CreateFixedButton(actions, "WeChatLoginButton", "微信登录", new Vector2(-158f, -204f), new Vector2(290f, 54f), WeChatButtonColor, Color.white, 21, style);
+        Button loginButton = CreateFixedButton(actions, "LoginButton", "登录", new Vector2(-158f, -154f), new Vector2(290f, 54f), PrimaryColor, Color.white, 22, style);
+        Button registerButton = CreateFixedButton(actions, "RegisterButton", "注册并登录", new Vector2(158f, -154f), new Vector2(290f, 54f), new Color(0.76f, 0.83f, 0.92f, 1f), new Color(0.12f, 0.22f, 0.34f, 1f), 21, style);
+        Button weChatButton = CreateFixedButton(actions, "WeChatLoginButton", "微信登录", new Vector2(-158f, -224f), new Vector2(290f, 54f), WeChatButtonColor, Color.white, 21, style);
+        Button settingsButton = CreateFixedButton(actions, "SettingsButton", "设置", new Vector2(78f, -224f), new Vector2(150f, 54f), PaperColor, style.PaperTextColor, 18, style);
+        Button mailButton = CreateFixedButton(actions, "MailButton", "邮件", new Vector2(256f, -224f), new Vector2(150f, 54f), PaperColor, style.PaperTextColor, 18, style);
         Text statusText = CreateText("StatusText", card.transform, string.Empty, 18, FontStyle.Normal, ErrorColor, TextAnchor.MiddleCenter, style);
-        SetCentered(statusText.rectTransform, new Vector2(0f, -276f), new Vector2(650f, 48f));
-
-        RectTransform secondaryActions = CreateRectObject("SecondaryActions", contentRoot);
-        Stretch(secondaryActions);
-        Button settingsButton = CreateFixedButton(secondaryActions, "SettingsButton", "设置", new Vector2(852f, 390f), new Vector2(104f, 72f), PaperColor, style.PaperTextColor, 18, style);
-        Button mailButton = CreateFixedButton(secondaryActions, "MailButton", "邮件", new Vector2(852f, 300f), new Vector2(104f, 72f), PaperColor, style.PaperTextColor, 18, style);
+        SetCentered(statusText.rectTransform, new Vector2(0f, -304f), new Vector2(690f, 52f));
 
         GameObject settingsPanel = BuildSettingsPanel(contentRoot, style, out Button settingsCloseButton);
+        loginDialogOverlay.gameObject.SetActive(false);
         contentView.EditorSetReferences(
             style,
+            startGameButton,
+            loginDialogOverlay.gameObject,
+            loginDialogCloseButton,
             accountInput,
             nicknameInput,
             passwordInput,
@@ -160,21 +198,56 @@ public static class LaunchLoginContentBuilder
             settingsCloseButton);
     }
 
-    private static void BuildLogo(Transform parent, LoginCanvasStyle style)
+    private static Button CreateStartGameButton(Transform parent, LoginCanvasStyle style)
     {
-        Image shadow = CreateImage("LogoShadow", parent, style.ShadowColor);
-        shadow.raycastTarget = false;
-        SetCentered(shadow.rectTransform, new Vector2(8f, 384f), new Vector2(650f, 126f));
+        Image image = CreateImage("StartGameButton", parent, Color.white);
+        style.ApplyStartGameButton(image);
+        image.preserveAspect = true;
+        image.raycastTarget = true;
+        SetCentered(image.rectTransform, new Vector2(0f, -220f), new Vector2(430f, 164f));
 
-        Image panel = CreateImage("LogoPanel", parent, style.PaperColor);
-        style.ApplyPaper(panel);
-        SetCentered(panel.rectTransform, new Vector2(0f, 392f), new Vector2(650f, 126f));
+        Button button = image.gameObject.AddComponent<Button>();
+        button.targetGraphic = image;
+        button.transition = Selectable.Transition.ColorTint;
+        button.colors = CreateSelectableColors(Color.white, new Color(1f, 0.96f, 0.90f, 1f), new Color(0.82f, 0.82f, 0.82f, 1f), new Color(0.62f, 0.62f, 0.62f, 0.82f));
 
-        Text title = CreateText("LogoText", panel.transform, "维钧游戏", 42, FontStyle.Bold, new Color(0.74f, 0.20f, 0.15f, 1f), TextAnchor.MiddleCenter, style);
-        SetRect(title.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(0f, 12f), new Vector2(-24f, -44f));
+        Text label = CreateText("Text", image.transform, "开始游戏", 40, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter, style);
+        Stretch(label.rectTransform, new Vector2(24f, 16f), new Vector2(-24f, -16f));
+        Outline outline = label.gameObject.AddComponent<Outline>();
+        outline.effectColor = new Color(0.18f, 0.10f, 0.05f, 0.82f);
+        outline.effectDistance = new Vector2(2f, -2f);
+        return button;
+    }
 
-        Text subtitle = CreateText("LogoSubtitle", panel.transform, "登录领地手册，继续你的旅程", 16, FontStyle.Normal, new Color(0.48f, 0.39f, 0.31f, 1f), TextAnchor.MiddleCenter, style);
-        SetRect(subtitle.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 12f), new Vector2(-24f, 30f));
+    private static Toggle CreatePrivacyConsentToggle(Transform parent, LoginCanvasStyle style)
+    {
+        RectTransform root = CreateRectObject("PrivacyConsentToggle", parent);
+        Toggle toggle = root.gameObject.AddComponent<Toggle>();
+        toggle.transition = Selectable.Transition.ColorTint;
+
+        Image box = CreateImage("Box", root, Color.white);
+        SetRect(box.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), Vector2.zero, new Vector2(24f, 24f));
+        Image checkmark = CreateImage("Checkmark", box.transform, PrimaryColor);
+        SetRect(checkmark.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(14f, 14f));
+        toggle.targetGraphic = box;
+        toggle.graphic = checkmark;
+        toggle.isOn = false;
+
+        GameObject labelObject = new GameObject("Label", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+        labelObject.layer = root.gameObject.layer;
+        labelObject.transform.SetParent(root, false);
+        TMP_Text label = labelObject.GetComponent<TMP_Text>();
+        label.font = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(TmpFontPath);
+        label.text = "我已阅读并同意当前隐私协议";
+        label.fontSize = style.ResolveFontSize(15);
+        label.color = Color.white;
+        label.alignment = TextAlignmentOptions.MidlineLeft;
+        label.raycastTarget = false;
+        SetRect(label.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(34f, 0f), Vector2.zero);
+        Outline outline = labelObject.AddComponent<Outline>();
+        outline.effectColor = new Color(0.24f, 0.13f, 0.07f, 0.88f);
+        outline.effectDistance = new Vector2(1f, -1f);
+        return toggle;
     }
 
     private static InputField BuildLoginInput(
@@ -277,11 +350,11 @@ public static class LaunchLoginContentBuilder
         style.ApplyInput(frame);
         frame.raycastTarget = true;
 
-        TMP_InputField input = frame.gameObject.AddComponent<TMP_InputField>();
+        InputField input = frame.gameObject.AddComponent<InputField>();
         input.targetGraphic = frame;
         input.transition = Selectable.Transition.ColorTint;
         input.colors = CreateSelectableColors(InputColor, InputHoverColor, Color.white, new Color(0.82f, 0.86f, 0.92f, 1f));
-        input.lineType = TMP_InputField.LineType.SingleLine;
+        input.lineType = InputField.LineType.SingleLine;
 
         Text text = CreateText("Text", frame.transform, string.Empty, 18, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleLeft, style);
         Stretch(text.rectTransform, new Vector2(16f, 0f), new Vector2(-16f, 0f));
@@ -345,36 +418,19 @@ public static class LaunchLoginContentBuilder
     {
         RectTransform root = CreateRectObject(name, parent);
         root.gameObject.AddComponent<CanvasRenderer>();
-        TMP_Text text = root.gameObject.AddComponent<TextMeshProUGUI>();
+        Text text = root.gameObject.AddComponent<Text>();
         int resolvedFontSize = style.ResolveFontSize(fontSize);
-        text.font = style.ResolveFont(RuntimeFontAssetProvider.Resolve());
+        text.font = style.ResolveFont(AssetDatabase.LoadAssetAtPath<Font>(FontPath));
         text.text = value;
         text.fontSize = resolvedFontSize;
         text.fontStyle = style.ResolveFontStyle(name, fontStyle);
         text.color = style.ResolveTextColor(name, color);
-        text.alignment = ConvertTextAlignment(alignment);
-        text.enableAutoSizing = true;
-        text.fontSizeMin = Mathf.Clamp(resolvedFontSize - 4, 8, resolvedFontSize);
-        text.fontSizeMax = resolvedFontSize;
+        text.alignment = alignment;
+        text.resizeTextForBestFit = true;
+        text.resizeTextMinSize = Mathf.Clamp(resolvedFontSize - 4, 8, resolvedFontSize);
+        text.resizeTextMaxSize = resolvedFontSize;
         text.raycastTarget = false;
         return text;
-    }
-
-    private static TextAlignmentOptions ConvertTextAlignment(TextAnchor alignment)
-    {
-        switch (alignment)
-        {
-            case TextAnchor.UpperLeft: return TextAlignmentOptions.TopLeft;
-            case TextAnchor.UpperCenter: return TextAlignmentOptions.Top;
-            case TextAnchor.UpperRight: return TextAlignmentOptions.TopRight;
-            case TextAnchor.MiddleLeft: return TextAlignmentOptions.MidlineLeft;
-            case TextAnchor.MiddleCenter: return TextAlignmentOptions.Center;
-            case TextAnchor.MiddleRight: return TextAlignmentOptions.MidlineRight;
-            case TextAnchor.LowerLeft: return TextAlignmentOptions.BottomLeft;
-            case TextAnchor.LowerCenter: return TextAlignmentOptions.Bottom;
-            case TextAnchor.LowerRight: return TextAlignmentOptions.BottomRight;
-            default: return TextAlignmentOptions.TopLeft;
-        }
     }
 
     private static ColorBlock CreateSelectableColors(Color normal, Color highlighted, Color pressed, Color disabled)

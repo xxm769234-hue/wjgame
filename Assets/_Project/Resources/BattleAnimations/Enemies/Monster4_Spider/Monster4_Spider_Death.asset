@@ -1,0 +1,193 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject:
+    fileID: 0
+  m_PrefabInstance:
+    fileID: 0
+  m_PrefabAsset:
+    fileID: 0
+  m_GameObject:
+    fileID: 0
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
+  m_Name: Monster4_Spider_Death
+  m_EditorClassIdentifier: ''
+  sequenceId: Monster4_Spider_Death
+  sourceFolder: D:/怪物动画/怪物4_蜘蛛/死亡_20261112_00378/Frames
+  action: 6
+  frames:
+  - fileID: 21300000
+    guid: 9829d5fd79d65e83b28efdfb45d93ccb
+    type: 3
+  - fileID: 21300000
+    guid: 4e76db6ccf535728ae14eace547c803c
+    type: 3
+  - fileID: 21300000
+    guid: 3e5883fb39605e95bf2051c2dbe45640
+    type: 3
+  - fileID: 21300000
+    guid: cd4a8746f4f2542a94740483e691bb54
+    type: 3
+  - fileID: 21300000
+    guid: e53b962291845554b1a47e86d16b82d5
+    type: 3
+  - fileID: 21300000
+    guid: e88956ac10295ab495da63423802f16a
+    type: 3
+  - fileID: 21300000
+    guid: 825f60a77ddc594498fa1d4a65c653b3
+    type: 3
+  - fileID: 21300000
+    guid: e89ecb40f66156acbc39cf914362be21
+    type: 3
+  - fileID: 21300000
+    guid: 6978c565667d5a2c986a99712c570855
+    type: 3
+  - fileID: 21300000
+    guid: ac3cee6503aa50bf99ad3475078e6728
+    type: 3
+  - fileID: 21300000
+    guid: a99f3c21ca7c540699ed439bfee99ed0
+    type: 3
+  - fileID: 21300000
+    guid: accacc915441598b961f7b9786dab21d
+    type: 3
+  - fileID: 21300000
+    guid: 05067e01ebd85ad788e75bc18e8fd474
+    type: 3
+  - fileID: 21300000
+    guid: 67e2ad0b16af5c5db2206e5b73ab03a5
+    type: 3
+  - fileID: 21300000
+    guid: 52245007ce1a5c6682ca0e62341ec71d
+    type: 3
+  - fileID: 21300000
+    guid: 6265363ed3c05b84b1a311a582491926
+    type: 3
+  - fileID: 21300000
+    guid: df0256dae7c855c08fd087617895e10f
+    type: 3
+  - fileID: 21300000
+    guid: 268bf63a4edc5a83b3ee404018d2de9d
+    type: 3
+  - fileID: 21300000
+    guid: a0f5562ddb3558f1a4cae5d0e8383de2
+    type: 3
+  - fileID: 21300000
+    guid: e2262cb9251c5b668812163fcca43f3c
+    type: 3
+  - fileID: 21300000
+    guid: 1f7c05b88c3e51a58ba430086983b535
+    type: 3
+  - fileID: 21300000
+    guid: 2672b3fa0c5a5a51aa4322e3964860cd
+    type: 3
+  - fileID: 21300000
+    guid: 7b75e5c6a39e5000beba068974bcb57e
+    type: 3
+  - fileID: 21300000
+    guid: 5d5734f8ee3e5ca9bbb2cbbbb936234c
+    type: 3
+  - fileID: 21300000
+    guid: 22d8dfff42cc5a6b83028df48df8364b
+    type: 3
+  - fileID: 21300000
+    guid: 06d307214cc35a2b92369dcd0b2f979b
+    type: 3
+  - fileID: 21300000
+    guid: 953d89aa6d375b2da6ba7244434b564a
+    type: 3
+  - fileID: 21300000
+    guid: da4fb79753d75e90838e0169f9120520
+    type: 3
+  - fileID: 21300000
+    guid: d8fabea8e54558e5ac49741a681d5785
+    type: 3
+  - fileID: 21300000
+    guid: 457133c3f4bb57a18a2eb593b506bc24
+    type: 3
+  - fileID: 21300000
+    guid: dc16643622a3531cb644f5ec9fae0bdb
+    type: 3
+  - fileID: 21300000
+    guid: 5115c87129925c64af967b55f176b5d1
+    type: 3
+  - fileID: 21300000
+    guid: 80d34945489e5ed59aaf2ecb96765ff4
+    type: 3
+  - fileID: 21300000
+    guid: b16c32f7eb8c5338914b8318c1e171ea
+    type: 3
+  - fileID: 21300000
+    guid: b6e1d9574a6e5c53be1c8f414f65ca22
+    type: 3
+  - fileID: 21300000
+    guid: d31070cd98575335a8aa308199fa664a
+    type: 3
+  - fileID: 21300000
+    guid: ba0d887ce03d5a3fb821b005d3f8d21f
+    type: 3
+  - fileID: 21300000
+    guid: 34b1f9932a7255ce90920ffeebe0ffc3
+    type: 3
+  - fileID: 21300000
+    guid: 2ad5b0e8c4c55361b3ff21f413d7b828
+    type: 3
+  - fileID: 21300000
+    guid: b347c6d9afcc5e7d9507a29c48fda8ed
+    type: 3
+  - fileID: 21300000
+    guid: 66bf085b410753889c78b2d5648f4418
+    type: 3
+  - fileID: 21300000
+    guid: 9b911a7d81535f2b9684f6e119ba644c
+    type: 3
+  - fileID: 21300000
+    guid: b8a42b0c9105557fa8137b65709d6842
+    type: 3
+  - fileID: 21300000
+    guid: f53b1dca2a17545c934076c78d18eada
+    type: 3
+  - fileID: 21300000
+    guid: 91a29be07d7f5f3989ef0e1c8c33623f
+    type: 3
+  - fileID: 21300000
+    guid: d904d2d32a945124b2b8c1b3a35e4434
+    type: 3
+  - fileID: 21300000
+    guid: 51ad6f060a435ad2aba4e1b93e26b410
+    type: 3
+  - fileID: 21300000
+    guid: f08e10e4dc8e5193b83717cca7c1eda6
+    type: 3
+  - fileID: 21300000
+    guid: 7a17f901ee1f58348a3fa7f41d22bd88
+    type: 3
+  - fileID: 21300000
+    guid: 86319dcf45e65bbdbbc8249d31e6e446
+    type: 3
+  - fileID: 21300000
+    guid: ec687f0cd1c95474b16a541e40fe66c3
+    type: 3
+  - fileID: 21300000
+    guid: 43491c8168de5d5cbf81b544aabcb322
+    type: 3
+  - fileID: 21300000
+    guid: 6c342d2f30a55c5e865ba2fabf3eed03
+    type: 3
+  - fileID: 21300000
+    guid: 42a3cdd6dee05635a602f93597416cec
+    type: 3
+  - fileID: 21300000
+    guid: 2c85783e583454099cfa12cdec65a84f
+    type: 3
+  - fileID: 21300000
+    guid: 64b50aba0df55b949a24910d01c14569
+    type: 3
+  frameRate: 30
+  playbackDuration: 1.8666666666666667
+  loop: 0

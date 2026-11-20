@@ -77,11 +77,11 @@ public partial class HomePageUI
     private string equipmentAutoUpgradeIdempotencyKey = string.Empty;
     private string npcAutoUpgradeRequestSignature = string.Empty;
     private string equipmentAutoUpgradeRequestSignature = string.Empty;
-    private string equipmentUpgradeConfirmation = string.Empty;
     private readonly Dictionary<string, string> autoUpgradePendingKeys = new Dictionary<string, string>();
 
     private void ShowEquipmentPanel()
     {
+        LoadPendingEquipmentGrowthRequests();
         HideEquipmentPanel();
         HideSystemMailPanel();
         HideSignPanel();
@@ -116,8 +116,9 @@ public partial class HomePageUI
         ShowEquipmentScenePanel(
             new InventoryItemResponse[0],
             true,
-            "正在读取服务器 NPC 与装备仓库...");
+            "正在加载角色与装备...");
         StartCoroutine(GetEquipmentInventoryList());
+        ResumePendingEquipmentGrowthRequest();
     }
 
     private void ShowEquipmentScenePanel(InventoryItemResponse[] items, bool serverBacked, string status)
@@ -128,7 +129,7 @@ public partial class HomePageUI
             SetLeftContent(
                 "装备",
                 BuildEquipmentFallbackText(items),
-                "装备场景组件未找到");
+                "装备页面暂时无法打开");
             return;
         }
 
@@ -231,10 +232,15 @@ public partial class HomePageUI
         RebuildServerEquipmentItems();
         _equipmentDataReadSucceeded = true;
         equipmentRefreshRunning = false;
-        equipmentStatusMessage = serverPlayerNpcs.Length == 0
+        equipmentStatusMessage = !string.IsNullOrEmpty(equipmentGrowthPersistenceError)
+            ? equipmentGrowthPersistenceError
+            : HasPendingEquipmentGrowthRequest()
+            ? "正在后台同步尚未返回的装备升级结果"
+            : serverPlayerNpcs.Length == 0
             ? "装备仓库已刷新；当前账号还没有可穿戴装备的 NPC"
-            : "服务器 NPC、装备仓库与穿戴数据已刷新";
+            : string.Empty;
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+        ResumePendingEquipmentGrowthRequest();
     }
 
     private IEnumerator RefreshServerEquipmentWarehouse(bool allowHidden = false)
@@ -446,7 +452,7 @@ public partial class HomePageUI
     {
         if (!equipmentServerBacked || serverEquipmentLoadout == null)
         {
-            return "基础属性  等待服务器\n装备加成  等待服务器\n最终属性  等待服务器";
+            return "正在加载角色属性...";
         }
 
         string baseText = $"生命 {serverEquipmentLoadout.baseHealth}  攻击 {serverEquipmentLoadout.baseAttack}  防御 {serverEquipmentLoadout.baseDefense}";
@@ -674,8 +680,8 @@ public partial class HomePageUI
             root,
             "EquipmentModeText",
             equipmentServerBacked
-                ? (selectedNpc == null ? "服务器装备 · 暂无 NPC" : $"{selectedNpc.name}  Lv.{selectedNpc.level}  {selectedEquipmentNpcIndex + 1}/{serverPlayerNpcs.Length}")
-                : "本地奖励库存 · 可穿戴");
+                ? (selectedNpc == null ? "暂无角色" : $"{selectedNpc.name}  Lv.{selectedNpc.level}")
+                : "体验装备");
         SetSceneText(root, "EquipmentCount", $"装备 {allVisibleItems.Count} 件");
         SetSceneText(root, "EquipmentStatus", equipmentStatusMessage);
         SetSceneText(root, "EquipmentAttackText", $"攻击  {totalStats.Attack}");
@@ -690,18 +696,13 @@ public partial class HomePageUI
         {
             refresh.interactable = HasAuthSession() && !equipmentRefreshRunning && !equipmentMutationRunning;
         }
-        SetSceneButtonText(refresh, equipmentRefreshRunning ? "同步中..." : HasPendingEquipmentGrowthRequest() ? "核对上次结果" : (HasAuthSession() ? "刷新背包" : "本地已同步"));
+        SetSceneButtonText(refresh, "刷新背包");
         BindSceneButton(refresh, () =>
         {
             if (HasAuthSession() && !equipmentRefreshRunning && !equipmentMutationRunning)
             {
-                if (HasPendingEquipmentGrowthRequest())
-                {
-                    ResumePendingEquipmentGrowthRequest();
-                    return;
-                }
                 equipmentRefreshRunning = true;
-                equipmentStatusMessage = "正在同步服务器背包...";
+                equipmentStatusMessage = "正在刷新装备...";
                 RenderEquipmentScenePanel(root);
                 StartCoroutine(GetEquipmentInventoryList());
             }
@@ -823,7 +824,6 @@ public partial class HomePageUI
             {
                 activeEquipmentCategory = categoryId;
                 selectedEquipmentItemKey = string.Empty;
-                equipmentUpgradeConfirmation = string.Empty;
                 equipmentStatusMessage = "已切换装备分类";
                 RenderEquipmentScenePanel(root);
                 ResetEquipmentScroll(root);
@@ -908,6 +908,7 @@ public partial class HomePageUI
                 ? scroll.viewport.rect.height : content.rect.height;
         }
         _equipmentRowTemplate.gameObject.SetActive(false);
+        ConfigureEquipmentCellReadability(_equipmentRowTemplate);
         // Keep generated rows in a small runtime pool. Scene-authored children are
         // never removed, and inactive rows are reused when the list grows again.
         HideEquipmentRowsFrom(items.Count);
@@ -919,7 +920,7 @@ public partial class HomePageUI
         }
 
         float columnStride = Mathf.Max(1f, _equipmentRowTemplate.rect.width + equipmentGridSpacing.x);
-        float rowStride = Mathf.Max(1f, _equipmentRowTemplate.rect.height + equipmentGridSpacing.y);
+        float rowStride = Mathf.Max(1f, _equipmentRowTemplate.rect.height + Mathf.Max(72f, equipmentGridSpacing.y));
         int rowCount = Mathf.CeilToInt(items.Count / (float)EquipmentColumns);
         float requiredHeight = rowCount == 0 ? 0f
             : GetEquipmentTemplateBottom(content) + (rowCount - 1) * rowStride;
@@ -950,10 +951,39 @@ public partial class HomePageUI
             ApplyEquipmentIcon(icon, fallback, item);
             SetEquipmentCellText(row, "EquipmentRowName", item.name);
             SetEquipmentCellText(row, "EquipmentRowMeta", "Lv." + item.level);
+            ConfigureEquipmentCellReadability(row);
             ConfigureEquipmentWearerBadge(row, item);
             Button button = row.GetComponent<Button>();
             if (button != null) button.interactable = !equipmentRefreshRunning && !equipmentMutationRunning;
             BindSceneButton(button, () => SelectEquipmentItem(root, itemKey));
+        }
+    }
+
+    private void ConfigureEquipmentCellReadability(RectTransform row)
+    {
+        Text name = FindEquipmentCellComponent<Text>(row, "EquipmentRowName");
+        if (name != null)
+        {
+            RectTransform rectangle = name.rectTransform;
+            rectangle.anchorMin = rectangle.anchorMax = new Vector2(.5f, 0f);
+            rectangle.pivot = new Vector2(.5f, 1f);
+            rectangle.anchoredPosition = new Vector2(0f, -4f);
+            rectangle.sizeDelta = new Vector2(row.rect.width + Mathf.Max(0f, equipmentGridSpacing.x - 8f), 60f);
+            ConfigureReadableText(name, name.name);
+        }
+        Text level = FindEquipmentCellComponent<Text>(row, "EquipmentRowMeta");
+        if (level != null)
+        {
+            RectTransform rectangle = level.rectTransform;
+            rectangle.anchorMin = rectangle.anchorMax = new Vector2(.5f, 0f);
+            rectangle.pivot = new Vector2(.5f, 0f);
+            rectangle.anchoredPosition = new Vector2(0f, 3f);
+            rectangle.sizeDelta = new Vector2(row.rect.width - 8f, 22f);
+            level.enableAutoSizing = false;
+            level.enableWordWrapping = false;
+            level.fontSize = 14f;
+            level.alignment = TextAlignmentOptions.Center;
+            level.overflowMode = TextOverflowModes.Ellipsis;
         }
     }
 
@@ -1079,6 +1109,7 @@ public partial class HomePageUI
                 : $"{GetEquipmentTypeLabel(item)}  ·  数量 x{item.quantity}");
         SetSceneText(root, "EquipmentDetailDescription", GetEquipmentDescriptionWithUpgradePreview(item));
         SetSceneText(root, "EquipmentDetailUpgradePreview", BuildEquipmentAutoUpgradePreviewText(item));
+        ConstrainEquipmentUpgradePreview(root);
         SetSceneText(root, "EquipmentDetailAttack", $"攻击  +{stats.Attack}");
         SetSceneText(root, "EquipmentDetailDefense", $"防御  +{stats.Defense}");
         SetSceneText(root, "EquipmentDetailHealth", $"生命  +{stats.Health}");
@@ -1091,21 +1122,23 @@ public partial class HomePageUI
         if (action != null)
         {
             action.interactable = !equipmentMutationRunning && !equipmentRefreshRunning
-                && !HasPendingEquipmentGrowthRequest()
+                && !HasPendingEquipmentGrowthRequest(item.playerEquipmentId)
                 && (!equipmentServerBacked || (GetCurrentEquipmentNpc() != null && serverEquipmentLoadout != null))
                 && !wornByOther
                 && (equipped || string.IsNullOrEmpty(GetEquippedItemKey(GetEquipmentSlot(item))));
         }
         bool slotOccupied = !equipped && !string.IsNullOrEmpty(GetEquippedItemKey(GetEquipmentSlot(item)));
-        SetSceneButtonText(action, equipped ? "卸下装备" : wornByOther ? "其他角色穿戴中" : slotOccupied ? "请先卸下" : "穿戴装备");
+        SetSceneButtonText(action, equipped ? "卸下" : "穿戴");
         BindSceneButton(action, () => ToggleEquipment(root, item));
         ConfigureServerEquipmentDetailActions(root, item);
         SetSceneText(
             root,
             "EquipmentDetailStatus",
             equipmentServerBacked
-                ? $"实例 ID {item.playerEquipmentId} · {(wearer != null ? wearer.name + " 已穿戴" : "当前位于仓库")} · {(item.locked ? "已锁定" : "未锁定")}"
+                ? $"{(wearer != null ? wearer.name + " 已穿戴" : "当前位于仓库")} · {(item.locked ? "已锁定" : "未锁定")}" +
+                    (wornByOther ? " · 请先在原角色卸下" : slotOccupied ? " · 请先卸下同部位装备" : string.Empty)
                 : (equipped ? "当前已穿戴" : "选择穿戴后会替换同一栏位的装备"));
+        ConfigureEquipmentPresentation(root);
     }
 
     private void SelectEquipmentItem(Transform root, string itemKey)
@@ -1119,7 +1152,6 @@ public partial class HomePageUI
         if (selectedEquipmentItemKey != itemKey)
         {
             CloseEquipmentBreakthroughPanel();
-            equipmentUpgradeConfirmation = string.Empty;
         }
         if (activeEquipmentCategory != "all" && activeEquipmentCategory != GetEquipmentSlot(item))
         {
@@ -1132,7 +1164,7 @@ public partial class HomePageUI
 
     private void ToggleEquipment(Transform root, InventoryItemResponse item)
     {
-        if (item == null || equipmentMutationRunning || equipmentRefreshRunning || HasPendingEquipmentGrowthRequest())
+        if (item == null || equipmentMutationRunning || equipmentRefreshRunning || HasPendingEquipmentGrowthRequest(item.playerEquipmentId))
         {
             return;
         }
@@ -1183,7 +1215,7 @@ public partial class HomePageUI
         if (currentKey == GetInventoryItemKey(item))
         {
             ClearEquippedItemKey(slotId);
-            equipmentStatusMessage = equipmentServerBacked ? "已取消本地预览" : $"已卸下：{item.name}";
+            equipmentStatusMessage = equipmentServerBacked ? "已取消预览" : $"已卸下：{item.name}";
         }
         else
         {
@@ -1222,7 +1254,7 @@ public partial class HomePageUI
 
         ClearEquippedItemKey(slotId);
         SaveEquipmentState();
-        equipmentStatusMessage = equipmentServerBacked ? "已取消本地预览" : $"已卸下{GetEquipmentSlotLabel(slotId)}装备";
+        equipmentStatusMessage = equipmentServerBacked ? "已取消预览" : $"已卸下{GetEquipmentSlotLabel(slotId)}装备";
         RenderEquipmentScenePanel(root);
     }
 
@@ -1570,7 +1602,7 @@ public partial class HomePageUI
         if (slot == "armor") return "守护领地的护甲装备，提升防御与生命。";
         if (slot == "boots") return "兼顾防护与行动的靴子，可提升速度。";
         if (slot == "gloves") return "强化攻击动作的手套，补充战斗属性。";
-        return "装备属性与穿戴部位由服务器配置决定。";
+        return string.Empty;
     }
 
     private string GetEquipmentDescriptionWithUpgradePreview(InventoryItemResponse item)
@@ -1630,6 +1662,16 @@ public partial class HomePageUI
         {
             return string.Empty;
         }
+        if (!string.IsNullOrEmpty(equipmentGrowthPersistenceError)) return equipmentGrowthPersistenceError;
+        if (HasPendingEquipmentGrowthRequest(item.playerEquipmentId))
+        {
+            return "正在自动同步此装备的升级结果，无需再次点击";
+        }
+        if (equipmentRefreshRunning) return "正在同步装备与资源数据...";
+        if (!_equipmentDataReadSucceeded) return "装备数据尚未同步，请刷新背包后再升级";
+        if (equipmentUpgradePreviewRequestId == item.playerEquipmentId && !string.IsNullOrEmpty(equipmentUpgradePreviewError))
+            return "升级预览：" + equipmentUpgradePreviewError + "；请刷新背包重试";
+        if (equipmentUpgradePreviewRunning) return "正在读取升级费用...";
         if (equipmentUpgradePreviewRequestId == item.playerEquipmentId && equipmentUpgradePreview != null
             && equipmentUpgradePreview.maxLevelReached)
         {
@@ -1642,7 +1684,7 @@ public partial class HomePageUI
         }
         if (equipmentAutoUpgradePreviewId != item.playerEquipmentId || equipmentAutoUpgradePreviewRunning)
         {
-            return "一键升级预览：正在读取服务器配置...";
+            return "正在计算可升级等级与消耗...";
         }
         if (!string.IsNullOrEmpty(equipmentAutoUpgradePreviewError))
         {
@@ -1701,6 +1743,24 @@ public partial class HomePageUI
         return result;
     }
 
+    private void ConstrainEquipmentUpgradePreview(Transform root)
+    {
+        ScrollRect scroll = FindSceneComponent<ScrollRect>(root, "EquipmentUpgradePreviewViewport");
+        if (scroll == null || scroll.viewport == null) return;
+        RectTransform viewport = scroll.viewport;
+        RectTransform status = FindSceneComponent<RectTransform>(root, "EquipmentDetailStatus");
+        if (status != null && status.parent == viewport.parent)
+        {
+            Vector3[] corners = new Vector3[4];
+            status.GetWorldCorners(corners);
+            float top = viewport.parent.InverseTransformPoint(viewport.TransformPoint(new Vector3(0f, viewport.rect.yMax))).y;
+            float bottom = viewport.parent.InverseTransformPoint(corners[1]).y + 8f;
+            viewport.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, Mathf.Max(24f, Mathf.Min(60f, top - bottom)));
+        }
+        RectMask2D mask = viewport.GetComponent<RectMask2D>();
+        if (mask != null) mask.enabled = true;
+    }
+
     private static long GetEquipmentStepDeltaHealth(EquipmentAutoUpgradeStepData step)
     {
         return step.deltaHealth != 0 ? step.deltaHealth : step.healthBonusDelta != 0
@@ -1750,7 +1810,7 @@ public partial class HomePageUI
 
     private void ResetEquipmentUpgradePreview()
     {
-        CloseEquipmentBreakthroughPanel();
+        if (!equipmentGrowthPreservesBreakthrough) CloseEquipmentBreakthroughPanel();
         _equipmentSinglePreviewVersion++;
         equipmentUpgradePreview = null;
         equipmentUpgradePreviewRequestId = 0L;
@@ -1832,7 +1892,7 @@ public partial class HomePageUI
             else if (!IsValidEquipmentSinglePreview(response.data, playerEquipmentId, expectedLevel))
             {
                 equipmentUpgradePreview = null;
-                equipmentUpgradePreviewError = "装备等级或配置已变化，请重新同步后预览";
+                equipmentUpgradePreviewError = "装备状态已变化，请刷新后重试";
             }
             else
             {
@@ -1963,14 +2023,16 @@ public partial class HomePageUI
             && !equipmentMutationRunning
             && !autoLoading
             && !autoUnavailable
-            && !npcMaxLevelReached;
-        SetSceneButtonText(upgrade, npcMaxLevelReached ? "已满级" : autoLoading ? "读取中..." : autoUnavailable ? "无法升级" : autoReady ? "一键升级" : "NPC升级");
+            && !npcMaxLevelReached
+            && autoReady;
+        SetSceneButtonText(upgrade, "一键升级");
         BindSceneButton(previous, () => ChangeEquipmentNpc(-1));
         BindSceneButton(next, () => ChangeEquipmentNpc(1));
-        Action upgradeAction = autoReady
-            ? (Action)(() => StartCoroutine(AutoUpgradeCurrentServerNpc(selectedNpc)))
-            : UpgradeCurrentServerNpc;
-        BindSceneButton(upgrade, upgradeAction);
+        BindSceneButton(upgrade, () =>
+        {
+            if (autoReady && !equipmentMutationRunning && !equipmentRefreshRunning)
+                StartCoroutine(AutoUpgradeCurrentServerNpc(selectedNpc));
+        });
     }
 
     private void ChangeEquipmentNpc(int offset)
@@ -2018,6 +2080,9 @@ public partial class HomePageUI
         Button lockButton = FindSceneComponent<Button>(root, "EquipmentLockButton");
         if (!equipmentServerBacked)
         {
+            SetSceneButtonText(upgrade, "升级");
+            SetSceneButtonText(autoUpgrade, "一键升级");
+            SetSceneButtonText(lockButton, item != null && item.locked ? "解锁" : "锁定");
             if (upgrade != null) upgrade.interactable = false;
             if (autoUpgrade != null) autoUpgrade.interactable = false;
             if (lockButton != null) lockButton.interactable = false;
@@ -2033,83 +2098,40 @@ public partial class HomePageUI
             || item.level >= equipmentUpgradePreview.maxLevel);
         bool breakthrough = singleReady && equipmentUpgradePreview.isBreakthrough;
         bool singleInsufficient = singleReady && !HasEquipmentUpgradeFunds(equipmentUpgradePreview);
-        bool pending = HasPendingEquipmentGrowthRequest();
-        bool singleError = !equipmentRefreshRunning && (!_equipmentDataReadSucceeded || (previewMatches && !equipmentUpgradePreviewRunning
-            && !string.IsNullOrEmpty(equipmentUpgradePreviewError)));
-        bool autoMatches = item != null && equipmentAutoUpgradePreviewId == item.playerEquipmentId;
-        bool autoError = autoMatches && !equipmentAutoUpgradePreviewRunning
-            && !string.IsNullOrEmpty(equipmentAutoUpgradePreviewError);
+        bool pending = item != null && HasPendingEquipmentGrowthRequest(item.playerEquipmentId);
         bool autoReady = HasCurrentEquipmentAutoUpgradePreview(item)
             && !equipmentAutoUpgradePreviewRunning;
         bool canAutoUpgrade = autoReady && equipmentAutoUpgradePreview.payableTargetLevel > item.level;
-        bool insufficient = autoReady && !canAutoUpgrade && !maxLevelReached && !breakthrough;
-        string singleKey = item == null ? string.Empty : "single:" + item.playerEquipmentId + ":" + item.level
-            + ":" + (equipmentUpgradePreview != null ? equipmentUpgradePreview.planFingerprint : string.Empty);
-        string autoKey = autoReady ? "auto:" + item.playerEquipmentId + ":" + item.level + ":"
-            + equipmentAutoUpgradePreview.requestedTargetLevel + ":" + equipmentAutoUpgradePreview.planFingerprint : string.Empty;
+        bool canPersistGrowth = string.IsNullOrEmpty(equipmentGrowthPersistenceError);
 
-        if (upgrade != null) upgrade.interactable = !busy && (pending || (item != null && !maxLevelReached
-            && !singleInsufficient && (singleReady || singleError)));
-        if (autoUpgrade != null) autoUpgrade.interactable = !busy && !pending && !breakthrough && item != null && !maxLevelReached
-            && (canAutoUpgrade || singleError || autoError);
+        if (upgrade != null) upgrade.interactable = canPersistGrowth && !busy && !pending && item != null && !maxLevelReached
+            && !singleInsufficient && singleReady;
+        if (autoUpgrade != null) autoUpgrade.interactable = canPersistGrowth && !busy && !pending && !breakthrough && item != null && !maxLevelReached
+            && canAutoUpgrade;
         if (lockButton != null) lockButton.interactable = item != null && !busy && !pending;
 
-        SetSceneButtonText(upgrade, pending ? "核对上次结果" : maxLevelReached ? "已满级" : singleInsufficient ? "资源不足"
-            : singleError ? "重试预览" : !singleReady ? "读取中..."
-            : breakthrough ? "突破" : equipmentUpgradeConfirmation == singleKey ? "确认升级" : "升级");
-        SetSceneButtonText(autoUpgrade, pending ? "等待核对" : maxLevelReached ? "已满级" : breakthrough ? "请先突破" : insufficient ? "资源不足"
-            : singleError || autoError ? "重试预览" : !autoReady ? "读取中..."
-            : equipmentUpgradeConfirmation == autoKey ? "确认升级" : "一键升级");
+        SetSceneButtonText(upgrade, breakthrough ? "突破" : "升级");
+        SetSceneButtonText(autoUpgrade, "一键升级");
         SetSceneButtonText(lockButton, item != null && item.locked ? "解锁" : "锁定");
 
         BindSceneButton(upgrade, () =>
         {
-            if (busy || equipmentMutationRunning || equipmentRefreshRunning) return;
-            if (HasPendingEquipmentGrowthRequest())
-            {
-                ResumePendingEquipmentGrowthRequest();
-                return;
-            }
+            if (busy || equipmentMutationRunning || equipmentRefreshRunning || !canPersistGrowth) return;
             if (item == null) return;
-            if (singleError)
-            {
-                RetryEquipmentUpgradePreview(root);
-                return;
-            }
+            if (HasPendingEquipmentGrowthRequest(item.playerEquipmentId)) return;
             if (!singleReady || maxLevelReached || singleInsufficient) return;
             if (breakthrough)
             {
                 ShowEquipmentBreakthroughPanel(item);
                 return;
             }
-            if (equipmentUpgradeConfirmation != singleKey)
-            {
-                equipmentUpgradeConfirmation = singleKey;
-                equipmentStatusMessage = "请核对单级升级费用，再点击确认升级";
-                RenderEquipmentScenePanel(root);
-                return;
-            }
-            equipmentUpgradeConfirmation = string.Empty;
             UpgradeServerEquipment(item);
         });
         BindSceneButton(autoUpgrade, () =>
         {
-            if (busy || item == null || equipmentMutationRunning || equipmentRefreshRunning
-                || HasPendingEquipmentGrowthRequest() || breakthrough) return;
-            if (singleError || autoError)
-            {
-                RetryEquipmentUpgradePreview(root);
-                return;
-            }
+            if (busy || item == null || equipmentMutationRunning || equipmentRefreshRunning || !canPersistGrowth
+                || HasPendingEquipmentGrowthRequest(item.playerEquipmentId) || breakthrough) return;
             if (!canAutoUpgrade) return;
-            if (equipmentUpgradeConfirmation != autoKey)
-            {
-                equipmentUpgradeConfirmation = autoKey;
-                equipmentStatusMessage = "请核对一键升级目标、逐级属性及消耗，再点击确认升级";
-                RenderEquipmentScenePanel(root);
-                return;
-            }
-            equipmentUpgradeConfirmation = string.Empty;
             StartCoroutine(AutoUpgradeServerEquipment(item));
         });
         BindSceneButton(lockButton, () => ToggleServerEquipmentLock(item));
@@ -2124,7 +2146,6 @@ public partial class HomePageUI
         equipmentAutoUpgradePreviewId = 0L;
         equipmentAutoUpgradePreviewRunning = false;
         equipmentAutoUpgradePreviewError = string.Empty;
-        equipmentUpgradeConfirmation = string.Empty;
         equipmentRefreshRunning = true;
         equipmentStatusMessage = "正在同步装备并重新读取升级预览...";
         RenderEquipmentScenePanel(root);
@@ -2170,7 +2191,7 @@ public partial class HomePageUI
     private void UpgradeServerEquipment(InventoryItemResponse item)
     {
         if (item != null && !equipmentMutationRunning && !equipmentRefreshRunning
-            && !HasPendingEquipmentGrowthRequest())
+            && !HasPendingEquipmentGrowthRequest(item.playerEquipmentId))
         {
             StartCoroutine(UpgradeServerEquipmentRequest(item.playerEquipmentId));
         }
@@ -2178,7 +2199,7 @@ public partial class HomePageUI
 
     private void ToggleServerEquipmentLock(InventoryItemResponse item)
     {
-        if (item != null && !equipmentMutationRunning && !equipmentRefreshRunning && !HasPendingEquipmentGrowthRequest())
+        if (item != null && !equipmentMutationRunning && !equipmentRefreshRunning && !HasPendingEquipmentGrowthRequest(item.playerEquipmentId))
         {
             StartCoroutine(SetServerEquipmentLock(item.playerEquipmentId, !item.locked));
         }
@@ -2199,7 +2220,6 @@ public partial class HomePageUI
     private void ResetEquipmentAutoUpgradePreviews()
     {
         _equipmentAutoPreviewVersion++;
-        equipmentUpgradeConfirmation = string.Empty;
         equipmentAutoUpgradePreview = null;
         equipmentAutoUpgradePreviewId = 0L;
         equipmentAutoUpgradePreviewRunning = false;
@@ -2420,7 +2440,8 @@ public partial class HomePageUI
 
     private IEnumerator AutoUpgradeServerEquipment(InventoryItemResponse item)
     {
-        if (equipmentMutationRunning || equipmentRefreshRunning || HasPendingEquipmentGrowthRequest()
+        if (item == null || equipmentMutationRunning || equipmentRefreshRunning || HasPendingEquipmentGrowthRequest(item.playerEquipmentId)
+            || !string.IsNullOrEmpty(equipmentGrowthPersistenceError)
             || (equipmentUpgradePreview != null && equipmentUpgradePreview.isBreakthrough))
         {
             yield break;
@@ -2522,7 +2543,6 @@ public partial class HomePageUI
                     {
                         ResetEquipmentUpgradePreview();
                         _equipmentAutoPreviewVersion++;
-                        equipmentUpgradeConfirmation = string.Empty;
                         equipmentAutoUpgradePreview = null;
                         equipmentAutoUpgradePreviewId = 0L;
                         equipmentAutoUpgradePreviewRunning = false;
@@ -2538,7 +2558,7 @@ public partial class HomePageUI
             autoUpgradePendingKeys.Remove(requestSignature);
             completionMessage = (npc ? "NPC" : "装备") + $"已升级到 Lv.{response.data.reachedLevel}"
                 + (response.data.targetReached ? "，已达到目标等级" : "，本次仅完成部分升级")
-                + "，资源已由服务器结算";
+                + "，消耗已结算";
         }
 
         equipmentMutationRunning = false;
@@ -2576,7 +2596,7 @@ public partial class HomePageUI
         string pendingMessage,
         string successMessage)
     {
-        if (equipmentMutationRunning || HasPendingEquipmentGrowthRequest())
+        if (equipmentMutationRunning || HasPendingEquipmentGrowthRequest(payload.playerEquipmentId))
         {
             yield break;
         }
@@ -2620,6 +2640,7 @@ public partial class HomePageUI
 
             serverEquipmentLoadout = response.data;
             _equipmentLoadouts[payload.playerNpcId] = response.data;
+            PlayerOnboardingManager.NotifyBusinessSucceeded();
         }
 
         equipmentRefreshRunning = true;
@@ -2642,17 +2663,69 @@ public partial class HomePageUI
     private IEnumerator UpgradeServerEquipmentRequest(long playerEquipmentId)
     {
         EquipmentUpgradePreviewData preview = equipmentUpgradePreview;
-        if (!_equipmentDataReadSucceeded || preview == null || preview.playerEquipmentId != playerEquipmentId || preview.isBreakthrough
+        if (equipmentMutationRunning || equipmentRefreshRunning || HasPendingEquipmentGrowthRequest(playerEquipmentId)
+            || !string.IsNullOrEmpty(equipmentGrowthPersistenceError)
+            || !_equipmentDataReadSucceeded || preview == null || preview.playerEquipmentId != playerEquipmentId || preview.isBreakthrough
             || preview.maxLevelReached || !HasEquipmentUpgradeFunds(preview)) yield break;
-        EquipmentInstanceRequest payload = new EquipmentInstanceRequest { playerEquipmentId = playerEquipmentId };
+        long playerId = GameSession.PlayerId;
+        string token = GameSession.Token;
+        EquipmentAutoUpgradePreviewData singlePlan = null;
+        UnityWebRequest request = CreateAuthorizedGet($"/equipment/{playerEquipmentId}/auto-upgrade-preview?targetLevel={preview.targetLevel}");
+        if (request == null)
+        {
+            equipmentStatusMessage = requestCreationError;
+            RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+            yield break;
+        }
+        equipmentMutationRunning = true;
+        equipmentStatusMessage = "正在升级装备...";
+        RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+        try
+        {
+            using (request)
+            {
+                yield return request.SendWebRequest();
+                if (playerId != GameSession.PlayerId || token != GameSession.Token || HandleUnauthorizedResponse(request)) yield break;
+                EquipmentAutoUpgradePreviewApiResponse response = ParseJson<EquipmentAutoUpgradePreviewApiResponse>(request.downloadHandler.text);
+                if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200
+                    || !IsValidEquipmentAutoUpgradePreview(response.data, playerEquipmentId, preview.currentLevel, preview.maxLevel)
+                    || response.data.requestedTargetLevel != preview.targetLevel)
+                {
+                    equipmentStatusMessage = response == null || response.code == 200
+                        ? "升级费用读取失败，请稍后再试"
+                        : EquipmentGrowthError(response.code, GetApiError(response));
+                    yield break;
+                }
+                if (response.data.payableTargetLevel < preview.targetLevel)
+                {
+                    equipmentStatusMessage = "当前资源不足，无法升级";
+                    yield break;
+                }
+                singlePlan = response.data;
+            }
+        }
+        finally
+        {
+            equipmentMutationRunning = false;
+            RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+        }
+        if (singlePlan == null) yield break;
+        EquipmentAutoUpgradeRequestPayload payload = new EquipmentAutoUpgradeRequestPayload
+        {
+            playerEquipmentId = playerEquipmentId,
+            expectedCurrentLevel = singlePlan.currentLevel,
+            targetLevel = singlePlan.requestedTargetLevel,
+            planFingerprint = singlePlan.planFingerprint
+        };
         yield return SendEquipmentGrowthRequest(new EquipmentGrowthRequest
         {
-            playerId = GameSession.PlayerId,
+            playerId = playerId,
             playerEquipmentId = playerEquipmentId,
-            expectedLevel = preview.currentLevel,
-            targetLevel = preview.targetLevel,
-            path = "/equipment/upgrade",
-            json = JsonUtility.ToJson(payload)
+            expectedLevel = singlePlan.currentLevel,
+            targetLevel = singlePlan.requestedTargetLevel,
+            path = "/equipment/auto-upgrade",
+            json = JsonUtility.ToJson(payload),
+            idempotencyKey = Guid.NewGuid().ToString("D")
         });
     }
 
@@ -2726,7 +2799,7 @@ public partial class HomePageUI
 
     private IEnumerator SetServerEquipmentLock(long playerEquipmentId, bool locked)
     {
-        if (equipmentMutationRunning || HasPendingEquipmentGrowthRequest()) yield break;
+        if (equipmentMutationRunning || HasPendingEquipmentGrowthRequest(playerEquipmentId)) yield break;
         equipmentMutationRunning = true;
         equipmentStatusMessage = locked ? "正在锁定装备..." : "正在解锁装备...";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());

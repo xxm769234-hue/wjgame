@@ -97,13 +97,13 @@ public sealed class IdleAdventureFormationPanel : MonoBehaviour
 
     public void SetStatus(string text)
     {
-        if (statusText != null) statusText.text = text;
+        if (statusText != null) statusText.text = string.IsNullOrWhiteSpace(text) ? string.Empty : FrontendTextLocalization.NormalizePlayerMessage(text);
     }
 
     public void SetSlot(int slotIndex, string label, bool occupied, bool frontColumn)
     {
         if (slotIndex < 0 || slotIndex >= slotBackgrounds.Length || slotIndex >= slotLabels.Length) return;
-        slotLabels[slotIndex].text = label;
+        slotLabels[slotIndex].text = FrontendTextLocalization.Normalize(label);
         slotBackgrounds[slotIndex].color = occupied
             ? (frontColumn ? new Color(0.16f, 0.34f, 0.42f, 0.92f) : new Color(0.13f, 0.25f, 0.36f, 0.92f))
             : new Color(0.08f, 0.09f, 0.10f, 0.82f);
@@ -138,7 +138,7 @@ public sealed class IdleAdventureFormationPanel : MonoBehaviour
         npcBackgrounds[npcIndex].gameObject.SetActive(available);
         if (!available) return;
 
-        npcLabels[npcIndex].text = label;
+        npcLabels[npcIndex].text = FrontendTextLocalization.Normalize(label);
         npcBackgrounds[npcIndex].color = assigned
             ? new Color(0.12f, 0.13f, 0.14f, 0.58f)
             : new Color(0.18f, 0.28f, 0.34f, 0.94f);

@@ -12,7 +12,10 @@ public partial class GameBoot
     private Toggle privacyConsentToggle;
     private Button privacyPolicyButton;
     private TMP_Text privacyConsentLabel;
+    private RectTransform privacyControlsHome;
     private GameObject privacyPolicyOverlay;
+    private TMP_Text privacyPolicyBody;
+    private RectTransform privacyPolicyContentRect;
     private GameObject accountManagementPanel;
     private GameObject realNamePanel;
     private TMP_Text accountManagementStatus;
@@ -55,11 +58,14 @@ public partial class GameBoot
             Debug.LogWarning("GameBoot 无法创建隐私授权控件：登录内容根节点为空。");
             return;
         }
+        privacyControlsHome = root;
 
         Transform existingToggle = root.Find("PrivacyConsentToggle");
         if (existingToggle != null)
         {
             privacyConsentToggle = existingToggle.GetComponent<Toggle>();
+            Transform existingLabel = existingToggle.Find("Label");
+            privacyConsentLabel = existingLabel != null ? existingLabel.GetComponent<TMP_Text>() : null;
         }
 
         if (privacyConsentToggle == null)
@@ -86,7 +92,7 @@ public partial class GameBoot
             privacyConsentLabel = CreateComplianceText(
                 "Label",
                 toggleObject.transform,
-                "我已阅读并同意当前隐私政策",
+                "我已阅读并同意当前隐私协议",
                 15,
                 FontStyle.Normal,
                 FieldTextColor,
@@ -105,7 +111,7 @@ public partial class GameBoot
             privacyPolicyButton = CreateComplianceButton(
                 root,
                 "PrivacyPolicyButton",
-                "查看隐私政策",
+                "查看隐私协议",
                 new Vector2(250f, -332f),
                 new Vector2(170f, 38f),
                 SecondaryButtonColor,
@@ -113,22 +119,76 @@ public partial class GameBoot
                 15);
         }
 
+        LoginCanvasStyle.ApplyDialogButton(privacyPolicyButton, false);
+        LoginCanvasStyle.ApplyCheckbox(privacyConsentToggle);
+        if (privacyConsentToggle.targetGraphic != null)
+            privacyConsentToggle.targetGraphic.rectTransform.sizeDelta = new Vector2(28f, 28f);
+        if (privacyConsentToggle.graphic != null)
+            privacyConsentToggle.graphic.rectTransform.sizeDelta = new Vector2(20f, 20f);
+        Image consentHitArea = privacyConsentToggle.GetComponent<Image>();
+        if (consentHitArea == null) consentHitArea = privacyConsentToggle.gameObject.AddComponent<Image>();
+        consentHitArea.color = Color.clear;
+        consentHitArea.raycastTarget = true;
+        if (privacyConsentLabel != null)
+        {
+            privacyConsentLabel.rectTransform.offsetMin = new Vector2(40f, 0f);
+            privacyConsentLabel.rectTransform.offsetMax = new Vector2(-4f, 0f);
+        }
         privacyPolicyButton.onClick.RemoveListener(ShowPrivacyPolicyOverlay);
         privacyPolicyButton.onClick.AddListener(ShowPrivacyPolicyOverlay);
+        EnsureAgeRatingControl(root);
         if (privacyConsentToggle != null)
         {
             privacyConsentToggle.isOn = false;
         }
+        PlacePrivacyControlsInLogin(loginDialog != null && loginDialog.activeSelf);
+    }
+
+    private void PlacePrivacyControlsInLogin(bool inDialog)
+    {
+        if (privacyControlsHome == null || privacyConsentToggle == null || privacyPolicyButton == null) return;
+        Transform parent = inDialog && loginDialog != null ? loginDialog.transform : privacyControlsHome;
+        privacyConsentToggle.transform.SetParent(parent, false);
+        privacyPolicyButton.transform.SetParent(parent, false);
+        SetRect(privacyConsentToggle.GetComponent<RectTransform>(), CenterAnchor(), CenterAnchor(), CenterAnchor(),
+            inDialog ? new Vector2(-116f, -282f) : new Vector2(-84f, -336f),
+            inDialog ? new Vector2(412f, 44f) : new Vector2(380f, 44f));
+        SetRect(privacyPolicyButton.GetComponent<RectTransform>(), CenterAnchor(), CenterAnchor(), CenterAnchor(),
+            inDialog ? new Vector2(250f, -282f) : new Vector2(210f, -336f), new Vector2(180f, 44f));
+        if (privacyConsentLabel != null)
+        {
+            privacyConsentLabel.color = inDialog ? new Color32(88, 66, 47, 255) : new Color32(255, 241, 213, 255);
+            privacyConsentLabel.fontSize = 19f;
+            privacyConsentLabel.enableAutoSizing = false;
+        }
+        TMP_Text policyLabel = privacyPolicyButton.GetComponentInChildren<TMP_Text>(true);
+        if (policyLabel != null)
+        {
+            policyLabel.fontSize = 18f;
+            policyLabel.color = new Color32(62, 48, 33, 255);
+        }
+        Text legacyPolicyLabel = privacyPolicyButton.GetComponentInChildren<Text>(true);
+        if (legacyPolicyLabel != null)
+        {
+            legacyPolicyLabel.fontSize = 18;
+            legacyPolicyLabel.resizeTextForBestFit = false;
+            legacyPolicyLabel.color = new Color32(62, 48, 33, 255);
+        }
+        if (inDialog && statusText != null)
+            SetRect(statusText.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(),
+                new Vector2(0f, -324f), new Vector2(650f, 30f));
     }
 
     private IEnumerator LoadPrivacyPolicies()
     {
         privacyPolicyLoaded = false;
+        currentPolicyContent = string.Empty;
+        currentPolicyContentSha256 = string.Empty;
         PolicyMetadataResponse metadataResponse = null;
         yield return RequestPolicyMetadata(value => metadataResponse = value);
         if (!IsValidPolicyMetadata(metadataResponse))
         {
-            BlockForPolicyFailure("隐私政策读取失败，请稍后重试。");
+            BlockForPolicyFailure("隐私协议读取失败，请稍后重试。");
             yield break;
         }
 
@@ -141,7 +201,7 @@ public partial class GameBoot
         if (!IsValidPolicyContent(contentResponse)
             || !string.Equals(currentPolicyVersion, contentResponse.data.policyVersion, StringComparison.Ordinal))
         {
-            BlockForPolicyFailure("隐私政策版本校验失败，请稍后重试。");
+            BlockForPolicyFailure("隐私协议版本校验失败，请稍后重试。");
             yield break;
         }
 
@@ -151,7 +211,7 @@ public partial class GameBoot
             && !string.IsNullOrWhiteSpace(currentPolicyContentSha256)
             && !string.Equals(metadataContentSha256, currentPolicyContentSha256, StringComparison.OrdinalIgnoreCase))
         {
-            BlockForPolicyFailure("隐私政策元数据与正文校验值不一致，请稍后重试。");
+            BlockForPolicyFailure("隐私协议内容校验失败，请稍后重试。");
             yield break;
         }
 
@@ -166,15 +226,16 @@ public partial class GameBoot
                 currentPolicyContentSha256,
                 StringComparison.OrdinalIgnoreCase))
         {
-            BlockForPolicyFailure("隐私政策完整性校验失败，请稍后重试。");
+            BlockForPolicyFailure("隐私协议完整性校验失败，请稍后重试。");
             yield break;
         }
 
         privacyPolicyLoaded = true;
         if (privacyConsentLabel != null)
         {
-            privacyConsentLabel.text = "我已阅读并同意《隐私政策 " + currentPolicyVersion + "》";
+            privacyConsentLabel.text = "我已阅读并同意《隐私协议》";
         }
+        RefreshPrivacyPolicyOverlayContent();
     }
 
     private IEnumerator RequestPolicyMetadata(Action<PolicyMetadataResponse> completed)
@@ -185,7 +246,7 @@ public partial class GameBoot
                 out UnityWebRequest request,
                 out string error))
         {
-            Debug.LogWarning("隐私政策元数据请求未创建：" + error);
+            Debug.LogWarning("隐私协议元数据请求未创建：" + error);
             completed(null);
             yield break;
         }
@@ -212,7 +273,7 @@ public partial class GameBoot
                 out UnityWebRequest request,
                 out string error))
         {
-            Debug.LogWarning("隐私政策正文请求未创建：" + error);
+            Debug.LogWarning("隐私协议正文请求未创建：" + error);
             completed(null);
             yield break;
         }
@@ -235,95 +296,41 @@ public partial class GameBoot
     {
         runtimePolicyBlocked = true;
         SetBusyState(false, message);
-        ShowRuntimePolicyOverlay("隐私政策不可用", message, currentPolicyContentUrl);
+        ShowRuntimePolicyOverlay("隐私协议不可用", message, currentPolicyContentUrl);
     }
 
     private void ShowPrivacyPolicyOverlay()
     {
-        if (privacyPolicyOverlay != null)
+        if (privacyAgreementView != null)
         {
-            privacyPolicyOverlay.SetActive(true);
-            privacyPolicyOverlay.transform.SetAsLastSibling();
+            RefreshPrivacyPolicyOverlayContent();
+            privacyAgreementView.Show();
             return;
         }
 
         RectTransform root = loginCanvasView != null ? loginCanvasView.PrepareContentRoot() : null;
         if (root == null)
         {
-            ShowError("隐私政策界面创建失败");
+            ShowError("隐私协议界面创建失败");
             return;
         }
 
-        Image overlay = CreateImage("PrivacyPolicyOverlay", root, new Color(0.04f, 0.07f, 0.12f, 0.96f));
-        privacyPolicyOverlay = overlay.gameObject;
-        Stretch(overlay.rectTransform);
+        privacyAgreementView = LoginAgreementPanel.Create(root, "PrivacyPolicyOverlay", "隐私协议", "同意并继续",
+            AgreePrivacyPolicyFromOverlay, HidePrivacyPolicyOverlay);
+        privacyPolicyOverlay = privacyAgreementView.gameObject;
+        privacyPolicyBody = privacyAgreementView.Body;
+        privacyPolicyContentRect = privacyAgreementView.Content;
+        RefreshPrivacyPolicyOverlayContent();
+        privacyAgreementView.Show();
+    }
 
-        Image card = CreateImage("PrivacyPolicyCard", overlay.transform, new Color(1f, 1f, 1f, 0.98f));
-        SetRect(card.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), Vector2.zero, new Vector2(860f, 720f));
-        TMP_Text title = CreateComplianceText("Title", card.transform, "隐私政策", 30, FontStyle.Bold, BrandColor, TextAnchor.MiddleCenter);
-        SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(-70f, 54f));
-
-        TMP_Text metadata = CreateComplianceText(
-            "Metadata",
-            card.transform,
-            "版本：" + (currentPolicyVersion ?? "未获取") + "\n正文校验：" + (string.IsNullOrEmpty(currentPolicyContentSha256) ? "未提供" : "已校验"),
-            15,
-            FontStyle.Normal,
-            MutedTextColor,
-            TextAnchor.MiddleLeft);
-        SetRect(metadata.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -84f), new Vector2(-70f, 48f));
-
-        Image viewport = CreateImage("Viewport", card.transform, new Color(0f, 0f, 0f, 0.04f));
-        SetRect(viewport.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -150f), new Vector2(-70f, -250f));
-        Mask mask = viewport.gameObject.AddComponent<Mask>();
-        mask.showMaskGraphic = false;
-
-        GameObject contentObject = new GameObject("Content", typeof(RectTransform));
-        contentObject.transform.SetParent(viewport.transform, false);
-        RectTransform contentRect = contentObject.GetComponent<RectTransform>();
-        contentRect.anchorMin = new Vector2(0f, 1f);
-        contentRect.anchorMax = new Vector2(1f, 1f);
-        contentRect.pivot = new Vector2(0.5f, 1f);
-        contentRect.anchoredPosition = Vector2.zero;
-        contentRect.sizeDelta = new Vector2(-28f, 500f);
-
-        TMP_Text body = CreateComplianceText("Body", contentObject.transform, currentPolicyContent ?? "暂未获取隐私政策正文。", 17, FontStyle.Normal, FieldTextColor, TextAnchor.UpperLeft);
-        body.enableWordWrapping = true;
-        body.overflowMode = TextOverflowModes.Overflow;
-        SetRect(body.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, Vector2.zero);
-        Canvas.ForceUpdateCanvases();
-        contentRect.sizeDelta = new Vector2(-28f, Mathf.Max(500f, body.preferredHeight + 24f));
-
-        ScrollRect scrollRect = viewport.gameObject.AddComponent<ScrollRect>();
-        scrollRect.content = contentRect;
-        scrollRect.viewport = viewport.rectTransform;
-        scrollRect.horizontal = false;
-        scrollRect.vertical = true;
-        scrollRect.movementType = ScrollRect.MovementType.Clamped;
-
-        Button closeButton = CreateComplianceButton(
-            card.transform,
-            "CloseButton",
-            "关闭",
-            new Vector2(-110f, -298f),
-            new Vector2(170f, 52f),
-            SecondaryButtonColor,
-            FieldTextColor,
-            18);
-        closeButton.onClick.AddListener(HidePrivacyPolicyOverlay);
-
-        Button agreeButton = CreateComplianceButton(
-            card.transform,
-            "AgreeButton",
-            "同意并继续",
-            new Vector2(110f, -298f),
-            new Vector2(170f, 52f),
-            PrimaryColor,
-            Color.white,
-            18);
-        agreeButton.onClick.AddListener(AgreePrivacyPolicyFromOverlay);
-
-        privacyPolicyOverlay.transform.SetAsLastSibling();
+    private void RefreshPrivacyPolicyOverlayContent()
+    {
+        if (privacyAgreementView == null) return;
+        privacyAgreementView.SetBody(string.IsNullOrEmpty(currentPolicyContent)
+            ? "暂未获取隐私协议正文。"
+            : currentPolicyContent, false);
+        privacyAgreementView.ConfirmButton.interactable = privacyPolicyLoaded;
     }
 
     private void HidePrivacyPolicyOverlay()
@@ -336,6 +343,7 @@ public partial class GameBoot
 
     private void AgreePrivacyPolicyFromOverlay()
     {
+        if (!privacyPolicyLoaded) return;
         if (privacyConsentToggle != null)
         {
             privacyConsentToggle.isOn = true;
@@ -349,11 +357,11 @@ public partial class GameBoot
 
         if (accountManagementPanel != null && accountManagementPanel.activeSelf)
         {
-            SetManagementStatus("已确认隐私政策，请再次点击同意授权。", MutedTextColor);
+            SetManagementStatus("已确认隐私协议，请再次点击同意授权。", MutedTextColor);
             return;
         }
 
-        SetStatus("已同意隐私政策，请重新点击登录。", MutedTextColor);
+        SetStatus("已同意隐私协议，请重新点击登录。", MutedTextColor);
     }
 
     private void OpenAccountManagementScreen(LoginData data, bool fromWeChat)
@@ -383,54 +391,98 @@ public partial class GameBoot
             return;
         }
 
-        Image overlay = CreateImage("AccountManagementPanel", root, new Color(0.04f, 0.07f, 0.12f, 0.96f));
+        Image overlay = CreateImage("AccountManagementPanel", root, new Color(0.08f, 0.05f, 0.03f, 0.76f));
         accountManagementPanel = overlay.gameObject;
         Stretch(overlay.rectTransform);
 
-        Image card = CreateImage("AccountManagementCard", overlay.transform, new Color(1f, 1f, 1f, 0.98f));
-        SetRect(card.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), Vector2.zero, new Vector2(900f, 790f));
-        TMP_Text title = CreateComplianceText("Title", card.transform, "账号管理", 32, FontStyle.Bold, BrandColor, TextAnchor.MiddleCenter);
+        Image card = CreateImage("AccountManagementCard", overlay.transform, new Color(0.98f, 0.95f, 0.86f));
+        SetRect(card.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), Vector2.zero, new Vector2(900f, 900f));
+        Outline cardOutline = card.gameObject.AddComponent<Outline>();
+        cardOutline.effectColor = new Color(0.47f, 0.31f, 0.18f, 0.8f);
+        cardOutline.effectDistance = new Vector2(2f, -2f);
+        LoginCanvasStyle.ApplyDialogPaper(card);
+        TMP_Text title = CreateComplianceText("Title", card.transform, "账号管理", 32, FontStyle.Bold, new Color(0.28f, 0.17f, 0.10f), TextAnchor.MiddleCenter);
         SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -20f), new Vector2(-70f, 54f));
 
         TMP_Text description = CreateComplianceText(
             "Description",
             card.transform,
             "当前账号只能进行隐私授权、实名和注销管理，完成准入后需要重新登录。",
-            16,
+            20,
             FontStyle.Normal,
             MutedTextColor,
             TextAnchor.MiddleCenter);
-        SetRect(description.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -70f), new Vector2(-70f, 44f));
+        SetRect(description.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -82f), new Vector2(-90f, 48f));
 
-        accountManagementCompliance = CreateComplianceText("Compliance", card.transform, string.Empty, 18, FontStyle.Normal, FieldTextColor, TextAnchor.UpperLeft);
+        Image viewport = CreateImage("ComplianceViewport", card.transform, new Color(0.82f, 0.71f, 0.52f, 0.18f));
+        SetRect(viewport.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(-10f, -146f), new Vector2(-110f, 330f));
+        viewport.gameObject.AddComponent<RectMask2D>();
+        RectTransform content = new GameObject("ComplianceContent", typeof(RectTransform), typeof(VerticalLayoutGroup), typeof(ContentSizeFitter)).GetComponent<RectTransform>();
+        content.SetParent(viewport.transform, false);
+        SetRect(content, new Vector2(0f, 1f), Vector2.one, new Vector2(0.5f, 1f), Vector2.zero, Vector2.zero);
+        VerticalLayoutGroup layout = content.GetComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(18, 18, 14, 14);
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+        content.GetComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        accountManagementCompliance = CreateComplianceText("Compliance", content, string.Empty, 22, FontStyle.Normal, FieldTextColor, TextAnchor.UpperLeft);
         accountManagementCompliance.enableWordWrapping = true;
         accountManagementCompliance.overflowMode = TextOverflowModes.Overflow;
-        SetRect(accountManagementCompliance.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -130f), new Vector2(-90f, 94f));
+        accountManagementCompliance.lineSpacing = 8f;
+        accountManagementCompliance.richText = false;
+        ScrollRect complianceScroll = viewport.gameObject.AddComponent<ScrollRect>();
+        complianceScroll.viewport = viewport.rectTransform;
+        complianceScroll.content = content;
+        complianceScroll.horizontal = false;
+        complianceScroll.movementType = ScrollRect.MovementType.Clamped;
+        complianceScroll.scrollSensitivity = 35f;
+        Image scrollRail = CreateImage("ComplianceScrollbar", card.transform, new Color(0.61f, 0.45f, 0.28f, 0.25f));
+        SetRect(scrollRail.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-40f, -146f), new Vector2(12f, 330f));
+        Scrollbar scrollBar = scrollRail.gameObject.AddComponent<Scrollbar>();
+        Image scrollHandle = CreateImage("Handle", scrollRail.transform, new Color(0.57f, 0.38f, 0.21f, 0.85f));
+        Stretch(scrollHandle.rectTransform);
+        scrollBar.handleRect = scrollHandle.rectTransform;
+        scrollBar.targetGraphic = scrollHandle;
+        scrollBar.direction = Scrollbar.Direction.BottomToTop;
+        complianceScroll.verticalScrollbar = scrollBar;
+        complianceScroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
 
-        accountManagementStatus = CreateComplianceText("Status", card.transform, string.Empty, 16, FontStyle.Normal, ErrorColor, TextAnchor.MiddleCenter);
-        SetRect(accountManagementStatus.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -222f), new Vector2(-90f, 42f));
+        accountManagementStatus = CreateComplianceText("Status", card.transform, string.Empty, 20, FontStyle.Normal, ErrorColor, TextAnchor.MiddleCenter);
+        accountManagementStatus.enableAutoSizing = true;
+        accountManagementStatus.fontSizeMin = 18f;
+        accountManagementStatus.fontSizeMax = 20f;
+        accountManagementStatus.overflowMode = TextOverflowModes.Ellipsis;
+        SetRect(accountManagementStatus.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -492f), new Vector2(-90f, 78f));
 
-        accountConsentButton = CreateComplianceButton(card.transform, "ConsentButton", "同意隐私政策", new Vector2(-225f, -292f), new Vector2(210f, 52f), PrimaryColor, Color.white, 17);
+        accountConsentButton = CreateComplianceButton(card.transform, "ConsentButton", "同意隐私协议", new Vector2(-250f, -178f), new Vector2(230f, 58f), PrimaryColor, Color.white, 22);
         accountConsentButton.onClick.AddListener(BeginPrivacyConsent);
-        accountWithdrawButton = CreateComplianceButton(card.transform, "WithdrawButton", "撤回隐私授权", new Vector2(0f, -292f), new Vector2(210f, 52f), SecondaryButtonColor, FieldTextColor, 17);
+        accountWithdrawButton = CreateComplianceButton(card.transform, "WithdrawButton", "撤回隐私授权", new Vector2(0f, -178f), new Vector2(230f, 58f), SecondaryButtonColor, FieldTextColor, 22);
         accountWithdrawButton.onClick.AddListener(BeginWithdrawConsent);
-        accountRefreshButton = CreateComplianceButton(card.transform, "RefreshButton", "刷新状态", new Vector2(225f, -292f), new Vector2(160f, 52f), SecondaryButtonColor, FieldTextColor, 17);
+        accountRefreshButton = CreateComplianceButton(card.transform, "RefreshButton", "刷新状态", new Vector2(250f, -178f), new Vector2(230f, 58f), SecondaryButtonColor, FieldTextColor, 22);
         accountRefreshButton.onClick.AddListener(() => StartCoroutine(RefreshManagementState()));
 
-        accountApplyCancellationButton = CreateComplianceButton(card.transform, "ApplyCancellationButton", "申请注销", new Vector2(-225f, -366f), new Vector2(210f, 52f), new Color(0.70f, 0.25f, 0.20f, 1f), Color.white, 17);
+        accountApplyCancellationButton = CreateComplianceButton(card.transform, "ApplyCancellationButton", "申请注销", new Vector2(-250f, -256f), new Vector2(230f, 58f), new Color(0.70f, 0.25f, 0.20f, 1f), Color.white, 22);
         accountApplyCancellationButton.onClick.AddListener(BeginAccountCancellation);
-        accountCancelCancellationButton = CreateComplianceButton(card.transform, "CancelCancellationButton", "撤销注销", new Vector2(0f, -366f), new Vector2(210f, 52f), SecondaryButtonColor, FieldTextColor, 17);
+        accountCancelCancellationButton = CreateComplianceButton(card.transform, "CancelCancellationButton", "撤销注销", new Vector2(0f, -256f), new Vector2(230f, 58f), SecondaryButtonColor, FieldTextColor, 22);
         accountCancelCancellationButton.onClick.AddListener(BeginCancelAccountCancellation);
-        accountRealNameButton = CreateComplianceButton(card.transform, "RealNameButton", "实名认证", new Vector2(225f, -366f), new Vector2(160f, 52f), PrimaryColor, Color.white, 17);
+        accountRealNameButton = CreateComplianceButton(card.transform, "RealNameButton", "实名认证", new Vector2(250f, -256f), new Vector2(230f, 58f), PrimaryColor, Color.white, 22);
         accountRealNameButton.onClick.AddListener(ShowRealNamePanel);
 
-        accountReloginButton = CreateComplianceButton(card.transform, "ReloginButton", "重新登录", new Vector2(-100f, -444f), new Vector2(200f, 52f), PrimaryColor, Color.white, 18);
+        accountReloginButton = CreateComplianceButton(card.transform, "ReloginButton", "重新登录", new Vector2(-130f, -358f), new Vector2(240f, 64f), PrimaryColor, Color.white, 24);
         accountReloginButton.onClick.AddListener(ReloginAfterCompliance);
-        Button closeButton = CreateComplianceButton(card.transform, "CloseButton", "返回", new Vector2(125f, -444f), new Vector2(160f, 52f), SecondaryButtonColor, FieldTextColor, 18);
+        Button closeButton = CreateComplianceButton(card.transform, "CloseButton", "返回", new Vector2(130f, -358f), new Vector2(240f, 64f), SecondaryButtonColor, FieldTextColor, 24);
         closeButton.onClick.AddListener(CloseAccountManagementPanel);
 
         accountManagementPanel.transform.SetAsLastSibling();
         StartCoroutine(RefreshManagementState());
+        if (managementCompliance != null
+            && (string.Equals(managementCompliance.verificationStatus, "UNVERIFIED", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(managementCompliance.verificationStatus, "REJECTED", StringComparison.OrdinalIgnoreCase)))
+        {
+            ShowRealNamePanel();
+        }
     }
 
     private IEnumerator RefreshManagementState()
@@ -530,6 +582,15 @@ public partial class GameBoot
         if (accountManagementCompliance != null)
         {
             accountManagementCompliance.text = BuildComplianceSummary(managementCompliance);
+            Canvas.ForceUpdateCanvases();
+            ScrollRect complianceScroll = accountManagementCompliance.GetComponentInParent<ScrollRect>();
+            if (complianceScroll != null && complianceScroll.verticalScrollbar != null)
+            {
+                float viewportHeight = complianceScroll.viewport.rect.height;
+                float contentHeight = complianceScroll.content.rect.height;
+                complianceScroll.verticalScrollbar.size = Mathf.Clamp01(viewportHeight / Mathf.Max(viewportHeight, contentHeight));
+                complianceScroll.verticalScrollbar.SetValueWithoutNotify(1f);
+            }
         }
 
         if (accountConsentButton != null)
@@ -575,40 +636,64 @@ public partial class GameBoot
         string consentSummary = managementConsent == null
             ? "未读取"
             : (managementConsent.consentValid ? "有效" : "无效")
-                + "（当前政策 " + (managementConsent.currentPolicyVersion ?? "UNKNOWN") + "）";
+                + "（协议版本 " + (managementConsent.currentPolicyVersion ?? "待确认") + "）";
         string latestConsent = managementConsent == null || string.IsNullOrEmpty(managementConsent.latestAction)
             ? "暂无授权记录"
-            : managementConsent.latestAction
+            : FormatComplianceDisplay(managementConsent.latestAction)
                 + " / "
                 + (string.IsNullOrEmpty(managementConsent.latestPolicyVersion)
-                    ? "UNKNOWN"
+                    ? "版本待确认"
                     : managementConsent.latestPolicyVersion)
                 + " / "
                 + (string.IsNullOrEmpty(managementConsent.latestOccurredTime)
                     ? "时间未知"
                     : managementConsent.latestOccurredTime);
-        return "实名状态：" + (compliance.verificationStatus ?? "UNKNOWN")
-            + "\n年龄档位：" + (compliance.ageGroup ?? "UNKNOWN")
-            + "\n准入结果：" + access
-            + "\n限制原因：" + reason
-            + "\n服务端提示：" + (string.IsNullOrEmpty(compliance.message) ? "无" : compliance.message)
+        return "实名状态：" + FormatComplianceDisplay(compliance.verificationStatus)
+            + "\n年龄范围：" + FormatComplianceDisplay(compliance.ageGroup)
+            + "\n游戏权限：" + access
+            + "\n限制原因：" + FormatComplianceDisplay(reason)
+            + (string.IsNullOrEmpty(compliance.message) ? string.Empty : "\n提示：" + compliance.message)
             + "\n剩余时长：" + Mathf.Max(0, compliance.remainingSeconds) + " 秒"
             + "\n隐私授权：" + consentSummary
-            + "\n最近授权动作：" + latestConsent;
+            + "\n最近授权记录：" + latestConsent;
+    }
+
+    private static string FormatComplianceDisplay(string value)
+    {
+        switch ((value ?? string.Empty).ToUpperInvariant())
+        {
+            case "":
+            case "UNKNOWN": return "待确认";
+            case "VERIFIED": return "已认证";
+            case "UNVERIFIED": return "未认证";
+            case "PENDING": return "审核中";
+            case "REJECTED": return "认证未通过";
+            case "AGE_16_TO_17": return "16至17岁";
+            case "AGE_8_TO_15": return "8至15岁";
+            case "UNDER_8": return "8岁以下";
+            case "ADULT": return "成年人";
+            case "MINOR": return "未成年人";
+            case "NONE": return "无";
+            case "CONSENT":
+            case "GRANTED": return "已授权";
+            case "WITHDRAW":
+            case "WITHDRAWN": return "已撤回";
+            default: return FrontendTextLocalization.DisplayStatus(value);
+        }
     }
 
     private void BeginPrivacyConsent()
     {
         if (privacyConsentToggle == null || !privacyConsentToggle.isOn)
         {
-            SetManagementStatus("请先阅读隐私政策并确认同意。", ErrorColor);
+            SetManagementStatus("请先阅读隐私协议并确认同意。", ErrorColor);
             ShowPrivacyPolicyOverlay();
             return;
         }
 
         if (!privacyPolicyLoaded || string.IsNullOrEmpty(currentPolicyVersion) || string.IsNullOrEmpty(complianceToken))
         {
-            SetManagementStatus("当前隐私政策不可用，暂时无法授权。", ErrorColor);
+            SetManagementStatus("当前隐私协议不可用，暂时无法授权。", ErrorColor);
             return;
         }
 
@@ -656,7 +741,7 @@ public partial class GameBoot
                 if (response != null && response.code == 7703)
                 {
                     privacyConsentRequestId = NewRequestId();
-                    SetBusyState(false, "隐私政策已更新，请重新阅读并确认。");
+                    SetBusyState(false, "隐私协议已更新，请重新阅读并确认。");
                     yield return LoadPrivacyPolicies();
                     if (!runtimePolicyBlocked)
                     {
@@ -821,8 +906,8 @@ public partial class GameBoot
     {
         if (realNamePanel != null)
         {
-            realNamePanel.SetActive(true);
-            realNamePanel.transform.SetAsLastSibling();
+            if (accountManagementPanel != null) accountManagementPanel.SetActive(false);
+            realNameView.Show();
             return;
         }
 
@@ -831,36 +916,16 @@ public partial class GameBoot
             return;
         }
 
-        Image panel = CreateImage("RealNamePanel", accountManagementPanel.transform, new Color(0.04f, 0.07f, 0.12f, 0.98f));
-        realNamePanel = panel.gameObject;
-        Stretch(panel.rectTransform);
-        Image card = CreateImage("RealNameCard", panel.transform, new Color(1f, 1f, 1f, 0.98f));
-        SetRect(card.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), Vector2.zero, new Vector2(660f, 470f));
-        TMP_Text title = CreateComplianceText("Title", card.transform, "实名认证", 30, FontStyle.Bold, BrandColor, TextAnchor.MiddleCenter);
-        SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -24f), new Vector2(-70f, 50f));
-        TMP_Text hint = CreateComplianceText("Hint", card.transform, "信息仅用于本次认证请求，不会写入客户端日志。", 15, FontStyle.Normal, MutedTextColor, TextAnchor.MiddleCenter);
-        SetRect(hint.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -72f), new Vector2(-70f, 36f));
-
-        TMP_Text nameLabel = CreateComplianceText("NameLabel", card.transform, "真实姓名", 16, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleLeft);
-        SetRect(nameLabel.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(-220f, 76f), new Vector2(120f, 38f));
-        realNameInput = CreateComplianceInput(card.transform, "RealNameInput", "请输入真实姓名");
-        realNameInput.characterLimit = 64;
-        SetRect(realNameInput.GetComponent<RectTransform>(), CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(90f, 76f), new Vector2(360f, 42f));
-
-        TMP_Text identityLabel = CreateComplianceText("IdentityLabel", card.transform, "证件号码", 16, FontStyle.Normal, FieldTextColor, TextAnchor.MiddleLeft);
-        SetRect(identityLabel.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(-220f, 18f), new Vector2(120f, 38f));
-        identityNumberInput = CreateComplianceInput(card.transform, "IdentityNumberInput", "请输入证件号码");
-        identityNumberInput.characterLimit = 32;
-        SetRect(identityNumberInput.GetComponent<RectTransform>(), CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(90f, 18f), new Vector2(360f, 42f));
-
-        realNameStatus = CreateComplianceText("Status", card.transform, string.Empty, 15, FontStyle.Normal, ErrorColor, TextAnchor.MiddleCenter);
-        SetRect(realNameStatus.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), new Vector2(0f, -52f), new Vector2(560f, 38f));
-
-        Button submit = CreateComplianceButton(card.transform, "SubmitButton", "提交认证", new Vector2(-105f, -125f), new Vector2(190f, 50f), PrimaryColor, Color.white, 18);
-        submit.onClick.AddListener(SubmitRealName);
-        Button close = CreateComplianceButton(card.transform, "CloseButton", "取消", new Vector2(105f, -125f), new Vector2(150f, 50f), SecondaryButtonColor, FieldTextColor, 18);
-        close.onClick.AddListener(HideRealNamePanel);
-        realNamePanel.transform.SetAsLastSibling();
+        realNameView = LoginAgreementPanel.Create(accountManagementPanel.transform.parent, "RealNamePanel", "实名认证", "提交认证",
+            SubmitRealName, HideRealNamePanel);
+        realNamePanel = realNameView.gameObject;
+        realNameView.ConfigureForm();
+        realNameView.SetBody(ReadAgreementText("RealName"));
+        realNameInput = realNameView.AddInput("RealNameInput", "真实姓名：", "请输入您的真实姓名", 0.385f, 64);
+        identityNumberInput = realNameView.AddInput("IdentityNumberInput", "身份证号：", "请输入您的居民身份证号码", 0.295f, 32);
+        realNameStatus = realNameView.AddStatus();
+        accountManagementPanel.SetActive(false);
+        realNameView.Show();
     }
 
     private void SubmitRealName()
@@ -917,17 +982,7 @@ public partial class GameBoot
                 yield break;
             }
 
-            if (response.data != null && response.data.reloginRequired)
-            {
-                SetRealNameStatus("实名认证已通过，请重新登录。", MutedTextColor);
-                CloseRealNamePanel();
-                CloseAccountManagementPanel();
-                complianceToken = string.Empty;
-                SetBusyState(false, "实名认证已通过，请重新登录。");
-                yield break;
-            }
-
-            SetRealNameStatus("实名认证已提交。", MutedTextColor);
+            HandleRealNameResult(response.data);
         }
     }
 
@@ -935,16 +990,21 @@ public partial class GameBoot
     {
         if (realNamePanel != null)
         {
+            if (realNameInput != null) realNameInput.text = string.Empty;
+            if (identityNumberInput != null) identityNumberInput.text = string.Empty;
             realNamePanel.SetActive(false);
         }
+        if (accountManagementPanel != null) accountManagementPanel.SetActive(true);
     }
 
     private void CloseRealNamePanel()
     {
         if (realNamePanel != null)
         {
+            realNamePanel.SetActive(false);
             Destroy(realNamePanel);
             realNamePanel = null;
+            realNameView = null;
         }
     }
 
@@ -970,6 +1030,7 @@ public partial class GameBoot
         CloseRealNamePanel();
         if (accountManagementPanel != null)
         {
+            accountManagementPanel.SetActive(false);
             Destroy(accountManagementPanel);
             accountManagementPanel = null;
         }
@@ -994,7 +1055,7 @@ public partial class GameBoot
         textObject.transform.SetParent(parent, false);
         TMP_Text text = textObject.GetComponent<TMP_Text>();
         text.font = RuntimeFontAssetProvider.Resolve();
-        text.text = value ?? string.Empty;
+        text.text = FrontendTextLocalization.Normalize(value);
         text.fontSize = fontSize;
         text.fontStyle = fontStyle == FontStyle.Bold
             ? FontStyles.Bold
@@ -1028,6 +1089,8 @@ public partial class GameBoot
         label.rectTransform.anchorMax = Vector2.one;
         label.rectTransform.offsetMin = Vector2.zero;
         label.rectTransform.offsetMax = Vector2.zero;
+        bool primary = name == "ConsentButton" || name == "RealNameButton" || name == "ReloginButton" || name == "ApplyCancellationButton";
+        LoginCanvasStyle.ApplyDialogButton(button, primary, name == "ApplyCancellationButton");
         return button;
     }
 
@@ -1074,7 +1137,6 @@ public partial class GameBoot
     private void ClearClosedAccountLocalState()
     {
         complianceToken = string.Empty;
-        int playerId = GameSession.PlayerId;
         GameSession.Clear();
         string[] accountStateKeys =
         {
@@ -1110,16 +1172,6 @@ public partial class GameBoot
             PlayerPrefs.DeleteKey(accountStateKeys[index]);
         }
 
-        if (playerId > 0)
-        {
-            string avatarStateKeyPrefix = "PlayerAvatarState." + playerId + ".";
-            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "Code");
-            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "Source");
-            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "Version");
-            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "UpdatedTime");
-            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "HasState");
-        }
-
         PlayerPrefs.Save();
     }
 
@@ -1128,7 +1180,7 @@ public partial class GameBoot
         if (accountManagementStatus != null)
         {
             accountManagementStatus.color = color;
-            accountManagementStatus.text = message ?? string.Empty;
+            accountManagementStatus.text = string.IsNullOrWhiteSpace(message) ? string.Empty : FrontendTextLocalization.NormalizePlayerMessage(message);
         }
     }
 
@@ -1137,7 +1189,7 @@ public partial class GameBoot
         if (realNameStatus != null)
         {
             realNameStatus.color = color;
-            realNameStatus.text = message ?? string.Empty;
+            realNameStatus.text = string.IsNullOrWhiteSpace(message) ? string.Empty : FrontendTextLocalization.NormalizePlayerMessage(message);
         }
     }
 

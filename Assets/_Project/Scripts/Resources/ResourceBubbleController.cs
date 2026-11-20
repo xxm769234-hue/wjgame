@@ -35,11 +35,19 @@ public sealed class ResourceBubbleController : MonoBehaviour
 
         iconRenderer.sprite = icon != null ? icon : GetFallbackIconSprite(color);
         iconRenderer.color = Color.white;
+        FitIconToBubble();
         iconRenderer.sortingLayerName = sortingLayerName;
         iconRenderer.sortingOrder = sortingOrder + 1;
         iconRenderer.enabled = true;
 
         amountText.text = $"+{amount}";
+        amountText.color = new Color(0.30f, 0.16f, 0.11f, 1f);
+        amountText.fontSize = 3.2f;
+        amountText.enableAutoSizing = true;
+        amountText.fontSizeMin = 0.8f;
+        amountText.fontSizeMax = 3.2f;
+        amountText.overflowMode = TextOverflowModes.Ellipsis;
+        amountText.alignment = TextAlignmentOptions.Center;
         MeshRenderer textRenderer = amountText.GetComponent<MeshRenderer>();
         if (textRenderer != null)
         {
@@ -68,7 +76,7 @@ public sealed class ResourceBubbleController : MonoBehaviour
 
     private void OnMouseDown()
     {
-        if (PlayerOnboardingInputLock.IsGameplayInputBlocked) return;
+        if (PlayerOnboardingInputLock.IsLocked) return;
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
         if (owner != null) owner.CollectReadyResource();
     }
@@ -95,22 +103,13 @@ public sealed class ResourceBubbleController : MonoBehaviour
 
         if (amountText == null)
         {
-            Transform existing = transform.Find("Amount");
-            if (existing != null) amountText = existing.GetComponent<TextMeshPro>();
-        }
-        if (amountText == null)
-        {
             GameObject textObject = new GameObject("Amount", typeof(RectTransform));
             textObject.transform.SetParent(transform, false);
             textObject.transform.localPosition = new Vector3(0.32f, -0.03f, -0.03f);
             textObject.transform.localScale = Vector3.one * 0.08f;
             amountText = textObject.AddComponent<TextMeshPro>();
-            amountText.font = RuntimeFontAssetProvider.Resolve();
-            amountText.color = Color.black;
-            amountText.fontSize = 3.2f;
-            amountText.alignment = TextAlignmentOptions.Center;
             amountText.enableWordWrapping = false;
-            amountText.rectTransform.sizeDelta = new Vector2(18f, 8f);
+            amountText.rectTransform.sizeDelta = new Vector2(8.5f, 8f);
         }
 
         if (clickCollider == null)
@@ -121,6 +120,18 @@ public sealed class ResourceBubbleController : MonoBehaviour
         }
 
         baseLocalScale = Vector3.one;
+    }
+
+    private void FitIconToBubble()
+    {
+        if (iconRenderer == null || iconRenderer.sprite == null) return;
+        Vector2 bounds = iconRenderer.sprite.bounds.size;
+        float largestDimension = Mathf.Max(bounds.x, bounds.y);
+        if (largestDimension <= 0.0001f) return;
+
+        float targetWorldSize = 0.42f;
+        float scale = targetWorldSize / largestDimension;
+        iconRenderer.transform.localScale = Vector3.one * scale;
     }
 
     private static Sprite GetFallbackBubbleSprite()

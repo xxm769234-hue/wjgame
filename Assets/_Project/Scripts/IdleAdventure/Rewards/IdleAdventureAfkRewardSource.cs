@@ -10,7 +10,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
 {
     [Header("Production")]
     [SerializeField] private string itemKey = "gold";
-    [SerializeField] private string displayName = "Gold";
+    [SerializeField] private string displayName = "金币";
     [SerializeField, Min(1)] private int baseQuantityPerCycle = 10;
     [SerializeField, Min(0)] private int quantityPerHighestStage = 2;
     [SerializeField, Min(1f)] private float productionIntervalSeconds = 30f;
@@ -32,6 +32,9 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     [SerializeField] private TextMeshProUGUI amountText;
     [SerializeField] private TextMeshProUGUI timerText;
     [SerializeField] private TextMeshProUGUI collectButtonText;
+    [SerializeField] private TextMeshProUGUI feedbackText;
+    [SerializeField] private Sprite readyIcon;
+    [SerializeField] private Sprite emptyIcon;
 
     [Header("Grant Target")]
     [SerializeField] private IdleAdventureRewardLedger rewardLedger;
@@ -49,6 +52,8 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     private long rewardSnapshotServerUnixSeconds;
     private int rewardSnapshotRemainderSeconds;
     private bool rewardSnapshotUsesClaimableQuantity;
+    private bool collectionRequestPending;
+    private bool collectionAwaitingSnapshot;
 
     private const int MaxServerStateRetryAttempts = 3;
     private const float ServerStateRetryBaseSeconds = 2f;
@@ -58,10 +63,12 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     public int QuantityPerCycle => Mathf.Max(1, baseQuantityPerCycle + Mathf.Max(0, highestClearedStage) * Mathf.Max(0, quantityPerHighestStage));
     public int StoredQuantity => CalculateStoredQuantity(GetEstimatedServerUnixSeconds());
     public int MaxStoredQuantity => Mathf.Max(1, maxStoredQuantity);
+    public float ProductionIntervalSeconds => Mathf.Max(1f, productionIntervalSeconds);
     public int HighestClearedStage => highestClearedStage;
     public bool HasServerSnapshot => hasServerSnapshot;
-    public bool HasViewBindings => collectButton != null && iconImage != null && progressFill != null && iconText != null && amountText != null && timerText != null && collectButtonText != null;
+    public bool HasViewBindings => collectButton != null && iconImage != null && iconText != null && amountText != null && timerText != null && collectButtonText != null;
     public UnityEvent<string, string, int> RewardCollected => rewardCollected;
+    public event Action<string, bool> FeedbackChanged;
 
     public void SetRewardLedger(IdleAdventureRewardLedger ledger)
     {
@@ -80,8 +87,9 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
         RefreshView();
     }
 
-    public void Initialize(IdleAdventureRewardLedger ledger, Button button, Image icon, Image fill, TextMeshProUGUI iconLabel, TextMeshProUGUI amountLabel, TextMeshProUGUI timerLabel, TextMeshProUGUI collectLabel)
+    public void Initialize(IdleAdventureRewardLedger ledger, Button button, Image icon, Image fill, TextMeshProUGUI iconLabel, TextMeshProUGUI amountLabel, TextMeshProUGUI timerLabel, TextMeshProUGUI collectLabel, TextMeshProUGUI feedbackLabel = null)
     {
+        if (collectButton != null) collectButton.onClick.RemoveListener(Collect);
         rewardLedger = ledger;
         collectButton = button;
         iconImage = icon;
@@ -90,8 +98,16 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
         amountText = amountLabel;
         timerText = timerLabel;
         collectButtonText = collectLabel;
+        feedbackText = feedbackLabel;
         EnsureInitialServerSnapshot();
         Bind();
+        RefreshView();
+    }
+
+    public void SetIconSprites(Sprite original, Sprite grayscale)
+    {
+        readyIcon = original;
+        emptyIcon = grayscale;
         RefreshView();
     }
 
@@ -114,6 +130,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
         long nextSettlementSeconds,
         bool usesClaimableQuantity)
     {
+        collectionAwaitingSnapshot = false;
         syncedServerUnixSeconds = Math.Max(0L, serverUnixSeconds);
         lastSettledServerUnixSeconds = Math.Max(0L, lastSettledUnixSeconds);
         serverStoredQuantity = Mathf.Clamp(storedQuantityFromServer, 0, MaxStoredQuantity);
@@ -129,6 +146,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
 
     public void ApplyServerCollection(long serverUnixSeconds, long nextLastSettledUnixSeconds, int nextStoredQuantityFromServer)
     {
+        collectionAwaitingSnapshot = false;
         syncedServerUnixSeconds = Math.Max(0L, serverUnixSeconds);
         lastSettledServerUnixSeconds = Math.Max(0L, nextLastSettledUnixSeconds);
         serverStoredQuantity = Mathf.Clamp(nextStoredQuantityFromServer, 0, MaxStoredQuantity);
@@ -226,6 +244,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     {
         if (TryCollectFromBackend()) return;
 
+        SetFeedback("请先登录账号后领取奖励");
         Debug.LogWarning("Idle Adventure AFK reward collection requires an authenticated backend session.", this);
         RefreshView();
     }
@@ -258,6 +277,9 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     public void ClearServerStateForAccountChange()
     {
         serverStateRequestGeneration++;
+        collectionRequestPending = false;
+        collectionAwaitingSnapshot = false;
+        SetFeedback(string.Empty);
         serverStateRequestRunning = false;
         serverStateRetryAttempt = 0;
         wasBackendAuthoritative = false;
@@ -308,24 +330,35 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
 
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated) return false;
+        if (collectionRequestPending || collectionAwaitingSnapshot) return true;
         if (!hasServerSnapshot)
         {
             RefreshView();
             return true;
         }
 
+        if (StoredQuantity <= 0) return true;
+
+        collectionRequestPending = true;
+        SetFeedback("正在领取奖励…");
         if (collectButton != null) collectButton.interactable = false;
         int requestGeneration = serverStateRequestGeneration;
         service.CollectIdleAdventureAfkReward(result =>
         {
             if (requestGeneration != serverStateRequestGeneration) return;
 
+            collectionRequestPending = false;
             if (result != null && result.Success && result.Data != null)
             {
+                collectionAwaitingSnapshot = true;
                 ApplyBackendCollection(result.Data);
+                SetFeedback(CollectionReceipt(result.Data));
+                RefreshView();
+                PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
             }
             else
             {
+                SetFeedback("领取失败，请稍后重试");
                 RefreshView();
             }
         });
@@ -501,7 +534,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
             { collectedKey, collectedName }
         };
 
-        if (rewardLedger != null) rewardLedger.GrantRewards(rewards, displayNames, $"{collectedName} x{collectedQuantity}");
+        if (rewardLedger != null) rewardLedger.GrantRewards(rewards, displayNames, $"{collectedName} ×{collectedQuantity}");
         rewardCollected.Invoke(collectedKey, collectedName, collectedQuantity);
     }
 
@@ -597,20 +630,49 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
         collectButton.onClick.AddListener(Collect);
     }
 
+    private string CollectionReceipt(IdleAdventureAfkRewardCollectResponse response)
+    {
+        IdleAdventureCollectedItemResponse[] rewards = response.ResolvedCollectedRewards;
+        if (rewards == null || rewards.Length == 0)
+            rewards = new[] { response.ResolvedCollectedReward ?? response.ResolvedCollectedItem };
+        List<string> entries = new List<string>();
+        foreach (IdleAdventureCollectedItemResponse reward in rewards)
+        {
+            if (reward == null || reward.quantity <= 0L) continue;
+            string name = reward.ResolvedName;
+            if (string.IsNullOrEmpty(name)) name = reward.ResolvedItemKey == ItemKey ? DisplayName : reward.ResolvedItemKey;
+            if (string.IsNullOrEmpty(name)) name = "奖励";
+            entries.Add($"{name} × {reward.quantity:N0}");
+        }
+        string prefix = response.ResolvedIdempotentReplay ? "已到账：" : "已获得 ";
+        return entries.Count > 0 ? prefix + string.Join("、", entries) : "奖励已到账";
+    }
+
     private void RefreshView()
     {
-        bool waitingForServer = IsBackendAuthoritative() && !hasServerSnapshot;
+        bool waitingForServer = (IsBackendAuthoritative() && !hasServerSnapshot) || collectionAwaitingSnapshot;
         long serverNow = GetEstimatedServerUnixSeconds();
         int amount = waitingForServer ? 0 : CalculateStoredQuantity(serverNow);
         bool ready = !waitingForServer && amount > 0;
         bool full = amount >= MaxStoredQuantity;
 
-        if (collectButton != null) collectButton.interactable = ready;
-        if (iconImage != null) iconImage.color = ready ? new Color(0.95f, 0.72f, 0.24f, 1f) : new Color(0.32f, 0.36f, 0.40f, 1f);
-        if (progressFill != null) progressFill.fillAmount = ready ? 1f : waitingForServer ? 0f : CalculateProgress(serverNow);
-        if (iconText != null) iconText.text = ResolveIconText();
-        if (amountText != null) amountText.text = waitingForServer ? "同步中" : $"x{amount}/{MaxStoredQuantity}";
-        if (timerText != null) timerText.text = waitingForServer ? "同步中" : full ? "Full" : ready ? "Ready" : FormatRemainingTime(CalculateRemainingSeconds(serverNow));
+        if (collectButton != null) collectButton.interactable = ready && !collectionRequestPending;
+        if (iconImage != null)
+        {
+            iconImage.color = Color.white;
+            Sprite stateIcon = ready ? readyIcon : emptyIcon;
+            if (stateIcon != null) iconImage.sprite = stateIcon;
+        }
+        if (progressFill != null) progressFill.fillAmount = waitingForServer ? 0f : Mathf.Clamp01((float)amount / MaxStoredQuantity);
+        if (iconText != null) iconText.text = FrontendTextLocalization.Normalize(ResolveIconText());
+        if (amountText != null) amountText.text = waitingForServer ? "同步中" : $"{amount:N0} / {MaxStoredQuantity:N0}";
+        if (timerText != null) timerText.text = waitingForServer ? string.Empty : full ? "已存满，请及时领取" : ready ? string.Empty : "奖励积累中";
+    }
+
+    private void SetFeedback(string value)
+    {
+        if (feedbackText != null) feedbackText.text = value;
+        FeedbackChanged?.Invoke(value, collectionRequestPending);
     }
 
     private bool IsBackendAuthoritative()
@@ -650,7 +712,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
     private string ResolveIconText()
     {
         string source = DisplayName;
-        return string.IsNullOrEmpty(source) ? "R" : source.Substring(0, 1).ToUpperInvariant();
+        return string.IsNullOrEmpty(source) ? "奖" : source.Substring(0, 1);
     }
 
     private string FormatRemainingTime(int remainingSeconds)

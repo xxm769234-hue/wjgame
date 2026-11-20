@@ -20,6 +20,15 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
     private bool purificationMode;
     private bool backgroundDismissEnabled;
     private Coroutine dismissArmRoutine;
+    private Sprite confirmationSprite;
+    private RectTransform canvasRect;
+
+    public RectTransform ResolveOnboardingTarget(LandSlotController slot)
+    {
+        if (slot == null || !slot.IsPurificationAvailable || slot.PurificationItemAmount <= 0) return null;
+        if (currentSlot != slot || !gameObject.activeInHierarchy) Show(slot);
+        return window != null && window.activeInHierarchy ? window.transform as RectTransform : null;
+    }
 
     public static LandSlotPurchasePanel EnsureInstance()
     {
@@ -73,6 +82,7 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
     private void OnDestroy()
     {
         if (Instance == this) Instance = null;
+        if (confirmationSprite != null) Destroy(confirmationSprite);
     }
 
     private void OnDisable()
@@ -83,7 +93,12 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
 
     private void Update()
     {
-        if (gameObject.activeSelf && Input.GetKeyDown(KeyCode.Escape) && !purchasePending) Hide();
+        if (gameObject.activeSelf && Input.GetKeyDown(KeyCode.Escape) && !purchasePending && !PlayerOnboardingInputLock.IsGameplayInputBlocked) Hide();
+        if (window != null && canvasRect != null)
+        {
+            float scale = Mathf.Min(1f, (canvasRect.rect.width - 32f) / 569f, (canvasRect.rect.height - 32f) / 421f);
+            window.transform.localScale = Vector3.one * Mathf.Max(0.1f, scale);
+        }
     }
 
     public void Show(LandSlotController slot)
@@ -94,13 +109,13 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
         currentSlot = slot;
         purchasePending = false;
         purificationMode = slot.IsPurificationAvailable;
-        titleText.text = purificationMode ? "Purify Land" : "Unlock Land";
-        purchaseButtonText.text = purificationMode ? "Purify" : "Purchase";
+        titleText.text = purificationMode ? "净化地块" : "解锁地块";
+        purchaseButtonText.text = purificationMode ? "净化" : "购买";
         costText.gameObject.SetActive(true);
         balanceText.gameObject.SetActive(!purificationMode);
         costText.text = purificationMode
             ? BuildPurificationCostText(slot)
-            : $"{slot.PurchaseGoldCost:N0} Gold";
+            : $"{slot.PurchaseGoldCost:N0} 金币";
         statusText.text = string.Empty;
         if (!purificationMode) RefreshBalance();
         purchaseButton.interactable = true;
@@ -125,14 +140,14 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated)
         {
-            statusText.text = "Backend session is not authenticated.";
+            statusText.text = "请先登录账号。";
             return;
         }
 
         purchasePending = true;
         purchaseButton.interactable = false;
         bool requestedPurification = purificationMode;
-        statusText.text = requestedPurification ? "Purifying..." : "Purchasing...";
+        statusText.text = requestedPurification ? "正在净化……" : "正在购买……";
         LandSlotController requestedSlot = currentSlot;
         System.Action<BackendResult<LandSlotStateResponse>> onComplete = result =>
         {
@@ -143,6 +158,7 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
                 requestedSlot.ApplyRemoteUnlockState(result.Data);
                 currentSlot = null;
                 gameObject.SetActive(false);
+                PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
                 return;
             }
 
@@ -150,7 +166,7 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
             if (!requestedPurification && result != null && result.Code == 7601)
             {
                 purchasePending = true;
-                statusText.text = "The server price changed. Refreshing the authoritative quote...";
+                statusText.text = "消耗已变化，正在更新……";
                 service.SyncMap((refreshSuccess, refreshMessage) =>
                 {
                     purchasePending = false;
@@ -158,8 +174,8 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
                     RefreshFromAuthoritativeSlot(
                         requestedSlot,
                         refreshSuccess
-                            ? "The price changed. Review the new cost and confirm again."
-                            : "Price refresh failed: " + refreshMessage,
+                            ? "价格已变化，请确认新的消耗后重试。"
+                            : "消耗更新失败：" + FrontendTextLocalization.NormalizePlayerMessage(refreshMessage),
                         refreshSuccess);
                 });
                 return;
@@ -167,7 +183,7 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
             if (!requestedPurification && result != null && result.Code == 7602)
             {
                 purchaseButton.interactable = false;
-                statusText.text = "The server purchase policy is temporarily unavailable. Refreshing shortly...";
+                statusText.text = "暂时无法解锁，正在重新查看……";
                 StartCoroutine(RefreshPurchasePolicyAfterDelay(service, requestedSlot));
                 return;
             }
@@ -175,9 +191,8 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
             purchaseButton.interactable = requestedPurification
                 ? requestedSlot.IsPurificationAvailable
                 : requestedSlot.IsPurchaseAvailable;
-            statusText.text = string.IsNullOrEmpty(message)
-                ? requestedPurification ? "Purification failed." : "Purchase failed."
-                : message;
+            statusText.text = FrontendTextLocalization.NormalizePlayerMessage(message,
+                requestedPurification ? "净化失败，请稍后重试。" : "购买失败，请稍后重试。");
             if (!requestedPurification) RefreshBalance();
         };
 
@@ -198,8 +213,8 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
             RefreshFromAuthoritativeSlot(
                 slot,
                 success
-                    ? "The server purchase policy was refreshed."
-                    : "Purchase policy refresh failed: " + message,
+                    ? "解锁条件已更新。"
+                    : "解锁条件更新失败：" + FrontendTextLocalization.NormalizePlayerMessage(message),
                 success);
         });
     }
@@ -209,36 +224,36 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
         if (slot == null || currentSlot != slot) return;
 
         purificationMode = slot.IsPurificationAvailable;
-        titleText.text = purificationMode ? "Purify Land" : "Unlock Land";
-        purchaseButtonText.text = purificationMode ? "Purify" : "Purchase";
+        titleText.text = purificationMode ? "净化地块" : "解锁地块";
+        purchaseButtonText.text = purificationMode ? "净化" : "购买";
         costText.text = purificationMode
             ? BuildPurificationCostText(slot)
-            : $"{slot.PurchaseGoldCost:N0} Gold";
+            : $"{slot.PurchaseGoldCost:N0} 金币";
         balanceText.gameObject.SetActive(!purificationMode);
         if (!purificationMode) RefreshBalance();
         purchaseButton.interactable = allowInteraction
             && (purificationMode ? slot.IsPurificationAvailable : slot.IsPurchaseAvailable);
-        statusText.text = message ?? string.Empty;
+        statusText.text = FrontendTextLocalization.NormalizePlayerMessage(message);
     }
 
     private void RefreshBalance()
     {
         BackendGameService service = BackendGameService.Instance;
         long gold = service != null && service.CurrentUser != null ? service.CurrentUser.gold : 0L;
-        balanceText.text = $"Balance: {gold:N0} Gold";
+        balanceText.text = $"余额：{gold:N0} 金币";
     }
 
     private static string BuildPurificationCostText(LandSlotController slot)
     {
         if (slot == null || slot.PurificationItemAmount <= 0)
         {
-            return "Purification cost unavailable";
+            return "无法获取净化消耗";
         }
 
         string itemName = string.IsNullOrEmpty(slot.PurificationItemKey)
-            ? (slot.PurificationItemId > 0 ? "Item " + slot.PurificationItemId : "Purification item")
-            : slot.PurificationItemKey;
-        return $"{itemName} x{slot.PurificationItemAmount}";
+            ? "净化材料"
+            : FrontendTextLocalization.NormalizePlayerMessage(FrontendTextLocalization.Normalize(slot.PurificationItemKey), "净化材料");
+        return $"{itemName} ×{slot.PurificationItemAmount}";
     }
 
     private IEnumerator ArmBackgroundDismissal()
@@ -281,44 +296,81 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
         dismissArea.transition = Selectable.Transition.None;
         dismissArea.onClick.AddListener(DismissFromBackground);
 
-        window = CreateImage("Window", transform, new Color(0.11f, 0.13f, 0.14f, 0.98f));
+        window = CreateImage("Window", transform, new Color(1f, 0.94f, 0.82f, 0.98f));
         RectTransform windowRect = (RectTransform)window.transform;
         windowRect.anchorMin = new Vector2(0.5f, 0.5f);
         windowRect.anchorMax = new Vector2(0.5f, 0.5f);
         windowRect.pivot = new Vector2(0.5f, 0.5f);
-        windowRect.sizeDelta = new Vector2(520f, 300f);
+        windowRect.sizeDelta = new Vector2(569f, 421f);
+        Canvas parentCanvas = GetComponentInParent<Canvas>();
+        canvasRect = parentCanvas != null ? parentCanvas.transform as RectTransform : null;
 
-        titleText = CreateText("Title", window.transform, "Unlock Land", 32f, FontStyles.Bold);
-        SetRect(titleText.rectTransform, new Vector2(0f, 98f), new Vector2(440f, 54f));
+        Image windowImage = window.GetComponent<Image>();
+        Texture2D popupAtlas = Resources.Load<Texture2D>("UI/LandInfoPanelPopups");
+        if (windowImage != null && popupAtlas != null)
+        {
+            float scaleX = popupAtlas.width / 2048f;
+            float scaleY = popupAtlas.height / 1536f;
+            confirmationSprite = Sprite.Create(popupAtlas,
+                new Rect(1042f * scaleX, 275f * scaleY, 569f * scaleX, 421f * scaleY),
+                new Vector2(0.5f, 0.5f), 100f);
+            windowImage.sprite = confirmationSprite;
+            windowImage.type = Image.Type.Simple;
+            windowImage.preserveAspect = true;
+            windowImage.color = Color.white;
+        }
+
+        titleText = CreateText("Title", window.transform, "解锁地块", 32f, FontStyles.Bold);
+        titleText.enableAutoSizing = true;
+        titleText.fontSizeMin = 22f;
+        titleText.fontSizeMax = 32f;
+        titleText.enableWordWrapping = false;
+        titleText.overflowMode = TextOverflowModes.Ellipsis;
+        titleText.color = new Color(0.30f, 0.16f, 0.11f, 1f);
+        SetRect(titleText.rectTransform, new Vector2(0f, 164f), new Vector2(390f, 48f));
 
         costText = CreateText("Cost", window.transform, string.Empty, 30f, FontStyles.Bold);
-        costText.color = new Color(1f, 0.76f, 0.18f, 1f);
-        SetRect(costText.rectTransform, new Vector2(0f, 34f), new Vector2(440f, 48f));
+        costText.color = new Color(0.43f, 0.24f, 0.08f, 1f);
+        costText.enableAutoSizing = true;
+        costText.fontSizeMin = 18f;
+        costText.fontSizeMax = 30f;
+        costText.enableWordWrapping = false;
+        costText.overflowMode = TextOverflowModes.Ellipsis;
+        SetRect(costText.rectTransform, new Vector2(0f, 76f), new Vector2(460f, 52f));
 
         balanceText = CreateText("Balance", window.transform, string.Empty, 20f, FontStyles.Normal);
-        balanceText.color = new Color(0.75f, 0.79f, 0.8f, 1f);
-        SetRect(balanceText.rectTransform, new Vector2(0f, -12f), new Vector2(440f, 36f));
+        balanceText.color = new Color(0.42f, 0.27f, 0.18f, 1f);
+        balanceText.enableAutoSizing = true;
+        balanceText.fontSizeMin = 16f;
+        balanceText.fontSizeMax = 20f;
+        balanceText.overflowMode = TextOverflowModes.Ellipsis;
+        SetRect(balanceText.rectTransform, new Vector2(0f, 25f), new Vector2(460f, 32f));
 
         statusText = CreateText("Status", window.transform, string.Empty, 18f, FontStyles.Normal);
-        statusText.color = new Color(0.95f, 0.42f, 0.35f, 1f);
-        SetRect(statusText.rectTransform, new Vector2(0f, -54f), new Vector2(440f, 42f));
+        statusText.color = new Color(0.62f, 0.20f, 0.08f, 1f);
+        statusText.enableAutoSizing = true;
+        statusText.fontSizeMin = 12f;
+        statusText.fontSizeMax = 18f;
+        statusText.enableWordWrapping = true;
+        statusText.overflowMode = TextOverflowModes.Ellipsis;
+        SetRect(statusText.rectTransform, new Vector2(0f, -32f), new Vector2(460f, 60f));
 
         Button cancelButton = CreateButton(
-            "Cancel",
+            "取消",
             window.transform,
-            "Cancel",
-            new Color(0.25f, 0.28f, 0.29f, 1f),
+            "取消",
+            confirmationSprite != null ? Color.clear : new Color(0.82f, 0.72f, 0.59f, 1f),
             Hide);
-        SetRect((RectTransform)cancelButton.transform, new Vector2(-112f, -108f), new Vector2(190f, 54f));
+        SetRect((RectTransform)cancelButton.transform, new Vector2(-122f, -114f), new Vector2(192f, 76f));
 
         purchaseButton = CreateButton(
-            "Purchase",
+            "购买",
             window.transform,
-            "Purchase",
-            new Color(0.17f, 0.48f, 0.31f, 1f),
+            "购买",
+            confirmationSprite != null ? Color.clear : new Color(0.91f, 0.75f, 0.46f, 1f),
             Purchase);
         purchaseButtonText = purchaseButton.GetComponentInChildren<TMP_Text>();
-        SetRect((RectTransform)purchaseButton.transform, new Vector2(112f, -108f), new Vector2(190f, 54f));
+        SetRect((RectTransform)purchaseButton.transform, new Vector2(111f, -114f), new Vector2(192f, 76f));
     }
 
     private static GameObject CreateImage(string name, Transform parent, Color color)
@@ -340,7 +392,7 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
         textObject.transform.SetParent(parent, false);
         TMP_Text text = textObject.GetComponent<TMP_Text>();
         text.font = RuntimeFontAssetProvider.Resolve();
-        text.text = value;
+        text.text = FrontendTextLocalization.Normalize(value);
         text.fontSize = fontSize;
         text.fontStyle = style;
         text.alignment = TextAlignmentOptions.Center;
@@ -366,6 +418,15 @@ public sealed class LandSlotPurchasePanel : MonoBehaviour
         button.onClick.AddListener(action);
 
         TMP_Text text = CreateText("Label", buttonObject.transform, label, 22f, FontStyles.Bold);
+        text.color = new Color(0.30f, 0.16f, 0.11f, 1f);
+        button.targetGraphic = text;
+        ColorBlock paperColors = button.colors;
+        paperColors.normalColor = Color.white;
+        paperColors.highlightedColor = new Color(1f, 0.88f, 0.64f, 1f);
+        paperColors.pressedColor = new Color(0.68f, 0.55f, 0.40f, 1f);
+        paperColors.selectedColor = Color.white;
+        paperColors.disabledColor = new Color(1f, 1f, 1f, 0.45f);
+        button.colors = paperColors;
         text.rectTransform.anchorMin = Vector2.zero;
         text.rectTransform.anchorMax = Vector2.one;
         text.rectTransform.offsetMin = Vector2.zero;

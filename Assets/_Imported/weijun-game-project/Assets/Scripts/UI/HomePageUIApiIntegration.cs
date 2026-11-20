@@ -50,6 +50,7 @@ public partial class HomePageUI
 
     private void Update()
     {
+        TickStarterSelection();
         UpdateHomeStaminaCountdown();
         if (!HasAuthSession())
         {
@@ -76,7 +77,7 @@ public partial class HomePageUI
             && !paymentAccountRefreshRunning)
         {
             StartPendingPaymentRecovery(
-                rechargeVisible ? "充值页面已打开，正在补查支付订单..." : string.Empty,
+                rechargeVisible ? "正在查询支付结果..." : string.Empty,
                 rechargeVisible ? 2f : PaymentBackgroundRecoveryIntervalSeconds);
         }
     }
@@ -89,9 +90,10 @@ public partial class HomePageUI
         }
 
         LoadPendingPaymentState();
-        StartPendingPaymentRecovery("应用恢复前台，正在补查支付订单...", 2f);
+        StartPendingPaymentRecovery("正在查询支付结果...", 2f);
         RefreshServerSignInStatus();
         StartCoroutine(RefreshServerStamina());
+        RefreshStarterSelectionOnFocus();
     }
 
     private void BuildHomeMapSelector(Transform parent)
@@ -206,7 +208,7 @@ public partial class HomePageUI
     private IEnumerator GetMapDataAndEnter(string landType)
     {
         mapEntryRunning = true;
-        SetStatus("正在同步服务器地图...");
+        SetStatus("正在加载地图...");
 
         int playerId = GameSession.PlayerId;
         UnityWebRequest request = CreateAuthorizedGet(AppendSceneIdQuery($"/land/map/{playerId}"));
@@ -380,7 +382,7 @@ public partial class HomePageUI
                 }
 
                 SetStatus(outcomeUncertain
-                    ? "创建订单结果未知，重新点击同一商品会复用本次订单号：" + ApiRequestUtility.GetErrorMessage(request, "请求失败")
+                    ? "订单创建结果尚未确认；再次点击同一商品将查询本次订单，请勿重复支付。"
                     : "创建订单失败：" + ApiRequestUtility.GetErrorMessage(request, "请求失败"));
                 yield break;
             }
@@ -388,7 +390,7 @@ public partial class HomePageUI
             PaymentOrderCreateApiResponse response = ParseJson<PaymentOrderCreateApiResponse>(request.downloadHandler.text);
             if (response == null)
             {
-                SetStatus("创建订单结果未知，重新点击同一商品会复用本次订单号：订单响应格式错误。");
+                SetStatus("订单创建结果尚未确认；再次点击同一商品将查询本次订单，请勿重复支付。");
                 yield break;
             }
 
@@ -401,7 +403,7 @@ public partial class HomePageUI
 
             if (response.data == null || response.data.order == null)
             {
-                SetStatus("创建订单结果未知：响应缺少订单数据；重新点击同一商品会复用本次客户端订单号。");
+                SetStatus("订单创建结果尚未确认；再次点击同一商品将查询本次订单，请勿重复支付。");
                 yield break;
             }
 
@@ -413,19 +415,19 @@ public partial class HomePageUI
                 response.data.order.status);
             if (string.IsNullOrEmpty(pendingPaymentOrderNo))
             {
-                SetStatus("创建订单结果未知：后端未返回订单号；重新点击同一商品会复用本次客户端订单号。");
+                SetStatus("订单创建结果尚未确认；再次点击同一商品将查询本次订单，请勿重复支付。");
                 yield break;
             }
 
             if (!response.data.payReady)
             {
-                SetStatus($"订单 {pendingPaymentOrderNo} 已创建；当前为后端本地订单测试模式，不会发放资源。");
+                SetStatus("当前为支付测试模式，本次订单不会发放资源。");
                 yield break;
             }
 
             if (!HasCompletePaymentParameters(response.data.payParams))
             {
-                SetStatus("订单已创建，但后端未返回微信支付参数。");
+                SetStatus("订单已创建，暂时无法唤起微信支付，请稍后重试。");
                 yield break;
             }
 
@@ -461,7 +463,7 @@ public partial class HomePageUI
         ClearPendingPaymentCreateAttempt();
         if (!string.IsNullOrEmpty(pendingPaymentOrderNo))
         {
-            SetStatus("支付回调未完成，正在保留订单并补查服务端状态：" + (string.IsNullOrEmpty(message) ? "用户取消或支付失败" : message));
+            SetStatus("支付结果尚未确认，正在查询本次订单，请勿重复支付。");
             if (!paymentPolling)
             {
                 StartCoroutine(RecoverPendingPaymentOrder(string.Empty));
@@ -794,7 +796,7 @@ public partial class HomePageUI
             case "DELIVERED":
                 return $"订单 {orderNo} 已到账，正在刷新钻石余额。";
             case "PAID":
-                return $"订单 {orderNo} 已支付，等待服务器发放钻石。";
+                return $"订单 {orderNo} 已支付，钻石正在发放，请勿重复支付。";
             case "PAYING":
             case "CREATED":
                 return $"订单 {orderNo} 正在等待支付结果。";
@@ -891,7 +893,7 @@ public partial class HomePageUI
 
         paymentAccountRefreshRunning = true;
         paymentDeliveryRefreshPending = true;
-        StartCoroutine(RefreshAccountSnapshot("支付已到账，资源已从服务器刷新。", true));
+        StartCoroutine(RefreshAccountSnapshot("支付已到账，资源已刷新。", true));
     }
 
     private void HandlePaymentDeliveredRealtimeNotification(string payload)
