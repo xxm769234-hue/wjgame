@@ -1101,7 +1101,7 @@ public partial class HomePageUI
 
         if (v37Loading)
         {
-            SetFriendSearchStatus(root, "好友数据正在同步，请稍后操作");
+            SetFriendSearchStatus(root, "好友列表加载中，请稍候");
             return;
         }
 
@@ -1587,7 +1587,7 @@ public partial class HomePageUI
             yield return RefreshServerFriendRequestState(
                 root,
                 true,
-                "实时连接已恢复，好友在线状态已刷新");
+                string.Empty);
         }
 
         v38PresenceRefreshCoroutine = null;
@@ -1688,7 +1688,7 @@ public partial class HomePageUI
     {
         if (v37FriendRequestSummary == null)
         {
-            return "好友 " + v37Friends.Count + "    申请摘要同步中";
+            return "好友 " + v37Friends.Count;
         }
 
         return $"好友 {v37FriendRequestSummary.friendCount}/{v37FriendRequestSummary.maxFriendCount}    收到 {v37FriendRequestSummary.pendingIncomingCount}    发出 {v37FriendRequestSummary.pendingOutgoingCount}";

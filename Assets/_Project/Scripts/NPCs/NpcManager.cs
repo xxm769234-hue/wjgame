@@ -106,7 +106,7 @@ public sealed class NpcManager : MonoBehaviour
         {
             bool success = result != null && result.Success && result.Data != null;
             if (success) StoreRemoteAvailableNpcs(result.Data);
-            string message = result == null || string.IsNullOrEmpty(result.Message) ? "未收到服务器响应。" : result.Message;
+            string message = result == null || string.IsNullOrEmpty(result.Message) ? "连接中断，请稍后重试。" : result.Message;
             onComplete?.Invoke(success, message, remoteAvailableNpcs);
         });
     }

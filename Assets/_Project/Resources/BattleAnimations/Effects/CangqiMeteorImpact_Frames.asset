@@ -1,0 +1,36 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject:
+    fileID: 0
+  m_PrefabInstance:
+    fileID: 0
+  m_PrefabAsset:
+    fileID: 0
+  m_GameObject:
+    fileID: 0
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
+  m_Name: CangqiMeteorImpact
+  m_EditorClassIdentifier: 
+  sequenceId: CangqiMeteorImpact
+  sourceFolder: "CangqiMeteorImpact"
+  action: 3
+  frameRate: 30
+  playbackDuration: 0.36666667
+  loop: 0
+  frames:
+  - {fileID: 21300000, guid: 59bfae95432e5c408a6f09c7d5fe1715, type: 3}
+  - {fileID: 21300000, guid: b9713cbde6d55e72aaac57cfbe76a10e, type: 3}
+  - {fileID: 21300000, guid: 33759e8355895ea5b8125b3231c739fe, type: 3}
+  - {fileID: 21300000, guid: d316bbb2c4b05f339ab327270388a773, type: 3}
+  - {fileID: 21300000, guid: 4cbd88df338e513da047f970308d7e83, type: 3}
+  - {fileID: 21300000, guid: b4f27d4156c45828b5834936ce471bac, type: 3}
+  - {fileID: 21300000, guid: 2126888323ec53f688e349b69b7f8592, type: 3}
+  - {fileID: 21300000, guid: dcede995a047514782b4b475ed6e3d97, type: 3}
+  - {fileID: 21300000, guid: f3341d20d94351e39f5b3a83b1b6535a, type: 3}
+  - {fileID: 21300000, guid: ad34f390f34351919f4eb75ccc24b472, type: 3}
+  - {fileID: 21300000, guid: 38f80678453f5e5e8bb13729b9eae39f, type: 3}

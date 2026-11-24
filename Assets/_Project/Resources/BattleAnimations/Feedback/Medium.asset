@@ -16,13 +16,15 @@ MonoBehaviour:
   hitStop: 0.05
   shakePixels: 2.5
   shakeDuration: 0.12
-  recoilPixels: 3.2
+  recoilPixels: 4.5
   recoilAttack: 0.035
   recoilReturn: 0.11
   flashAmount: 0.45
   flashDuration: 0.04
   afterglowDuration: 0.08
-  flashBodyFraction: 0.28
+  flashColor: {r: 1, g: 0.12, b: 0.16, a: 1}
+  afterglowColor: {r: 1, g: 0.35, b: 0.38, a: 1}
+  flashBodyFraction: 0.625
   sparkPixels: 18
   sparkDuration: 0.16
   contactColor: {r: 1, g: 0.78, b: 0.37, a: 1}

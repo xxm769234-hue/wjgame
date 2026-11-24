@@ -12,6 +12,34 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Cangqi_Hit_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.2765, y: 0.0239}
+    right: {x: 0.2765, y: 0.0137}
+  - frame: 16
+    left: {x: -0.2696, y: 0.0205}
+    right: {x: 0.3242, y: 0.0171}
+  - frame: 40
+    left: {x: -0.2696, y: 0.0205}
+    right: {x: 0.3242, y: 0.0171}
+  - frame: 48
+    left: {x: -0.2696, y: 0.0205}
+    right: {x: 0.3242, y: -0.0734}
+  - frame: 56
+    left: {x: -0.2730, y: 0.0239}
+    right: {x: 0.4061, y: -0.0734}
+  - frame: 64
+    left: {x: -0.2730, y: 0.0239}
+    right: {x: 0.4096, y: -0.0683}
+  - frame: 72
+    left: {x: -0.2730, y: 0.0239}
+    right: {x: 0.4061, y: -0.0478}
+  - frame: 80
+    left: {x: -0.2730, y: 0.0239}
+    right: {x: 0.2765, y: 0.0137}
+  - frame: 89
+    left: {x: -0.2730, y: 0.0239}
+    right: {x: 0.2765, y: 0.0137}
   sequenceId: Cangqi_Hit_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u53D7\u51FB\\\u6CA7\u7948"
   action: 5

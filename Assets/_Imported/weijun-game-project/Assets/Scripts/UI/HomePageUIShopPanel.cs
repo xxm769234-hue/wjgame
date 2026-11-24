@@ -42,6 +42,11 @@ public partial class HomePageUI
 
     private void ShowShopContent()
     {
+        OpenShopCategory(GoldShopCategory);
+    }
+
+    private void OpenShopCategory(string category)
+    {
         HideSystemMailPanel();
         HideSignPanel();
         HideLotteryPanel();
@@ -63,7 +68,7 @@ public partial class HomePageUI
         }
 
         shopPanelObject = panel.gameObject;
-        activeShopCategory = GoldShopCategory;
+        activeShopCategory = category;
         shopPageIndex = 0;
         selectedCoinShopProductId = 0;
         selectedCoinShopLotCount = 0;
@@ -80,9 +85,9 @@ public partial class HomePageUI
         }
 
         shopPurchaseSummary = "正在加载商品...";
-        shopStatusMessage = "正在读取金币商城...";
+        shopStatusMessage = "正在读取" + GetActiveShopCurrencyLabel() + "商城...";
         RenderShopScenePanel();
-        StartCoroutine(GetCoinShopCatalog("金币商城目录已同步"));
+        StartCoroutine(GetCoinShopCatalog(string.Empty));
     }
 
     private void RenderShopScenePanel()
@@ -302,7 +307,7 @@ public partial class HomePageUI
         SetSceneText(root, "ShopDetailIconText", GetCoinShopIconText(product));
         ConfigureShopProductIcon(root, product, "ShopDetailIcon", "ShopDetailIconText");
         SetSceneText(root, "ShopDetailName", productName);
-        SetSceneText(root, "ShopDetailDescription", product.description ?? string.Empty);
+        SetSceneText(root, "ShopDetailDescription", FrontendTextLocalization.RemoveSyncNotices(product.description) ?? string.Empty);
         SetSceneText(root, "ShopDetailReward", "购买内容  " + GetCoinShopRewardName(product) + " x" + totalReward);
         SetSceneText(root, "ShopDetailPrice", GetActiveShopCurrencyLabel() + " " + totalCost + "  (" + pricePerLot + "/批)");
         SetSceneText(root, "ShopPurchaseSummary", shopPurchaseSummary);
@@ -411,7 +416,7 @@ public partial class HomePageUI
         RenderShopScenePanel();
         if (HasAuthSession())
         {
-            StartCoroutine(GetCoinShopCatalog(GetActiveShopCurrencyLabel() + "商城目录已同步"));
+            StartCoroutine(GetCoinShopCatalog(string.Empty));
         }
     }
 
@@ -467,7 +472,7 @@ public partial class HomePageUI
 
         if (!coinShopCatalogLoading && !coinShopPurchaseRunning)
         {
-            StartCoroutine(GetCoinShopCatalog(GetActiveShopCurrencyLabel() + "商城目录已刷新"));
+            StartCoroutine(GetCoinShopCatalog(string.Empty));
         }
     }
 
@@ -656,7 +661,7 @@ public partial class HomePageUI
                 RenderShopScenePanel();
                 if (refreshRequired)
                 {
-                    yield return GetCoinShopCatalog("商城状态已刷新，请重新确认购买");
+                    yield return GetCoinShopCatalog("商品信息已变化，请重新确认购买");
                 }
                 yield break;
             }
@@ -706,20 +711,20 @@ public partial class HomePageUI
         if (inventoryPanelObject != null && inventoryPanelObject.activeInHierarchy
             && string.Equals(result.rewardType, "ITEM", StringComparison.OrdinalIgnoreCase))
         {
-            inventoryStatusMessage = GetShopCurrencyLabel(result.paymentCurrency) + "商城奖励已同步";
+            inventoryStatusMessage = string.Empty;
             RenderInventoryPanel();
         }
         if (equipmentPanelObject != null && equipmentPanelObject.activeInHierarchy
             && string.Equals(result.rewardType, "EQUIPMENT", StringComparison.OrdinalIgnoreCase))
         {
             RebuildServerEquipmentItems();
-            equipmentStatusMessage = GetShopCurrencyLabel(result.paymentCurrency) + "商城奖励已同步";
+            equipmentStatusMessage = string.Empty;
             RenderEquipmentScenePanel(GetEquipmentPanelRoot());
         }
 
         if (failedCategories.Count > 0)
         {
-            SetStatus(GetShopCurrencyLabel(result.paymentCurrency) + "商城奖励同步失败：" + string.Join("、", failedCategories.ToArray()));
+            SetStatus("购买成功，请稍后查看物品。");
         }
     }
 
@@ -960,6 +965,12 @@ public partial class HomePageUI
             return null;
         }
 
+        if (string.Equals(product.rewardType, "ITEM", StringComparison.OrdinalIgnoreCase))
+        {
+            Sprite fragment = RoleFragmentArt.Resolve(product.rewardKey, product.rewardName, product.rewardIcon, category: product.rewardCategory);
+            if (fragment != null) return fragment;
+        }
+
         if (string.Equals(product.rewardType, "EQUIPMENT", StringComparison.OrdinalIgnoreCase))
         {
             string[] equipmentIconKeys =
@@ -1066,7 +1077,7 @@ public partial class HomePageUI
                 }
             }
         }
-        return "背包数量将在购买后同步";
+        return string.Empty;
     }
 
     private string BuildCoinShopLimitText(CoinShopProductResponse product)
@@ -1469,7 +1480,7 @@ public partial class HomePageUI
         if (shopPanelObject != null && shopPanelObject.activeInHierarchy && activeShopCategory == currency
             && !coinShopCatalogLoading && !coinShopPurchaseRunning)
         {
-            StartCoroutine(GetCoinShopCatalog(GetShopCurrencyLabel(currency) + "商城已同步最新购买结果"));
+            StartCoroutine(GetCoinShopCatalog(string.Empty));
         }
         if (coinShopHistoryPanelObject != null && coinShopHistoryPanelObject.activeInHierarchy
             && activeShopCategory == currency && !coinShopHistoryLoading)

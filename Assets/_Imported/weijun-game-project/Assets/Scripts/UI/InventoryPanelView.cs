@@ -457,8 +457,10 @@ public sealed class InventoryPanelView : MonoBehaviour
         }
     }
 
-    public Sprite ResolveIcon(string itemKey, string itemName, string iconKey)
+    public Sprite ResolveIcon(string itemKey, string itemName, string iconKey, string quality = null, string itemType = null)
     {
+        Sprite fragment = RoleFragmentArt.Resolve(itemKey,itemName,iconKey,quality,itemType);
+        if (fragment != null) return fragment;
         if (icons == null) return null;
 
         string[] candidates = { iconKey, itemKey, itemName };
@@ -562,6 +564,7 @@ public sealed class InventoryPanelView : MonoBehaviour
         SetText(detailNameText, string.IsNullOrEmpty(itemName) ? "资源详情" : itemName);
         SetText(detailTypeText, string.IsNullOrEmpty(itemType) ? "物品" : itemType);
         SetText(detailQuantityText, $"数量  {Mathf.Max(0, quantity)}");
+        description = FrontendTextLocalization.RemoveSyncNotices(description);
         SetText(detailDescriptionText, string.IsNullOrEmpty(description) ? "暂无物品说明" : description);
         if (detailDescriptionScroll != null)
         {

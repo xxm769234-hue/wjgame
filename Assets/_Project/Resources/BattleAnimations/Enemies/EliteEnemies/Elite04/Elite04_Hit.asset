@@ -1,0 +1,132 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject:
+    fileID: 0
+  m_PrefabInstance:
+    fileID: 0
+  m_PrefabAsset:
+    fileID: 0
+  m_GameObject:
+    fileID: 0
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
+  m_Name: Elite04_Hit
+  m_EditorClassIdentifier: 
+  sequenceId: Elite04_Hit
+  action: 5
+  frameRate: 100.00000
+  playbackDuration: 0.570000
+  defenseFrame: 5
+  frameTimes:
+  - 0.000000
+  - 0.010000
+  - 0.020000
+  - 0.030000
+  - 0.040000
+  - 0.050000
+  - 0.067000
+  - 0.084000
+  - 0.101000
+  - 0.116083
+  - 0.131167
+  - 0.146250
+  - 0.161333
+  - 0.176417
+  - 0.191500
+  - 0.206583
+  - 0.221667
+  - 0.236750
+  - 0.251833
+  - 0.266917
+  - 0.282000
+  - 0.297800
+  - 0.313600
+  - 0.329400
+  - 0.345200
+  - 0.361000
+  - 0.376800
+  - 0.392600
+  - 0.408400
+  - 0.424200
+  - 0.440000
+  - 0.454444
+  - 0.468889
+  - 0.483333
+  - 0.497778
+  - 0.512222
+  - 0.526667
+  - 0.541111
+  - 0.555556
+  loop: 0
+  targetsEnemy: 0
+  frames:
+  - {fileID: 21300000, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300002, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300004, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300006, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300008, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300010, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300012, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300014, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300016, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300018, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300020, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300022, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300024, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300026, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300028, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300030, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300032, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300034, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300036, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300038, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300040, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300042, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300044, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300046, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300048, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300050, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300052, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300054, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300056, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300058, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300060, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300062, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300064, guid: 7119bdecb284d8bd432bdb6c7ccedae4, type: 3}
+  - {fileID: 21300066, guid: 0cd069db10fa60fc66a5d8ede194f8ec, type: 3}
+  - {fileID: 21300068, guid: 0cd069db10fa60fc66a5d8ede194f8ec, type: 3}
+  - {fileID: 21300070, guid: 0cd069db10fa60fc66a5d8ede194f8ec, type: 3}
+  - {fileID: 21300072, guid: 0cd069db10fa60fc66a5d8ede194f8ec, type: 3}
+  - {fileID: 21300074, guid: 0cd069db10fa60fc66a5d8ede194f8ec, type: 3}
+  - {fileID: 21300076, guid: 0cd069db10fa60fc66a5d8ede194f8ec, type: 3}
+  footContacts:
+  - frame: 0
+    left: {x: -0.11448, y: -0.00000}
+    right: {x: 0.11448, y: 0.01010}
+  - frame: 4
+    left: {x: -0.12907, y: -0.00898}
+    right: {x: 0.13356, y: 0.01459}
+  - frame: 8
+    left: {x: -0.27104, y: -0.02020}
+    right: {x: 0.13131, y: 0.01459}
+  - frame: 12
+    left: {x: -0.26599, y: -0.02245}
+    right: {x: 0.19192, y: 0.01571}
+  - frame: 20
+    left: {x: -0.26263, y: -0.02132}
+    right: {x: 0.21661, y: 0.02132}
+  - frame: 32
+    left: {x: -0.18070, y: -0.01122}
+    right: {x: 0.17508, y: 0.01459}
+  - frame: 36
+    left: {x: -0.10438, y: -0.00224}
+    right: {x: 0.13468, y: 0.01235}
+  audioCues:
+  - clip: {fileID: 8300000, guid: 7934fdc07f9e5f7fb2f666cb4e9db989, type: 3}
+    startFrame: 5
+    endFrame: 30
+    volume: 0.49

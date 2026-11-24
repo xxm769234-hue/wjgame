@@ -1816,7 +1816,7 @@ public static class HomePageScenePanelsBuilder
             TMP_Text battleStats = FindText(detailTransform, "RoleDetailBattleStats");
             if (battleStats == null)
             {
-                battleStats = CreateTMPText("RoleDetailBattleStats", detailTransform, "战斗属性  暂无服务器数据", 17, new Color(0.34f, 0.25f, 0.16f, 1f), TextAlignmentOptions.MidlineLeft);
+                battleStats = CreateTMPText("RoleDetailBattleStats", detailTransform, "战斗属性  暂无", 17, new Color(0.34f, 0.25f, 0.16f, 1f), TextAlignmentOptions.MidlineLeft);
             }
             SetTopLeft(battleStats.rectTransform, new Vector2(34f, -275f), new Vector2(1230f, 30f));
             battleStats.fontSize = 17f;
@@ -1825,7 +1825,7 @@ public static class HomePageScenePanelsBuilder
             TMP_Text equipment = FindText(detailTransform, "RoleDetailEquipment");
             if (equipment == null)
             {
-                equipment = CreateTMPText("RoleDetailEquipment", detailTransform, "\u5df2\u7a7f\u6234\u88c5\u5907  \u6682\u65e0\u670d\u52a1\u5668\u6570\u636e", 17, new Color(0.34f, 0.25f, 0.16f, 1f), TextAlignmentOptions.MidlineLeft);
+                equipment = CreateTMPText("RoleDetailEquipment", detailTransform, "已穿戴装备  暂无", 17, new Color(0.34f, 0.25f, 0.16f, 1f), TextAlignmentOptions.MidlineLeft);
             }
             SetTopLeft(equipment.rectTransform, new Vector2(34f, -310f), new Vector2(1230f, 30f));
             equipment.fontSize = 17f;
@@ -2424,7 +2424,7 @@ public static class HomePageScenePanelsBuilder
 
         Text title = CreateText("ShopTitle", header.transform, "领地商城", 36, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
         SetTopLeft(title.rectTransform, new Vector2(30f, -12f), new Vector2(230f, 48f));
-        Text subtitle = CreateText("ShopSubtitle", header.transform, "选择金币或钻石购买服务器商品", 17, FontStyle.Bold, new Color(0.86f, 0.96f, 0.90f, 0.90f), TextAnchor.MiddleLeft);
+        Text subtitle = CreateText("ShopSubtitle", header.transform, string.Empty, 17, FontStyle.Bold, new Color(0.86f, 0.96f, 0.90f, 0.90f), TextAnchor.MiddleLeft);
         SetTopLeft(subtitle.rectTransform, new Vector2(242f, -20f), new Vector2(320f, 34f));
 
         Button close = CreateButton("ShopCloseButton", header.transform, "X", new Color(0.88f, 0.28f, 0.22f, 1f), Color.white, 22);
@@ -2441,7 +2441,7 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(sidebarNote.rectTransform, new Vector2(12f, -250f), new Vector2(158f, 176f));
         Text noteTitle = CreateText("ShopSidebarNoteTitle", sidebarNote.transform, "商城规则", 18, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
         SetTopLeft(noteTitle.rectTransform, new Vector2(12f, -14f), new Vector2(134f, 28f));
-        Text note = CreateText("ShopSidebarNoteText", sidebarNote.transform, "商品、价格和限额\n均由服务器结算\n\n金币与钻石独立结算", 15, FontStyle.Normal, new Color(0.92f, 1f, 0.96f, 1f), TextAnchor.UpperCenter);
+        Text note = CreateText("ShopSidebarNoteText", sidebarNote.transform, string.Empty, 15, FontStyle.Normal, new Color(0.92f, 1f, 0.96f, 1f), TextAnchor.UpperCenter);
         SetTopLeft(note.rectTransform, new Vector2(12f, -48f), new Vector2(134f, 112f));
 
         Image catalog = CreateImage("ShopCatalog", panel.transform, new Color(0.98f, 0.86f, 0.62f, 1f));
@@ -2494,11 +2494,11 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(purchase.rectTransform, new Vector2(22f, -418f), new Vector2(372f, 186f));
         Text purchaseTitle = CreateText("ShopPurchaseTitle", purchase.transform, "购买信息", 18, FontStyle.Bold, new Color(0.35f, 0.19f, 0.09f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(purchaseTitle.rectTransform, new Vector2(14f, -10f), new Vector2(150f, 28f));
-        Text purchaseSummary = CreateText("ShopPurchaseSummary", purchase.transform, "请选择服务器商品", 14, FontStyle.Normal, new Color(0.42f, 0.30f, 0.18f, 1f), TextAnchor.MiddleLeft);
+        Text purchaseSummary = CreateText("ShopPurchaseSummary", purchase.transform, "请选择商品", 14, FontStyle.Normal, new Color(0.42f, 0.30f, 0.18f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(purchaseSummary.rectTransform, new Vector2(14f, -42f), new Vector2(344f, 30f));
         Text ownedCount = CreateText("ShopOwnedCount", purchase.transform, "背包已拥有  --", 15, FontStyle.Bold, new Color(0.19f, 0.43f, 0.37f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(ownedCount.rectTransform, new Vector2(14f, -76f), new Vector2(344f, 30f));
-        Text storageMode = CreateText("ShopStorageModeText", purchase.transform, "商品以服务器目录为准", 13, FontStyle.Normal, new Color(0.48f, 0.31f, 0.17f, 0.88f), TextAnchor.MiddleLeft);
+        Text storageMode = CreateText("ShopStorageModeText", purchase.transform, string.Empty, 13, FontStyle.Normal, new Color(0.48f, 0.31f, 0.17f, 0.88f), TextAnchor.MiddleLeft);
         SetTopLeft(storageMode.rectTransform, new Vector2(14f, -104f), new Vector2(132f, 30f));
         Button lotDecrease = CreateButton("ShopLotDecreaseButton", purchase.transform, "-", new Color(0.67f, 0.46f, 0.22f, 1f), Color.white, 16);
         SetTopLeft(lotDecrease.GetComponent<RectTransform>(), new Vector2(152f, -101f), new Vector2(38f, 34f));
@@ -2589,7 +2589,7 @@ public static class HomePageScenePanelsBuilder
         Stretch(crystalText.rectTransform);
         Text amount = CreateText("RewardAmount", card.transform, reward.ToString(), 23, FontStyle.Bold, new Color(0.83f, 0.75f, 1f, 1f), TextAnchor.MiddleCenter);
         SetTopLeft(amount.rectTransform, new Vector2(70f, -156f), new Vector2(110f, 30f));
-        Text bonus = CreateText("BonusText", card.transform, "后端定价商品", 15, FontStyle.Bold, new Color(1f, 0.82f, 0.38f, 1f), TextAnchor.MiddleCenter);
+        Text bonus = CreateText("BonusText", card.transform, string.Empty, 15, FontStyle.Bold, new Color(1f, 0.82f, 0.38f, 1f), TextAnchor.MiddleCenter);
         SetTopLeft(bonus.rectTransform, new Vector2(20f, -182f), new Vector2(210f, 24f));
 
         Button priceButton = CreateButton("RechargePriceButton", card.transform, $"￥{price}", new Color(0.58f, 0.20f, 0.16f, 1f), new Color(1f, 0.86f, 0.48f, 1f), 25);
@@ -2610,7 +2610,7 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(header.rectTransform, new Vector2(24f, -24f), new Vector2(1452f, 82f));
         TMP_Text title = CreateTMPText("LotteryTitle", header.transform, "幸运抽奖", 38, Color.white, TextAlignmentOptions.MidlineLeft);
         SetTopLeft(title.rectTransform, new Vector2(28f, -15f), new Vector2(280f, 50f));
-        TMP_Text subtitle = CreateTMPText("LotterySubtitle", header.transform, "服务器奖池 · 奖励按抽奖响应到账", 17, new Color(0.78f, 0.92f, 0.87f, 0.90f), TextAlignmentOptions.MidlineLeft);
+        TMP_Text subtitle = CreateTMPText("LotterySubtitle", header.transform, string.Empty, 17, new Color(0.78f, 0.92f, 0.87f, 0.90f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(subtitle.rectTransform, new Vector2(316f, -22f), new Vector2(420f, 36f));
 
         Image diamondBadge = CreateImage("LotteryDiamondBadge", header.transform, new Color(0.20f, 0.46f, 0.52f, 1f));
@@ -2629,7 +2629,7 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(prizeArea.rectTransform, new Vector2(36f, -132f), new Vector2(1428f, 490f));
         TMP_Text prizeTitle = CreateTMPText("LotteryPrizeTitle", prizeArea.transform, "本期奖品", 26, new Color(0.23f, 0.18f, 0.10f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(prizeTitle.rectTransform, new Vector2(24f, -18f), new Vector2(240f, 40f));
-        TMP_Text prizeHint = CreateTMPText("LotteryPrizeHint", prizeArea.transform, "奖项与概率以服务器返回为准", 16, new Color(0.42f, 0.36f, 0.26f, 0.88f), TextAlignmentOptions.MidlineRight);
+        TMP_Text prizeHint = CreateTMPText("LotteryPrizeHint", prizeArea.transform, string.Empty, 16, new Color(0.42f, 0.36f, 0.26f, 0.88f), TextAlignmentOptions.MidlineRight);
         SetTopLeft(prizeHint.rectTransform, new Vector2(900f, -22f), new Vector2(494f, 32f));
 
         Image prizeViewport = CreateImage("LotteryPrizeViewport", prizeArea.transform, new Color(0.98f, 0.93f, 0.79f, 1f));
@@ -2655,10 +2655,10 @@ public static class HomePageScenePanelsBuilder
         prizeScroll.viewport = prizeViewport.rectTransform;
         prizeScroll.content = prizeContent.GetComponent<RectTransform>();
         BuildLotteryPrizeCardTemplate(prizeContent.transform);
-        TMP_Text prizeEmpty = CreateTMPText("LotteryPrizeEmptyText", prizeArea.transform, "正在读取服务器奖池", 22, new Color(0.48f, 0.39f, 0.26f, 0.88f), TextAlignmentOptions.Center);
+        TMP_Text prizeEmpty = CreateTMPText("LotteryPrizeEmptyText", prizeArea.transform, "正在查看奖池…", 22, new Color(0.48f, 0.39f, 0.26f, 0.88f), TextAlignmentOptions.Center);
         SetTopLeft(prizeEmpty.rectTransform, new Vector2(430f, -198f), new Vector2(550f, 54f));
 
-        TMP_Text status = CreateTMPText("LotteryStatus", panel.transform, "正在读取服务器奖池", 17, new Color(0.82f, 0.94f, 0.89f, 1f), TextAlignmentOptions.MidlineLeft);
+        TMP_Text status = CreateTMPText("LotteryStatus", panel.transform, "正在查看奖池…", 17, new Color(0.82f, 0.94f, 0.89f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(status.rectTransform, new Vector2(50f, -650f), new Vector2(1400f, 42f));
         Image actionBar = CreateImage("LotteryActionBar", panel.transform, new Color(0.10f, 0.24f, 0.22f, 1f));
         SetTopLeft(actionBar.rectTransform, new Vector2(36f, -704f), new Vector2(1428f, 88f));
@@ -2699,7 +2699,7 @@ public static class HomePageScenePanelsBuilder
         AddSimpleFrame(panel.transform, new Vector2(980f, 740f), new Color(0.50f, 0.35f, 0.16f, 1f));
         TMP_Text title = CreateTMPText("LotteryPoolTitle", panel.transform, "当前奖池", 30, new Color(0.24f, 0.16f, 0.08f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(title.rectTransform, new Vector2(30f, -24f), new Vector2(300f, 42f));
-        TMP_Text note = CreateTMPText("LotteryPoolNote", panel.transform, "奖品、数量和概率均以服务器返回为准", 16, new Color(0.45f, 0.36f, 0.24f, 0.90f), TextAlignmentOptions.MidlineLeft);
+        TMP_Text note = CreateTMPText("LotteryPoolNote", panel.transform, string.Empty, 16, new Color(0.45f, 0.36f, 0.24f, 0.90f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(note.rectTransform, new Vector2(30f, -68f), new Vector2(560f, 30f));
         Button close = CreateTMPButton("LotteryPoolCloseButton", panel.transform, "关闭", new Color(0.77f, 0.30f, 0.24f, 1f), Color.white, 17);
         SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(810f, -20f), new Vector2(128f, 48f));
@@ -2753,7 +2753,7 @@ public static class HomePageScenePanelsBuilder
         AddSimpleFrame(panel.transform, new Vector2(1060f, 700f), new Color(0.50f, 0.35f, 0.16f, 1f));
         TMP_Text title = CreateTMPText("LotteryRewardConfirmTitle", panel.transform, "抽奖结果", 32, new Color(0.24f, 0.16f, 0.08f, 1f), TextAlignmentOptions.Center);
         SetTopLeft(title.rectTransform, new Vector2(250f, -22f), new Vector2(560f, 46f));
-        TMP_Text summary = CreateTMPText("LotteryRewardConfirmSummary", panel.transform, "奖励已由服务器发放", 17, new Color(0.35f, 0.46f, 0.31f, 1f), TextAlignmentOptions.Center);
+        TMP_Text summary = CreateTMPText("LotteryRewardConfirmSummary", panel.transform, "奖励已发放", 17, new Color(0.35f, 0.46f, 0.31f, 1f), TextAlignmentOptions.Center);
         SetTopLeft(summary.rectTransform, new Vector2(120f, -70f), new Vector2(820f, 30f));
         Image viewport = CreateImage("LotteryRewardViewport", panel.transform, new Color(0.98f, 0.93f, 0.79f, 1f));
         SetTopLeft(viewport.rectTransform, new Vector2(50f, -112f), new Vector2(960f, 452f));
@@ -3216,7 +3216,7 @@ public static class HomePageScenePanelsBuilder
 
         TMP_Text nicknameLabel = CreateTMPText("ProfileNicknameLabel", identityCard.transform, "账号昵称", 20, new Color(0.40f, 0.23f, 0.11f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(nicknameLabel.rectTransform, new Vector2(24f, -202f), new Vector2(180f, 30f));
-        InputField nicknameInput = CreateSceneInputField("ProfileNicknameInput", identityCard.transform, "账号昵称由服务器管理", 18);
+        InputField nicknameInput = CreateSceneInputField("ProfileNicknameInput", identityCard.transform, "请输入昵称", 18);
         SetTopLeft(nicknameInput.GetComponent<RectTransform>(), new Vector2(24f, -236f), new Vector2(336f, 48f));
         TMP_Text nicknameHint = CreateTMPText("ProfileNicknameHint", identityCard.transform, "昵称长度为 2-12 个字符", 15, new Color(0.46f, 0.39f, 0.30f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(nicknameHint.rectTransform, new Vector2(28f, -287f), new Vector2(328f, 26f));
@@ -3232,7 +3232,7 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(account.rectTransform, new Vector2(28f, -430f), new Vector2(328f, 30f));
         TMP_Text level = CreateTMPText("ProfileLevel", identityCard.transform, "领主等级  Lv.1", 18, new Color(0.50f, 0.20f, 0.12f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(level.rectTransform, new Vector2(28f, -468f), new Vector2(328f, 32f));
-        TMP_Text cancellationStatus = CreateTMPText("ProfileCancellationStatus", identityCard.transform, "账号注销状态：暂未同步", 15, new Color(0.46f, 0.30f, 0.18f, 1f), TextAlignmentOptions.MidlineLeft);
+        TMP_Text cancellationStatus = CreateTMPText("ProfileCancellationStatus", identityCard.transform, "正在查询注销状态…", 15, new Color(0.46f, 0.30f, 0.18f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(cancellationStatus.rectTransform, new Vector2(28f, -510f), new Vector2(328f, 30f));
 
         Image vitalBar = CreateImage("ProfileVitalBar", panel.transform, new Color(0.98f, 0.78f, 0.52f, 1f));
@@ -3249,7 +3249,7 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(syncCard.rectTransform, new Vector2(454f, -560f), new Vector2(746f, 92f));
         TMP_Text syncTitle = CreateTMPText("ProfileSyncTitle", syncCard.transform, "档案状态", 19, new Color(0.42f, 0.20f, 0.10f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(syncTitle.rectTransform, new Vector2(22f, -12f), new Vector2(150f, 30f));
-        TMP_Text syncText = CreateTMPText("ProfileSyncText", syncCard.transform, "资料来源  当前登录账号", 17, new Color(0.44f, 0.36f, 0.27f, 1f), TextAlignmentOptions.MidlineLeft);
+        TMP_Text syncText = CreateTMPText("ProfileSyncText", syncCard.transform, string.Empty, 17, new Color(0.44f, 0.36f, 0.27f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(syncText.rectTransform, new Vector2(22f, -46f), new Vector2(690f, 28f));
 
         BuildProfileDetailsCard(panel.transform);
@@ -3257,7 +3257,7 @@ public static class HomePageScenePanelsBuilder
         Image footerDivider = CreateImage("ProfileFooterDivider", panel.transform, new Color(0.48f, 0.27f, 0.13f, 0.48f));
         SetTopLeft(footerDivider.rectTransform, new Vector2(42f, -694f), new Vector2(1196f, 4f));
         footerDivider.raycastTarget = false;
-        TMP_Text profileStatus = CreateTMPText("ProfileStatus", panel.transform, "账号资料等待同步", 17, new Color(0.36f, 0.42f, 0.24f, 1f), TextAlignmentOptions.MidlineLeft);
+        TMP_Text profileStatus = CreateTMPText("ProfileStatus", panel.transform, string.Empty, 17, new Color(0.36f, 0.42f, 0.24f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(profileStatus.rectTransform, new Vector2(50f, -716f), new Vector2(650f, 48f));
         Button cancelAccount = CreateTMPButton("ProfileCancelAccountButton", panel.transform, "注销账号", new Color(0.70f, 0.25f, 0.20f, 1f), Color.white, 18);
         SetTopLeft(cancelAccount.GetComponent<RectTransform>(), new Vector2(900f, -724f), new Vector2(150f, 52f));
@@ -3283,7 +3283,7 @@ public static class HomePageScenePanelsBuilder
         TMP_Text cancellation = CreateProfileTMPText("ProfileCancellationDetailsText", card.transform, "注销详情\n状态：未申请\n冷静期截止：未设置", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
         SetTopLeft(cancellation.rectTransform, new Vector2(20f, -92f), new Vector2(342f, 58f));
 
-        TMP_Text compliance = CreateProfileTMPText("ProfileComplianceText", card.transform, "实名/防沉迷\n实名：UNKNOWN\n防沉迷：等待服务器状态", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
+        TMP_Text compliance = CreateProfileTMPText("ProfileComplianceText", card.transform, "实名与防沉迷\n正在查询…", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
         SetTopLeft(compliance.rectTransform, new Vector2(382f, -92f), new Vector2(342f, 58f));
     }
 
@@ -3430,7 +3430,7 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(header.rectTransform, new Vector2(24f, -24f), new Vector2(1452f, 78f));
         TMP_Text title = CreateTMPText("RoleTitle", panel.transform, "\u89d2\u8272\u4e2d\u5fc3", 38, Color.white, TextAlignmentOptions.MidlineLeft);
         SetTopLeft(title.rectTransform, new Vector2(58f, -34f), new Vector2(260f, 54f));
-        TMP_Text subtitle = CreateTMPText("RoleSubtitle", panel.transform, "\u670d\u52a1\u5668\u89d2\u8272\u6570\u636e", 18, new Color(0.90f, 1f, 0.94f, 0.90f), TextAlignmentOptions.MidlineLeft);
+        TMP_Text subtitle = CreateTMPText("RoleSubtitle", panel.transform, string.Empty, 18, new Color(0.90f, 1f, 0.94f, 0.90f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(subtitle.rectTransform, new Vector2(330f, -45f), new Vector2(250f, 32f));
         Button close = CreateTMPButton("RoleCloseButton", panel.transform, "X", new Color(0.90f, 0.30f, 0.25f, 1f), Color.white, 24);
         SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(1408f, -36f), new Vector2(50f, 50f));
@@ -3502,7 +3502,7 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(description.rectTransform, new Vector2(34f, -330f), new Vector2(846f, 76f));
         TMP_Text acquisition = CreateTMPText("RoleDetailAcquisition", detailCard.transform, "\u83b7\u53d6\u65b9\u5f0f  -", 17, new Color(0.48f, 0.39f, 0.29f, 1f), TextAlignmentOptions.TopLeft);
         SetTopLeft(acquisition.rectTransform, new Vector2(34f, -418f), new Vector2(846f, 50f));
-        TMP_Text equipment = CreateTMPText("RoleDetailEquipment", detailCard.transform, "\u5df2\u7a7f\u6234\u88c5\u5907  \u6682\u65e0\u670d\u52a1\u5668\u6570\u636e", 17, new Color(0.42f, 0.33f, 0.24f, 1f), TextAlignmentOptions.TopLeft);
+        TMP_Text equipment = CreateTMPText("RoleDetailEquipment", detailCard.transform, "已穿戴装备  暂无", 17, new Color(0.42f, 0.33f, 0.24f, 1f), TextAlignmentOptions.TopLeft);
         SetTopLeft(equipment.rectTransform, new Vector2(34f, -310f), new Vector2(846f, 30f));
 
         Button upgrade = CreateTMPButton("RoleDetailUpgradeButton", detailCard.transform, "\u5347\u7ea7", new Color(0.28f, 0.64f, 0.38f, 1f), Color.white, 20);
@@ -3678,7 +3678,7 @@ public static class HomePageScenePanelsBuilder
         previewScroll.movementType = ScrollRect.MovementType.Clamped;
         previewScroll.scrollSensitivity = 20f;
         previewScroll.viewport = previewViewport.rectTransform;
-        Text upgradePreview = CreateText("EquipmentDetailUpgradePreview", previewViewport.transform, "一键升级预览：等待服务器返回...", 12, FontStyle.Normal, new Color(0.38f, 0.25f, 0.14f, 1f), TextAnchor.UpperLeft);
+        Text upgradePreview = CreateText("EquipmentDetailUpgradePreview", previewViewport.transform, "正在查看升级费用…", 12, FontStyle.Normal, new Color(0.38f, 0.25f, 0.14f, 1f), TextAnchor.UpperLeft);
         SetTopLeft(upgradePreview.rectTransform, Vector2.zero, new Vector2(418f, 58f));
         upgradePreview.enableWordWrapping = true;
         upgradePreview.overflowMode = TextOverflowModes.Overflow;
@@ -3938,7 +3938,7 @@ public static class HomePageScenePanelsBuilder
         BuildMailTab(panel.transform, "MailTabSystem", "系统", new Vector2(1118f, -146f), true);
         BuildMailTab(panel.transform, "MailTabReward", "奖励", new Vector2(1118f, -226f), false);
         BuildMailTab(panel.transform, "MailTabNotice", "公告", new Vector2(1118f, -306f), false);
-        Text status = CreateText("MailStatus", panel.transform, "已读取系统邮件", 17, FontStyle.Bold, new Color(0.48f, 0.25f, 0.12f, 0.88f), TextAnchor.MiddleLeft);
+        Text status = CreateText("MailStatus", panel.transform, string.Empty, 17, FontStyle.Bold, new Color(0.48f, 0.25f, 0.12f, 0.88f), TextAnchor.MiddleLeft);
         SetTopLeft(status.rectTransform, new Vector2(72f, -706f), new Vector2(930f, 34f));
         return scenePanel;
     }

@@ -7,6 +7,9 @@ using UnityEngine.UI;
 public sealed class BattleActorAnimation : MonoBehaviour
 {
     public const float ReferenceBodyHeight = 124f;
+    private const float BattleBodyScale = 1.10f;
+    public float SideSizeMultiplier { get; private set; } = 1f;
+
     private static readonly int[] AssassinPreparation = { 0, 4, 8, 12, 16, 24, 32, 35 };
     private static readonly int[] AssassinRecovery = { 72, 74, 76, 80, 84, 88, 90, 92, 96 };
 
@@ -24,55 +27,79 @@ public sealed class BattleActorAnimation : MonoBehaviour
     private bool completed;
     private bool dying;
     private bool facingRight;
+    private bool friendlyActor;
+    private int friendlyHitIndex;
+    private float hitPreparationSpeed = 1f;
+    private bool hasPreparedHit;
     private int generation;
     private int impactCursor;
     private Action<int> onImpact;
     private Func<bool> isPaused;
     private BattleHitFeedbackProfile feedback;
     private float feedbackElapsed;
-    private float feedbackDirection;
+    private float contactEffectScale = 1f;
+    private float feedbackSpeed = 1f;
+    private Vector2 feedbackDirection;
+    private Vector2 contactDirection;
+    private Vector2 staticBodyRest;
+    private int contactFrame;
     private Image movementTrail;
     private float hitStopRemaining;
+    private int holdStartFrame;
+    public bool HitStopped => hitStopRemaining > 0f;
     private RectTransform presentationCanvas;
     private float renderedPresentationScale = 1f;
     private bool externalSampling;
+    private float travelPoseOffsetX;
+    private BattleActorAnimation meleeTarget;
+    private Vector2 crossThroughSoleRange;
+    private float crossThroughStride;
     private bool fallbackDeath;
     private float fallbackDeathElapsed;
     private Vector2 fallbackDeathOrigin;
     private Vector3 fallbackDeathScale;
     private BattleActorHitVisual hitVisual;
 
-    private Vector2 BaseBodyPosition => new Vector2(0f, -8f) + entry.offset * UnitsToPixels;
+    internal Vector2 BaseBodyPosition => new Vector2(0f, -8f) + entry.offset * UnitsToPixels;
 
     public bool IsBound => entry != null && body != null;
-    public bool IsPlayingAction => IsBound && sequence != null && !looping && !completed;
+    public bool IsPlayingAction => fallbackDeath || (IsBound && sequence != null && !looping && !completed);
     public bool IsPlayingDeath => dying && IsPlayingAction;
     public bool IsDead => dying && completed;
     public bool Paused => isPaused != null && isPaused();
     public float PresentationScale => presentationCanvas != null
         ? Mathf.Min(presentationCanvas.rect.width / 1920f, presentationCanvas.rect.height / 1080f) : 1f;
-    public float BodyHeight => ReferenceBodyHeight * PresentationScale * (entry != null ? entry.visualScale : 1f);
+    public float BodyHeight => ReferenceBodyHeight * SideSizeMultiplier * PresentationScale * (entry != null ? entry.visualScale : 1f);
     public float UnitsToPixels => BodyHeight / Mathf.Max(0.01f, entry != null ? entry.referenceBodyHeight : 3f);
+    public BattleAnimationCatalog.Entry Appearance => entry;
     public float FacingSign => facingRight ? 1f : -1f;
     public float SourceMirror => entry != null && entry.sourceFacingRight != facingRight ? -1f : 1f;
     public int CurrentFrame => sequence != null ? FrameIndex(sequence, Mathf.Min(elapsed, duration)) : 0;
     public float CurrentSourceFrame => sequence != null ? SourceFrame(sequence, Mathf.Min(elapsed, duration)) : 0f;
     public BattleAnimationSequence CurrentSequence => sequence;
+    public BattleAnimationSequence DisplayedPoseSequence { get; private set; }
+    public int DisplayedPoseFrame { get; private set; }
     public RectTransform ActorRoot => actorRoot;
+    internal bool InMeleeContact => meleeTarget != null && !dying && IsPlayingAction;
     public Vector3 FootPosition => body != null ? body.rectTransform.position : transform.position;
     public Vector3 BodyCenter => FootPosition + transform.TransformVector(Vector3.up * BodyHeight * 0.5f);
 
     public bool Bind(Image target, RectTransform visualRoot, string runtimeIdentity, bool friendly, Func<bool> pauseQuery, params string[] keys)
     {
+        friendlyActor = friendly;
+        SideSizeMultiplier = BattleBodyScale * (friendly ? 1.10f : 1f);
         BattleAnimationCatalog.Entry nextEntry = friendly ? BattleAnimationCatalog.Find(keys) : FindEnemyEntry(keys);
         isPaused = pauseQuery;
         if (nextEntry == null || !nextEntry.HasAction(BattleAnimationAction.Idle) && !nextEntry.HasAction(BattleAnimationAction.NormalAttack)
             && !nextEntry.HasAction(BattleAnimationAction.SkillAttack) && !nextEntry.HasAction(BattleAnimationAction.Buff))
         {
+            if (entry == null && identity == runtimeIdentity && body == target) return false;
             Cancel();
             body = target;
             actorRoot = visualRoot;
+            identity = runtimeIdentity;
             facingRight = friendly;
+            BindHitVisual(friendly);
             return false;
         }
         bool unchanged = entry == nextEntry && identity == runtimeIdentity && body == target;
@@ -80,8 +107,6 @@ public sealed class BattleActorAnimation : MonoBehaviour
         Cancel();
         body = target;
         actorRoot = visualRoot;
-        Canvas owningCanvas = target != null ? target.canvas : null;
-        presentationCanvas = owningCanvas != null ? owningCanvas.rootCanvas.transform as RectTransform : null;
         entry = nextEntry;
         identity = runtimeIdentity;
         facingRight = friendly;
@@ -90,9 +115,7 @@ public sealed class BattleActorAnimation : MonoBehaviour
         if (audioPlayer == null) audioPlayer = gameObject.AddComponent<BattleAnimationAudio>();
         effects = GetComponent<BattleActionEffects>();
         if (effects == null) effects = gameObject.AddComponent<BattleActionEffects>();
-        hitVisual = GetComponent<BattleActorHitVisual>();
-        if (hitVisual == null) hitVisual = gameObject.AddComponent<BattleActorHitVisual>();
-        hitVisual.Bind(body, actorRoot);
+        BindHitVisual(friendly);
         CharacterIdleImage.Stop(body);
         dying = false;
         Rest();
@@ -101,36 +124,53 @@ public sealed class BattleActorAnimation : MonoBehaviour
         return false;
     }
 
-    public static BattleAnimationCatalog.Entry FindEnemyEntry(params string[] keys)
+    public static BattleAnimationCatalog.Entry FindEnemyEntry(params string[] keys) => FindEnemyEntry(0L, keys);
+
+    public static BattleAnimationCatalog.Entry FindEnemyEntry(long definitionId, params string[] keys)
     {
-        if (keys == null) return null;
-        foreach (string key in keys)
+        uint identity = (uint)definitionId;
+        foreach (string key in keys ?? Array.Empty<string>())
         {
-            if (string.IsNullOrWhiteSpace(key) || long.TryParse(key.Trim(), out _)) continue;
+            if (string.IsNullOrWhiteSpace(key)) continue;
             BattleAnimationCatalog.Entry candidate = BattleAnimationCatalog.Find(key);
-            if (candidate == null || string.IsNullOrEmpty(candidate.key)) continue;
-            if (candidate.key.StartsWith("Monster", StringComparison.OrdinalIgnoreCase) || string.Equals(candidate.key, "Whale", StringComparison.OrdinalIgnoreCase))
-                return candidate;
+            if (candidate != null && candidate.key.StartsWith("Elite", StringComparison.Ordinal)) return candidate;
+            if (identity == 0)
+                foreach (char character in key.Trim()) identity = unchecked(identity * 31u + character);
         }
-        return null;
+        if (definitionId > 0)
+        {
+            var byId = BattleAnimationCatalog.Find(definitionId.ToString());
+            if (byId != null && byId.key.StartsWith("Elite", StringComparison.Ordinal)) return byId;
+        }
+        return BattleAnimationCatalog.Find("Elite0" + (1u + identity % 4u));
     }
 
-    public BattleAnimationSequence Resolve(BattleAnimationAction action, string skillKey, int variantSeed)
+    private void BindHitVisual(bool friendly)
+    {
+        Canvas owner = body != null ? body.canvas : null;
+        presentationCanvas = owner != null ? owner.rootCanvas.transform as RectTransform : null;
+        hitVisual = GetComponent<BattleActorHitVisual>();
+        if (hitVisual == null) hitVisual = gameObject.AddComponent<BattleActorHitVisual>();
+        hitVisual.Bind(body, actorRoot, friendly ? null : this);
+    }
+
+    public BattleAnimationSequence Resolve(BattleAnimationAction action, string skillKey, int variantSeed, bool? enemyTargets = null, int allyCount = 0)
     {
         if (entry == null) return null;
-        BattleAnimationSequence selected = entry.Resolve(action, skillKey, variantSeed);
+        BattleAnimationSequence selected = entry.Resolve(action, skillKey, variantSeed, action == BattleAnimationAction.Buff ? enemyTargets : null, allyCount);
         if (selected == null && action == BattleAnimationAction.SkillAttack)
-            selected = entry.Resolve(BattleAnimationAction.Buff, skillKey, variantSeed);
+            selected = entry.Resolve(BattleAnimationAction.Buff, skillKey, variantSeed, enemyTargets, allyCount);
         if (selected == null && (action == BattleAnimationAction.SkillAttack || action == BattleAnimationAction.Buff))
             selected = entry.Resolve(BattleAnimationAction.NormalAttack, skillKey, variantSeed);
         return selected != null && selected.IsValid ? selected : null;
     }
 
-    public IEnumerator PlayAction(BattleAnimationSequence selected, BattleActorAnimation target, BattleActorAnimation[] allies, BattleActorAnimation[] opponents, int variantSeed, Action<int> impact, BattleActorAnimation[] affectedTargets = null)
+    public IEnumerator PlayAction(BattleAnimationSequence selected, BattleActorAnimation target, BattleActorAnimation[] allies, BattleActorAnimation[] opponents, int variantSeed, Action<int> impact, BattleActorAnimation[] affectedTargets = null, Action<float> prepareTargets = null, Action followUpTargetReaction = null)
     {
         if (!IsBound || selected == null || !selected.IsValid || dying) yield break;
         int operation = ++generation;
         Vector2 origin = actorRoot.anchoredPosition;
+        crossThroughStride = 0f;
         bool approach = target != null && (selected.approachDistance > 0f || selected.approachContact != Vector2.zero)
             && (selected.action == BattleAnimationAction.NormalAttack || selected.action == BattleAnimationAction.SkillAttack || selected.targetsEnemy);
         if (approach)
@@ -139,13 +179,37 @@ public sealed class BattleActorAnimation : MonoBehaviour
             if (selected.approachContact != Vector2.zero)
             {
                 Vector2 contactOffset = selected.approachContact * UnitsToPixels;
-                contactOffset.x *= SourceMirror;
+                float attackMirror = SourceMirror;
+                contactOffset.x *= attackMirror;
                 Vector2 targetOffset = selected.attackTargetBodyOffset * target.BodyHeight;
-                targetOffset.x *= SourceMirror;
+                targetOffset.x *= attackMirror;
                 contact = target.BodyCenter + target.transform.TransformVector(targetOffset) - transform.TransformVector(contactOffset);
             }
             else
                 contact = target.FootPosition - transform.TransformVector(Vector3.right * FacingSign * selected.approachDistance * UnitsToPixels);
+            Vector3 ground = target.GroundShadowCenter();
+            Vector3 restingGround = GroundShadowCenter();
+            if (selected.authoredCrossThrough && selected.impactFrames != null && selected.impactFrames.Length > 0 &&
+                selected.TryGetFootContacts(0, out var startLeft, out var startRight) &&
+                selected.TryGetFootContacts(selected.impactFrames[0], out var endLeft, out var endRight))
+            {
+                crossThroughSoleRange = new Vector2((startLeft.x + startRight.x) * .5f, (endLeft.x + endRight.x) * .5f);
+                float midpoint = (crossThroughSoleRange.x + crossThroughSoleRange.y) * .5f;
+                float bodyWidth = target.body.rectTransform.rect.width;
+                float extraFront = Mathf.Clamp(bodyWidth * .29f, target.BodyHeight * .22f, target.BodyHeight * .40f);
+                float extraRear = extraFront;
+                if (presentationCanvas != null)
+                {
+                    float x = presentationCanvas.InverseTransformPoint(ground).x;
+                    float room = FacingSign > 0f ? presentationCanvas.rect.xMax - x : x - presentationCanvas.rect.xMin;
+                    float originalGap = Mathf.Abs(crossThroughSoleRange.y - midpoint) * BodyHeight;
+                    extraRear = Mathf.Clamp(room - originalGap - BodyHeight * .29f, 0f, extraRear);
+                }
+                crossThroughStride = (extraFront + extraRear) * FacingSign;
+                float offset = midpoint * BodyHeight * SourceMirror + extraFront * FacingSign;
+                contact.x = ground.x - transform.TransformVector(Vector3.right * offset).x;
+            }
+            contact.y = FootPosition.y + ground.y - restingGround.y;
             Vector2 destination = origin + (Vector2)actorRoot.parent.InverseTransformVector(contact - FootPosition);
             if (selected.blinkApproach)
                 actorRoot.anchoredPosition = destination;
@@ -153,11 +217,28 @@ public sealed class BattleActorAnimation : MonoBehaviour
                 yield return Travel(destination, variantSeed, operation);
         }
         if (operation != generation || !isActiveAndEnabled) yield break;
+        if (prepareTargets != null)
+        {
+            int firstImpact = selected.impactFrames != null && selected.impactFrames.Length > 0
+                ? Mathf.Clamp(selected.impactFrames[0], 0, selected.FrameCount - 1) : selected.FrameCount / 2;
+            prepareTargets(SourceTime(selected, firstImpact));
+        }
+        meleeTarget = approach ? target : null;
         Begin(selected, false, impact);
         effects.Begin(this, selected, target, allies, opponents, variantSeed, affectedTargets);
-        while (!completed && operation == generation && isActiveAndEnabled) yield return null;
+        while (!completed && operation == generation && isActiveAndEnabled)
+        {
+            yield return null;
+            if (followUpTargetReaction != null && operation == generation && isActiveAndEnabled
+                && sequence == selected && CurrentFrame >= selected.followUpTargetReactionFrame)
+            {
+                followUpTargetReaction();
+                followUpTargetReaction = null;
+            }
+        }
         if (operation != generation || !isActiveAndEnabled) yield break;
         effects.Clear();
+        meleeTarget = null;
         if (!dying && selected.sequenceId == "Monster4_Spider_Attack") yield return SettleSpider(operation);
         if (approach && !dying) yield return Travel(origin, variantSeed, operation, true);
         if (operation == generation && !dying) Rest();
@@ -173,9 +254,13 @@ public sealed class BattleActorAnimation : MonoBehaviour
             ? Mathf.Clamp(Vector2.Distance(origin, destination) / Mathf.Max(1f, 1300f * PresentationScale),
                 returning ? .38f : .46f, returning ? .52f : .64f) : .18f;
         bool originalFacing = facingRight;
+        bool matchRecovery = returning && sequence != null && sequence.recoveryFootX != 0f && movement != null;
+        float landingX = matchRecovery ? sequence.recoveryFootX * SourceMirror : 0f;
         if (Mathf.Abs(destination.x - origin.x) > 0.01f) facingRight = destination.x > origin.x;
+        float departureOffset = matchRecovery ? landingX - movement.departureFootX * SourceMirror : 0f;
         try
         {
+            travelPoseOffsetX = departureOffset;
             if (movement != null) Begin(movement, false, null);
             externalSampling = true;
             float travelElapsed = 0f;
@@ -190,11 +275,13 @@ public sealed class BattleActorAnimation : MonoBehaviour
                     {
                         bool staged = HasMovementStages(movement);
                         progress = staged ? Mathf.InverseLerp(.2f, .76f, phase) : phase;
+                        travelPoseOffsetX = departureOffset * (1f - Mathf.SmoothStep(0f, 1f, progress));
                         float frame = MovementFrame(movement, phase);
                         elapsed = SourceTime(movement, frame);
                         Sample(elapsed);
                     }
-                    actorRoot.anchoredPosition = Vector2.Lerp(origin, destination, Mathf.SmoothStep(0f, 1f, progress));
+                    float along = Mathf.SmoothStep(0f, 1f, progress);
+                    actorRoot.anchoredPosition = Vector2.Lerp(origin, destination, along);
                 }
                 yield return null;
             }
@@ -205,6 +292,7 @@ public sealed class BattleActorAnimation : MonoBehaviour
             if (operation == generation)
             {
                 facingRight = originalFacing;
+                travelPoseOffsetX = 0f;
                 externalSampling = false;
                 completed = true;
                 audioPlayer.Clear();
@@ -243,6 +331,7 @@ public sealed class BattleActorAnimation : MonoBehaviour
         completed = false;
         float settleElapsed = 0f;
         Sprite finalPose = body.sprite;
+        int finalFrame = DisplayedPoseFrame;
         Sprite idlePose = idle.presentationFrames != null && idle.presentationFrames.Length == idle.FrameCount
             && idle.presentationFrames[0] != null ? idle.presentationFrames[0] : idle.frames[0];
         try
@@ -255,7 +344,10 @@ public sealed class BattleActorAnimation : MonoBehaviour
                     float progress = Mathf.Clamp01(settleElapsed / .16f);
                     // There is no authored claw-retraction frame. A single-sprite
                     // settle hides the hard cut without cross-fade ghost images.
-                    Sprite pose = progress < .4f ? finalPose : idlePose;
+                    bool showingAttack = progress < .4f;
+                    Sprite pose = showingAttack ? finalPose : idlePose;
+                    DisplayedPoseSequence = showingAttack ? sequence : idle;
+                    DisplayedPoseFrame = showingAttack ? finalFrame : 0;
                     SetSprite(body, pose, UnitsToPixels, SourceMirror);
                     float compression = Mathf.Sin(progress * Mathf.PI);
                     body.rectTransform.localScale = new Vector3(SourceMirror * (1f + compression * .025f), 1f - compression * .06f, 1f);
@@ -277,42 +369,92 @@ public sealed class BattleActorAnimation : MonoBehaviour
 
     public void React(bool defeated, int variantSeed, BattleHitFeedbackProfile profile = null, float direction = 1f)
     {
-        if (!IsBound || dying) return;
+        if (body == null || dying) return;
         if (defeated)
         {
+            meleeTarget = null;
             generation++;
             dying = true;
-            effects.Clear();
+            if (effects != null) effects.Clear();
             externalSampling = false;
-            if (hitVisual != null) hitVisual.Clear();
             BattleAnimationSequence death = Resolve(BattleAnimationAction.Death, null, variantSeed);
             if (death != null) Begin(death, false, null);
             else
             {
                 fallbackDeath = true;
                 fallbackDeathElapsed = 0f;
-                fallbackDeathOrigin = body.rectTransform.anchoredPosition;
+                fallbackDeathOrigin = feedback == null ? body.rectTransform.anchoredPosition : FeedbackRestPosition();
                 fallbackDeathScale = body.rectTransform.localScale;
                 looping = false;
                 completed = false;
                 onImpact = null;
-                feedback = null;
-                audioPlayer.Clear();
+                if (audioPlayer != null) audioPlayer.Clear();
                 if (movementTrail != null) movementTrail.enabled = false;
             }
             return;
         }
-        BattleAnimationSequence hit = Resolve(BattleAnimationAction.Hit, null, variantSeed);
-        if (hit != null && (!IsPlayingAction || sequence.action == BattleAnimationAction.Hit)) Begin(hit, false, null);
-        feedback = profile;
-        feedbackElapsed = 0f;
-        feedbackDirection = direction;
-        if (hitVisual != null) hitVisual.Show(profile, 0f, BodyHeight, PresentationScale, SourceMirror);
-        if (profile != null) HoldFor(profile.hitStop);
+        ReceiveImpact(variantSeed, profile, Vector2.right * direction, true, profile != null ? profile.hitStop : 0f);
     }
 
-    public void HoldFor(float seconds) { hitStopRemaining = Mathf.Max(hitStopRemaining, seconds); }
+    public void PrepareFriendlyHit(float leadSeconds)
+    {
+        if (!friendlyActor || !IsBound || dying || leadSeconds <= 0f
+            || (IsPlayingAction && sequence.action != BattleAnimationAction.Hit)) return;
+        BattleAnimationSequence hit = Resolve(BattleAnimationAction.Hit, null, friendlyHitIndex);
+        if (hit == null || hit.DefenseFrame == 0) return;
+        Begin(hit, false, null);
+        hitPreparationSpeed = SourceTime(hit, hit.DefenseFrame) / leadSeconds;
+        hasPreparedHit = true;
+    }
 
+    public void ReceiveImpact(int variantSeed, BattleHitFeedbackProfile profile, Vector2 direction, bool restartHit, float stop, float staticDuration = 0f, float sparkScale = 1f)
+    {
+        if (body == null || dying) return;
+        if (restartHit)
+        {
+            BattleAnimationSequence hit = hasPreparedHit ? sequence
+                : Resolve(BattleAnimationAction.Hit, null, friendlyActor ? friendlyHitIndex : variantSeed);
+            if (hit != null && (!IsPlayingAction || sequence.action == BattleAnimationAction.Hit))
+            {
+                if (!hasPreparedHit)
+                {
+                    float startTime = friendlyActor ? 0f : SourceTime(hit, hit.DefenseFrame);
+                    Begin(hit, false, null, startTime);
+                }
+                if (friendlyActor)
+                {
+                    friendlyHitIndex++;
+                    hasPreparedHit = false;
+                    hitPreparationSpeed = 1f;
+                    elapsed = SourceTime(hit, hit.DefenseFrame) + .000001f;
+                    Sample(elapsed);
+                }
+            }
+        }
+        HoldFor(stop);
+        if (profile == null) return;
+        Vector2 incoming = ((Vector2)actorRoot.InverseTransformVector(direction)).normalized;
+        if (incoming == Vector2.zero) incoming = Vector2.left * FacingSign;
+        hitVisual?.PlayPaintedContact(profile, incoming);
+        if (feedback != null && feedback.priority > profile.priority) return;
+        contactEffectScale = sparkScale;
+        if (!IsBound && feedback == null) staticBodyRest = body.rectTransform.anchoredPosition;
+        feedback = profile;
+        feedbackElapsed = 0f;
+        feedbackSpeed = !IsBound && staticDuration > 0f ? Mathf.Max(profile.sparkDuration,
+            Mathf.Max(profile.flashDuration + profile.afterglowDuration, profile.recoilAttack + profile.recoilReturn)) / staticDuration : 1f;
+        contactFrame = Time.frameCount;
+        contactDirection = incoming;
+        feedbackDirection = profile.horizontalRecoil ? Vector2.right * Mathf.Sign(contactDirection.x) : contactDirection;
+        ApplyFeedback(FeedbackRestPosition());
+    }
+
+    public void HoldFor(float seconds)
+    {
+        if (seconds <= 0f) return;
+        hitStopRemaining = Mathf.Max(hitStopRemaining, seconds);
+        holdStartFrame = Time.frameCount;
+    }
     public BattleHitFeedbackProfile FeedbackAt(int index)
     {
         return sequence != null && sequence.impactFeedback != null && index >= 0 && index < sequence.impactFeedback.Length
@@ -321,7 +463,9 @@ public sealed class BattleActorAnimation : MonoBehaviour
 
     public void Rest()
     {
+        meleeTarget = null;
         if (!IsBound || dying) return;
+        facingRight = friendlyActor;
         actorRoot.anchoredPosition = homePosition;
         BattleAnimationSequence idle = entry.Resolve(BattleAnimationAction.Idle);
         if (idle == null)
@@ -336,10 +480,12 @@ public sealed class BattleActorAnimation : MonoBehaviour
         Begin(idle, true, null);
     }
 
-    private void Begin(BattleAnimationSequence next, bool repeat, Action<int> impact)
+    private void Begin(BattleAnimationSequence next, bool repeat, Action<int> impact, float startTime = 0f)
     {
+        hasPreparedHit = false;
+        hitPreparationSpeed = 1f;
         sequence = next;
-        elapsed = 0f;
+        elapsed = startTime;
         duration = Mathf.Max(0.01f, next.Duration);
         looping = repeat;
         completed = false;
@@ -347,27 +493,24 @@ public sealed class BattleActorAnimation : MonoBehaviour
         onImpact = impact;
         externalSampling = false;
         fallbackDeath = false;
-        feedback = null;
-        if (hitVisual != null) hitVisual.Clear();
         body.enabled = true;
         body.color = Color.white;
         audioPlayer.Begin(next, duration);
-        Sample(0f);
+        Sample(elapsed);
     }
 
     private void Update()
     {
-        if (!IsBound || sequence == null) return;
+        if (body == null) return;
         bool pausedNow = Paused;
-        if (!pausedNow && hitStopRemaining > 0f)
+        if (pausedNow || hitStopRemaining > 0f)
         {
-            hitStopRemaining = Mathf.Max(0f, hitStopRemaining - Time.deltaTime);
-            audioPlayer.Sample(SourceFrame(sequence, Mathf.Min(elapsed, duration)), true);
-            return;
-        }
-        if (pausedNow)
-        {
-            audioPlayer.Sample(SourceFrame(sequence, Mathf.Min(elapsed, duration)), true);
+            if (!pausedNow)
+            {
+                if (Time.frameCount != holdStartFrame) hitStopRemaining = Mathf.Max(0f, hitStopRemaining - Time.deltaTime);
+                if (feedback != null) ApplyFeedback(FeedbackRestPosition());
+            }
+            if (audioPlayer != null && sequence != null) audioPlayer.SetPaused(pausedNow);
             return;
         }
         if (fallbackDeath)
@@ -375,7 +518,9 @@ public sealed class BattleActorAnimation : MonoBehaviour
             fallbackDeathElapsed += Time.deltaTime;
             float progress = Mathf.Clamp01(fallbackDeathElapsed / .32f);
             float eased = Mathf.SmoothStep(0f, 1f, progress);
-            body.rectTransform.anchoredPosition = fallbackDeathOrigin + Vector2.down * (BodyHeight * .08f * eased);
+            Vector2 position = fallbackDeathOrigin + Vector2.down * (BodyHeight * .08f * eased);
+            body.rectTransform.anchoredPosition = position;
+            if (feedback != null) ApplyFeedback(position);
             body.rectTransform.localScale = fallbackDeathScale * Mathf.Lerp(1f, .96f, eased);
             body.color = new Color(1f, 1f, 1f, 1f - eased);
             if (progress >= 1f)
@@ -386,9 +531,22 @@ public sealed class BattleActorAnimation : MonoBehaviour
             }
             return;
         }
+        if (!IsBound || sequence == null)
+        {
+            if (feedback != null) ApplyFeedback(staticBodyRest);
+            return;
+        }
         if (!completed && !externalSampling)
         {
-            elapsed += Time.deltaTime;
+            float nextTime = elapsed + Time.deltaTime * hitPreparationSpeed;
+            if (hasPreparedHit && nextTime >= SourceTime(sequence, sequence.DefenseFrame))
+                hitPreparationSpeed = 1f;
+            if (onImpact != null && impactCursor < ImpactCount)
+            {
+                float contactTime = SourceTime(sequence, NextImpactFrame()) + .000001f;
+                if (elapsed < contactTime) nextTime = Mathf.Min(nextTime, contactTime);
+            }
+            elapsed = nextTime;
             if (looping && elapsed >= duration)
             {
                 elapsed %= duration;
@@ -404,12 +562,14 @@ public sealed class BattleActorAnimation : MonoBehaviour
                 else if (sequence.action == BattleAnimationAction.Hit) Rest();
             }
         }
-        ApplyFeedback();
+        if (feedback != null) ApplyFeedback(FeedbackRestPosition());
     }
 
     private void Sample(float time)
     {
         int frame = FrameIndex(sequence, time);
+        DisplayedPoseSequence = sequence;
+        DisplayedPoseFrame = frame;
         Sprite[] presentation = sequence.presentationFrames;
         Sprite sprite = presentation != null && presentation.Length == sequence.FrameCount && presentation[frame] != null
             ? presentation[frame] : sequence.frames[frame];
@@ -419,22 +579,24 @@ public sealed class BattleActorAnimation : MonoBehaviour
         body.rectTransform.anchorMin = new Vector2(0.5f, 0f);
         body.rectTransform.anchorMax = new Vector2(0.5f, 0f);
         body.rectTransform.anchoredPosition = BaseBodyPosition + TailFootCorrection(time);
+        AlignMeleeGround();
         SampleMovementTrail(frame);
         renderedPresentationScale = PresentationScale;
         float sourceFrame = SourceFrame(sequence, time);
         audioPlayer.Sample(sourceFrame, false);
         effects.Sample(sourceFrame);
         if (onImpact == null) return;
-        int count = sequence.impactFrames != null && sequence.impactFrames.Length > 0 ? sequence.impactFrames.Length : 1;
-        while (impactCursor < count)
+        while (impactCursor < ImpactCount)
         {
-            int impactFrame = sequence.impactFrames != null && sequence.impactFrames.Length > 0
-                ? sequence.impactFrames[impactCursor] : sequence.FrameCount / 2;
-            if (frame < Mathf.Clamp(impactFrame, 0, sequence.FrameCount - 1)) break;
+            if (frame < NextImpactFrame()) break;
             int index = impactCursor++;
             onImpact(index);
         }
     }
+
+    private int ImpactCount => Mathf.Max(1, sequence.impactFrames?.Length ?? 0);
+    private int NextImpactFrame() => sequence.impactFrames != null && sequence.impactFrames.Length > 0
+        ? Mathf.Clamp(sequence.impactFrames[impactCursor], 0, sequence.FrameCount - 1) : sequence.FrameCount / 2;
 
     private void LateUpdate()
     {
@@ -450,37 +612,83 @@ public sealed class BattleActorAnimation : MonoBehaviour
         if (effects != null) effects.Sample(CurrentSourceFrame);
     }
 
-    private void ApplyFeedback()
+    internal Vector3 GroundShadowCenter()
     {
-        if (feedback == null || body == null || dying) return;
-        feedbackElapsed += Time.deltaTime;
-        float remaining = 1f - Mathf.Clamp01(feedbackElapsed / Mathf.Max(0.01f, feedback.shakeDuration));
-        float shake = Mathf.Sin(feedbackElapsed * 110f) * feedback.shakePixels * remaining;
+        RectTransform visual = body.rectTransform;
+        if (!IsBound && TryGetComponent<IdleAdventureActorView>(out var view))
+        {
+            view.GetStaticSoles(out Vector2 left, out Vector2 right);
+            return visual.TransformPoint((left + right) * .5f);
+        }
+        Vector2 center = entry != null ? entry.groundShadowOffset : Vector2.zero;
+        var pose = DisplayedPoseSequence;
+        if (pose != null && pose.TryGetFootContacts(DisplayedPoseFrame, out Vector2 leftSole, out Vector2 rightSole))
+        {
+            center = (leftSole + rightSole) * .5f;
+            if (pose.action != BattleAnimationAction.Idle)
+                center.y -= GroundLift(leftSole, rightSole);
+        }
+        return visual.TransformPoint(center * BodyHeight);
+    }
+
+    internal static float GroundLift(Vector2 left, Vector2 right)
+    {
+        float lower = Mathf.Min(left.y, right.y);
+        return Mathf.Max(0f, lower - .02f) * Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(.055f, .16f, lower));
+    }
+
+    private void AlignMeleeGround()
+    {
+        if (meleeTarget == null || dying || meleeTarget.body == null) return;
+        RectTransform visual = body.rectTransform;
+        Vector3 own = GroundShadowCenter();
+        Vector3 targetGround = meleeTarget.GroundShadowCenter();
+        Vector3 separation = visual.parent.InverseTransformVector(own - targetGround);
+        float minGap = (BodyHeight + meleeTarget.BodyHeight) * .16f;
+        if (sequence.authoredCrossThrough)
+        {
+            // Extend only the distance already travelled by the feet in the authored sprite.
+            float travel = 0f;
+            if (crossThroughStride != 0f && sequence.TryGetFootContacts(DisplayedPoseFrame, out var left, out var right))
+                travel = Mathf.InverseLerp(crossThroughSoleRange.x, crossThroughSoleRange.y, (left.x + right.x) * .5f);
+            visual.anchoredPosition += new Vector2(travel * crossThroughStride, -separation.y);
+            return;
+        }
+        float behind = Mathf.Max(0f, separation.x * FacingSign + minGap);
+        visual.anchoredPosition += new Vector2(-FacingSign * behind, -separation.y);
+    }
+
+    private Vector2 FeedbackRestPosition() => IsBound ? BaseBodyPosition + TailFootCorrection(Mathf.Min(elapsed, duration)) : staticBodyRest;
+
+    private void ApplyFeedback(Vector2 restPosition)
+    {
+        if (Time.frameCount != contactFrame) feedbackElapsed += Time.deltaTime * feedbackSpeed;
         float recoilDuration = Mathf.Max(0.01f, feedback.recoilAttack + feedback.recoilReturn);
         float recoilProgress = Mathf.Clamp01(feedbackElapsed / recoilDuration);
         float recoil = feedback.recoilMode == BattleHitRecoilMode.SoftArc
             ? Mathf.Sin(recoilProgress * Mathf.PI) * (1f - recoilProgress)
             : feedbackElapsed < feedback.recoilAttack
-                ? Mathf.Sin(Mathf.Clamp01(feedbackElapsed / Mathf.Max(.001f, feedback.recoilAttack)) * Mathf.PI * .5f)
+                ? Mathf.Lerp(.8f, 1f, Mathf.Sin(feedbackElapsed / feedback.recoilAttack * Mathf.PI * .5f))
                 : Mathf.Pow(1f - Mathf.Clamp01((feedbackElapsed - feedback.recoilAttack) / Mathf.Max(.001f, feedback.recoilReturn)), 2f);
         float scale = PresentationScale;
-        body.rectTransform.anchoredPosition = BaseBodyPosition + TailFootCorrection(Mathf.Min(elapsed, duration))
-            + new Vector2((shake + recoil * feedback.recoilPixels) * feedbackDirection * scale,
-                (feedback.shakeMode == BattleHitShakeMode.DualAxis ? shake * .45f : 0f) * scale);
-        if (hitVisual != null) hitVisual.Show(feedback, feedbackElapsed, BodyHeight, scale, SourceMirror);
+        float pixels = presentationCanvas != null ? presentationCanvas.rect.height / 720f : 1f;
+        body.rectTransform.anchoredPosition = restPosition + feedbackDirection * (recoil * feedback.recoilPixels * pixels);
+        if (hitVisual != null) hitVisual.Show(feedback, feedbackElapsed, IsBound ? BodyHeight : body.rectTransform.rect.height,
+            scale * contactEffectScale, contactDirection, !IsBound);
         float visualDuration = Mathf.Max(feedback.flashDuration + feedback.afterglowDuration, feedback.sparkDuration);
-        if (remaining <= 0f && feedbackElapsed >= Mathf.Max(recoilDuration, visualDuration))
+        if (feedbackElapsed >= Mathf.Max(recoilDuration, visualDuration))
         {
-            body.color = Color.white;
-            body.rectTransform.anchoredPosition = BaseBodyPosition + TailFootCorrection(Mathf.Min(elapsed, duration));
-            if (hitVisual != null) hitVisual.Clear();
+            body.rectTransform.anchoredPosition = restPosition;
+            if (hitVisual != null) hitVisual.ClearFlashAndRays();
             feedback = null;
         }
     }
 
     private Vector2 TailFootCorrection(float time)
     {
-        if (sequence == null || externalSampling) return Vector2.zero;
+        if (sequence == null) return Vector2.zero;
+        if (sequence.action == BattleAnimationAction.Move) return Vector2.right * (travelPoseOffsetX * UnitsToPixels);
+        if (externalSampling) return Vector2.zero;
         // Measurements from the imported poses, in source world units. This affects
         // only the landing / final recovery; jumping attacks retain their full arc.
         float offset = sequence.sequenceId == "Swordsman_Hit_01" ? .51f
@@ -572,6 +780,8 @@ public sealed class BattleActorAnimation : MonoBehaviour
 
     public void Cancel()
     {
+        meleeTarget = null;
+        facingRight = friendlyActor;
         generation++;
         if (effects != null) effects.Clear();
         if (audioPlayer != null) audioPlayer.Clear();
@@ -584,12 +794,21 @@ public sealed class BattleActorAnimation : MonoBehaviour
         if (actorRoot != null && entry != null) actorRoot.anchoredPosition = homePosition;
         if (body != null)
         {
+            if (!IsBound && feedback != null) body.rectTransform.anchoredPosition = staticBodyRest;
             body.enabled = true;
             body.color = Color.white;
             body.sprite = null;
         }
         sequence = null;
         entry = null;
+        friendlyHitIndex = 0;
+        hasPreparedHit = false;
+        hitPreparationSpeed = 1f;
+        DisplayedPoseSequence = null;
+        DisplayedPoseFrame = 0;
+        travelPoseOffsetX = 0f;
+        identity = null;
+        meleeTarget = null;
         onImpact = null;
         feedback = null;
         externalSampling = false;

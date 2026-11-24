@@ -12,6 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Priest_Buff_02
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: 0.0283, y: 0.0283}
+    right: {x: 0.1131, y: 0.0212}
   sequenceId: Priest_Buff_02
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\Buff\\\u7267\u5E082"
   action: 4
@@ -76,26 +80,56 @@ MonoBehaviour:
   - {fileID: 21300000, guid: f9c04bdfe9815e70aee277b65f9ebebf, type: 3}
   - {fileID: 21300000, guid: 5e24370becfb51c7aeeca5a39f97ea80, type: 3}
   effects:
-  - effect: {fileID: 11400000, guid: 0d925190f3355ded87570dd388110b2f, type: 2}
-    placement: 6
-    startFrame: 12
-    launchFrame: 12
-    contactFrame: 27
-    endFrame: 55
+  - effect: {fileID: 11400000, guid: 202c43635042dd442aca4f37c182891e, type: 2}
+    placement: 8
+    startFrame: 6
+    launchFrame: 0
+    contactFrame: 24
+    endFrame: 51
     firstEffectFrame: 0
     launchEffectFrame: 0
-    contactEffectFrame: 53
+    contactEffectFrame: 14
     impactIndex: -1
-    width: 12
-    opacity: 0.44
+    width: 5.184
+    opacity: 0.95
     preserveSourceScale: 0
-    sourceOffset: {x: 0.3, y: 0.64}
+    flipX: 0
+    sourceOffset: {x: 0.6, y: 0.65}
+    sourceKeys: []
     targetOffset: {x: 0, y: 0}
     targetBodyOffset: {x: 0, y: 0}
     arcHeight: 0
+    projectileDirection: {x: 0, y: 0}
+    projectileDistance: 0
+    formationOffset: {x: 0, y: 0}
+  - effect: {fileID: 11400000, guid: 6d43375d2dfb0204b8f3d785ed29d00a, type: 2}
+    placement: 9
+    startFrame: 17
+    launchFrame: 0
+    contactFrame: 33
+    endFrame: 51
+    firstEffectFrame: 0
+    launchEffectFrame: 0
+    contactEffectFrame: 14
+    impactIndex: -1
+    width: 5.5
+    opacity: 0.97
+    preserveSourceScale: 0
     flipX: 0
+    sourceOffset: {x: 0.6, y: 0.65}
+    sourceKeys: []
+    targetOffset: {x: 0, y: 0}
+    targetBodyOffset: {x: 0, y: 0}
+    arcHeight: 0
+    projectileDirection: {x: 0, y: 0}
+    projectileDistance: 0
+    formationOffset: {x: 0, y: 0}
   audioCues:
-  - clip: {fileID: 8300000, guid: 58e6c1a32c965f7e89d6fb60f3913ff3, type: 3}
-    startFrame: 12
+  - clip: {fileID: 8300000, guid: b34430fba27a5db5bab351f5422e6b42, type: 3}
+    startFrame: 0
+    endFrame: 25
+    volume: 0.4
+  - clip: {fileID: 8300000, guid: d6a8858fec105868970b5e755ea58727, type: 3}
+    startFrame: 33
     endFrame: 55
-    volume: 0.8
+    volume: 0.63

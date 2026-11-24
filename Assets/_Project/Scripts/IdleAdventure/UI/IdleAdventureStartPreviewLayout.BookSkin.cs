@@ -95,19 +95,9 @@ public sealed partial class IdleAdventureStartPreviewLayout
 
         RectTransform enemyContent = layoutRoot.Find("Enemy Preview Content") as RectTransform;
         PlaceBookRect(enemyContent, "EnemyContent");
-        SetBookObjectActive(enemyContent.Find("Enemy Preview Background"), false);
         SetBookObjectActive(enemyContent.Find("Enemy Preview Shade"), false);
         SetBookObjectActive(layoutRoot.Find("Enemy Preview Frame"), false);
         SetBookObjectActive(layoutRoot.Find("Reward Preview Frame"), false);
-        Anchor(enemySummaryText.rectTransform, new Vector2(0.22f, 0.89f), new Vector2(0.98f, 0.99f));
-        StyleBookText(enemySummaryText, 19f, new Color(0.38f, 0.27f, 0.19f), false);
-        foreach (TextMeshProUGUI label in enemyLabels)
-        {
-            StyleBookText(label, 19f, new Color(0.25f, 0.17f, 0.11f), false);
-            label.enableWordWrapping = true;
-        }
-        foreach (Image image in enemyImages)
-            Anchor(image.rectTransform, new Vector2(0.04f, 0.22f), new Vector2(0.96f, 0.98f));
 
         SetBookObjectActive(startPanel.Find("Open Formation Button"), false);
         ConfigureBookFormationIcon(quickAutoFillButton, "编队", "自动编队", 830f);

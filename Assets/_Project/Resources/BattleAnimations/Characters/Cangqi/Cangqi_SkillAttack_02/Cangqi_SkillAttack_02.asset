@@ -12,6 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Cangqi_SkillAttack_02
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.2765, y: 0.0273}
+    right: {x: 0.2696, y: 0.0137}
   sequenceId: Cangqi_SkillAttack_02
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u6280\u80FD\u653B\u51FB\\\u6CA7\u79482"
   action: 3
@@ -134,6 +138,7 @@ MonoBehaviour:
   approachContact: {x: 0, y: 0}
   attackTargetBodyOffset: {x: 0, y: 0}
   restartTargetHitOnImpact: 1
+  targetHitRestartFrames: 380000004600000058000000
   presentationFrames: []
   movementBodyFrames: []
   movementTrailFrames: []
@@ -144,6 +149,7 @@ MonoBehaviour:
   effects:
   - effect: {fileID: 11400000, guid: 223a26d871935430bec4c55e60969beb, type: 2}
     placement: 7
+    sortWithCombatants: 1
     startFrame: 10
     launchFrame: 10
     contactFrame: 56
@@ -158,17 +164,56 @@ MonoBehaviour:
     flipX: 0
     sourceOffset: {x: 0.6, y: 0.65}
     sourceKeys: []
-    targetOffset: {x: 0, y: 1.4}
+    targetOffset: {x: 0, y: 0}
     targetBodyOffset: {x: 0, y: 0}
     arcHeight: 0
     projectileDirection: {x: 0, y: 0}
     projectileDistance: 0
     formationOffset: {x: 0, y: 0}
+  - effect: {fileID: 11400000, guid: 02a43eca658652229cd55f00271bdbf1, type: 2}
+    placement: 2
+    sortWithCombatants: 1
+    startFrame: 52
+    launchFrame: 52
+    contactFrame: 56
+    endFrame: 63
+    firstEffectFrame: 0
+    launchEffectFrame: 0
+    contactEffectFrame: 4
+    impactIndex: -1
+    width: 3.5
+    opacity: 0.83
+  - effect: {fileID: 11400000, guid: 02a43eca658652229cd55f00271bdbf1, type: 2}
+    placement: 2
+    sortWithCombatants: 1
+    startFrame: 66
+    launchFrame: 66
+    contactFrame: 70
+    endFrame: 77
+    firstEffectFrame: 0
+    launchEffectFrame: 0
+    contactEffectFrame: 4
+    impactIndex: -1
+    width: 3.5
+    opacity: 0.83
+  - effect: {fileID: 11400000, guid: 02a43eca658652229cd55f00271bdbf1, type: 2}
+    placement: 2
+    sortWithCombatants: 1
+    startFrame: 84
+    launchFrame: 84
+    contactFrame: 88
+    endFrame: 95
+    firstEffectFrame: 0
+    launchEffectFrame: 0
+    contactEffectFrame: 4
+    impactIndex: -1
+    width: 3.5
+    opacity: 0.83
   audioCues:
-  - clip: {fileID: 8300000, guid: 75e6bd125e305577af3bf4b76dfb5916, type: 3}
+  - clip: {fileID: 8300000, guid: d4905c50309f56558919ca12e4adf5e7, type: 3}
     startFrame: 0
-    endFrame: 107
-    volume: 0.85
+    endFrame: 97
+    volume: 0.86
   impactFrames: 3800000040000000460000004c0000005200000058000000
   impactFeedback:
   - {fileID: 11400000, guid: 4ca690a3749d511c85307105ac5c4389, type: 2}
@@ -180,3 +225,4 @@ MonoBehaviour:
   defenseFrame: 0
   releaseFrame: 0
   deathBlendDuration: 0.08
+  audioCuesIncludeImpacts: 1

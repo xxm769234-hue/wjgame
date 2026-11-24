@@ -47,7 +47,11 @@ MonoBehaviour:
     - id: Swordsman_SkillAttack_03
       action: 3
       resource: BattleAnimations/Characters/Swordsman/Swordsman_SkillAttack_03/Swordsman_SkillAttack_03
-      skillKeys: []
+      skillKeys:
+      - 强力一击
+      - power_strike
+      - 战意集中
+      - battle_focus
       archived: 0
     - id: Swordsman_Death_01
       action: 6
@@ -77,8 +81,10 @@ MonoBehaviour:
     - id: Swordsman_SkillAttack_01
       action: 3
       resource: BattleAnimations/Characters/Swordsman/Swordsman_SkillAttack_01/Swordsman_SkillAttack_01
-      skillKeys: []
-      archived: 1
+      skillKeys:
+      - 粉碎打击
+      - crushing_blow
+      archived: 0
     - id: Swordsman_SkillAttack_02
       action: 3
       resource: BattleAnimations/Characters/Swordsman/Swordsman_SkillAttack_02/Swordsman_SkillAttack_02
@@ -87,6 +93,10 @@ MonoBehaviour:
   - key: Npc_7
     keys:
     - Warhammer
+    - "400002"
+    - lingke
+    - 铃珂
+    - 玲珂
     - Npc_7
     - '7'
     - 战锤
@@ -173,12 +183,12 @@ MonoBehaviour:
     - id: Alchemist_Buff_01
       action: 4
       resource: BattleAnimations/Characters/Alchemist/Alchemist_Buff_01/Alchemist_Buff_01
-      skillKeys: []
+      skillKeys: [全体鼓舞, yanheng_party_buff]
       archived: 0
     - id: Alchemist_Buff_02
       action: 4
       resource: BattleAnimations/Characters/Alchemist/Alchemist_Buff_02/Alchemist_Buff_02
-      skillKeys: []
+      skillKeys: [群体破甲, yanheng_armor_break]
       archived: 0
     - id: Alchemist_Death_01
       action: 6
@@ -208,6 +218,9 @@ MonoBehaviour:
   - key: Npc_6
     keys:
     - Assassin
+    - "400003"
+    - shuoying
+    - 朔影
     - Npc_6
     - '6'
     - 刺客
@@ -261,7 +274,7 @@ MonoBehaviour:
     - id: Assassin_SkillAttack_01
       action: 3
       resource: BattleAnimations/Characters/Assassin/Assassin_SkillAttack_01/Assassin_SkillAttack_01
-      skillKeys: []
+      skillKeys: [绕身背刺, shuoying_backstab]
       archived: 0
   - key: Npc_2
     keys:
@@ -308,12 +321,12 @@ MonoBehaviour:
     - id: Cangqi_SkillAttack_01
       action: 3
       resource: BattleAnimations/Characters/Cangqi/Cangqi_SkillAttack_01/Cangqi_SkillAttack_01
-      skillKeys: []
+      skillKeys: [粉碎打击, crushing_blow]
       archived: 0
     - id: Cangqi_SkillAttack_02
       action: 3
       resource: BattleAnimations/Characters/Cangqi/Cangqi_SkillAttack_02/Cangqi_SkillAttack_02
-      skillKeys: []
+      skillKeys: [强力一击, power_strike]
       archived: 0
   - key: Npc_4
     keys:
@@ -334,12 +347,12 @@ MonoBehaviour:
     - id: Priest_Buff_01
       action: 4
       resource: BattleAnimations/Characters/Priest/Priest_Buff_01/Priest_Buff_01
-      skillKeys: []
+      skillKeys: [单体治疗, qiluo_heal]
       archived: 0
     - id: Priest_Buff_02
       action: 4
       resource: BattleAnimations/Characters/Priest/Priest_Buff_02/Priest_Buff_02
-      skillKeys: []
+      skillKeys: [群体治疗, qiluo_party_heal]
       archived: 0
     - id: Priest_Death_01
       action: 6
@@ -476,33 +489,98 @@ MonoBehaviour:
       resource: BattleAnimations/Environment/DemoBackground
       skillKeys: []
       archived: 1
-  - key: Whale
+  - key: Elite01
     keys:
-    - Whale
-    - boss_whale
-    - whale_boss
-    - boss鲸
-    - 鲸鱼
-    - 巨鲸
+    - 精英1
+    - 精英怪1
+    - 16102
+    - flame_raider
+    - fire_raider
+    - enemy_raider
+    - enemy_fire_raider
+    - 烈焰掠夺者
+    - Monster6_Moth
+    - 怪物6_四翼飞蛾
+    - 四翼飞蛾
+    - enemy_moth
     sourceFacingRight: 0
-    referenceBodyHeight: 14.425531914893616
-    visualScale: 2.1
-    offset:
-      x: 0
-      y: 0
+    referenceBodyHeight: 3
+    visualScale: 2.10
+    offset: {x: 0, y: 0}
     animations:
-    - id: Whale_Idle
+    - id: Elite01_Idle
       action: 0
-      resource: BattleAnimations/Enemies/Whale/Whale_Idle
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite01/Elite01_Idle
       skillKeys: []
       archived: 0
-    - id: Whale_NormalAttack
+    - id: Elite01_Normal
       action: 2
-      resource: BattleAnimations/Enemies/Whale/Whale_NormalAttack
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite01/Elite01_Normal
       skillKeys: []
       archived: 0
-  - key: Monster4_Spider
+    - id: Elite01_Skill
+      action: 3
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite01/Elite01_Skill
+      skillKeys: []
+      archived: 0
+    - id: Elite01_Hit
+      action: 5
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite01/Elite01_Hit
+      skillKeys: []
+      archived: 0
+    - id: Elite01_Death
+      action: 6
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite01/Elite01_Death
+      skillKeys: []
+      archived: 0
+  - key: Elite02
     keys:
+    - 精英2
+    - 精英怪2
+    - 16103
+    - stone_guard
+    - enemy_guard
+    - enemy_stone_guard
+    - 岩石守卫
+    sourceFacingRight: 0
+    referenceBodyHeight: 3
+    visualScale: 2.08
+    offset: {x: 0, y: 0}
+    animations:
+    - id: Elite02_Idle
+      action: 0
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite02/Elite02_Idle
+      skillKeys: []
+      archived: 0
+    - id: Elite02_Normal
+      action: 3
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite02/Elite02_Normal
+      skillKeys: []
+      archived: 0
+    - id: Elite02_Skill
+      action: 2
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite02/Elite02_Skill
+      skillKeys: []
+      archived: 0
+    - id: Elite02_Hit
+      action: 5
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite02/Elite02_Hit
+      skillKeys: []
+      archived: 0
+    - id: Elite02_Death
+      action: 6
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite02/Elite02_Death
+      skillKeys: []
+      archived: 0
+  - key: Elite03
+    keys:
+    - 精英3
+    - 精英怪3
+    - 16101
+    - forest_slime
+    - enemy_slime
+    - enemy_forest_slime
+    - 森林史莱姆
     - Monster4_Spider
     - 怪物4_蜘蛛
     - 怪物4
@@ -511,42 +589,72 @@ MonoBehaviour:
     - enemy_spider
     - monster_spider
     sourceFacingRight: 0
-    referenceBodyHeight: 3.0
-    visualScale: 1.0
-    offset:
-      x: 0
-      y: 0
+    referenceBodyHeight: 3
+    visualScale: 2.04
+    offset: {x: 0, y: 0}
     animations:
-    - id: Monster4_Spider_Idle
+    - id: Elite03_Idle
       action: 0
-      resource: BattleAnimations/Enemies/Monster4_Spider/Monster4_Spider_Idle
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite03/Elite03_Idle
       skillKeys: []
       archived: 0
-    - id: Monster4_Spider_Attack
+    - id: Elite03_Normal
       action: 2
-      resource: BattleAnimations/Enemies/Monster4_Spider/Monster4_Spider_Attack
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite03/Elite03_Normal
       skillKeys: []
       archived: 0
-    - id: Monster4_Spider_Death
+    - id: Elite03_Skill
+      action: 3
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite03/Elite03_Skill
+      skillKeys: []
+      archived: 0
+    - id: Elite03_Hit
+      action: 5
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite03/Elite03_Hit
+      skillKeys: []
+      archived: 0
+    - id: Elite03_Death
       action: 6
-      resource: BattleAnimations/Enemies/Monster4_Spider/Monster4_Spider_Death
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite03/Elite03_Death
       skillKeys: []
       archived: 0
-  - key: Monster6_Moth
+  - key: Elite04
     keys:
-    - Monster6_Moth
-    - 怪物6_四翼飞蛾
-    - 四翼飞蛾
-    - enemy_moth
+    - 精英4
+    - 精英怪4
+    - Whale
+    - boss_whale
+    - whale_boss
+    - boss鲸
+    - 鲸鱼
+    - 巨鲸
     sourceFacingRight: 0
-    referenceBodyHeight: 3.0
-    visualScale: 1.0
-    offset:
-      x: 0
-      y: 0
+    referenceBodyHeight: 3
+    visualScale: 2.16
+    offset: {x: 0, y: 0}
     animations:
-    - id: Monster6_Moth_AttackEffect
-      action: 7
-      resource: BattleAnimations/Enemies/Monster6_Moth/Monster6_Moth_AttackEffect
+    - id: Elite04_Idle
+      action: 0
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite04/Elite04_Idle
+      skillKeys: []
+      archived: 0
+    - id: Elite04_Normal
+      action: 2
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite04/Elite04_Normal
+      skillKeys: []
+      archived: 0
+    - id: Elite04_Skill
+      action: 3
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite04/Elite04_Skill
+      skillKeys: []
+      archived: 0
+    - id: Elite04_Hit
+      action: 5
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite04/Elite04_Hit
+      skillKeys: []
+      archived: 0
+    - id: Elite04_Death
+      action: 6
+      resource: BattleAnimations/Enemies/EliteEnemies/Elite04/Elite04_Death
       skillKeys: []
       archived: 0

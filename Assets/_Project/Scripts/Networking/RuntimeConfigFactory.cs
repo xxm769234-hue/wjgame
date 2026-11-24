@@ -131,8 +131,8 @@ public static class RuntimeConfigFactory
         if (template != null) return UnityEngine.Object.Instantiate(template);
 
         LandConfig config = ScriptableObject.CreateInstance<LandConfig>();
-        config.landName = "服务器地块";
-        config.description = "已从服务器加载";
+        config.landName = "地块";
+        config.description = string.Empty;
         return config;
     }
 
@@ -164,10 +164,15 @@ public static class RuntimeConfigFactory
     private static BuildingConfig CreateBuildingFromTemplate()
     {
         BuildingConfig template = FindAnyBuildingTemplate();
-        if (template != null) return UnityEngine.Object.Instantiate(template);
+        if (template != null)
+        {
+            BuildingConfig derived = UnityEngine.Object.Instantiate(template);
+            derived.comicSceneSprite = null;
+            return derived;
+        }
 
         BuildingConfig config = ScriptableObject.CreateInstance<BuildingConfig>();
-        config.buildingName = "服务器建筑";
+        config.buildingName = "建筑";
         config.canBuild = true;
         return config;
     }

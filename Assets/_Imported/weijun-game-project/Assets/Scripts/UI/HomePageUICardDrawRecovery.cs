@@ -5,6 +5,7 @@ public partial class HomePageUI
 {
     private int pendingCardDrawPlayerId;
     private string pendingCardDrawJson;
+    private string pendingCardDrawPath;
     private bool cardDrawPersistenceBlocked;
 
     private void RestoreCardDrawIntent()
@@ -20,7 +21,7 @@ public partial class HomePageUI
         CardDrawIntent intent = ParseJson<CardDrawIntent>(stored);
         CardDrawRequest body = intent != null ? ParseJson<CardDrawRequest>(intent.json) : null;
         if (intent == null || intent.playerId != pendingCardDrawPlayerId || !Guid.TryParse(intent.key, out _)
-            || intent.path != "/card-draw/draw" || body == null || body.optionCode != intent.option
+            || !IsSummonDrawPath(intent.path) || body == null || body.optionCode != intent.option
             || (intent.option != "SINGLE" && intent.option != "FIVE" && intent.option != "TEN"))
         {
             cardDrawPersistenceBlocked = true;
@@ -28,6 +29,7 @@ public partial class HomePageUI
             return;
         }
         pendingCardDrawKey = intent.key;
+        pendingCardDrawPath = intent.path;
         pendingCardDrawOption = intent.option;
         pendingCardDrawJson = intent.json;
     }
@@ -40,7 +42,7 @@ public partial class HomePageUI
         {
             PlayerPrefs.SetString(CardDrawStorageKey(GameSession.PlayerId), JsonUtility.ToJson(new CardDrawIntent
             {
-                playerId = GameSession.PlayerId, key = key, path = "/card-draw/draw", option = option, json = json
+                playerId = GameSession.PlayerId, key = key, path = currentDrawPath, option = option, json = json
             }));
             PlayerPrefs.Save();
         }
@@ -52,6 +54,7 @@ public partial class HomePageUI
         }
         pendingCardDrawPlayerId = GameSession.PlayerId;
         pendingCardDrawKey = key;
+        pendingCardDrawPath = currentDrawPath;
         pendingCardDrawOption = option;
         pendingCardDrawJson = json;
         return true;
@@ -67,7 +70,7 @@ public partial class HomePageUI
         catch (Exception)
         {
             cardDrawPersistenceBlocked = true;
-            serverLotteryStatus = "召唤已结算，记录同步中，请稍后再试";
+            serverLotteryStatus = "召唤已完成，请稍后查看记录";
             return;
         }
         if (pendingCardDrawPlayerId != playerId) return;

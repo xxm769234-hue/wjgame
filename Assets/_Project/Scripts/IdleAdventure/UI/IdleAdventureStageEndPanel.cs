@@ -71,6 +71,11 @@ public sealed class IdleAdventureStageEndPanel : MonoBehaviour
         if (endModeButton != null) endModeButton.interactable = interactable;
     }
 
+    public void SetMessage(string message)
+    {
+        if (bodyText != null) bodyText.text = FrontendTextLocalization.Normalize(message);
+    }
+
     public void SetContent(string title, string body)
     {
         showRewards = false;

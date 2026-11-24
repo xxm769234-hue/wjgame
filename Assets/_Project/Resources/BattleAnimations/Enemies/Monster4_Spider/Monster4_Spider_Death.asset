@@ -16,6 +16,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Monster4_Spider_Death
   m_EditorClassIdentifier: ''
+  footContacts:
+  - frame: 0
+    left: {x: -0.2793, y: 0.1201}
+    right: {x: 0.1788, y: 0.0447}
+  - frame: 12
+    left: {x: -0.2807, y: 0.1201}
+    right: {x: 0.1816, y: 0.0419}
+  - frame: 20
+    left: {x: -0.3142, y: 0.1648}
+    right: {x: 0.2207, y: 0.1285}
+  - frame: 55
+    left: {x: -0.3142, y: 0.1648}
+    right: {x: 0.2207, y: 0.1285}
   sequenceId: Monster4_Spider_Death
   sourceFolder: D:/怪物动画/怪物4_蜘蛛/死亡_20261112_00378/Frames
   action: 6

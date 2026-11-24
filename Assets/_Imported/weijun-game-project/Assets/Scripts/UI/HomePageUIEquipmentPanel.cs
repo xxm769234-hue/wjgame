@@ -183,7 +183,7 @@ public partial class HomePageUI
             {
                 equipmentRefreshRunning = false;
                 equipmentStatusMessage = "NPC 列表读取失败：" + (response == null
-                    ? ApiRequestUtility.GetErrorMessage(npcRequest, "服务器连接失败")
+                    ? ApiRequestUtility.GetErrorMessage(npcRequest, "连接失败，请稍后重试")
                     : GetApiError(response));
                 RenderEquipmentScenePanel(GetEquipmentPanelRoot());
                 yield break;
@@ -235,9 +235,9 @@ public partial class HomePageUI
         equipmentStatusMessage = !string.IsNullOrEmpty(equipmentGrowthPersistenceError)
             ? equipmentGrowthPersistenceError
             : HasPendingEquipmentGrowthRequest()
-            ? "正在后台同步尚未返回的装备升级结果"
+            ? "正在确认上次升级结果"
             : serverPlayerNpcs.Length == 0
-            ? "装备仓库已刷新；当前账号还没有可穿戴装备的 NPC"
+            ? "暂无可穿戴装备的伙伴"
             : string.Empty;
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
         ResumePendingEquipmentGrowthRequest();
@@ -1665,10 +1665,10 @@ public partial class HomePageUI
         if (!string.IsNullOrEmpty(equipmentGrowthPersistenceError)) return equipmentGrowthPersistenceError;
         if (HasPendingEquipmentGrowthRequest(item.playerEquipmentId))
         {
-            return "正在自动同步此装备的升级结果，无需再次点击";
+            return "正在确认升级结果，无需重复操作";
         }
-        if (equipmentRefreshRunning) return "正在同步装备与资源数据...";
-        if (!_equipmentDataReadSucceeded) return "装备数据尚未同步，请刷新背包后再升级";
+        if (equipmentRefreshRunning) return "正在查看装备…";
+        if (!_equipmentDataReadSucceeded) return "请刷新背包后再升级";
         if (equipmentUpgradePreviewRequestId == item.playerEquipmentId && !string.IsNullOrEmpty(equipmentUpgradePreviewError))
             return "升级预览：" + equipmentUpgradePreviewError + "；请刷新背包重试";
         if (equipmentUpgradePreviewRunning) return "正在读取升级费用...";
@@ -2147,7 +2147,7 @@ public partial class HomePageUI
         equipmentAutoUpgradePreviewRunning = false;
         equipmentAutoUpgradePreviewError = string.Empty;
         equipmentRefreshRunning = true;
-        equipmentStatusMessage = "正在同步装备并重新读取升级预览...";
+        equipmentStatusMessage = "正在查看升级费用…";
         RenderEquipmentScenePanel(root);
         StartCoroutine(GetEquipmentInventoryList());
     }
@@ -2792,7 +2792,7 @@ public partial class HomePageUI
         yield return RefreshCardDrawInventoryState(syncedCategories, failedCategories);
         if (failedCategories.Count > 0)
         {
-            SetStatus("升级成功，但通用背包同步失败："
+            SetStatus("装备已升级，背包暂时无法查看："
                 + string.Join("、", failedCategories.ToArray()));
         }
     }

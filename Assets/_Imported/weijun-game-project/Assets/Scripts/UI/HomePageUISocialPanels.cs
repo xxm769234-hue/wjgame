@@ -97,11 +97,11 @@ public partial class HomePageUI
         SetSceneText(root, "ProfileIdentifier", $"玩家ID  {identifier}");
         SetSceneText(root, "ProfileAccount", $"登录账号  {(string.IsNullOrEmpty(username) ? "未设置" : username)}");
         SetSceneText(root, "ProfileLevel", $"领主等级  Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}");
-        SetSceneText(root, "ProfileVital", $"生命  {PlayerPrefs.GetInt("PlayerHp", 1000)}    体力  {GetHomeStamina()}");
+        RefreshProfileResourceSummary(root);
         SetSceneText(root, "ProfileSignStat", $"签到天数\n{PlayerPrefs.GetInt("DailySignDays", 0)} 天");
         SetSceneText(root, "ProfileFriendStat", $"好友数量\n{v37Friends.Count} 人");
         SetSceneText(root, "ProfileGrowthTitle", "旅途概览");
-        SetSceneText(root, "ProfileSyncText", GetProfileSyncText(isAuthenticated));
+        SetSceneObjectActive(root, "ProfileSyncText", false);
         SetSceneText(root, "ProfileStatus", status);
         bool hasCancellationDetails = FindSceneTransform(root, "ProfileCancellationDetailsText") != null;
         SetSceneObjectActive(root, "ProfileCancellationStatus", !hasCancellationDetails);
@@ -258,6 +258,57 @@ public partial class HomePageUI
             replacement.fontStyle = ConvertProfileFontStyle(fontStyle);
             replacement.enabled = enabled;
         }
+    }
+
+    private void RefreshProfileResourceSummary(Transform root)
+    {
+        TMP_Text template = FindSceneComponent<TMP_Text>(root, "ProfileVital");
+        if (template == null) return;
+        template.gameObject.SetActive(false);
+
+        SetProfileBalance(template, 0, "金币", PlayerPrefs.GetInt("Gold"));
+        SetProfileBalance(template, 1, "万能彩墨", PlayerPrefs.GetInt("Crystal"));
+        SetProfileBalance(template, 2, "体力", serverStaminaLoaded ? GetHomeStamina() : (int?)null);
+    }
+
+    private void SetProfileBalance(TMP_Text template, int column, string resourceName, int? amount)
+    {
+        Transform bar = template.transform.parent;
+        string itemName = "ProfileBalance_" + resourceName;
+        Transform item = bar.Find(itemName);
+        TMP_Text label;
+        if (item == null)
+        {
+            label = Instantiate(template, bar, false);
+            label.name = itemName;
+            RectTransform rect = label.rectTransform;
+            rect.anchorMin = new Vector2(column / 3f, 0f);
+            rect.anchorMax = new Vector2((column + 1) / 3f, 1f);
+            rect.offsetMin = new Vector2(30f, 0f);
+            rect.offsetMax = new Vector2(-4f, 0f);
+            label.margin = Vector4.zero;
+            label.alignment = TextAlignmentOptions.MidlineLeft;
+            label.enableWordWrapping = false;
+            label.enableAutoSizing = true;
+            label.fontSizeMin = 11f;
+            label.fontSizeMax = 22f;
+            label.raycastTarget = false;
+
+            Image icon = CreateImage("Icon", rect, Color.white);
+            icon.sprite = LoadNewbieSignResourceSprite(GetResourceIconAssetPath(resourceName));
+            icon.preserveAspect = true;
+            icon.raycastTarget = false;
+            icon.enabled = icon.sprite != null;
+            SetRect(icon.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f),
+                new Vector2(1f, 0.5f), new Vector2(-3f, 0f), new Vector2(26f, 26f));
+            label.gameObject.SetActive(true);
+        }
+        else
+        {
+            label = item.GetComponent<TMP_Text>();
+        }
+
+        label.text = amount.HasValue ? amount.Value.ToString(CultureInfo.InvariantCulture) : "—";
     }
 
     private static TextAlignmentOptions ConvertProfileTextAlignment(TextAnchor alignment)
@@ -433,7 +484,7 @@ public partial class HomePageUI
 
         if (!profileCancellationStatusLoaded)
         {
-            RefreshAccountProfileScenePanel(root, "注销状态尚未同步，请稍候...");
+            RefreshAccountProfileScenePanel(root, "正在查询注销进度，请稍候");
             StartCoroutine(RefreshProfileCancellationStatus(root, "正在读取账号注销状态..."));
             return;
         }
@@ -986,7 +1037,7 @@ public partial class HomePageUI
             if (request.result != UnityWebRequest.Result.Success)
             {
                 profileRefreshRunning = false;
-                RefreshAccountProfileScenePanel(root, $"资料同步失败：{ApiRequestUtility.GetErrorMessage(request, "请求失败")}");
+                RefreshAccountProfileScenePanel(root, $"暂时无法查看个人资料：{ApiRequestUtility.GetErrorMessage(request, "请求失败")}");
                 yield break;
             }
 
@@ -1011,11 +1062,11 @@ public partial class HomePageUI
 
             SaveUserProfile(response.data);
             yield return RefreshProfileNicknamePolicy(root);
-            yield return RefreshProfileCancellationStatus(root, "正在同步账号注销状态...");
-            yield return RefreshProfileComplianceStatus(root, "正在同步实名及防沉迷状态...");
+            yield return RefreshProfileCancellationStatus(root, string.Empty);
+            yield return RefreshProfileComplianceStatus(root, string.Empty);
             profileRefreshRunning = false;
             RefreshAccountProfileScenePanel(root, string.Empty);
-            SetStatus("个人资料已刷新");
+            SetStatus(string.Empty);
         }
     }
 
@@ -1047,7 +1098,6 @@ public partial class HomePageUI
             profile.avatarCode,
             profile.avatarVersion,
             profile.avatarUpdatedTime);
-        PlayerPrefs.SetString("ProfileLastSync", DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
         PlayerPrefs.Save();
         WeChatPlatformBridge.SyncFriendLevel(profile.level);
         SyncInventoryResourceValues(profile.items);
@@ -1063,12 +1113,6 @@ public partial class HomePageUI
     private static string GetNicknameInitial(string nickname)
     {
         return string.IsNullOrEmpty(nickname) ? "游" : nickname.Substring(0, 1);
-    }
-
-    private static string GetProfileSyncText(bool isAuthenticated)
-    {
-        string lastSync = PlayerPrefs.GetString("ProfileLastSync", string.Empty);
-        return string.IsNullOrEmpty(lastSync) ? string.Empty : $"最近更新  {lastSync}";
     }
 
     private string BuildAccountProfileFallbackText()
@@ -1153,7 +1197,7 @@ public partial class HomePageUI
             profileNicknamePolicy = response.data;
             profileNicknamePolicyStatus = string.Empty;
             SaveProfileNicknamePolicyState(response.data);
-            RefreshAccountProfileScenePanel(root, "昵称规则已同步");
+            RefreshAccountProfileScenePanel(root, string.Empty);
         }
     }
 

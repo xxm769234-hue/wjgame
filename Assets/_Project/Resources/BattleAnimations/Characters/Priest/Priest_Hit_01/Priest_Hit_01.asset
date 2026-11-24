@@ -12,6 +12,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Priest_Hit_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: 0.0300, y: 0.0283}
+    right: {x: 0.1131, y: 0.0177}
+  - frame: 8
+    left: {x: -0.0530, y: 0.0106}
+    right: {x: 0.1237, y: 0.0177}
+  - frame: 24
+    left: {x: -0.0530, y: 0.0124}
+    right: {x: 0.1237, y: 0.0177}
+  - frame: 38
+    left: {x: 0.0318, y: 0.0265}
+    right: {x: 0.1131, y: 0.0177}
   sequenceId: Priest_Hit_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u53D7\u51FB\\\u7267\u5E08"
   action: 5

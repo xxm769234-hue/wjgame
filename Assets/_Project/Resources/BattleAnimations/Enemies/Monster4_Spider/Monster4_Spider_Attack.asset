@@ -16,6 +16,31 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Monster4_Spider_Attack
   m_EditorClassIdentifier: ''
+  footContacts:
+  - frame: 0
+    left: {x: -0.2804, y: 0.1196}
+    right: {x: 0.1769, y: 0.0448}
+  - frame: 5
+    left: {x: -0.2804, y: 0.1196}
+    right: {x: 0.1783, y: 0.0462}
+  - frame: 9
+    left: {x: -0.1210, y: 0.1608}
+    right: {x: 0.3406, y: 0.1315}
+  - frame: 11
+    left: {x: -0.1210, y: 0.1608}
+    right: {x: 0.3406, y: 0.1315}
+  - frame: 12
+    left: {x: -0.3448, y: 0.0126}
+    right: {x: 0.2105, y: 0.0014}
+  - frame: 14
+    left: {x: -0.3448, y: -0.1357}
+    right: {x: 0.2105, y: 0.0014}
+  - frame: 18
+    left: {x: -0.3294, y: -0.1357}
+    right: {x: 0.2077, y: -0.0028}
+  - frame: 21
+    left: {x: -0.3294, y: -0.0657}
+    right: {x: 0.2049, y: -0.0028}
   sequenceId: Monster4_Spider_Attack
   sourceFolder: D:/怪物动画/怪物4_蜘蛛/攻击_20261112_00382/Frames
   action: 2

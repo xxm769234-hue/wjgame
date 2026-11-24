@@ -106,6 +106,7 @@ public partial class HomePageUI
         }
 
         rolePanelObject = panel.gameObject;
+        CloseSynthesisPanel();
         CloseRoleActionPanels(panel.PanelRoot);
         int currentPlayerId = GameSession.PlayerId;
         if (roleSessionPlayerId != currentPlayerId)
@@ -201,6 +202,8 @@ public partial class HomePageUI
         }
 
         roleCatalogEntries = state.catalogEntries ?? new RoleCatalogEntry[0];
+        foreach (var role in roleCatalogEntries)
+            if (role != null) RoleFragmentArt.SetRoleQuality(role.npcCode,role.quality);
         rolePlayerEntries = state.playerEntries ?? new RolePlayerEntry[0];
 
         rolePanelLoading = false;
@@ -258,7 +261,7 @@ public partial class HomePageUI
                     || response.code != 200 || response.data == null)
                 {
                     state.catalogError = response == null
-                        ? ApiRequestUtility.GetErrorMessage(request, "服务器返回数据格式错误")
+                        ? ApiRequestUtility.GetErrorMessage(request, "暂时无法查看伙伴资料")
                         : GetApiError(response);
                 }
                 else
@@ -308,7 +311,7 @@ public partial class HomePageUI
                     || response.code != 200 || response.data == null)
                 {
                     state.playerError = response == null
-                        ? ApiRequestUtility.GetErrorMessage(request, "服务器返回数据格式错误")
+                        ? ApiRequestUtility.GetErrorMessage(request, "暂时无法查看伙伴资料")
                         : GetApiError(response);
                 }
                 else
@@ -1038,7 +1041,7 @@ public partial class HomePageUI
         yield return RefreshCardDrawInventoryState(syncedCategories, failedCategories);
         if (failedCategories.Count > 0)
         {
-            roleStatusMessage = "升级成功，但部分资源同步失败："
+            roleStatusMessage = "升级成功，部分物品暂时无法查看："
                 + string.Join(", ", failedCategories.ToArray());
         }
     }
@@ -1187,7 +1190,8 @@ public partial class HomePageUI
         {
             string itemName = item != null && !string.IsNullOrEmpty(item.name) ? item.name : cost.name;
             string iconKey = item == null ? null : item.icon;
-            Sprite sprite = roleGrowthIconSource == null ? null : roleGrowthIconSource.ResolveIcon(cost.key, itemName, iconKey);
+            Sprite sprite = RoleFragmentArt.Resolve(cost.key,itemName,iconKey,item?.quality);
+            if (sprite == null && roleGrowthIconSource != null) sprite = roleGrowthIconSource.ResolveIcon(cost.key,itemName,iconKey);
             if (sprite == null) sprite = LoadMailAttachmentResourceSprite(iconKey)
                 ?? LoadMailAttachmentResourceSprite(cost.key) ?? LoadMailAttachmentResourceSprite(itemName);
             icon.sprite = sprite;
@@ -1994,6 +1998,9 @@ public partial class HomePageUI
 
     private IEnumerator GetRoleAcquisitionGuide(int npcId)
     {
+        int panelVersion = roleRequestVersion;
+        int playerId = GameSession.PlayerId;
+        string token = GameSession.Token;
         ClearPendingRoleAcquisitionRoute();
         UnityWebRequest request = CreateAuthorizedGet($"/npc/{npcId}/acquisition-guide");
         if (request == null)
@@ -2006,6 +2013,7 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
+            if (!IsRoleRequestCurrent(panelVersion, playerId, token) || roleSelectedNpcId != npcId) yield break;
             if (HandleUnauthorizedResponse(request))
             {
                 yield break;
@@ -2091,6 +2099,15 @@ public partial class HomePageUI
         string routeKey = guide.routeKey ?? string.Empty;
         switch (routeKey.ToUpperInvariant())
         {
+            case "NPC_SYNTHESIS":
+                if (guide.routeParams != null && guide.routeParams.npcId > 0 && guide.routeParams.npcId == guide.npcId)
+                    OpenSynthesisPanel(guide.npcId);
+                else
+                {
+                    roleStatusMessage = "角色合成入口已更新，请重新查看";
+                    RenderRolePanel();
+                }
+                break;
             case "CARD_DRAW":
                 if (!TryValidateCardDrawRoute(guide))
                 {
@@ -2299,6 +2316,7 @@ public partial class HomePageUI
 
     private void HideRolePanel()
     {
+        CloseSynthesisPanel();
         roleRequestVersion++;
         ResetRoleCombatProfiles();
         ResetRoleAutoUpgradePreview();
@@ -2519,7 +2537,12 @@ public partial class HomePageUI
             normalizedKey = normalizedKey.Substring(0, extensionIndex);
         }
 
-        return normalizedKey;
+        switch (normalizedKey.ToLowerInvariant())
+        {
+            case "400003": case "shuoying": case "朔影": return "Npc_6";
+            case "400002": case "lingke": case "玲珂": case "铃珂": return "Npc_7";
+            default: return normalizedKey;
+        }
     }
 
     private void ConfigureRoleDetailQuality(Transform root, RoleDisplayEntry entry)
@@ -3397,6 +3420,7 @@ public partial class HomePageUI
     [Serializable]
     private sealed class RoleAcquisitionRouteParams
     {
+        public int npcId;
         public string poolCode;
         public int highlightNpcId;
         public string taskCode;

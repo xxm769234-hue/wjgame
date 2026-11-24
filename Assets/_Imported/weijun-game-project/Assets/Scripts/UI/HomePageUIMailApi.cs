@@ -135,7 +135,7 @@ public partial class HomePageUI
             response.data.readFlag = true;
             ReplaceCurrentMail(response.data);
             mailDetailLoadingId = 0;
-            ShowSystemMailPanel(currentServerMails, "邮件详情已加载");
+            ShowSystemMailPanel(currentServerMails, string.Empty);
             if (shouldMarkRead)
             {
                 StartCoroutine(MarkMailRead(mailId));
@@ -452,18 +452,18 @@ public partial class HomePageUI
 
         if (inventoryPanelObject != null && inventoryPanelObject.activeInHierarchy && needsInventoryRefresh)
         {
-            inventoryStatusMessage = "邮件奖励已同步";
+            inventoryStatusMessage = string.Empty;
             RenderInventoryPanel();
         }
         if (equipmentPanelObject != null && equipmentPanelObject.activeInHierarchy && (needsEquipmentRefresh || needsNpcRefresh))
         {
             RebuildServerEquipmentItems();
-            equipmentStatusMessage = "邮件奖励已同步";
+            equipmentStatusMessage = string.Empty;
             RenderEquipmentScenePanel(GetEquipmentPanelRoot());
         }
         if (failedCategories.Count > 0)
         {
-            SetStatus("邮件领取成功，但部分奖励同步失败：" + string.Join("；", failedCategories.ToArray()));
+            SetStatus("奖励已领取，请稍后查看物品。");
         }
     }
 

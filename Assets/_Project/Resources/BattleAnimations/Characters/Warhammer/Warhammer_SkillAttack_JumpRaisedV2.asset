@@ -501,6 +501,7 @@ MonoBehaviour:
   effects:
   - effect: {fileID: 11400000, guid: faa0d20d169457d1bb9afcaac6e449ea, type: 2}
     placement: 3
+    sortWithCombatants: 1
     startFrame: 0
     contactFrame: 0
     endFrame: 158

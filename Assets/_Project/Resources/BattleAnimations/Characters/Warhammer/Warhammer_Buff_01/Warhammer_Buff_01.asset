@@ -12,6 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Warhammer_Buff_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.1277, y: 0.0142}
+    right: {x: 0.1489, y: 0.0496}
   sequenceId: Warhammer_Buff_01
   sourceFolder: "D:\\\u52A8\u753B\u6F14\u793A\\\u52A8\u753B\u6F14\u793A\\Assets\\Animations\\MiniMax_H3_CombatV2_FL2V_00144\\Frames"
   action: 4

@@ -145,10 +145,19 @@ public sealed class IdleAdventureEnemySlotResponse
 }
 
 [Serializable]
+public sealed class IdleAdventureStagePresentationResponse
+{
+    public string background_code;
+    public string background_name;
+    public string background_resource_key;
+}
+
+[Serializable]
 public sealed class IdleAdventureStageEnemiesResponse
 {
     public int stage;
     public string stage_name;
+    public IdleAdventureStagePresentationResponse stage_presentation;
     public string stageName;
     public int enemy_count;
     public int enemyCount;

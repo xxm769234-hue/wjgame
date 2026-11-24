@@ -1,0 +1,523 @@
+fileFormatVersion: 2
+guid: aa501c59158ce9d835ce860192ace7ed
+TextureImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 13
+  mipmaps:
+    mipMapMode: 0
+    enableMipMap: 0
+    sRGBTexture: 1
+    linearTexture: 0
+    fadeOut: 0
+    borderMipMap: 0
+    mipMapsPreserveCoverage: 0
+    alphaTestReferenceValue: 0.5
+    mipMapFadeDistanceStart: 1
+    mipMapFadeDistanceEnd: 3
+  bumpmap:
+    convertToNormalMap: 0
+    externalNormalMap: 0
+    heightScale: 0.25
+    normalMapFilter: 0
+    flipGreenChannel: 0
+  isReadable: 0
+  streamingMipmaps: 0
+  streamingMipmapsPriority: 0
+  vTOnly: 0
+  ignoreMipmapLimit: 0
+  grayScaleToAlpha: 0
+  generateCubemap: 6
+  cubemapConvolution: 0
+  seamlessCubemap: 0
+  textureFormat: 1
+  maxTextureSize: 2048
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 1
+    aniso: 1
+    mipBias: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 1
+  nPOTScale: 0
+  lightmap: 0
+  compressionQuality: 50
+  spriteMode: 2
+  spriteExtrude: 1
+  spriteMeshType: 0
+  alignment: 0
+  spritePivot: {x: 0.5, y: 0.5}
+  spritePixelsToUnits: 80
+  spriteBorder: {x: 0, y: 0, z: 0, w: 0}
+  spriteGenerateFallbackPhysicsShape: 1
+  alphaUsage: 1
+  alphaIsTransparency: 1
+  spriteTessellationDetail: -1
+  textureType: 8
+  textureShape: 1
+  singleChannelComponent: 0
+  flipbookRows: 1
+  flipbookColumns: 1
+  maxTextureSizeSet: 0
+  compressionQualitySet: 0
+  textureFormatSet: 0
+  ignorePngGamma: 0
+  applyGammaDecoding: 0
+  swizzle: 50462976
+  cookieLightType: 0
+  platformSettings:
+  - serializedVersion: 3
+    buildTarget: DefaultTexturePlatform
+    maxTextureSize: 4096
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 2
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 3
+    buildTarget: Standalone
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 3
+    buildTarget: WebGL
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  spriteSheet:
+    serializedVersion: 2
+    sprites:
+    - serializedVersion: 2
+      name: Elite03_SkillFX_072
+      rect:
+        serializedVersion: 2
+        x: 904
+        y: 1205
+        width: 447
+        height: 300
+      alignment: 9
+      pivot: {x: 0.3492813, y: 0.4684877}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 6572beeaad9b0df6faeb09d492b6a414
+      internalID: 21300144
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_073
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 1509
+        width: 447
+        height: 301
+      alignment: 9
+      pivot: {x: 0.3488107, y: 0.4696551}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: c553bb1c848f5e457066c526345b5924
+      internalID: 21300146
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_074
+      rect:
+        serializedVersion: 2
+        x: 453
+        y: 1509
+        width: 447
+        height: 301
+      alignment: 9
+      pivot: {x: 0.3476956, y: 0.4699160}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 9263366f347585585779686bf660703d
+      internalID: 21300148
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_075
+      rect:
+        serializedVersion: 2
+        x: 904
+        y: 1509
+        width: 447
+        height: 301
+      alignment: 9
+      pivot: {x: 0.3471136, y: 0.4699281}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 53721808b420534fd84752c7a6c58e02
+      internalID: 21300150
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_076
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 1204
+        width: 447
+        height: 301
+      alignment: 9
+      pivot: {x: 0.3466642, y: 0.4699119}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 506979549bca60abfd793cbe97160b21
+      internalID: 21300152
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_077
+      rect:
+        serializedVersion: 2
+        x: 453
+        y: 1204
+        width: 447
+        height: 301
+      alignment: 9
+      pivot: {x: 0.3409576, y: 0.4684329}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 5b19ac2e0ab94b043658a7fca481eed2
+      internalID: 21300154
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_078
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 902
+        width: 442
+        height: 298
+      alignment: 9
+      pivot: {x: 0.3318285, y: 0.4818305}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: de1755a315af0a91519f28f0c92770e6
+      internalID: 21300156
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_079
+      rect:
+        serializedVersion: 2
+        x: 448
+        y: 902
+        width: 442
+        height: 298
+      alignment: 9
+      pivot: {x: 0.3315705, y: 0.4818412}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a03d45d45dc82caa3b45b7b1395d02ee
+      internalID: 21300158
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_080
+      rect:
+        serializedVersion: 2
+        x: 894
+        y: 902
+        width: 442
+        height: 298
+      alignment: 9
+      pivot: {x: 0.3307970, y: 0.4812850}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: c0b059309c8a48ca0fe72570973181e3
+      internalID: 21300160
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_081
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 600
+        width: 451
+        height: 298
+      alignment: 9
+      pivot: {x: 0.3280881, y: 0.4712180}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 3855c424d34ff2a6414b73ac6c88374e
+      internalID: 21300162
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_082
+      rect:
+        serializedVersion: 2
+        x: 457
+        y: 600
+        width: 452
+        height: 298
+      alignment: 9
+      pivot: {x: 0.3235374, y: 0.4767227}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 6122f6a0daf02aa55b1269481bcc1b29
+      internalID: 21300164
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_083
+      rect:
+        serializedVersion: 2
+        x: 913
+        y: 600
+        width: 457
+        height: 298
+      alignment: 9
+      pivot: {x: 0.3131044, y: 0.4872754}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f77808bb088115d2c10aaea901328331
+      internalID: 21300166
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_084
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 298
+        width: 456
+        height: 298
+      alignment: 9
+      pivot: {x: 0.3038408, y: 0.4989703}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: feef71e2739bc5542a7da18830c493aa
+      internalID: 21300168
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_085
+      rect:
+        serializedVersion: 2
+        x: 816
+        y: 8
+        width: 449
+        height: 286
+      alignment: 9
+      pivot: {x: 0.3002805, y: 0.4822979}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 761d5e80d5770ee081c1e5d081f8a927
+      internalID: 21300170
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_086
+      rect:
+        serializedVersion: 2
+        x: 409
+        y: 5
+        width: 403
+        height: 289
+      alignment: 9
+      pivot: {x: 0.3277526, y: 0.4894966}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 2bb8581f2f93158434f5586695d0c329
+      internalID: 21300172
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_087
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 3
+        width: 403
+        height: 291
+      alignment: 9
+      pivot: {x: 0.3190676, y: 0.5083733}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 390fe1484aa7806adc8533731eae7f92
+      internalID: 21300174
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_088
+      rect:
+        serializedVersion: 2
+        x: 812
+        y: 303
+        width: 347
+        height: 293
+      alignment: 9
+      pivot: {x: 0.3642350, y: 0.5206486}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 54eb6c85111832a49f33fcf03412d8ac
+      internalID: 21300176
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite03_SkillFX_089
+      rect:
+        serializedVersion: 2
+        x: 462
+        y: 298
+        width: 346
+        height: 298
+      alignment: 9
+      pivot: {x: 0.3594611, y: 0.5188270}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4ef492152ee82f55d36a7720cc47525d
+      internalID: 21300178
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    outline: []
+    physicsShape: []
+    bones: []
+    spriteID: 5e97eb03825dee720800000000000000
+    internalID: 0
+    vertices: []
+    indices: 
+    edges: []
+    weights: []
+    secondaryTextures: []
+    nameFileIdTable:
+      Elite03_SkillFX_072: 21300144
+      Elite03_SkillFX_073: 21300146
+      Elite03_SkillFX_074: 21300148
+      Elite03_SkillFX_075: 21300150
+      Elite03_SkillFX_076: 21300152
+      Elite03_SkillFX_077: 21300154
+      Elite03_SkillFX_078: 21300156
+      Elite03_SkillFX_079: 21300158
+      Elite03_SkillFX_080: 21300160
+      Elite03_SkillFX_081: 21300162
+      Elite03_SkillFX_082: 21300164
+      Elite03_SkillFX_083: 21300166
+      Elite03_SkillFX_084: 21300168
+      Elite03_SkillFX_085: 21300170
+      Elite03_SkillFX_086: 21300172
+      Elite03_SkillFX_087: 21300174
+      Elite03_SkillFX_088: 21300176
+      Elite03_SkillFX_089: 21300178
+  mipmapLimitGroupName: 
+  pSDRemoveMatte: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant:

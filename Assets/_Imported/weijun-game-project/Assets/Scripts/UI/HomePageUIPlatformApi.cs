@@ -89,7 +89,7 @@ public partial class HomePageUI
                 notificationListRunning = false;
                 RenderNotificationCenter(
                     GetNotificationPanelRoot(),
-                    "提醒同步失败：" + (response == null
+                    "暂时无法查看提醒：" + (response == null
                         ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
                         : GetApiError(response)));
                 yield break;
@@ -463,7 +463,7 @@ public partial class HomePageUI
             case "AD_REWARD_CLAIMED":
                 HideNotificationCenter();
                 ShowBagContent();
-                StartCoroutine(RefreshAccountSnapshot("广告奖励已到账，背包已刷新。"));
+                StartCoroutine(RefreshAccountSnapshot("广告奖励已到账。"));
                 break;
             default:
                 SetStatus("该通知暂时没有可用跳转。");
@@ -1318,7 +1318,7 @@ public partial class HomePageUI
             refundRequestRunning = false;
             if (string.IsNullOrEmpty(refundStatusMessage))
             {
-                refundStatusMessage = "退款记录已刷新。";
+                refundStatusMessage = string.Empty;
             }
             RenderRefundCenter();
             for (int i = 0; i < currentRefunds.Length; i++)
@@ -1352,8 +1352,8 @@ public partial class HomePageUI
         }
 
         string message = status == "SUCCESS"
-            ? "退款已完成，账户资源已更新。"
-            : "退款处理中，账户状态已更新。";
+            ? "退款已完成。"
+            : "退款处理中。";
         StartCoroutine(RefreshAccountSnapshot(message));
     }
 

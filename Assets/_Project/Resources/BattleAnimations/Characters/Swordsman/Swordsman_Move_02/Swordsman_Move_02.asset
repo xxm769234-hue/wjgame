@@ -12,6 +12,40 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Swordsman_Move_02
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.2705, y: 0.1103}
+    right: {x: 0.2918, y: 0.0142}
+  - frame: 3
+    left: {x: -0.3203, y: 0.1281}
+    right: {x: 0.2918, y: 0.0142}
+  - frame: 24
+    left: {x: -0.3221, y: 0.1281}
+    right: {x: 0.2883, y: 0.0142}
+  - frame: 27
+    left: {x: -0.4947, y: 0.0925}
+    right: {x: 0.1925, y: 0.0350}
+  - frame: 30
+    left: {x: -0.5160, y: 0.0925}
+    right: {x: 0.1300, y: 0.0700}
+  - frame: 33
+    left: {x: -0.5160, y: 0.0925}
+    right: {x: -0.0534, y: 0.1886}
+  - frame: 51
+    left: {x: -0.5160, y: 0.0925}
+    right: {x: -0.0641, y: 0.1886}
+  - frame: 63
+    left: {x: -0.5160, y: 0.0925}
+    right: {x: -0.0641, y: 0.1886}
+  - frame: 66
+    left: {x: -0.3488, y: 0.1317}
+    right: {x: 0.1975, y: 0.1281}
+  - frame: 71
+    left: {x: -0.3221, y: 0.1317}
+    right: {x: 0.2633, y: 0.0214}
+  - frame: 96
+    left: {x: -0.2705, y: 0.1103}
+    right: {x: 0.2918, y: 0.0142}
   sequenceId: Swordsman_Move_02
   sourceFolder: "D:\\\u89D2\u8272\u52A8\u753B\\\u5251\u58EB\\\u7A81\u8FDB\u79FB\u52A8_20261116_5995"
   action: 1
@@ -417,6 +451,7 @@ MonoBehaviour:
   - {fileID: 0}
   - {fileID: 0}
   movementPreparationFrames: 000000000100000002000000030000000400000008000000100000001a000000
+  departureFootX: 0.03
   movementRecoveryFrames: 4100000042000000460000004c0000005200000056000000580000005c00000060000000
   movementTravelFirstFrame: 27
   movementTravelLastFrame: 64

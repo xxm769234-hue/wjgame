@@ -1,0 +1,1095 @@
+fileFormatVersion: 2
+guid: 805fcc8eff5fe523316418b062663463
+TextureImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 13
+  mipmaps:
+    mipMapMode: 0
+    enableMipMap: 0
+    sRGBTexture: 1
+    linearTexture: 0
+    fadeOut: 0
+    borderMipMap: 0
+    mipMapsPreserveCoverage: 0
+    alphaTestReferenceValue: 0.5
+    mipMapFadeDistanceStart: 1
+    mipMapFadeDistanceEnd: 3
+  bumpmap:
+    convertToNormalMap: 0
+    externalNormalMap: 0
+    heightScale: 0.25
+    normalMapFilter: 0
+    flipGreenChannel: 0
+  isReadable: 0
+  streamingMipmaps: 0
+  streamingMipmapsPriority: 0
+  vTOnly: 0
+  ignoreMipmapLimit: 0
+  grayScaleToAlpha: 0
+  generateCubemap: 6
+  cubemapConvolution: 0
+  seamlessCubemap: 0
+  textureFormat: 1
+  maxTextureSize: 2048
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 1
+    aniso: 1
+    mipBias: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 1
+  nPOTScale: 0
+  lightmap: 0
+  compressionQuality: 50
+  spriteMode: 2
+  spriteExtrude: 1
+  spriteMeshType: 0
+  alignment: 0
+  spritePivot: {x: 0.5, y: 0.5}
+  spritePixelsToUnits: 80
+  spriteBorder: {x: 0, y: 0, z: 0, w: 0}
+  spriteGenerateFallbackPhysicsShape: 1
+  alphaUsage: 1
+  alphaIsTransparency: 1
+  spriteTessellationDetail: -1
+  textureType: 8
+  textureShape: 1
+  singleChannelComponent: 0
+  flipbookRows: 1
+  flipbookColumns: 1
+  maxTextureSizeSet: 0
+  compressionQualitySet: 0
+  textureFormatSet: 0
+  ignorePngGamma: 0
+  applyGammaDecoding: 0
+  swizzle: 50462976
+  cookieLightType: 0
+  platformSettings:
+  - serializedVersion: 3
+    buildTarget: DefaultTexturePlatform
+    maxTextureSize: 4096
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 2
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 3
+    buildTarget: Standalone
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 3
+    buildTarget: WebGL
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  spriteSheet:
+    serializedVersion: 2
+    sprites:
+    - serializedVersion: 2
+      name: Elite02_Idle_048
+      rect:
+        serializedVersion: 2
+        x: 1438
+        y: 253
+        width: 237
+        height: 243
+      alignment: 9
+      pivot: {x: 0.6258323, y: 0.0298456}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 137070d117930d705d7dc120ba99ad57
+      internalID: 21300096
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_049
+      rect:
+        serializedVersion: 2
+        x: 472
+        y: 252
+        width: 238
+        height: 244
+      alignment: 9
+      pivot: {x: 0.6274044, y: 0.0338217}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 1e0f47992d269a3d2d1708d29efb3327
+      internalID: 21300098
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_050
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 4
+        width: 236
+        height: 243
+      alignment: 9
+      pivot: {x: 0.6244721, y: 0.0298456}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b8939b644b95f47903dc4ceb730e40fa
+      internalID: 21300100
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_051
+      rect:
+        serializedVersion: 2
+        x: 242
+        y: 4
+        width: 238
+        height: 243
+      alignment: 9
+      pivot: {x: 0.6252128, y: 0.0287519}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 5da58f699fcf0105267094466ebcf763
+      internalID: 21300102
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_052
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 500
+        width: 211
+        height: 245
+      alignment: 9
+      pivot: {x: 0.7070114, y: 0.0297783}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 6997c7e9303f6c022d0d8f4190e55374
+      internalID: 21300104
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_053
+      rect:
+        serializedVersion: 2
+        x: 217
+        y: 500
+        width: 211
+        height: 245
+      alignment: 9
+      pivot: {x: 0.7070114, y: 0.0297783}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 6c212c890e4d29abe199819049e04472
+      internalID: 21300106
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_054
+      rect:
+        serializedVersion: 2
+        x: 432
+        y: 500
+        width: 211
+        height: 245
+      alignment: 9
+      pivot: {x: 0.7070114, y: 0.0297783}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f281088a26633df7498b00659c7f26ce
+      internalID: 21300108
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_055
+      rect:
+        serializedVersion: 2
+        x: 647
+        y: 500
+        width: 211
+        height: 245
+      alignment: 9
+      pivot: {x: 0.7070114, y: 0.0297783}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: ef3964b077c8ed7d7178c9c7668fe13e
+      internalID: 21300110
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_056
+      rect:
+        serializedVersion: 2
+        x: 943
+        y: 1535
+        width: 211
+        height: 271
+      alignment: 9
+      pivot: {x: 0.7084127, y: 0.0280860}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d58745bfece1596f4ec0c47521a98460
+      internalID: 21300112
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_057
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 1534
+        width: 219
+        height: 272
+      alignment: 9
+      pivot: {x: 0.7259364, y: 0.0316592}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: be17a0c2d9245bc1aa6194adeda12c47
+      internalID: 21300114
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_058
+      rect:
+        serializedVersion: 2
+        x: 1158
+        y: 1535
+        width: 219
+        height: 271
+      alignment: 9
+      pivot: {x: 0.7262853, y: 0.0280860}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 1b5fc49e7dee018a1eb990a095d05ea3
+      internalID: 21300116
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_059
+      rect:
+        serializedVersion: 2
+        x: 225
+        y: 1534
+        width: 220
+        height: 272
+      alignment: 9
+      pivot: {x: 0.7182120, y: 0.0316592}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 502f0b33e409806b5ceb85cee40a6d7b
+      internalID: 21300118
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_060
+      rect:
+        serializedVersion: 2
+        x: 449
+        y: 1534
+        width: 247
+        height: 272
+      alignment: 9
+      pivot: {x: 0.6397030, y: 0.0316592}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: e64c1774c23ecccdc9c30d4eb388e7db
+      internalID: 21300120
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_061
+      rect:
+        serializedVersion: 2
+        x: 1381
+        y: 1535
+        width: 239
+        height: 271
+      alignment: 9
+      pivot: {x: 0.6276428, y: 0.0280860}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 42f45c046df2ad8f6080eff0544c5b24
+      internalID: 21300122
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_062
+      rect:
+        serializedVersion: 2
+        x: 700
+        y: 1534
+        width: 239
+        height: 272
+      alignment: 9
+      pivot: {x: 0.6276428, y: 0.0316592}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a7bf7ce8f3bc29de83206ffc55e6e447
+      internalID: 21300124
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_063
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 1259
+        width: 237
+        height: 271
+      alignment: 9
+      pivot: {x: 0.6240801, y: 0.0280860}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: e632801f34b487e5cdb1a0b5a2afd693
+      internalID: 21300126
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_064
+      rect:
+        serializedVersion: 2
+        x: 862
+        y: 500
+        width: 241
+        height: 245
+      alignment: 9
+      pivot: {x: 0.6159275, y: 0.0298189}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b05f398041b8193afe898ca6292612c1
+      internalID: 21300128
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_065
+      rect:
+        serializedVersion: 2
+        x: 1092
+        y: 1009
+        width: 241
+        height: 246
+      alignment: 9
+      pivot: {x: 0.6159275, y: 0.0337628}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 6f3f95a0b41b116438b575c2417ec92b
+      internalID: 21300130
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_066
+      rect:
+        serializedVersion: 2
+        x: 1337
+        y: 1009
+        width: 241
+        height: 246
+      alignment: 9
+      pivot: {x: 0.6159275, y: 0.0337628}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a47e144de2595eb99ab0e6fd685a106c
+      internalID: 21300132
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_067
+      rect:
+        serializedVersion: 2
+        x: 714
+        y: 252
+        width: 241
+        height: 244
+      alignment: 9
+      pivot: {x: 0.6159275, y: 0.0327325}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 0f9875b161324cc0e428c905657d2062
+      internalID: 21300134
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_068
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 749
+        width: 242
+        height: 246
+      alignment: 9
+      pivot: {x: 0.6190110, y: 0.0353564}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: da841b4635f381f3f0d64b479ecd3c8b
+      internalID: 21300136
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_069
+      rect:
+        serializedVersion: 2
+        x: 1434
+        y: 1274
+        width: 233
+        height: 256
+      alignment: 9
+      pivot: {x: 0.6382160, y: 0.0261628}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 93b04a8f6b93acf43a1726aa338272d5
+      internalID: 21300138
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_070
+      rect:
+        serializedVersion: 2
+        x: 243
+        y: 1272
+        width: 235
+        height: 258
+      alignment: 9
+      pivot: {x: 0.6390614, y: 0.0282778}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f8b927f2d47acda41826efd89184b3ae
+      internalID: 21300140
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_071
+      rect:
+        serializedVersion: 2
+        x: 482
+        y: 1272
+        width: 236
+        height: 258
+      alignment: 9
+      pivot: {x: 0.6405907, y: 0.0282778}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: dbb687937ef14b4400c5b9feb4aafae0
+      internalID: 21300142
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_072
+      rect:
+        serializedVersion: 2
+        x: 722
+        y: 1272
+        width: 236
+        height: 258
+      alignment: 9
+      pivot: {x: 0.6405907, y: 0.0282778}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: afe153ca00489d4315b2f9ceaff9b4df
+      internalID: 21300144
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_073
+      rect:
+        serializedVersion: 2
+        x: 248
+        y: 749
+        width: 242
+        height: 246
+      alignment: 9
+      pivot: {x: 0.6225118, y: 0.0337223}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 798444008dce170b967becd18fd2759b
+      internalID: 21300146
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_074
+      rect:
+        serializedVersion: 2
+        x: 494
+        y: 749
+        width: 244
+        height: 246
+      alignment: 9
+      pivot: {x: 0.6174093, y: 0.0337223}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 35eddc0f2b7b29a6dfab5cf7af7d6cda
+      internalID: 21300148
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_075
+      rect:
+        serializedVersion: 2
+        x: 1107
+        y: 500
+        width: 243
+        height: 245
+      alignment: 9
+      pivot: {x: 0.6221374, y: 0.0297783}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b4bae762b8be3861314663b4da3c3649
+      internalID: 21300150
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_076
+      rect:
+        serializedVersion: 2
+        x: 959
+        y: 252
+        width: 241
+        height: 244
+      alignment: 9
+      pivot: {x: 0.6214417, y: 0.0305539}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 3b2f263688deef32f255c624dc6efa60
+      internalID: 21300152
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_077
+      rect:
+        serializedVersion: 2
+        x: 1354
+        y: 500
+        width: 231
+        height: 245
+      alignment: 9
+      pivot: {x: 0.6460428, y: 0.0334260}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 9b9720bd9c2f1e2aaceaf11719f3213d
+      internalID: 21300154
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_078
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 251
+        width: 231
+        height: 245
+      alignment: 9
+      pivot: {x: 0.6460428, y: 0.0334260}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: e7dafa939b4fc64b64480ba5892c49ea
+      internalID: 21300156
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_079
+      rect:
+        serializedVersion: 2
+        x: 237
+        y: 251
+        width: 231
+        height: 245
+      alignment: 9
+      pivot: {x: 0.6460428, y: 0.0334260}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 8ca16c6497997dd5e35e1eedea11c5d1
+      internalID: 21300158
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_080
+      rect:
+        serializedVersion: 2
+        x: 1204
+        y: 252
+        width: 230
+        height: 244
+      alignment: 9
+      pivot: {x: 0.6453849, y: 0.0294646}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a59a82c9cfbb301a4dd318deaee8ae3f
+      internalID: 21300160
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_081
+      rect:
+        serializedVersion: 2
+        x: 742
+        y: 749
+        width: 229
+        height: 246
+      alignment: 9
+      pivot: {x: 0.6540063, y: 0.0312913}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 585c6d393ac30d8860807bdee7b86d24
+      internalID: 21300162
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_082
+      rect:
+        serializedVersion: 2
+        x: 975
+        y: 749
+        width: 228
+        height: 246
+      alignment: 9
+      pivot: {x: 0.6545433, y: 0.0312913}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4d7310f05542cf460fec5b2175f0f131
+      internalID: 21300164
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_083
+      rect:
+        serializedVersion: 2
+        x: 1207
+        y: 749
+        width: 228
+        height: 246
+      alignment: 9
+      pivot: {x: 0.6533776, y: 0.0312913}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 84537fcf908ecdda4d47ea933e34b4f5
+      internalID: 21300166
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_084
+      rect:
+        serializedVersion: 2
+        x: 1439
+        y: 749
+        width: 227
+        height: 246
+      alignment: 9
+      pivot: {x: 0.6504017, y: 0.0272263}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 17fb542b3558abcb5db1ccd04d10ba40
+      internalID: 21300168
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_085
+      rect:
+        serializedVersion: 2
+        x: 447
+        y: 1008
+        width: 226
+        height: 247
+      alignment: 9
+      pivot: {x: 0.6520596, y: 0.0311646}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4644d5ec36c6dcb58cd38acc27fc84e5
+      internalID: 21300170
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_086
+      rect:
+        serializedVersion: 2
+        x: 236
+        y: 1007
+        width: 207
+        height: 248
+      alignment: 9
+      pivot: {x: 0.7060844, y: 0.0350713}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 6abebe1b192cd89aa89773f14bee37a7
+      internalID: 21300172
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_087
+      rect:
+        serializedVersion: 2
+        x: 962
+        y: 1273
+        width: 232
+        height: 257
+      alignment: 9
+      pivot: {x: 0.6268330, y: 0.0688625}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: edcd9697d849a0041899ed4bf27a41c0
+      internalID: 21300174
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_088
+      rect:
+        serializedVersion: 2
+        x: 1198
+        y: 1273
+        width: 232
+        height: 257
+      alignment: 9
+      pivot: {x: 0.6256873, y: 0.0685265}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 01cf0de92d320db6ce5be7b59e1d3885
+      internalID: 21300176
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_089
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 999
+        width: 230
+        height: 256
+      alignment: 9
+      pivot: {x: 0.6211180, y: 0.0652253}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 965e31678a25f26f02759d777215ae47
+      internalID: 21300178
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_090
+      rect:
+        serializedVersion: 2
+        x: 677
+        y: 1008
+        width: 203
+        height: 247
+      alignment: 9
+      pivot: {x: 0.6998020, y: 0.0347963}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 9be8d92d3677ca7ff7af827dc6a3a688
+      internalID: 21300180
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite02_Idle_091
+      rect:
+        serializedVersion: 2
+        x: 884
+        y: 1008
+        width: 204
+        height: 247
+      alignment: 9
+      pivot: {x: 0.7015830, y: 0.0337203}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: af598d3f361261039be13d34277984d3
+      internalID: 21300182
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    outline: []
+    physicsShape: []
+    bones: []
+    spriteID: 5e97eb03825dee720800000000000000
+    internalID: 0
+    vertices: []
+    indices: 
+    edges: []
+    weights: []
+    secondaryTextures: []
+    nameFileIdTable:
+      Elite02_Idle_048: 21300096
+      Elite02_Idle_049: 21300098
+      Elite02_Idle_050: 21300100
+      Elite02_Idle_051: 21300102
+      Elite02_Idle_052: 21300104
+      Elite02_Idle_053: 21300106
+      Elite02_Idle_054: 21300108
+      Elite02_Idle_055: 21300110
+      Elite02_Idle_056: 21300112
+      Elite02_Idle_057: 21300114
+      Elite02_Idle_058: 21300116
+      Elite02_Idle_059: 21300118
+      Elite02_Idle_060: 21300120
+      Elite02_Idle_061: 21300122
+      Elite02_Idle_062: 21300124
+      Elite02_Idle_063: 21300126
+      Elite02_Idle_064: 21300128
+      Elite02_Idle_065: 21300130
+      Elite02_Idle_066: 21300132
+      Elite02_Idle_067: 21300134
+      Elite02_Idle_068: 21300136
+      Elite02_Idle_069: 21300138
+      Elite02_Idle_070: 21300140
+      Elite02_Idle_071: 21300142
+      Elite02_Idle_072: 21300144
+      Elite02_Idle_073: 21300146
+      Elite02_Idle_074: 21300148
+      Elite02_Idle_075: 21300150
+      Elite02_Idle_076: 21300152
+      Elite02_Idle_077: 21300154
+      Elite02_Idle_078: 21300156
+      Elite02_Idle_079: 21300158
+      Elite02_Idle_080: 21300160
+      Elite02_Idle_081: 21300162
+      Elite02_Idle_082: 21300164
+      Elite02_Idle_083: 21300166
+      Elite02_Idle_084: 21300168
+      Elite02_Idle_085: 21300170
+      Elite02_Idle_086: 21300172
+      Elite02_Idle_087: 21300174
+      Elite02_Idle_088: 21300176
+      Elite02_Idle_089: 21300178
+      Elite02_Idle_090: 21300180
+      Elite02_Idle_091: 21300182
+  mipmapLimitGroupName: 
+  pSDRemoveMatte: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant:

@@ -75,7 +75,7 @@ public class LandBuildPanel : MonoBehaviour
     {
         if (cfg == null)
         {
-            TipTool.ShowTip("地块配置不能为空！", Color.red);
+            TipTool.ShowTip("请先选择地块。", Color.red);
             return;
         }
 

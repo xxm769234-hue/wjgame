@@ -268,7 +268,7 @@ public sealed class IdleAdventureAfkRewardPanel : MonoBehaviour
         itemText.text = source.DisplayName;
         rulesText.text = source.HasServerSnapshot
             ? $"每小时产出 {source.QuantityPerCycle * (3600d / source.ProductionIntervalSeconds):N0} {source.DisplayName}，每 {source.ProductionIntervalSeconds:0} 秒结算一次。\n最多储存 {source.MaxStoredQuantity:N0} {source.DisplayName}，存满后暂停积累，请及时领取。\n快速收益消耗体力，获得的奖励直接到账，无需再次领取。"
-            : "收益规则同步中，请稍候。";
+            : "正在查看挂机收益…";
         if (icons == null) icons = Resources.Load<IdleAdventurePreviewIconCatalog>("IdleAdventureUI/PreviewIcons");
         Sprite sprite = icons != null ? icons.Find(source.ItemKey) ?? icons.Find(source.DisplayName) : null;
         itemIcon.sprite = sprite;
@@ -352,7 +352,7 @@ public sealed class IdleAdventureAfkRewardPanel : MonoBehaviour
         accumulationFill.fillMethod = Image.FillMethod.Horizontal;
         accumulationFill.fillOrigin = 0;
         accumulationFill.color = new Color(0.94f, 0.62f, 0.25f, 1f);
-        amountText = MakeText("Amount Text", accumulationTrack.transform, "同步中", 19f);
+        amountText = MakeText("Amount Text", accumulationTrack.transform, "加载中…", 19f);
         Stretch(amountText.rectTransform);
         amountText.fontStyle = FontStyles.Bold;
         amountText.color = Color.white;

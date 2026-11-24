@@ -12,6 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Cangqi_SkillAttack_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.2765, y: 0.0256}
+    right: {x: 0.2765, y: 0.0137}
   sequenceId: Cangqi_SkillAttack_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u6280\u80FD\u653B\u51FB\\\u6CA7\u79481"
   action: 3
@@ -163,11 +167,11 @@ MonoBehaviour:
     placement: 1
     startFrame: 28
     launchFrame: 78
-    contactFrame: 83.333336
+    contactFrame: 84
     endFrame: 93.333336
     firstEffectFrame: 0
     launchEffectFrame: 26
-    contactEffectFrame: 60
+    contactEffectFrame: 59
     impactIndex: 0
     width: 10
     opacity: 1
@@ -182,13 +186,22 @@ MonoBehaviour:
     projectileDistance: 7
     formationOffset: {x: 0, y: 0}
   audioCues:
-  - clip: {fileID: 8300000, guid: c8b3310abeb6524c9d40871729fc9152, type: 3}
-    startFrame: 0
-    endFrame: 94
-    volume: 0.85
+  - clip: {fileID: 8300000, guid: b34430fba27a5db5bab351f5422e6b42, type: 3}
+    startFrame: 51
+    endFrame: 93
+    volume: 0.37
+  - clip: {fileID: 8300000, guid: b2d4510a0f5355139c92ad401ca0920c, type: 3}
+    startFrame: 78
+    endFrame: 90
+    volume: 0.73
+  - clip: {fileID: 8300000, guid: 4975e8fff4ec59c7b57bead33a181a06, type: 3}
+    startFrame: 84
+    endFrame: 100
+    volume: 0.65
   impactFrames: 54000000
   impactFeedback:
   - {fileID: 11400000, guid: eea0bf56c83e52759783cc6c39250bb2, type: 2}
   defenseFrame: 0
   releaseFrame: 0
   deathBlendDuration: 0.08
+  audioCuesIncludeImpacts: 1

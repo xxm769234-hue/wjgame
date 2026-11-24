@@ -1162,6 +1162,7 @@ public sealed class IdleAdventureSessionResponse
     public long player_id;
     public int stage;
     public string stage_name;
+    public IdleAdventureStagePresentationResponse stage_presentation;
     public int stage_attempt;
     public int round;
     public int round_before;

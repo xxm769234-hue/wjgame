@@ -60,8 +60,7 @@ public sealed class LandInfoPanel : MonoBehaviour
     [SerializeField] private bool logButtonClicks = true;
     private Image panelImage;
     private Image landPreviewImage;
-    private Image buildingPreviewImage;
-    private Image npcPreviewImage;
+    private Image terrainBadge;
     private Button closeButton;
     private TMP_Text titleText;
     private Texture2D controlsTexture;
@@ -151,9 +150,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         ResetProductionActionsIfBuildingChanged(slot);
         LandConfig data = slot.CurrentLand;
         SetText(nameText, data.landName);
-        SetText(descText, string.IsNullOrWhiteSpace(data.description)
-            ? "可在此建造建筑\n从右侧选择操作"
-            : data.description);
+
         SetText(levelText, $"解锁等级 {data.unlockLevel}");
         RefreshPreviewImages(slot);
         RefreshBuildingStatus();
@@ -233,7 +230,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             if (current != slot) return;
             if (result == null || !result.Success)
             {
-                SetText(npcText, $"生产详情读取失败：{ResultMessage(result)}");
+                SetText(productionText, $"生产详情读取失败：{ResultMessage(result)}");
                 return;
             }
             RefreshProductionStatus();
@@ -284,9 +281,23 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         closeButton = EnsureCloseButton();
 
-        landPreviewImage = EnsurePreviewImage("Land Preview", ArtPoint(425f, 605f), new Vector2(156f, 174f));
-        buildingPreviewImage = EnsurePreviewImage("Building Preview", ArtPoint(410f, 645f), new Vector2(92f, 102f));
-        npcPreviewImage = EnsurePreviewImage("NPC Preview", ArtPoint(535f, 710f), new Vector2(46f, 70f));
+        landPreviewImage = EnsurePreviewImage("Land Preview", ArtPoint(425f, 618f), new Vector2(163f, 174f));
+        terrainBadge = EnsurePreviewImage("Terrain Type Stamp", ArtPoint(1133f, 343f), new Vector2(20f, 20f));
+        CreateArchiveStamp("Building Stamp", 1585f, 343f, Resources.Load<Sprite>("UI/SmallIcons/建造副"));
+        CreateArchiveStamp("Production Stamp", 1133f, 692f, Resources.Load<Sprite>("UI/SmallIcons/一键收取"));
+        CreateArchiveStamp("Resident Stamp", 1585f, 692f, GetPanelSkinSprite("AssignNpc"));
+        foreach (string legacy in new[] { "Building Preview", "NPC Preview" })
+        {
+            Transform previous = panelRect.Find(legacy);
+            if (previous != null) previous.gameObject.SetActive(false);
+        }
+    }
+
+    private void CreateArchiveStamp(string name, float x, float y, Sprite sprite)
+    {
+        Image stamp = EnsurePreviewImage(name, ArtPoint(x, y), new Vector2(17f, 17f));
+        stamp.sprite = sprite;
+        stamp.enabled = sprite != null;
     }
 
     private Button EnsureCloseButton()
@@ -353,34 +364,17 @@ public sealed class LandInfoPanel : MonoBehaviour
     {
         if (slot == null || slot.CurrentLand == null) return;
 
-        if (landPreviewImage != null)
-        {
-            Sprite terrain = LandTerrainCatalog.GetTerrain(slot.CurrentLand);
-            landPreviewImage.sprite = terrain != null ? terrain : slot.CurrentLand.landSprite;
-            landPreviewImage.gameObject.SetActive(landPreviewImage.sprite != null);
-        }
-
-        if (buildingPreviewImage != null)
-        {
-            buildingPreviewImage.sprite = slot.HasBuilding && slot.CurrentBuilding != null
-                ? slot.CurrentBuilding.buildingSprite
-                : null;
-            SpriteRenderer renderer = slot.transform.Find("Building Renderer")?.GetComponent<SpriteRenderer>();
-            if (slot.HasBuilding && buildingPreviewImage.sprite == null && renderer != null)
-                buildingPreviewImage.sprite = renderer.sprite;
-            buildingPreviewImage.gameObject.SetActive(buildingPreviewImage.sprite != null);
-        }
-
-        if (npcPreviewImage != null)
-        {
-            npcPreviewImage.sprite = slot.HasNpc && slot.CurrentNpc != null
-                ? slot.CurrentNpc.npcSprite
-                : null;
-            SpriteRenderer renderer = slot.transform.Find("NPC Renderer")?.GetComponent<SpriteRenderer>();
-            if (slot.HasNpc && npcPreviewImage.sprite == null && renderer != null)
-                npcPreviewImage.sprite = renderer.sprite;
-            npcPreviewImage.gameObject.SetActive(npcPreviewImage.sprite != null);
-        }
+        if (landPreviewImage == null) return;
+        string description = FrontendTextLocalization.RemoveSyncNotices(slot.CurrentLand.description);
+        terrainBadge.sprite = LandTypeIconCatalog.GetIcon(slot.CurrentLand);
+        terrainBadge.enabled = terrainBadge.sprite != null;
+        string terrain = TranslateLandType(slot.CurrentLand.LandTypeKey);
+        SetText(descText, CardLead(terrain) + "\n" + (string.IsNullOrWhiteSpace(description)
+            ? (slot.HasBuilding ? "已开发地块" : "可建造建筑") : description));
+        Sprite scene = slot.ArchiveScene;
+        landPreviewImage.sprite = scene;
+        landPreviewImage.material = LandSceneMotion.ForImage(scene);
+        landPreviewImage.gameObject.SetActive(scene != null);
     }
 
     private Sprite GetPanelSkinSprite(string name, bool popup = false)
@@ -817,6 +811,22 @@ public sealed class LandInfoPanel : MonoBehaviour
         }
     }
 
+    private static string CardLead(string value) => "<b><color=#633A24>" + value + "</color></b>";
+
+    private static string TranslateLandType(string key)
+    {
+        switch ((key ?? "").ToUpperInvariant())
+        {
+            case "GRASSLAND": return "草原";
+            case "OCEAN": case "WATER": return "海域";
+            case "FOREST": return "森林";
+            case "SNOW": case "SNOWFIELD": return "雪原";
+            case "MOUNTAIN": return "山地";
+            case "VOLCANO": return "火山";
+            default: return "地貌";
+        }
+    }
+
     private void RefreshBuildingStatus()
     {
         if (current == null) return;
@@ -830,7 +840,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         }
         else
         {
-            SetText(buildingText, "尚未建造\n点击「建造」\n选择所需建筑");
+            SetText(buildingText, CardLead("尚未建造") + "\n可选择建筑");
             if (buildButton != null) buildButton.gameObject.SetActive(true);
             SetBuildingActionButtonsVisible(false);
         }
@@ -842,7 +852,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!current.HasBuilding)
         {
-            SetText(npcText, "暂无居民\n请先建造建筑");
+            SetText(npcText, CardLead("暂无居民") + "\n建成后可入驻");
             if (assignNpcButton != null) assignNpcButton.gameObject.SetActive(false);
             if (removeNpcButton != null) removeNpcButton.gameObject.SetActive(false);
             HideNpcList();
@@ -856,14 +866,14 @@ public sealed class LandInfoPanel : MonoBehaviour
         }
         else if (current.HasNpc)
         {
-            SetText(npcText, $"{current.CurrentNpc.npcName}\n{TranslateDisplayLabel(current.CurrentNpc.role, "居民")}\n已入驻");
+            SetText(npcText, $"{CardLead(current.CurrentNpc.npcName)}  <color=#526839>已入驻</color>\n{TranslateDisplayLabel(current.CurrentNpc.role, "居民")}");
             if (assignNpcButton != null) assignNpcButton.gameObject.SetActive(false);
             if (removeNpcButton != null) removeNpcButton.gameObject.SetActive(true);
             HideNpcList();
         }
         else
         {
-            SetText(npcText, "暂无居民\n可从右侧分配");
+            SetText(npcText, CardLead("暂无居民") + "\n可分配居民");
             if (assignNpcButton != null) assignNpcButton.gameObject.SetActive(true);
             if (removeNpcButton != null) removeNpcButton.gameObject.SetActive(false);
         }
@@ -875,7 +885,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!current.HasBuilding)
         {
-            SetText(productionText, "暂无产出\n请先建造建筑");
+            SetText(productionText, CardLead("暂无产出") + "\n建成后开始生产");
             RefreshProductionControls();
             return;
         }
@@ -1029,7 +1039,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             {
                 productionRecipes = null;
                 recipeSwitchIdempotencyKey = string.Empty;
-                productionActionMessage = "配方已切换，生产状态已刷新";
+                productionActionMessage = "配方已切换";
                 RefreshProductionStatus();
             }
             RefreshProductionStatus();
@@ -1161,7 +1171,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         BuildingConfig building = slot.CurrentBuilding;
         if (building == null) return "尚未建造";
 
-        string text = $"{building.buildingName}\n等级 {slot.BuildingLevel}/{building.maxLevel}\n{FormatBuildingRuntimeStatus(slot.BuildingStatus)}";
+        string text = $"{CardLead(building.buildingName)}  <color=#865519>等级 {slot.BuildingLevel}/{building.maxLevel}</color>\n{FormatBuildingRuntimeStatus(slot.BuildingStatus)}";
         if (slot.IsBuildingInProgress)
         {
             text += $"\n剩余 {FormatDuration(Mathf.CeilToInt(slot.BuildingRemainingSeconds))}\n进度 {Mathf.RoundToInt(slot.BuildingProgress * 100f)}%";
@@ -1185,9 +1195,10 @@ public sealed class LandInfoPanel : MonoBehaviour
             itemName = TranslateResourceLabel(itemName);
 
             string collectState = production.canCollect ? "可收取" : FormatRemaining(production.remainingSeconds);
-            string bonus = production.npcProduceBonusRate > 0f ? $"\n居民加成 +{Mathf.RoundToInt(production.npcProduceBonusRate * 100f)}%" : string.Empty;
+            string bonus = production.npcProduceBonusRate > 0f && (slot == null || !slot.HasNpc || !(slot.CurrentNpc.role ?? "").Contains($"{Mathf.RoundToInt(production.npcProduceBonusRate * 100f)}%"))
+                ? $"\n居民加成 +{Mathf.RoundToInt(production.npcProduceBonusRate * 100f)}%" : string.Empty;
             string cost = string.IsNullOrEmpty(costText) ? string.Empty : $"\n每轮消耗 {costText}";
-            lines.Add($"{itemName} {production.storedAmount}/{production.storageCapacity}\n每{FormatDuration(production.produceIntervalSeconds)} +{production.produceAmount}\n{collectState}{bonus}{cost}");
+            lines.Add($"{CardLead(itemName)}  {production.storedAmount}/{production.storageCapacity}\n每{FormatCardInterval(production.produceIntervalSeconds)} +{production.produceAmount}\n{collectState}{bonus}{cost}");
         }
 
         return lines.Count == 0 ? "暂无产出" : string.Join("\n\n", lines);
@@ -1211,12 +1222,19 @@ public sealed class LandInfoPanel : MonoBehaviour
         return string.Join(", ", parts);
     }
 
+    private static string FormatCardInterval(long seconds)
+    {
+        if (seconds >= 3600 && seconds % 3600 == 0) return (seconds / 3600) + "小时";
+        if (seconds >= 60 && seconds % 60 == 0) return (seconds / 60) + "分钟";
+        return FormatDuration(seconds);
+    }
+
     private static string FormatRemaining(long remainingSeconds)
     {
         if (remainingSeconds <= 0) return "等待中";
         long minutes = remainingSeconds / 60L;
         long seconds = remainingSeconds % 60L;
-        return minutes > 0 ? $"下次 {minutes}分 {seconds}秒" : $"下次 {seconds}秒";
+        return seconds == 0 ? $"下次 {minutes}分钟" : minutes > 0 ? $"下次 {minutes}分{seconds}秒" : $"下次 {seconds}秒";
     }
 
     private static string FormatNpcLabel(NpcConfig config)
@@ -1391,10 +1409,10 @@ public sealed class LandInfoPanel : MonoBehaviour
         SetVerticalAlignment(productionText, VerticalAlignmentOptions.Top);
         SetVerticalAlignment(npcText, VerticalAlignmentOptions.Top);
 
-        ConfigureInformationText(descText, new Rect(787f, 412f, 366f, 180f));
-        ConfigureInformationText(buildingText, new Rect(1243f, 412f, 366f, 180f));
-        ConfigureInformationText(productionText, new Rect(787f, 764f, 366f, 206f));
-        ConfigureInformationText(npcText, new Rect(1243f, 764f, 366f, 206f));
+        ConfigureInformationText(descText, new Rect(780f, 394f, 375f, 204f));
+        ConfigureInformationText(buildingText, new Rect(1236f, 394f, 375f, 204f));
+        ConfigureInformationText(productionText, new Rect(780f, 740f, 375f, 240f));
+        ConfigureInformationText(npcText, new Rect(1236f, 740f, 375f, 240f));
 
         if (levelText != null) levelText.transform.SetAsLastSibling();
     }
@@ -1413,11 +1431,13 @@ public sealed class LandInfoPanel : MonoBehaviour
         RectTransform areaRect = area.GetComponent<RectTransform>();
         areaRect.anchoredPosition = ArtPoint(artworkBounds.center.x, artworkBounds.center.y);
         areaRect.sizeDelta = artworkBounds.size * (panelSize.x / 2048f);
-        text.fontSize = 13f;
+        text.fontSize = 12f;
+        text.richText = true;
+        text.color = new Color32(81, 59, 39, 255);
         text.enableAutoSizing = false;
         text.fontStyle = FontStyles.Normal;
-        text.lineSpacing = 3f;
-        text.margin = new Vector4(2f, 2f, 3f, 3f);
+        text.lineSpacing = 1.5f;
+        text.margin = new Vector4(2f, 1f, 3f, 1f);
         text.overflowMode = TextOverflowModes.Masking;
         informationScrolls.Add(ConfigureScrollArea(areaRect, text.rectTransform, Vector2.zero, Vector2.zero));
     }
@@ -1457,7 +1477,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         RectTransform scrollbarRect = scrollbarObject.GetComponent<RectTransform>();
         scrollbarRect.anchorMin = new Vector2(1f, 0f);
         scrollbarRect.anchorMax = Vector2.one;
-        scrollbarRect.offsetMin = new Vector2(insetMax.x - 5f, insetMin.y);
+        scrollbarRect.offsetMin = new Vector2(insetMax.x - 2f, insetMin.y);
         scrollbarRect.offsetMax = new Vector2(insetMax.x, insetMax.y);
         scrollbarObject.GetComponent<Image>().color = new Color(0.35f, 0.20f, 0.10f, 0.12f);
         GameObject handleObject = new GameObject("Handle", typeof(RectTransform), typeof(Image));

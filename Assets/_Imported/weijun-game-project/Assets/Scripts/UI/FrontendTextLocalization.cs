@@ -13,8 +13,8 @@ public static class FrontendTextLocalization
         { "PlayerID", "玩家编号" },
         { "Lv.", "等级 " },
         { "FPS", "帧率" },
-        { "The backend has not unlocked placement on this land slot.", "服务器尚未解锁此地块的放置权限。" },
-        { "The backend currently rejects this land configuration.", "服务器当前不允许使用此地块配置。" },
+        { "The backend has not unlocked placement on this land slot.", "此地块尚未解锁。" },
+        { "The backend currently rejects this land configuration.", "当前无法放置这块地。" },
         { "Land config is missing.", "缺少地块配置。" },
         { "No land slot under pointer.", "指针下没有地块。" },
         { "Current land slot is already occupied.", "当前地块已被占用。" },
@@ -27,7 +27,7 @@ public static class FrontendTextLocalization
         { "LandPreview prefab must contain a LandPreview component.", "地块预览预制体必须包含地块预览组件。" },
         { "Backend session or scene id is missing.", "服务器会话或场景编号缺失。" },
         { "A land scene switch is already pending.", "地块场景切换正在处理中。" },
-        { "A building sync is already pending.", "建筑同步正在处理中。" },
+        { "A building sync is already pending.", "正在处理建筑操作，请稍候。" },
         { "A valid idempotency key is required.", "需要有效的幂等键。" },
         { "Already logged out.", "已经退出登录。" },
         { "Idle Adventure reference data loaded.", "闯关模式参考数据已加载。" },
@@ -427,11 +427,31 @@ public static class FrontendTextLocalization
         return Regex.IsMatch(status, @"^[\u3400-\u9fff\s·，。、（）()\d]+$") ? status : "待确认";
     }
 
+    // Some older catalogue entries and success responses include transport status in their display text.
+    private const string SyncData = @"(?:配置|数据|资源|资料|目录|状态|进度|规则|清单|背包|装备|奖池|奖励|账户余额)";
+    private const string SyncServer = @"(?:服务器|服务端|后端)";
+    private static readonly Regex SyncNotice = new Regex(
+        @"(?:^|(?<=[，,。；;\r\n]))[ \t]*(?:" +
+        @"(?:已从|已与|来自|由)?" + SyncServer + @"(?:最新)?(?:" + SyncData + @")*(?:已(?:经)?)?(?:同步|加载|读取)(?:完成|成功)?(?:了)?(?:" + SyncData + @")*" +
+        @"|(?:当前|最新)?(?:" + SyncData + @")+(?:已(?:经)?(?:与" + SyncServer + @")?(?:同步|加载|读取)|(?:同步|加载|读取)(?:成功|完成))" +
+        @"|已(?:同步|加载|读取)(?:了)?(?:" + SyncServer + @")?(?:" + SyncData + @")+" +
+        @"|(?:" + SyncData + @")+(?:均)?由" + SyncServer + @"(?:同步|下发|维护)" +
+        @"|(?:server|backend) (?:config(?:uration)?|data|catalog) (?:synced|synchronized|loaded)(?: successfully)?" +
+        @")(?=[ \t]*(?:$|[，,。；;\r\n]))[ \t]*[，,。；;\r\n]*", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
+    public static string RemoveSyncNotices(string value)
+    {
+        if (string.IsNullOrEmpty(value) || !SyncNotice.IsMatch(value)) return value;
+        return SyncNotice.Replace(value, string.Empty).Trim().TrimEnd('，', ',', '；', ';');
+    }
+
     public static string NormalizePlayerMessage(string message, string fallback = "暂时无法完成，请稍后重试。")
     {
         if (string.IsNullOrWhiteSpace(message)) return fallback ?? string.Empty;
         string text = message.Trim();
         text = Regex.Replace(text, @"^\[\d+\]\s*", string.Empty);
+        text = RemoveSyncNotices(text);
+        if (text.Length == 0) return string.Empty;
         if (Regex.IsMatch(text, @"[\u3400-\u9fff]") && !DiagnosticPattern.IsMatch(text)) return text;
         string usefulReason = PreserveBusinessReason(text);
         if (!string.IsNullOrEmpty(usefulReason)) return usefulReason;

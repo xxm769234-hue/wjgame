@@ -17,6 +17,7 @@ public sealed class BattleAnimationAudio : MonoBehaviour
         public bool paused;
         public bool synchronized;
         public bool looping;
+        public bool emphasize;
     }
 
     private readonly List<Voice> voices = new List<Voice>();
@@ -26,6 +27,7 @@ public sealed class BattleAnimationAudio : MonoBehaviour
     private float previousFrame = -1f;
     private bool samplePaused;
     private bool applicationPaused;
+    private static BattleHitFeedbackProfile defaultImpact;
 
     public int StartedCount { get; private set; }
     public int ActiveVoiceCount => voices.FindAll(voice => voice.clip != null && voice.started
@@ -37,26 +39,39 @@ public sealed class BattleAnimationAudio : MonoBehaviour
         sequence = animation;
         if (sequence == null || !sequence.IsValid) return;
         duration = Mathf.Max(.01f, seconds > 0f ? seconds : sequence.Duration);
-        if (sequence.HasAudio)
+        bool attack = sequence.action == BattleAnimationAction.NormalAttack || sequence.action == BattleAnimationAction.SkillAttack;
+        bool authored = sequence.HasAudio;
+        if (authored)
         {
             foreach (BattleAudioCue cue in sequence.audioCues)
             {
                 if (cue == null || !cue.IsValid) continue;
-                AddVoice(cue.clip, cue.startFrame, Mathf.Min(sequence.FrameCount, cue.endFrame), cue.volume, true, false);
+                AddVoice(cue.clip, cue.startFrame, Mathf.Min(sequence.FrameCount, cue.endFrame), cue.volume, true, false, attack);
             }
-            return;
+            if (!attack || sequence.audioCuesIncludeImpacts) return;
         }
-        if (sequence.impactFrames == null) return;
+        if (!attack) return;
+        int impacts = sequence.impactFrames?.Length ?? 0;
         HashSet<AudioClip> sustained = new HashSet<AudioClip>();
-        for (int index = 0; index < sequence.impactFrames.Length; index++)
+        for (int index = 0; index < Mathf.Max(attack ? 1 : 0, impacts); index++)
         {
             BattleHitFeedbackProfile profile = sequence.impactFeedback != null && index < sequence.impactFeedback.Length
                 ? sequence.impactFeedback[index] : null;
+            if (attack && profile == null)
+            {
+                if (defaultImpact == null) defaultImpact = Resources.Load<BattleHitFeedbackProfile>("BattleAnimations/Feedback/Medium");
+                profile = defaultImpact;
+            }
             if (profile == null) continue;
-            float impactFrame = sequence.impactFrames[index];
+            float impactFrame = index < impacts ? sequence.impactFrames[index] : sequence.FrameCount / 2;
+            if (authored)
+            {
+                AddFeedbackVoice(profile.contactSounds, index, impactFrame, profile.contactGain * .45f, true);
+                continue;
+            }
             float windupFrame = FrameAtPlaybackTime(PlaybackTime(impactFrame) - profile.windupLead);
-            AddFeedbackVoice(profile.windupSounds, index, windupFrame, .36f * .55f);
-            AddFeedbackVoice(profile.contactSounds, index, impactFrame, profile.contactGain * .55f);
+            AddFeedbackVoice(profile.windupSounds, index, windupFrame, attack ? .29f : .36f * .55f);
+            AddFeedbackVoice(profile.contactSounds, index, impactFrame, profile.contactGain * (attack ? .78f : .55f), attack);
             AddFeedbackVoice(profile.tailSounds, index, impactFrame, .25f * .55f);
             if (profile.sustainSound != null && sustained.Add(profile.sustainSound))
             {
@@ -106,6 +121,8 @@ public sealed class BattleAnimationAudio : MonoBehaviour
             {
                 voice.source.time = audioTime;
                 voice.source.Play();
+                if (voice.emphasize && !voice.source.mute && voice.source.volume > 0f)
+                    SceneBackgroundMusic.EmphasizeBattleSound();
                 voice.started = true;
                 StartedCount++;
             }
@@ -142,16 +159,16 @@ public sealed class BattleAnimationAudio : MonoBehaviour
         samplePaused = false;
     }
 
-    private void AddFeedbackVoice(AudioClip[] clips, int index, float frame, float gain)
+    private void AddFeedbackVoice(AudioClip[] clips, int index, float frame, float gain, bool emphasize = false)
     {
         if (clips == null || clips.Length == 0) return;
         AudioClip clip = clips[index % clips.Length];
         if (clip == null) return;
         float lastFrame = FrameAtPlaybackTime(PlaybackTime(frame) + clip.length);
-        AddVoice(clip, frame, lastFrame, gain, false, false);
+        AddVoice(clip, frame, lastFrame, gain, false, false, emphasize);
     }
 
-    private void AddVoice(AudioClip clip, float firstFrame, float lastFrame, float gain, bool synchronized, bool looping)
+    private void AddVoice(AudioClip clip, float firstFrame, float lastFrame, float gain, bool synchronized, bool looping, bool emphasize = false)
     {
         firstFrame = Mathf.Max(0f, firstFrame);
         if (clip == null || lastFrame <= firstFrame) return;
@@ -175,6 +192,7 @@ public sealed class BattleAnimationAudio : MonoBehaviour
         voice.lastTime = PlaybackTime(lastFrame);
         voice.synchronized = synchronized;
         voice.looping = looping;
+        voice.emphasize = emphasize;
         voice.pitch = synchronized ? clip.length / Mathf.Max(.001f, voice.lastTime - voice.firstTime) : 1f;
         BattleAudioSettingsBridge.RegisterAudioSource(voice.source, false, gain);
     }

@@ -12,6 +12,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Alchemist_NormalAttack_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.0989, y: 0.0141}
+    right: {x: 0.0813, y: 0.0671}
+  - frame: 16
+    left: {x: -0.0989, y: 0.0106}
+    right: {x: 0.0813, y: 0.0671}
+  - frame: 24
+    left: {x: -0.0495, y: 0.0177}
+    right: {x: 0.0777, y: 0.0671}
+  - frame: 55
+    left: {x: -0.0989, y: 0.0124}
+    right: {x: 0.0777, y: 0.0671}
   sequenceId: Alchemist_NormalAttack_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u666E\u901A\u653B\u51FB\\\u70BC\u91D1\u672F\u58EB\u6280\u80FD\u52A8\u753B\\\u70BC\u91D1\u672F\u58EB"
   action: 2
@@ -178,3 +191,13 @@ MonoBehaviour:
     targetBodyOffset: {x: 0, y: 0.45}
     arcHeight: 0
     flipX: 0
+  audioCues:
+  - clip: {fileID: 8300000, guid: b2d4510a0f5355139c92ad401ca0920c, type: 3}
+    startFrame: 22
+    endFrame: 32
+    volume: 0.59
+  - clip: {fileID: 8300000, guid: b4d32a5dc6845d94bf66096cfa6e8507, type: 3}
+    startFrame: 34
+    endFrame: 56
+    volume: 0.62
+  audioCuesIncludeImpacts: 1

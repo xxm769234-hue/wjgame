@@ -12,6 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Priest_NormalAttack_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: 0.0283, y: 0.0283}
+    right: {x: 0.1113, y: 0.0212}
   sequenceId: Priest_NormalAttack_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u666E\u901A\u653B\u51FB\\\u7267\u5E08\u6280\u80FD\u52A8\u753B\\\u7267\u5E08"
   action: 2
@@ -109,7 +113,7 @@ MonoBehaviour:
     launchEffectFrame: 12
     contactEffectFrame: 51
     impactIndex: 0
-    width: 2.8
+    width: 4.76
     opacity: 1
     preserveSourceScale: 0
     sourceOffset: {x: 0.46, y: 0.72}
@@ -124,3 +128,13 @@ MonoBehaviour:
       localPosition: {x: 1.5500000, y: 2.6100000}
     - frame: 22
       localPosition: {x: 1.5500000, y: 2.5500000}
+  audioCues:
+  - clip: {fileID: 8300000, guid: b2d4510a0f5355139c92ad401ca0920c, type: 3}
+    startFrame: 22
+    endFrame: 34
+    volume: 0.51
+  - clip: {fileID: 8300000, guid: d6a8858fec105868970b5e755ea58727, type: 3}
+    startFrame: 43
+    endFrame: 73
+    volume: 0.39
+  audioCuesIncludeImpacts: 1

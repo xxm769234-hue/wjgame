@@ -9,6 +9,7 @@ public sealed class CharacterIdleImage : MonoBehaviour
     private CharacterIdleSequence sequence;
     private float elapsed;
     private int frameIndex;
+    public BattleActorAnimation BattlePlayback { private get; set; }
 
     public int FrameIndex => frameIndex;
     public CharacterIdleSequence Sequence => sequence;
@@ -53,6 +54,7 @@ public sealed class CharacterIdleImage : MonoBehaviour
         CharacterIdleImage player = image.GetComponent<CharacterIdleImage>();
         if (player == null) return;
         player.enabled = false;
+        player.BattlePlayback = null;
         player.sequence = null;
         player.elapsed = 0f;
         player.frameIndex = 0;
@@ -61,6 +63,7 @@ public sealed class CharacterIdleImage : MonoBehaviour
     private void Update()
     {
         if (target == null || !target.enabled) return;
+        if (BattlePlayback != null && (BattlePlayback.Paused || BattlePlayback.HitStopped || BattlePlayback.IsPlayingDeath || BattlePlayback.IsDead)) return;
         Advance(Time.unscaledDeltaTime);
     }
 

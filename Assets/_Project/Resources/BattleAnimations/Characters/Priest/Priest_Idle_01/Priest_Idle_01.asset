@@ -12,6 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Priest_Idle_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: 0.0283, y: 0.0247}
+    right: {x: 0.1095, y: 0.0177}
   sequenceId: Priest_Idle_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u5F85\u673A\\\u7EEE\u7F57\u5F85\u673A\u52A8\u753B\\\u7267\u5E08"
   action: 0

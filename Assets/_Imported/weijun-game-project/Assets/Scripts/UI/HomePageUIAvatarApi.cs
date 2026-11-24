@@ -355,7 +355,7 @@ public partial class HomePageUI
         }
         if (refreshPicker)
         {
-            SetStatus(presetAvatarOptions.Count > 0 ? "固定头像目录已同步" : "暂无可用固定头像，可继续选择微信头像");
+            SetStatus(presetAvatarOptions.Count > 0 ? string.Empty : "暂无可用固定头像，可继续选择微信头像");
         }
     }
 

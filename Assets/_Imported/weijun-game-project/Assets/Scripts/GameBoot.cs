@@ -287,7 +287,7 @@ public partial class GameBoot : MonoBehaviour
 
         CreateSpacer(brandPanel.transform, 16f);
 
-        Text brandHint = CreateText("BrandHint", brandPanel.transform, "账号同步 · 微信登录", 15, FontStyle.Normal, LightTextColor, TextAnchor.MiddleLeft);
+        Text brandHint = CreateText("BrandHint", brandPanel.transform, "微信登录", 15, FontStyle.Normal, LightTextColor, TextAnchor.MiddleLeft);
         SetLayout(brandHint.gameObject, 0f, 24f);
 
         CreateSpacer(brandPanel.transform, 14f);

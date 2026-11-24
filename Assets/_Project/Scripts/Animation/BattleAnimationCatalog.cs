@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public sealed class BattleAnimationCatalog : ScriptableObject
@@ -30,10 +31,13 @@ public sealed class BattleAnimationCatalog : ScriptableObject
         public bool sourceFacingRight = true;
         public float referenceBodyHeight = 3f;
         public float visualScale = 1f;
+        public Vector2 groundShadowSize;
+        public Vector2 groundShadowOffset;
+        [Range(0f, 1f)] public float groundShadowOpacity;
         public Vector2 offset;
         public Animation[] animations;
 
-        public BattleAnimationSequence Resolve(BattleAnimationAction action, string skillKey = null, int variantSeed = 0)
+        public BattleAnimationSequence Resolve(BattleAnimationAction action, string skillKey = null, int variantSeed = 0, bool? enemyTargets = null, int allyCount = 0)
         {
             if (animations == null) return null;
             string normalizedSkill = Normalize(skillKey);
@@ -50,6 +54,30 @@ public sealed class BattleAnimationCatalog : ScriptableObject
                 if (animation != null && !animation.archived && animation.action == action) count++;
             if (count == 0) return null;
             int selected = (int)((uint)variantSeed % count);
+            if (enemyTargets.HasValue && count > 1)
+            {
+                var matchingSequences = new List<BattleAnimationSequence>();
+                foreach (Animation animation in animations)
+                {
+                    if (animation == null || animation.archived || animation.action != action) continue;
+                    BattleAnimationSequence sequence = animation.Load();
+                    if (sequence != null && sequence.IsValid && sequence.targetsEnemy == enemyTargets.Value)
+                        matchingSequences.Add(sequence);
+                }
+                if (action == BattleAnimationAction.Buff && enemyTargets == false && allyCount > 0 && matchingSequences.Count > 1)
+                {
+                    bool HasPartyField(BattleAnimationSequence clip) => clip.effects != null &&
+                        Array.Exists(clip.effects, binding => binding != null && binding.placement == BattleEffectPlacement.FullPartyGround);
+                    int partyIndex = matchingSequences.FindIndex(HasPartyField);
+                    if (partyIndex >= 0)
+                    {
+                        if (allyCount > 1) return matchingSequences[partyIndex];
+                        matchingSequences.RemoveAll(HasPartyField);
+                    }
+                }
+                if (matchingSequences.Count != 0)
+                    return matchingSequences[(int)((uint)variantSeed % matchingSequences.Count)];
+            }
             foreach (Animation animation in animations)
                 if (animation != null && !animation.archived && animation.action == action && selected-- == 0) return animation.Load();
             return null;

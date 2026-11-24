@@ -1,0 +1,140 @@
+{
+ "font": "LieRen",
+ "unitsPerEm": 10,
+ "renderSize": 80,
+ "shear": -0.2,
+ "tracking": 0.55,
+ "cellHeight": 144,
+ "glyphs": [
+  {
+   "ch": "0",
+   "x": 0,
+   "w": 132,
+   "originX": 46.0,
+   "originY": 30,
+   "advance": 7.55
+  },
+  {
+   "ch": "1",
+   "x": 132,
+   "w": 117,
+   "originX": 46.0,
+   "originY": 30,
+   "advance": 5.6499999999999995
+  },
+  {
+   "ch": "2",
+   "x": 249,
+   "w": 132,
+   "originX": 46.0,
+   "originY": 30,
+   "advance": 7.55
+  },
+  {
+   "ch": "3",
+   "x": 381,
+   "w": 132,
+   "originX": 46.0,
+   "originY": 30,
+   "advance": 7.55
+  },
+  {
+   "ch": "4",
+   "x": 513,
+   "w": 134,
+   "originX": 46.0,
+   "originY": 30,
+   "advance": 7.75
+  },
+  {
+   "ch": "5",
+   "x": 647,
+   "w": 132,
+   "originX": 46.0,
+   "originY": 30,
+   "advance": 7.55
+  },
+  {
+   "ch": "6",
+   "x": 779,
+   "w": 132,
+   "originX": 46.0,
+   "originY": 30,
+   "advance": 7.55
+  },
+  {
+   "ch": "7",
+   "x": 911,
+   "w": 131,
+   "originX": 46.0,
+   "originY": 30,
+   "advance": 7.35
+  },
+  {
+   "ch": "8",
+   "x": 1042,
+   "w": 132,
+   "originX": 46.0,
+   "originY": 30,
+   "advance": 7.55
+  },
+  {
+   "ch": "9",
+   "x": 1174,
+   "w": 132,
+   "originX": 46.0,
+   "originY": 30,
+   "advance": 7.55
+  },
+  {
+   "ch": ",",
+   "x": 1306,
+   "w": 97,
+   "originX": 46.0,
+   "originY": 30,
+   "advance": 3.1500000000000004
+  },
+  {
+   "ch": "+",
+   "x": 1403,
+   "w": 128,
+   "originX": 46.0,
+   "originY": 30,
+   "advance": 6.95
+  }
+ ],
+ "fx": {
+  "cell": 64,
+  "names": [
+   "spark",
+   "ember",
+   "drop",
+   "leaf",
+   "rock",
+   "star",
+   "smoke",
+   "ring",
+   "badge",
+   "diamond",
+   "shard",
+   "streak",
+   "bubble"
+  ]
+ },
+ "styles": [
+  "normal",
+  "light",
+  "heavy",
+  "kill",
+  "hurt",
+  "heal",
+  "physical",
+  "fire",
+  "water",
+  "wood",
+  "earth",
+  "light_attr",
+  "dark",
+  "poison"
+ ]
+}

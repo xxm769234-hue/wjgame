@@ -215,19 +215,19 @@ public partial class HomePageUI
 
         if (realtimeEvent.type == "PLAYER_PROGRESSION_CHANGED")
         {
-            StartCoroutine(RefreshAccountSnapshot("玩家成长数据已更新"));
+            StartCoroutine(RefreshAccountSnapshot(string.Empty));
             return;
         }
 
         if (realtimeEvent.type == "LAND_SCENE_UNLOCKED" || realtimeEvent.type == "LAND_SCENE_SWITCHED")
         {
-            QueueRealtimeLandRefresh(true, true, "经营场景状态已刷新");
+            QueueRealtimeLandRefresh(true, true, string.Empty);
             return;
         }
 
         if (realtimeEvent.type == "LAND_SLOT_STATE_CHANGED" || realtimeEvent.type == "PRODUCTION_COLLECTED")
         {
-            QueueRealtimeLandRefresh(false, true, "经营数据已刷新");
+            QueueRealtimeLandRefresh(false, true, string.Empty);
             return;
         }
 
@@ -680,7 +680,7 @@ public partial class HomePageUI
         HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.Friends);
         if (applied && panel != null && panel.PanelRoot != null && panel.gameObject.activeInHierarchy)
         {
-            RefreshServerFriendRequestPanel(panel.PanelRoot, "好友头像已更新");
+            RefreshServerFriendRequestPanel(panel.PanelRoot, string.Empty);
         }
     }
 

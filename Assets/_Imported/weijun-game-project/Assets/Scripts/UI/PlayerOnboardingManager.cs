@@ -579,6 +579,15 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
         presentationUnsupported = false;
         if (selected == null)
         {
+            if (guideSnapshots.TryGetValue("MAIN_FLOW", out OnboardingCurrentData main))
+            {
+                string status = "MAIN_FLOW available=" + main.available + ", status=" + main.status;
+                if (lastSnapshotDiagnostic != status)
+                {
+                    lastSnapshotDiagnostic = status;
+                    Debug.Log("[Onboarding] " + status, this);
+                }
+            }
             FindObjectOfType<HomePageUI>(true)?.HideStarterSelection();
             HideOverlay();
             EnsureBusinessPollingState();
@@ -2545,6 +2554,7 @@ public sealed class PlayerOnboardingManager : MonoBehaviour
     {
         FindObjectOfType<HomePageUI>(true)?.HideStarterSelection();
         currentSnapshot = null;
+        lastSnapshotDiagnostic = null;
         snoozedStepIdentity = null;
         guideSnapshots.Clear();
         requestedGuides.Clear();

@@ -1,0 +1,60 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
+  m_Name: AssassinShadowSlashSequence
+  m_EditorClassIdentifier: 
+  sequenceId: AssassinShadowSlashSequence
+  sourceFolder: "D:/角色动画/刺客/刺客技能特效.zip"
+  action: 7
+  frameRate: 30
+  playbackDuration: 1.300000
+  loop: 0
+  targetsEnemy: 1
+  frames:
+  - {fileID: 21300000, guid: c374e0147ed35b1bad89aa72f51537f5, type: 3}
+  - {fileID: 21300000, guid: 8c31c9db66535ab8b91285df74446033, type: 3}
+  - {fileID: 21300000, guid: 848ea6a14fb051f8ad39cbf2d623a3a7, type: 3}
+  - {fileID: 21300000, guid: 3e6cd2e42ece5b5fb9bbe16cec3b5b3b, type: 3}
+  - {fileID: 21300000, guid: 831a2d5fd2c357b09d8988cdd17546b2, type: 3}
+  - {fileID: 21300000, guid: eea9b078676b54358b3624f465046378, type: 3}
+  - {fileID: 21300000, guid: 8c9b271100d758139544a074f1d5f951, type: 3}
+  - {fileID: 21300000, guid: 122690fd28c55912a6a3b8a968e593fb, type: 3}
+  - {fileID: 21300000, guid: b7ce1e2df1d85271a9c8e9a7b1d92eab, type: 3}
+  - {fileID: 21300000, guid: c5fad8e279c15a889c94a9d201629c59, type: 3}
+  - {fileID: 21300000, guid: 784774cc65e45089aa0ceb132331b0a7, type: 3}
+  - {fileID: 21300000, guid: 5fd6b96a5be65203b385da9720c6133d, type: 3}
+  - {fileID: 21300000, guid: 2d3acceec71b54a9ba62c05cc495094f, type: 3}
+  - {fileID: 21300000, guid: 73671b60df455a49bd74ef0eb680abb7, type: 3}
+  - {fileID: 21300000, guid: 46139baf6a315a0fa45cf3fb2b081af1, type: 3}
+  - {fileID: 21300000, guid: 790b275a71ef5349be29ad97fe5573bd, type: 3}
+  - {fileID: 21300000, guid: 0ab2a41d72305b2ab2417a20d8a79c26, type: 3}
+  - {fileID: 21300000, guid: 4cf9f84021415c10a1d2f71ee3e64664, type: 3}
+  - {fileID: 21300000, guid: 6c4a5ab572f75f9983280114ebef25ca, type: 3}
+  - {fileID: 21300000, guid: 2ce18f2d4b89528683bbbd8866dda8bd, type: 3}
+  - {fileID: 21300000, guid: 5d52fc8bf5b65c43a61c032f25274e40, type: 3}
+  - {fileID: 21300000, guid: 1a115dc2051353379115ac6b893468b7, type: 3}
+  - {fileID: 21300000, guid: 7f8d6fd49bd851c492f0680422dbc4af, type: 3}
+  - {fileID: 21300000, guid: 54711273367b5763bd4e80b1851124a5, type: 3}
+  - {fileID: 21300000, guid: 3dea76a8a62d563e86b9583e9f1bb58e, type: 3}
+  - {fileID: 21300000, guid: 794f45fda08d581eac000f52e1a7b213, type: 3}
+  - {fileID: 21300000, guid: 9cdfc3c7ae44520988ea7a7b63a174bb, type: 3}
+  - {fileID: 21300000, guid: 078330dc26ed51769094781d20cbf989, type: 3}
+  - {fileID: 21300000, guid: 90732b396da058fcbb270529ddc114a4, type: 3}
+  - {fileID: 21300000, guid: b1cedaa65535526fbb3ad0a740d5be2e, type: 3}
+  - {fileID: 21300000, guid: be719722812b552580d068587e71ad6c, type: 3}
+  - {fileID: 21300000, guid: 95bce34bc9cb52e79e59454235bf1fd3, type: 3}
+  - {fileID: 21300000, guid: ce0a8f60b73b5bd2a7697806b6208047, type: 3}
+  - {fileID: 21300000, guid: 610a1e1fb2aa53aa8f79b62597af56c5, type: 3}
+  - {fileID: 21300000, guid: bc39140117e253c3bfe93c0d82e3f7ff, type: 3}
+  - {fileID: 21300000, guid: cc7e1109b8ea54bc89bddc9097c786a2, type: 3}
+  - {fileID: 21300000, guid: 5c4ef4c9bb5657be88cd8dd3384ac7d8, type: 3}
+  - {fileID: 21300000, guid: 4852cc79a2d6553396e632f310afe619, type: 3}
+  - {fileID: 21300000, guid: d424f7c2213d5275a32338a82ba9ff4a, type: 3}

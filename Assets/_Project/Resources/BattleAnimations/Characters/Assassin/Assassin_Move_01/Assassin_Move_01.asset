@@ -12,6 +12,58 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Assassin_Move_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.1418, y: 0.0142}
+    right: {x: 0.1099, y: 0.0461}
+  - frame: 27
+    left: {x: -0.1489, y: 0.0142}
+    right: {x: 0.1099, y: 0.0461}
+  - frame: 33
+    left: {x: -0.2482, y: 0.0248}
+    right: {x: 0.1099, y: 0.0461}
+  - frame: 36
+    left: {x: -0.3617, y: 0.0674}
+    right: {x: 0.0412, y: 0.1500}
+  - frame: 42
+    left: {x: -0.6277, y: 0.2801}
+    right: {x: 0.0125, y: 0.2000}
+  - frame: 45
+    left: {x: -0.6277, y: 0.2872}
+    right: {x: 0.0106, y: 0.3759}
+  - frame: 48
+    left: {x: -0.6277, y: 0.2943}
+    right: {x: -0.1135, y: 0.3759}
+  - frame: 60
+    left: {x: -0.6312, y: 0.2979}
+    right: {x: -0.1418, y: 0.3688}
+  - frame: 63
+    left: {x: -0.6312, y: 0.2979}
+    right: {x: 0.0212, y: 0.2300}
+  - frame: 66
+    left: {x: -0.4675, y: 0.1600}
+    right: {x: 0.0875, y: 0.1600}
+  - frame: 69
+    left: {x: -0.3637, y: 0.0900}
+    right: {x: 0.1028, y: 0.0900}
+  - frame: 72
+    left: {x: -0.2819, y: -0.0993}
+    right: {x: 0.1525, y: -0.0426}
+  - frame: 81
+    left: {x: -0.3014, y: -0.0940}
+    right: {x: 0.1383, y: -0.0177}
+  - frame: 84
+    left: {x: -0.3369, y: -0.0355}
+    right: {x: 0.1383, y: 0.0248}
+  - frame: 87
+    left: {x: -0.2553, y: 0.0142}
+    right: {x: 0.1206, y: 0.0284}
+  - frame: 93
+    left: {x: -0.1418, y: 0.0142}
+    right: {x: 0.1099, y: 0.0461}
+  - frame: 96
+    left: {x: -0.1418, y: 0.0142}
+    right: {x: 0.1099, y: 0.0461}
   sequenceId: Assassin_Move_01
   sourceFolder: "D:\\\u89D2\u8272\u52A8\u753B\\\u523A\u5BA2\\\u79FB\u52A8_20261116"
   action: 1

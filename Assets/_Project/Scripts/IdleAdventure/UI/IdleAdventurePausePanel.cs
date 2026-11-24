@@ -43,6 +43,7 @@ public sealed class IdleAdventurePausePanel : MonoBehaviour
 
     public void Show()
     {
+        transform.SetAsLastSibling();
         gameObject.SetActive(true);
         ConfigureTextLayout();
     }

@@ -2,7 +2,6 @@ using UnityEngine;
 using UnityEngine.Sprites;
 using UnityEngine.UI;
 
-/// <summary>Small contact flash and rays on the existing actor image, with no duplicate body.</summary>
 [DisallowMultipleComponent]
 public sealed class BattleActorHitVisual : MonoBehaviour
 {
@@ -12,6 +11,8 @@ public sealed class BattleActorHitVisual : MonoBehaviour
     private static readonly int HitRadius = Shader.PropertyToID("_HitRadius");
     private static readonly int HitUVRect = Shader.PropertyToID("_HitUVRect");
     private static readonly int HitLocalRect = Shader.PropertyToID("_HitLocalRect");
+    private static readonly float[] RayAngles = { -46f, -13f, 19f, 57f, 151f, 213f };
+    private static readonly float[] RayLengths = { .62f, 1f, .84f, .54f, .49f, .36f };
     private Image body;
     private RectTransform actorRoot;
     private Material originalMaterial;
@@ -21,7 +22,20 @@ public sealed class BattleActorHitVisual : MonoBehaviour
     private RectTransform sparkRoot;
     private Image[] rays;
 
-    public void Bind(Image image, RectTransform root)
+    private static Texture2D contactSheet;
+    private const float PaintedSizeMultiplier = 1.30f;
+    private const float PaintedPeakHoldSeconds = .033f;
+    private BattleActorAnimation paintedTarget;
+    private RawImage paintedContact;
+    private BattleHitFeedbackProfile paintedProfile;
+    private Vector2 paintedDirection;
+    private float paintedElapsed;
+    private int incomingAttacks;
+    private Image reactionPose;
+    private BattleActorAnimation recipient;
+    private int paintedStartFrame;
+
+    public void Bind(Image image, RectTransform root, BattleActorAnimation enemy = null)
     {
         if (body != image)
         {
@@ -29,24 +43,33 @@ public sealed class BattleActorHitVisual : MonoBehaviour
             body = image;
             originalMaterial = body != null ? body.material : null;
         }
+        paintedTarget = enemy;
         actorRoot = root;
-        if (sparkRoot != null && sparkRoot.parent != actorRoot) sparkRoot.SetParent(actorRoot, false);
+        recipient = GetComponent<BattleActorAnimation>();
     }
 
-    public void Show(BattleHitFeedbackProfile profile, float elapsed, float bodyHeight, float scale, float mirror)
+    public void Show(BattleHitFeedbackProfile profile, float elapsed, float bodyHeight, float scale, float hitDirection, bool staticSprite = false)
+    {
+        Show(profile, elapsed, bodyHeight, scale, Vector2.right * Mathf.Sign(hitDirection), staticSprite);
+    }
+
+    public void Show(BattleHitFeedbackProfile profile, float elapsed, float bodyHeight, float scale, Vector2 direction, bool staticSprite = false)
     {
         if (body == null || profile == null)
         {
             Clear();
             return;
         }
-        float amount = elapsed < profile.flashDuration ? profile.flashAmount
-            : profile.afterglowAmount * (1f - Mathf.Clamp01((elapsed - profile.flashDuration) / Mathf.Max(.001f, profile.afterglowDuration)));
-        Color tint = elapsed < profile.flashDuration ? profile.flashColor : profile.afterglowColor;
+        bool primary = elapsed < profile.flashDuration;
+        float glow = Mathf.Clamp01((elapsed - profile.flashDuration) / Mathf.Max(.001f, profile.afterglowDuration));
+        float amount = primary ? profile.flashAmount : profile.afterglowAmount * (1f - glow);
+        Color tint = primary ? profile.flashColor : profile.afterglowColor;
+        RectTransform spriteRect = body.rectTransform;
+        Vector3 contactPoint = ContactPoint(bodyHeight, direction, staticSprite);
+        Vector2 center = spriteRect.InverseTransformPoint(contactPoint);
         if (amount > 0f && EnsureMaterial())
         {
             if (body.material != flashMaterial) body.material = flashMaterial;
-            Vector2 center = Vector2.up * (bodyHeight * .52f);
             float radius = bodyHeight * Mathf.Clamp(profile.flashBodyFraction, .04f, 1f);
             ConfigureMaterial(flashMaterial, tint, amount, center, radius);
             // MaskableGraphic may supply a stencil material copy beneath a Mask.
@@ -55,18 +78,18 @@ public sealed class BattleActorHitVisual : MonoBehaviour
         }
         else RestoreMaterial();
 
-        if (profile.sparkDuration <= 0f || profile.sparkPixels <= 0f || elapsed >= profile.sparkDuration)
+        if (paintedTarget != null || profile.sparkDuration <= 0f || profile.sparkPixels <= 0f || elapsed >= profile.sparkDuration)
         {
             if (sparkRoot != null) sparkRoot.gameObject.SetActive(false);
             return;
         }
         EnsureSpark();
         sparkRoot.gameObject.SetActive(true);
-        sparkRoot.anchorMin = body.rectTransform.anchorMin;
-        sparkRoot.anchorMax = body.rectTransform.anchorMax;
-        sparkRoot.anchoredPosition = body.rectTransform.anchoredPosition + Vector2.up * (bodyHeight * .52f);
+        sparkRoot.position = contactPoint;
+        sparkRoot.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg);
         float progress = Mathf.Clamp01(elapsed / profile.sparkDuration);
-        float opacity = (1f - progress) * (1f - progress);
+        float travel = 1f - (1f - progress) * (1f - progress);
+        float opacity = 1f - Mathf.SmoothStep(0f, 1f, progress);
         Color contact = profile.contactColor;
         contact.a *= opacity;
         for (int i = 0; i < rays.Length; i++)
@@ -76,19 +99,120 @@ public sealed class BattleActorHitVisual : MonoBehaviour
             ray.color = contact;
             if (i == 0)
             {
+                ray.color = Color.Lerp(new Color(1f, 1f, 1f, contact.a), contact, travel);
                 rect.anchoredPosition = Vector2.zero;
                 rect.sizeDelta = Vector2.one * (Mathf.Max(1f, profile.sparkWidthPixels) * (2.5f - progress) * scale);
                 continue;
             }
-            float angle = (i - 1) * 60f + 12f;
+            float angle = RayAngles[i - 1];
             float radians = angle * Mathf.Deg2Rad;
-            Vector2 direction = new Vector2(Mathf.Cos(radians) * mirror, Mathf.Sin(radians));
-            float reach = profile.sparkPixels * scale * (i % 2 == 0 ? .8f : 1f);
-            rect.anchoredPosition = direction * reach * (.22f + progress * .58f);
-            rect.localRotation = Quaternion.Euler(0f, 0f, Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg - 90f);
-            rect.sizeDelta = new Vector2(Mathf.Max(.5f, profile.sparkRayWidthPixels) * scale,
-                reach * (.65f - progress * .4f));
+            Vector2 rayDirection = new Vector2(Mathf.Cos(radians), Mathf.Sin(radians));
+            float reach = Mathf.Min(profile.sparkPixels * scale, bodyHeight * .24f) * RayLengths[i - 1];
+            rect.anchoredPosition = rayDirection * reach * (.22f + travel * .75f);
+            rect.localRotation = Quaternion.Euler(0f, 0f, angle - 90f);
+            rect.sizeDelta = new Vector2(Mathf.Max(.5f, profile.sparkRayWidthPixels * (1f - .65f * travel)) * scale,
+                reach * Mathf.Lerp(.74f, .15f, progress * progress));
         }
+    }
+
+    private Vector3 ContactPoint(float height, Vector2 direction, bool staticSprite)
+    {
+        RectTransform sprite = body.rectTransform;
+        Vector3 torso = staticSprite ? sprite.TransformPoint(sprite.rect.center)
+            : sprite.position + actorRoot.TransformVector(Vector2.up * (height * .52f));
+        return torso - actorRoot.TransformVector(direction * (height * .12f));
+    }
+
+    public void PlayPaintedContact(BattleHitFeedbackProfile profile, Vector2 direction)
+    {
+        if (paintedTarget == null || profile.sparkDuration <= 0f || profile.sparkPixels <= 0f) return;
+        if (paintedContact == null)
+        {
+            if (contactSheet == null) contactSheet = Resources.Load<Texture2D>("BattleAnimations/InkContact");
+            if (contactSheet == null) return;
+            var visual = new GameObject("Battle Painted Contact", typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+            paintedContact = visual.GetComponent<RawImage>();
+            PlaceContact(paintedContact.rectTransform);
+            paintedContact.raycastTarget = false;
+            paintedContact.texture = contactSheet;
+        }
+        paintedProfile = profile;
+        paintedElapsed = 0f;
+        paintedStartFrame = Time.frameCount;
+        paintedDirection = direction;
+        paintedContact.color = Color.Lerp(Color.white, profile.contactColor, .18f);
+        paintedContact.enabled = true;
+        SamplePaintedContact();
+    }
+
+    private void LateUpdate()
+    {
+        UpdateReactionPose();
+        if (paintedProfile == null || paintedTarget == null) return;
+        if (!paintedTarget.Paused && Time.frameCount != paintedStartFrame) paintedElapsed += Time.deltaTime;
+        if (paintedElapsed >= paintedProfile.sparkDuration + PaintedPeakHoldSeconds || !body.isActiveAndEnabled)
+        {
+            paintedProfile = null;
+            paintedContact.enabled = false;
+            return;
+        }
+        SamplePaintedContact();
+    }
+
+    private void SamplePaintedContact()
+    {
+        const int columns = 4;
+        float peakTime = paintedProfile.sparkDuration * .22f;
+        float sheetTime = Mathf.Min(paintedElapsed, peakTime)
+            + Mathf.Max(0f, paintedElapsed - (peakTime + PaintedPeakHoldSeconds));
+        int frame = Mathf.Min(columns * columns - 1, (int)(sheetTime / paintedProfile.sparkDuration * columns * columns));
+        Rect cell = new Rect((frame % columns) * .25f, (columns - 1 - frame / columns) * .25f, .25f, .25f);
+        if (paintedContact.uvRect != cell) paintedContact.uvRect = cell;
+        float height = paintedTarget.IsBound ? paintedTarget.BodyHeight : body.rectTransform.rect.height;
+        RectTransform rect = paintedContact.rectTransform;
+        rect.position = ContactPoint(height, paintedDirection, !paintedTarget.IsBound);
+        rect.rotation = actorRoot.rotation * Quaternion.Euler(0f, 0f, Vector2.SignedAngle(Vector2.right, paintedDirection));
+        float size = (40f + 2.7f * paintedProfile.sparkPixels) * PaintedSizeMultiplier;
+        rect.sizeDelta = Vector2.one * Mathf.Min(size * paintedTarget.PresentationScale, height * .66f);
+    }
+
+    internal void BeginIncomingAttack()
+    {
+        incomingAttacks++;
+        if (reactionPose != null || body == null) return;
+        var layers = BattleFieldLayers.For(actorRoot);
+        if (layers == null || recipient == null) return;
+        reactionPose = new GameObject("Battle Reaction Pose", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image)).GetComponent<Image>();
+        layers.PlaceEffect(reactionPose.rectTransform, recipient, 3);
+        reactionPose.raycastTarget = false;
+        reactionPose.enabled = false;
+    }
+
+    internal void EndIncomingAttack()
+    {
+        incomingAttacks = Mathf.Max(0, incomingAttacks - 1);
+        if (incomingAttacks == 0 && reactionPose != null) reactionPose.enabled = false;
+    }
+
+    private void UpdateReactionPose()
+    {
+        if (reactionPose == null) return;
+        reactionPose.enabled = incomingAttacks > 0 && body != null && body.isActiveAndEnabled && body.sprite != null;
+        if (!reactionPose.enabled) return;
+        RectTransform source = body.rectTransform;
+        RectTransform pose = reactionPose.rectTransform;
+        pose.pivot = source.pivot;
+        pose.sizeDelta = source.rect.size;
+        pose.SetPositionAndRotation(source.position, source.rotation);
+        Vector3 parentScale = pose.parent.lossyScale;
+        Vector3 scale = source.lossyScale;
+        pose.localScale = new Vector3(scale.x / parentScale.x, scale.y / parentScale.y, 1f);
+        reactionPose.sprite = body.overrideSprite;
+        reactionPose.preserveAspect = body.preserveAspect;
+        reactionPose.material = body.material;
+        Color color = body.color;
+        color.a *= .67f;
+        reactionPose.color = color;
     }
 
     private bool EnsureMaterial()
@@ -138,8 +262,7 @@ public sealed class BattleActorHitVisual : MonoBehaviour
         raySprite = Sprite.Create(rayTexture, new Rect(0, 0, 32, 32), Vector2.one * .5f, 32f);
         raySprite.hideFlags = HideFlags.DontSave;
         sparkRoot = new GameObject("Battle Contact Spark", typeof(RectTransform)).GetComponent<RectTransform>();
-        sparkRoot.SetParent(actorRoot, false);
-        sparkRoot.SetSiblingIndex(body.rectTransform.GetSiblingIndex() + 1);
+        PlaceContact(sparkRoot);
         rays = new Image[7];
         for (int i = 0; i < rays.Length; i++)
         {
@@ -151,22 +274,47 @@ public sealed class BattleActorHitVisual : MonoBehaviour
         }
     }
 
+    private void PlaceContact(RectTransform graphic)
+    {
+        var layers = BattleFieldLayers.For(actorRoot);
+        if (layers != null && recipient != null) layers.PlaceEffect(graphic, recipient, 4);
+        else
+        {
+            graphic.SetParent(actorRoot, false);
+            graphic.SetSiblingIndex(body.rectTransform.GetSiblingIndex() + 1);
+        }
+    }
+
     private void RestoreMaterial()
     {
         if (body != null && flashMaterial != null && body.material == flashMaterial) body.material = originalMaterial;
     }
 
-    public void Clear()
+    public void ClearFlashAndRays()
     {
         RestoreMaterial();
         if (sparkRoot != null) sparkRoot.gameObject.SetActive(false);
     }
 
-    private void OnDisable() => Clear();
+    public void Clear()
+    {
+        ClearFlashAndRays();
+        paintedProfile = null;
+        if (paintedContact != null) paintedContact.enabled = false;
+    }
+
+    private void OnDisable()
+    {
+        incomingAttacks = 0;
+        if (reactionPose != null) reactionPose.enabled = false;
+        Clear();
+    }
     private void OnDestroy()
     {
         Clear();
+        if (reactionPose != null) Destroy(reactionPose.gameObject);
         if (sparkRoot != null) Destroy(sparkRoot.gameObject);
+        if (paintedContact != null) Destroy(paintedContact.gameObject);
         if (flashMaterial != null) Destroy(flashMaterial);
         if (raySprite != null) Destroy(raySprite);
         if (rayTexture != null) Destroy(rayTexture);

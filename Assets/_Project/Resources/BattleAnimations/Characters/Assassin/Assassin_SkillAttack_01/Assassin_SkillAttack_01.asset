@@ -12,6 +12,88 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Assassin_SkillAttack_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.1809, y: 0.0177}
+    right: {x: 0.0745, y: 0.0461}
+  - frame: 9
+    left: {x: -0.1844, y: 0.0177}
+    right: {x: 0.1028, y: 0.0496}
+  - frame: 12
+    left: {x: 0.0514, y: 0.0300}
+    right: {x: 0.3404, y: 0.0496}
+  - frame: 14
+    left: {x: 0.7150, y: 0.0300}
+    right: {x: 1.2057, y: 0.0177}
+  - frame: 15
+    left: {x: 0.8633, y: 0.0267}
+    right: {x: 1.2287, y: 0.0071}
+  - frame: 17
+    left: {x: 1.2358, y: -0.0000}
+    right: {x: 1.2801, y: 0.0071}
+  - frame: 18
+    left: {x: 1.2358, y: -0.0000}
+    right: {x: 1.2801, y: 0.0071}
+  - frame: 21
+    left: {x: 1.1312, y: 0.0426}
+    right: {x: 1.2801, y: 0.0071}
+  - frame: 23
+    left: {x: 1.1170, y: 0.0496}
+    right: {x: 1.2801, y: 0.0106}
+  - frame: 24
+    left: {x: 1.1170, y: 0.0496}
+    right: {x: 1.3475, y: 0.0142}
+  - frame: 28
+    left: {x: 1.1348, y: -0.0071}
+    right: {x: 1.4291, y: 0.0213}
+  - frame: 42
+    left: {x: 1.1099, y: -0.0106}
+    right: {x: 1.4362, y: 0.0213}
+  - frame: 45
+    left: {x: 0.9931, y: 0.0100}
+    right: {x: 1.4220, y: 0.0213}
+  - frame: 48
+    left: {x: 0.9931, y: 0.0100}
+    right: {x: 1.4184, y: 0.0177}
+  - frame: 51
+    left: {x: 1.1170, y: -0.0106}
+    right: {x: 1.4184, y: 0.0177}
+  - frame: 54
+    left: {x: 1.1170, y: -0.0106}
+    right: {x: 1.4184, y: 0.0177}
+  - frame: 56
+    left: {x: 1.0851, y: 0.0100}
+    right: {x: 1.4184, y: 0.0177}
+  - frame: 57
+    left: {x: 1.0177, y: 0.1011}
+    right: {x: 1.4184, y: 0.0177}
+  - frame: 60
+    left: {x: 1.0177, y: 0.1312}
+    right: {x: 1.1826, y: 0.0106}
+  - frame: 61
+    left: {x: 0.9894, y: 0.1312}
+    right: {x: 1.1826, y: 0.0106}
+  - frame: 63
+    left: {x: 0.7250, y: 0.0780}
+    right: {x: 1.2199, y: 0.0213}
+  - frame: 66
+    left: {x: 0.5887, y: 0.0360}
+    right: {x: 1.2199, y: 0.0248}
+  - frame: 69
+    left: {x: 0.0603, y: 0.0300}
+    right: {x: 0.4929, y: 0.0248}
+  - frame: 70
+    left: {x: -0.1200, y: 0.0300}
+    right: {x: 0.0922, y: 0.0035}
+  - frame: 72
+    left: {x: -0.1738, y: 0.0300}
+    right: {x: 0.0922, y: 0.0035}
+  - frame: 78
+    left: {x: -0.1809, y: 0.0177}
+    right: {x: 0.0745, y: 0.0461}
+  - frame: 89
+    left: {x: -0.1809, y: 0.0177}
+    right: {x: 0.0745, y: 0.0461}
   sequenceId: Assassin_SkillAttack_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u6280\u80FD\u653B\u51FB\\\u523A\u5BA2"
   action: 3
@@ -19,6 +101,7 @@ MonoBehaviour:
   playbackDuration: 2.5
   loop: 0
   blinkApproach: 0
+  authoredCrossThrough: 1
   approachContact: {x: 4.4, y: 1.6}
   frames:
   - {fileID: 21300000, guid: c822c8364bd3513caf5c809db62041d6, type: 3}
@@ -111,14 +194,38 @@ MonoBehaviour:
   - {fileID: 21300000, guid: fdf175f878945494a923f886dabbc24b, type: 3}
   - {fileID: 21300000, guid: bd6d540c340b516588339bf66972daf3, type: 3}
   - {fileID: 21300000, guid: 9fecfa7c46b15f02b631b77a2c583de9, type: 3}
+  effects:
+  - effect: {fileID: 11400000, guid: 90dc9046d44658bb942602f7fd1e797a, type: 2}
+    placement: 1
+    sortWithCombatants: 1
+    startFrame: 18
+    launchFrame: 22
+    contactFrame: 28
+    endFrame: 52
+    firstEffectFrame: 0
+    launchEffectFrame: 4
+    contactEffectFrame: 10
+    impactIndex: 0
+    width: 5.53
+    opacity: 0.96
+    preserveSourceScale: 0
+    flipX: 0
+    sourceOffset: {x: 0.99, y: 0.56}
+    targetOffset: {x: 0, y: 0}
+    targetBodyOffset: {x: 0, y: 0}
+    arcHeight: 0
+    projectileDirection: {x: 1, y: 0}
+    projectileDistance: 0
   impactFrames: 1c000000
+  followUpTargetReactionFrame: 44
   impactFeedback:
   - {fileID: 11400000, guid: eea0bf56c83e52759783cc6c39250bb2, type: 2}
   defenseFrame: 0
   releaseFrame: 0
   deathBlendDuration: 0.08
   audioCues:
-  - clip: {fileID: 8300000, guid: e929e005be815b988f92885237d10c84, type: 3}
+  - clip: {fileID: 8300000, guid: 0ea2233ac6015b80bec1105b500179b8, type: 3}
     startFrame: 0
     endFrame: 90
-    volume: 0.8
+    volume: 0.78
+  audioCuesIncludeImpacts: 1

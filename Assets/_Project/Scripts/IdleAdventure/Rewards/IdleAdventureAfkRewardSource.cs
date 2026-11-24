@@ -665,7 +665,7 @@ public sealed class IdleAdventureAfkRewardSource : MonoBehaviour
         }
         if (progressFill != null) progressFill.fillAmount = waitingForServer ? 0f : Mathf.Clamp01((float)amount / MaxStoredQuantity);
         if (iconText != null) iconText.text = FrontendTextLocalization.Normalize(ResolveIconText());
-        if (amountText != null) amountText.text = waitingForServer ? "同步中" : $"{amount:N0} / {MaxStoredQuantity:N0}";
+        if (amountText != null) amountText.text = waitingForServer ? "加载中…" : $"{amount:N0} / {MaxStoredQuantity:N0}";
         if (timerText != null) timerText.text = waitingForServer ? string.Empty : full ? "已存满，请及时领取" : ready ? string.Empty : "奖励积累中";
     }
 

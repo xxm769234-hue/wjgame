@@ -440,13 +440,13 @@ public partial class HomePageUI
 
         CardDrawCardResponse[] localCards =
         {
-            new CardDrawCardResponse { slotNo = 1, rewardType = "ITEM", rewardName = "金币", rewardAmount = 80, probability = 0.35f },
+            new CardDrawCardResponse { slotNo = 1, rewardType = "ITEM", rewardName = "金币", rewardAmount = 80, probability = 0.30f },
             new CardDrawCardResponse { slotNo = 2, rewardType = "ITEM", rewardName = "木材", rewardAmount = 150, probability = 0.25f },
             new CardDrawCardResponse { slotNo = 3, rewardType = "ITEM", rewardName = "石材", rewardAmount = 150, probability = 0.25f },
-            new CardDrawCardResponse { slotNo = 4, rewardType = "ITEM", rewardName = "铁矿", rewardAmount = 120, probability = 0.15f }
+            new CardDrawCardResponse { slotNo = 4, rewardType = "ITEM", rewardName = "铁矿", rewardAmount = 120, probability = 0.20f }
         };
         ConfigureLotteryPrizeRail(root, localCards);
-        SetSceneText(root, "LotteryDiamondText", $"钻石 {PlayerPrefs.GetInt("Crystal", 0)}");
+        SetSceneText(root, "LotteryDiamondText", PlayerPrefs.GetInt("Crystal", 0).ToString("N0"));
         SetSceneText(root, "LotteryPrizeHint", "游客体验奖池");
         SetSceneText(root, "LotteryStatus", status);
 
@@ -476,10 +476,11 @@ public partial class HomePageUI
         Button poolButton = FindSceneComponent<Button>(root, "LotteryPoolButton");
         if (poolButton != null)
         {
-            poolButton.interactable = false;
+            poolButton.interactable = !isRolling;
         }
-        SetSceneButtonText(poolButton, "奖励一览");
-        BindSceneButton(poolButton, null);
+        SetSceneButtonText(poolButton, "奖池详情");
+        BindSceneButton(poolButton, () => OpenSummonPoolDetails(new CardDrawPoolData { name = "体验奖池", cards = localCards }));
+        ConfigureSummonBook(root, localCards, isRolling);
 
         SetStatus(status);
         return true;
@@ -503,7 +504,7 @@ public partial class HomePageUI
         }
 
         PrepareDailySignSceneCards(root, 0);
-        SetSceneText(root, "DailySignStatus", "请登录后领取签到奖励");
+        SetSceneObjectActive(root, "DailySignStatus", false);
         SetStatus(status);
         return true;
     }
@@ -675,7 +676,7 @@ public partial class HomePageUI
             SelectSceneMail(root, validMails, selectedIndex);
         }
 
-        SetSceneText(root, "MailStatus", message ?? "已读取系统邮件");
+        SetSceneText(root, "MailStatus", message ?? string.Empty);
         SetStatus("已打开系统邮件");
         return true;
     }
@@ -1280,6 +1281,12 @@ public partial class HomePageUI
                 attachment.itemName,
                 rewardName
             };
+        if (rewardType == "ITEM")
+        {
+            Sprite fragment = RoleFragmentArt.Resolve(hasGrantedSnapshot ? attachment.grantedRewardKey : attachment.rewardKey ?? attachment.itemKey,
+                rewardName,hasGrantedSnapshot ? attachment.grantedRewardIcon : attachment.icon,rewardQuality,rewardCategory);
+            if (fragment != null) return fragment;
+        }
         for (int candidateIndex = 0; candidateIndex < candidates.Length; candidateIndex++)
         {
             string candidate = candidates[candidateIndex];

@@ -12,6 +12,46 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Assassin_NormalAttack_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.1312, y: 0.0142}
+    right: {x: 0.1064, y: 0.0567}
+  - frame: 9
+    left: {x: -0.1312, y: 0.0142}
+    right: {x: 0.1064, y: 0.0567}
+  - frame: 12
+    left: {x: 0.0248, y: 0.0674}
+    right: {x: 0.1915, y: 0.0567}
+  - frame: 15
+    left: {x: 0.0461, y: 0.0674}
+    right: {x: 0.5000, y: 0.0284}
+  - frame: 18
+    left: {x: 0.0603, y: 0.0603}
+    right: {x: 0.5426, y: 0.0142}
+  - frame: 27
+    left: {x: 0.1170, y: 0.0603}
+    right: {x: 0.5426, y: 0.0142}
+  - frame: 42
+    left: {x: 0.0780, y: 0.0621}
+    right: {x: 0.5496, y: 0.0106}
+  - frame: 48
+    left: {x: 0.0922, y: 0.0567}
+    right: {x: 0.5284, y: 0.0177}
+  - frame: 51
+    left: {x: 0.0993, y: 0.0567}
+    right: {x: 0.4787, y: 0.0177}
+  - frame: 54
+    left: {x: 0.0993, y: 0.0337}
+    right: {x: 0.3100, y: 0.0355}
+  - frame: 57
+    left: {x: -0.1028, y: 0.0213}
+    right: {x: 0.1401, y: 0.0532}
+  - frame: 60
+    left: {x: -0.1312, y: 0.0142}
+    right: {x: 0.1064, y: 0.0567}
+  - frame: 72
+    left: {x: -0.1312, y: 0.0142}
+    right: {x: 0.1064, y: 0.0567}
   sequenceId: Assassin_NormalAttack_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u666E\u901A\u653B\u51FB\u65E0\u80CC\u666F\\\u666E\u901A\u653B\u51FB"
   action: 2
@@ -94,6 +134,7 @@ MonoBehaviour:
   - {fileID: 21300000, guid: 4cabdad891bf556f9932d11e1ef93d2f, type: 3}
   - {fileID: 21300000, guid: e5a5e20bf15a58008c3db355e9f97308, type: 3}
   - {fileID: 21300000, guid: 1c31808f2bdc5874bea0cb65f097b23a, type: 3}
+  restartTargetHitOnImpact: 1
   impactFrames: 100000001c00000028000000
   impactFeedback:
   - {fileID: 11400000, guid: e1926749406b5c3382b74beaf592f9c9, type: 2}
@@ -102,3 +143,17 @@ MonoBehaviour:
   defenseFrame: 0
   releaseFrame: 0
   deathBlendDuration: 0.08
+  audioCues:
+  - clip: {fileID: 8300000, guid: cd0af157cb1a5d0a8fc280d39a3c62eb, type: 3}
+    startFrame: 16
+    endFrame: 32
+    volume: 0.6
+  - clip: {fileID: 8300000, guid: 4975e8fff4ec59c7b57bead33a181a06, type: 3}
+    startFrame: 28
+    endFrame: 43
+    volume: 0.66
+  - clip: {fileID: 8300000, guid: cd0af157cb1a5d0a8fc280d39a3c62eb, type: 3}
+    startFrame: 40
+    endFrame: 56
+    volume: 0.74
+  audioCuesIncludeImpacts: 1

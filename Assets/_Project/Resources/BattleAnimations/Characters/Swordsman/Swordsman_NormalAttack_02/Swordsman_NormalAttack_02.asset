@@ -12,6 +12,31 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Swordsman_NormalAttack_02
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.3452, y: 0.1139}
+    right: {x: 0.2313, y: 0.0178}
+  - frame: 9
+    left: {x: -0.3452, y: 0.1103}
+    right: {x: 0.2313, y: 0.0178}
+  - frame: 12
+    left: {x: -0.3114, y: 0.0890}
+    right: {x: 0.2313, y: 0.0178}
+  - frame: 15
+    left: {x: -0.2135, y: 0.0890}
+    right: {x: 0.2313, y: 0.0178}
+  - frame: 54
+    left: {x: -0.2064, y: 0.0854}
+    right: {x: 0.2313, y: 0.0178}
+  - frame: 57
+    left: {x: -0.2206, y: 0.0854}
+    right: {x: 0.2313, y: 0.0178}
+  - frame: 60
+    left: {x: -0.3310, y: 0.1068}
+    right: {x: 0.2313, y: 0.0160}
+  - frame: 72
+    left: {x: -0.3470, y: 0.1103}
+    right: {x: 0.2313, y: 0.0178}
   sequenceId: Swordsman_NormalAttack_02
   sourceFolder: "D:\\\u89D2\u8272\u52A8\u753B\\\u5251\u58EB\\\u666E\u901A\u653B\u51FB\\\u5251\u5149\u7279\u6548_V2_\u52A0\u5927\u5EF6\u957F_20261111"
   action: 2
@@ -181,10 +206,14 @@ MonoBehaviour:
   movementTravelLastFrame: 0
   effects: []
   audioCues:
-  - clip: {fileID: 8300000, guid: 025931218da552cb86d5b1ddfedaa7c3, type: 3}
-    startFrame: 0
-    endFrame: 73
-    volume: 0.85
+  - clip: {fileID: 8300000, guid: cd0af157cb1a5d0a8fc280d39a3c62eb, type: 3}
+    startFrame: 15
+    endFrame: 26
+    volume: 0.82
+  - clip: {fileID: 8300000, guid: cd0af157cb1a5d0a8fc280d39a3c62eb, type: 3}
+    startFrame: 44
+    endFrame: 55
+    volume: 0.92
   impactFrames: 0f0000002c000000
   impactFeedback:
   - {fileID: 11400000, guid: 4ca690a3749d511c85307105ac5c4389, type: 2}
@@ -192,3 +221,4 @@ MonoBehaviour:
   defenseFrame: 0
   releaseFrame: 0
   deathBlendDuration: 0.08
+  audioCuesIncludeImpacts: 1

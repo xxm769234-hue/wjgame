@@ -105,7 +105,7 @@ public static class InventoryPrefabBuilder
             TMP_Text sidebarHintText = CreateText(
                 "InventorySidebarHint",
                 sidebar.transform,
-                "账号仓库\n资源由服务器同步",
+                string.Empty,
                 16,
                 FontStyle.Bold,
                 new Color(1f, 0.87f, 0.60f, 0.94f),

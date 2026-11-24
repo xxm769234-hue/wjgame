@@ -54,7 +54,7 @@ public static class NetRequest
         else
         {
             // 服务端校验失败，返回错误
-            OnFail?.Invoke("服务端校验：无法在此放置地块");
+            OnFail?.Invoke("无法在此放置地块");
         }
     }
 }

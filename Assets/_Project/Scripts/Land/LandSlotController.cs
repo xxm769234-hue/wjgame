@@ -881,6 +881,7 @@ public sealed partial class LandSlotController : MonoBehaviour
             localCenter.y + currentBuilding.visualOffset.y,
             -0.05f);
         buildingRenderer.transform.localScale = Vector3.one * currentBuilding.visualScale;
+        LandSceneMotion.Apply(buildingRenderer, null);
         buildingRenderer.sprite = currentBuilding.buildingSprite != null ? currentBuilding.buildingSprite : CreateFallbackBuildingSprite(currentBuilding.fallbackColor);
         buildingRenderer.color = buildingStatus == BuildingRuntimeStatus.COMPLETED ? Color.white : new Color(1f, 1f, 1f, 0.55f);
         buildingRenderer.maskInteraction = SpriteMaskInteraction.None;
@@ -1042,7 +1043,7 @@ public sealed partial class LandSlotController : MonoBehaviour
 
     private static string ResultMessage<T>(BackendResult<T> result)
     {
-        if (result == null) return "未收到服务器响应。";
+        if (result == null) return "连接中断，请稍后重试。";
         return FrontendTextLocalization.Normalize(string.IsNullOrEmpty(result.Message) ? $"请求状态：{result.HttpStatus}" : result.Message);
     }
 
@@ -1095,6 +1096,7 @@ public sealed partial class LandSlotController : MonoBehaviour
         {
             Sprite terrainSprite = LandTerrainCatalog.GetTerrain(config);
             landRenderer.sprite = terrainSprite != null ? terrainSprite : config.landSprite;
+            LandSceneMotion.Apply(landRenderer, landRenderer.sprite);
             FitLandRendererToCollider();
             landRenderer.enabled = landRenderer.sprite != null;
         }

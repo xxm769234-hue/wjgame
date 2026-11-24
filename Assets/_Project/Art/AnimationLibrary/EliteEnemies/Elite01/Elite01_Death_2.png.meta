@@ -1,0 +1,523 @@
+fileFormatVersion: 2
+guid: 816bc235749a7240df73701d084baeef
+TextureImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 13
+  mipmaps:
+    mipMapMode: 0
+    enableMipMap: 0
+    sRGBTexture: 1
+    linearTexture: 0
+    fadeOut: 0
+    borderMipMap: 0
+    mipMapsPreserveCoverage: 0
+    alphaTestReferenceValue: 0.5
+    mipMapFadeDistanceStart: 1
+    mipMapFadeDistanceEnd: 3
+  bumpmap:
+    convertToNormalMap: 0
+    externalNormalMap: 0
+    heightScale: 0.25
+    normalMapFilter: 0
+    flipGreenChannel: 0
+  isReadable: 0
+  streamingMipmaps: 0
+  streamingMipmapsPriority: 0
+  vTOnly: 0
+  ignoreMipmapLimit: 0
+  grayScaleToAlpha: 0
+  generateCubemap: 6
+  cubemapConvolution: 0
+  seamlessCubemap: 0
+  textureFormat: 1
+  maxTextureSize: 2048
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 1
+    aniso: 1
+    mipBias: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 1
+  nPOTScale: 0
+  lightmap: 0
+  compressionQuality: 50
+  spriteMode: 2
+  spriteExtrude: 1
+  spriteMeshType: 0
+  alignment: 0
+  spritePivot: {x: 0.5, y: 0.5}
+  spritePixelsToUnits: 80
+  spriteBorder: {x: 0, y: 0, z: 0, w: 0}
+  spriteGenerateFallbackPhysicsShape: 1
+  alphaUsage: 1
+  alphaIsTransparency: 1
+  spriteTessellationDetail: -1
+  textureType: 8
+  textureShape: 1
+  singleChannelComponent: 0
+  flipbookRows: 1
+  flipbookColumns: 1
+  maxTextureSizeSet: 0
+  compressionQualitySet: 0
+  textureFormatSet: 0
+  ignorePngGamma: 0
+  applyGammaDecoding: 0
+  swizzle: 50462976
+  cookieLightType: 0
+  platformSettings:
+  - serializedVersion: 3
+    buildTarget: DefaultTexturePlatform
+    maxTextureSize: 4096
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 2
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 3
+    buildTarget: Standalone
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 3
+    buildTarget: WebGL
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  spriteSheet:
+    serializedVersion: 2
+    sprites:
+    - serializedVersion: 2
+      name: Elite01_Death_018
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 582
+        width: 168
+        height: 292
+      alignment: 9
+      pivot: {x: 0.3577446, y: 0.0002118}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: db5779ba2c56121575134262df71b9ed
+      internalID: 21300036
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_019
+      rect:
+        serializedVersion: 2
+        x: 174
+        y: 582
+        width: 176
+        height: 292
+      alignment: 9
+      pivot: {x: 0.3358017, y: 0.0002118}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 9ddf07b842a44da726cbb6825a6118ba
+      internalID: 21300038
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_020
+      rect:
+        serializedVersion: 2
+        x: 354
+        y: 582
+        width: 179
+        height: 292
+      alignment: 9
+      pivot: {x: 0.3357603, y: 0.0002118}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 7b5bd7136d9187581be870a95129d210
+      internalID: 21300040
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_021
+      rect:
+        serializedVersion: 2
+        x: 537
+        y: 582
+        width: 179
+        height: 292
+      alignment: 9
+      pivot: {x: 0.3357603, y: 0.0002118}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 57cdd4716e6a7122a14f245146ebdaa6
+      internalID: 21300042
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_022
+      rect:
+        serializedVersion: 2
+        x: 935
+        y: 301
+        width: 181
+        height: 277
+      alignment: 9
+      pivot: {x: 0.3983486, y: 0.0002232}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 345f35112293f394961d63561e6bb4ac
+      internalID: 21300044
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_023
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 5
+        width: 181
+        height: 277
+      alignment: 9
+      pivot: {x: 0.3983486, y: 0.0002232}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a9ff50c88335d2e23542757088af2b79
+      internalID: 21300046
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_024
+      rect:
+        serializedVersion: 2
+        x: 187
+        y: 5
+        width: 181
+        height: 277
+      alignment: 9
+      pivot: {x: 0.3983486, y: 0.0002232}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: ee02f1e723152fcb65bbb3bc64b3f44f
+      internalID: 21300048
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_025
+      rect:
+        serializedVersion: 2
+        x: 372
+        y: 5
+        width: 180
+        height: 277
+      alignment: 9
+      pivot: {x: 0.4005616, y: 0.0002232}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 461ac90f9c47482a66de16be90432ccb
+      internalID: 21300050
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_026
+      rect:
+        serializedVersion: 2
+        x: 556
+        y: 5
+        width: 180
+        height: 277
+      alignment: 9
+      pivot: {x: 0.3672283, y: 0.0002232}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b60b2b0c8c5cab8d91ecfa122546e033
+      internalID: 21300052
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_027
+      rect:
+        serializedVersion: 2
+        x: 380
+        y: 290
+        width: 186
+        height: 288
+      alignment: 9
+      pivot: {x: 0.3876403, y: 0.0002147}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 64983be622d9cbc98e091e471ef934c1
+      internalID: 21300054
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_028
+      rect:
+        serializedVersion: 2
+        x: 570
+        y: 290
+        width: 180
+        height: 288
+      alignment: 9
+      pivot: {x: 0.3672283, y: 0.0002147}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: afca492d50c86c4d995720d40904bfe9
+      internalID: 21300056
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_029
+      rect:
+        serializedVersion: 2
+        x: 740
+        y: 5
+        width: 180
+        height: 277
+      alignment: 9
+      pivot: {x: 0.3672283, y: 0.0002232}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 76ed72ed24e7a52f765bd736e1be5ff0
+      internalID: 21300058
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_030
+      rect:
+        serializedVersion: 2
+        x: 754
+        y: 290
+        width: 177
+        height: 288
+      alignment: 9
+      pivot: {x: 0.3791022, y: 0.0002147}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b5a3663692571bc599fbce2f78f8a955
+      internalID: 21300060
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_031
+      rect:
+        serializedVersion: 2
+        x: 720
+        y: 582
+        width: 188
+        height: 292
+      alignment: 9
+      pivot: {x: 0.3835165, y: 0.0002118}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: bf6b4569c5113a0f1c2057ea765bf641
+      internalID: 21300062
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_032
+      rect:
+        serializedVersion: 2
+        x: 912
+        y: 582
+        width: 191
+        height: 292
+      alignment: 9
+      pivot: {x: 0.3513146, y: 0.0002118}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: ef5c3aae4c4e3c7fcb628e6a112a9ce0
+      internalID: 21300064
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_033
+      rect:
+        serializedVersion: 2
+        x: 2
+        y: 286
+        width: 193
+        height: 292
+      alignment: 9
+      pivot: {x: 0.3476741, y: 0.0002118}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b86747623c73bed11022d15411b1257c
+      internalID: 21300066
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_034
+      rect:
+        serializedVersion: 2
+        x: 924
+        y: 16
+        width: 173
+        height: 266
+      alignment: 9
+      pivot: {x: 0.3416248, y: 0.0002325}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4bd7ee3fedd12951ae486b474f815eb2
+      internalID: 21300068
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: Elite01_Death_035
+      rect:
+        serializedVersion: 2
+        x: 199
+        y: 289
+        width: 177
+        height: 289
+      alignment: 9
+      pivot: {x: 0.3904017, y: 0.0002140}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b3ebd2f4de4703fcc9441ef2ed245fe3
+      internalID: 21300070
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    outline: []
+    physicsShape: []
+    bones: []
+    spriteID: 5e97eb03825dee720800000000000000
+    internalID: 0
+    vertices: []
+    indices: 
+    edges: []
+    weights: []
+    secondaryTextures: []
+    nameFileIdTable:
+      Elite01_Death_018: 21300036
+      Elite01_Death_019: 21300038
+      Elite01_Death_020: 21300040
+      Elite01_Death_021: 21300042
+      Elite01_Death_022: 21300044
+      Elite01_Death_023: 21300046
+      Elite01_Death_024: 21300048
+      Elite01_Death_025: 21300050
+      Elite01_Death_026: 21300052
+      Elite01_Death_027: 21300054
+      Elite01_Death_028: 21300056
+      Elite01_Death_029: 21300058
+      Elite01_Death_030: 21300060
+      Elite01_Death_031: 21300062
+      Elite01_Death_032: 21300064
+      Elite01_Death_033: 21300066
+      Elite01_Death_034: 21300068
+      Elite01_Death_035: 21300070
+  mipmapLimitGroupName: 
+  pSDRemoveMatte: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant:

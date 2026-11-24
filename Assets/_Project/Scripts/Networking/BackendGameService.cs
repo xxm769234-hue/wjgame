@@ -1972,7 +1972,7 @@ public sealed partial class BackendGameService : MonoBehaviour
             }
             RememberIdleAdventureSessionSnapshot(session.PlayerId, sessionKey, result.Data);
         }
-        if (result != null && result.Success && result.Data != null && result.Data.items != null)
+        if (operation == "end" && result != null && result.Success && result.Data != null && result.Data.items != null)
         {
             ApplyInventorySnapshot(ConvertIdleAdventureInventory(result.Data.items));
             yield return RefreshUserAndInventoryAfterMutation();

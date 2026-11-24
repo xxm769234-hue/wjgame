@@ -1,0 +1,6 @@
+{
+    "name": "WeijunGameProject.Editor",
+    "references": ["WeijunGameProject", "Unity.TextMeshPro", "Unity.ugui"],
+    "includePlatforms": ["Editor"],
+    "autoReferenced": false
+}

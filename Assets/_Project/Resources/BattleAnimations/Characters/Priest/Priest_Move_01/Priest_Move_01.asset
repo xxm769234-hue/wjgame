@@ -12,6 +12,58 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Priest_Move_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: 0.0318, y: 0.0247}
+    right: {x: 0.1166, y: 0.0177}
+  - frame: 12
+    left: {x: 0.0035, y: 0.0495}
+    right: {x: 0.1201, y: 0.0177}
+  - frame: 15
+    left: {x: -0.0177, y: 0.0495}
+    right: {x: 0.1307, y: 0.1519}
+  - frame: 21
+    left: {x: -0.1201, y: 0.0247}
+    right: {x: 0.1661, y: 0.1661}
+  - frame: 24
+    left: {x: -0.1201, y: 0.0883}
+    right: {x: 0.1979, y: 0.1731}
+  - frame: 27
+    left: {x: -0.1562, y: 0.0883}
+    right: {x: 0.2226, y: 0.0742}
+  - frame: 33
+    left: {x: -0.1469, y: 0.0425}
+    right: {x: 0.2438, y: 0.0450}
+  - frame: 36
+    left: {x: -0.1281, y: 0.0438}
+    right: {x: 0.2875, y: 0.0450}
+  - frame: 51
+    left: {x: -0.1000, y: 0.0400}
+    right: {x: 0.3180, y: 0.0450}
+  - frame: 57
+    left: {x: -0.1262, y: 0.0400}
+    right: {x: 0.2367, y: 0.0530}
+  - frame: 63
+    left: {x: -0.1062, y: 0.0225}
+    right: {x: 0.2332, y: 0.0225}
+  - frame: 69
+    left: {x: -0.0488, y: 0.0150}
+    right: {x: 0.2332, y: 0.0141}
+  - frame: 72
+    left: {x: 0.0459, y: 0.0212}
+    right: {x: 0.2085, y: 0.0177}
+  - frame: 75
+    left: {x: 0.0459, y: 0.0212}
+    right: {x: 0.2085, y: 0.0177}
+  - frame: 78
+    left: {x: 0.0247, y: 0.0247}
+    right: {x: 0.1272, y: 0.0141}
+  - frame: 81
+    left: {x: 0.0247, y: 0.0247}
+    right: {x: 0.1095, y: 0.0141}
+  - frame: 96
+    left: {x: 0.0318, y: 0.0247}
+    right: {x: 0.1148, y: 0.0177}
   sequenceId: Priest_Move_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u79FB\u52A8\\\u7267\u5E08"
   action: 1

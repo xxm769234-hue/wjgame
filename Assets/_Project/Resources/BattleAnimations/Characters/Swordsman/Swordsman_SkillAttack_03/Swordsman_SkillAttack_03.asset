@@ -12,6 +12,79 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Swordsman_SkillAttack_03
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.3345, y: 0.1103}
+    right: {x: 0.2278, y: 0.0142}
+  - frame: 33
+    left: {x: -0.3808, y: 0.1352}
+    right: {x: 0.2028, y: 0.0214}
+  - frame: 35
+    left: {x: -0.3630, y: 0.1281}
+    right: {x: 0.2384, y: 0.0320}
+  - frame: 36
+    left: {x: -0.2705, y: 0.0854}
+    right: {x: 0.3915, y: 0.0356}
+  - frame: 39
+    left: {x: -0.2598, y: 0.0819}
+    right: {x: 0.4662, y: 0.0356}
+  - frame: 42
+    left: {x: -0.2598, y: 0.0819}
+    right: {x: 0.4520, y: 0.0391}
+  - frame: 45
+    left: {x: -0.1950, y: 0.0600}
+    right: {x: 0.3975, y: 0.0600}
+  - frame: 48
+    left: {x: -0.0961, y: -0.0285}
+    right: {x: 0.3975, y: 0.0750}
+  - frame: 51
+    left: {x: -0.0961, y: -0.0320}
+    right: {x: 0.5600, y: 0.0900}
+  - frame: 54
+    left: {x: -0.0961, y: -0.0285}
+    right: {x: 0.5996, y: 0.0900}
+  - frame: 56
+    left: {x: -0.0712, y: -0.0285}
+    right: {x: 0.5996, y: -0.0107}
+  - frame: 57
+    left: {x: -0.0676, y: -0.0285}
+    right: {x: 0.5730, y: -0.0107}
+  - frame: 60
+    left: {x: 0.0391, y: 0.0036}
+    right: {x: 0.1566, y: 0.0000}
+  - frame: 63
+    left: {x: 0.0391, y: 0.0107}
+    right: {x: 0.2130, y: 0.0880}
+  - frame: 66
+    left: {x: -0.0641, y: 0.0996}
+    right: {x: 0.3150, y: 0.0880}
+  - frame: 69
+    left: {x: -0.0641, y: 0.0996}
+    right: {x: 0.3345, y: 0.0880}
+  - frame: 71
+    left: {x: -0.4199, y: 0.0854}
+    right: {x: 0.3345, y: 0.0356}
+  - frame: 84
+    left: {x: -0.4555, y: 0.0783}
+    right: {x: 0.3203, y: 0.0427}
+  - frame: 86
+    left: {x: -0.4555, y: 0.0783}
+    right: {x: 0.1850, y: 0.0605}
+  - frame: 87
+    left: {x: -0.3010, y: 0.1460}
+    right: {x: 0.1744, y: 0.1460}
+  - frame: 90
+    left: {x: -0.1390, y: 0.2240}
+    right: {x: 0.1550, y: 0.2240}
+  - frame: 91
+    left: {x: -0.1390, y: 0.2240}
+    right: {x: 0.1550, y: 0.2240}
+  - frame: 93
+    left: {x: -0.1910, y: 0.2100}
+    right: {x: 0.1550, y: 0.2100}
+  - frame: 96
+    left: {x: -0.4520, y: 0.1495}
+    right: {x: 0.1700, y: 0.1500}
   sequenceId: Swordsman_SkillAttack_03
   sourceFolder: "D:\\\u89D2\u8272\u52A8\u753B\\\u5251\u58EB\\\u8FDE\u7EED\u653B\u51FB\\\u9AD8\u901F\u8FDE\u65A9_20261112_9853"
   action: 3
@@ -219,6 +292,7 @@ MonoBehaviour:
   approachDistance: 0
   blinkApproach: 0
   approachContact: {x: 3.34, y: 0.88}
+  recoveryFootX: -2.07
   attackTargetBodyOffset: {x: 0, y: 0.14}
   restartTargetHitOnImpact: 1
   presentationFrames: []
@@ -230,10 +304,18 @@ MonoBehaviour:
   movementTravelLastFrame: 0
   effects: []
   audioCues:
-  - clip: {fileID: 8300000, guid: 66a160ea045e530999560d00925acb9f, type: 3}
-    startFrame: 0
-    endFrame: 97
-    volume: 0.85
+  - clip: {fileID: 8300000, guid: cd0af157cb1a5d0a8fc280d39a3c62eb, type: 3}
+    startFrame: 38
+    endFrame: 51
+    volume: 0.78
+  - clip: {fileID: 8300000, guid: 4975e8fff4ec59c7b57bead33a181a06, type: 3}
+    startFrame: 49
+    endFrame: 61
+    volume: 0.71
+  - clip: {fileID: 8300000, guid: cd0af157cb1a5d0a8fc280d39a3c62eb, type: 3}
+    startFrame: 72
+    endFrame: 85
+    volume: 0.89
   impactFrames: 260000003100000048000000
   impactFeedback:
   - {fileID: 11400000, guid: 4ca690a3749d511c85307105ac5c4389, type: 2}
@@ -242,3 +324,4 @@ MonoBehaviour:
   defenseFrame: 0
   releaseFrame: 0
   deathBlendDuration: 0.08
+  audioCuesIncludeImpacts: 1

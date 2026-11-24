@@ -250,8 +250,8 @@ public partial class HomePageUI
         if (operation.playerId == GameSession.PlayerId)
         {
             equipmentStatusMessage = operation.recoveryAttempts <= 2
-                ? "正在自动同步升级结果，请稍候..."
-                : "网络暂未恢复，正在后台同步此装备；其他装备可继续操作";
+                ? "正在确认升级结果…"
+                : "此装备的升级结果待确认，可先操作其他装备";
             ResumePendingEquipmentGrowthRequest();
         }
     }
@@ -296,7 +296,7 @@ public partial class HomePageUI
         }
         pending.inFlight = true;
         pending.owner = this;
-        equipmentStatusMessage = "正在自动同步装备升级结果...";
+        equipmentStatusMessage = "正在确认升级结果…";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
         try
         {
@@ -310,7 +310,7 @@ public partial class HomePageUI
                     || response.data == null || response.data.playerEquipmentId != pending.playerEquipmentId
                     || response.data.currentLevel < pending.expectedLevel || response.data.maxLevel < response.data.currentLevel)
                 {
-                    equipmentStatusMessage = "升级结果暂未同步，系统会自动重试";
+                    equipmentStatusMessage = "升级结果待确认，请稍候";
                     yield break;
                 }
                 if (CanConfirmEquipmentGrowthSnapshot(pending, response.data.currentLevel))
@@ -322,7 +322,7 @@ public partial class HomePageUI
                     ownsMutation = true;
                     string message = response.data.currentLevel > pending.expectedLevel
                         ? $"装备等级已确认：Lv.{response.data.currentLevel}"
-                        : "本次操作已结束，装备等级未变化，消耗信息已刷新";
+                        : "本次升级结束，装备等级未变化";
                     pending.resultResolved = true;
                     pending.completionMessage = message;
                     PersistPendingEquipmentGrowthRequests(pending.playerId);
@@ -332,7 +332,7 @@ public partial class HomePageUI
                 }
                 else
                 {
-                    equipmentStatusMessage = "正在后台同步此装备的升级结果";
+                    equipmentStatusMessage = "正在确认此装备的升级结果";
                 }
             }
         }
@@ -412,7 +412,7 @@ public partial class HomePageUI
                     if (!rejected)
                     {
                         Debug.LogWarning($"Equipment growth result unresolved: http={request.responseCode}, code={(response != null ? response.code : 0)}, result={request.result}, equipment={operation.playerEquipmentId}, from={operation.expectedLevel}, target={operation.targetLevel}. Original request retained for reconciliation.", this);
-                        equipmentStatusMessage = "升级结果暂未同步，正在自动恢复，请稍候...";
+                        equipmentStatusMessage = "正在确认升级结果，请稍候";
                         yield break;
                     }
                     completion = EquipmentGrowthError(response.code, GetApiError(response));
@@ -502,7 +502,7 @@ public partial class HomePageUI
             preservedBreakthroughVersion = equipmentBreakthroughVersion;
             equipmentBreakthroughBusy = true;
             InvalidateEquipmentMaterialSelection();
-            equipmentBreakthroughMessage = "正在同步资源，已保留所选材料；同步后请重新预览";
+            equipmentBreakthroughMessage = "已保留所选材料，请稍后查看费用";
             RenderEquipmentBreakthroughPanel();
         }
         try
@@ -525,7 +525,7 @@ public partial class HomePageUI
                     inventoryServerBacked = true;
                     SyncInventoryResourceValues(currentInventoryItems);
                 }
-                else inventoryError = "余额正在后台重新同步";
+                else inventoryError = "余额暂时无法查看";
             }
             yield return GetEquipmentInventoryList(true);
             if (playerId != GameSession.PlayerId || token != GameSession.Token) yield break;
@@ -535,12 +535,12 @@ public partial class HomePageUI
             equipmentRefreshRunning = false;
             equipmentGrowthStateReadSucceeded = string.IsNullOrEmpty(inventoryError) && _equipmentDataReadSucceeded;
             equipmentStatusMessage = message + (string.IsNullOrEmpty(inventoryError) ? string.Empty : "；" + inventoryError)
-                + (_equipmentDataReadSucceeded ? string.Empty : "；装备数据正在后台重新同步");
+                + (_equipmentDataReadSucceeded ? string.Empty : "；装备详情暂时无法查看");
             if (!_equipmentDataReadSucceeded)
             {
                 equipmentUpgradePreview = null;
                 equipmentUpgradePreviewRunning = false;
-                equipmentUpgradePreviewError = "装备数据正在后台重新同步";
+                equipmentUpgradePreviewError = "装备详情暂时无法查看";
             }
             SetStatus(equipmentStatusMessage);
         }
@@ -563,7 +563,7 @@ public partial class HomePageUI
         UnityWebRequest request = CreateAuthorizedGet($"/equipment/{previousPlan.playerEquipmentId}/upgrade-preview");
         if (request == null)
         {
-            equipmentBreakthroughMessage = "资源同步暂未完成，请稍后重新预览材料";
+            equipmentBreakthroughMessage = "暂时无法查看费用，请稍后重试";
             RenderEquipmentBreakthroughPanel();
             yield break;
         }
@@ -577,7 +577,7 @@ public partial class HomePageUI
                 && IsValidEquipmentSinglePreview(response.data, previousPlan.playerEquipmentId, previousPlan.currentLevel))
             {
                 equipmentBreakthroughPlan = response.data;
-                equipmentBreakthroughMessage = "资源已同步，已保留所选材料；请重新预览材料费用";
+                equipmentBreakthroughMessage = "已保留所选材料，请重新查看费用";
             }
             else
             {
@@ -591,9 +591,9 @@ public partial class HomePageUI
     {
         switch (code)
         {
-            case 6204: return "资源不足，消耗与余额已刷新";
+            case 6204: return "资源不足";
             case 6207: return "装备等级已变化，请重新预览";
-            case 6208: return "升级请求已失效，费用已刷新，请重新升级";
+            case 6208: return "升级费用已变化，请重新查看";
             case 6209: return "升级条件已变化，请重新查看消耗";
             case 6210: return "需要先手动突破，请查看最新预览并选择突破材料";
             case 6211: return "突破材料数量不符，请重新选择";
@@ -811,7 +811,7 @@ public partial class HomePageUI
         if (!IsValidEquipmentMaterialSelection(selection, plan, ids)) return;
         if (ids.Any(HasPendingEquipmentGrowthRequest))
         {
-            equipmentBreakthroughMessage = "所选材料正在同步升级结果，请选择其他装备或稍后再试";
+            equipmentBreakthroughMessage = "所选装备正在升级，请选择其他材料或稍后再试";
             RenderEquipmentBreakthroughPanel();
             return;
         }

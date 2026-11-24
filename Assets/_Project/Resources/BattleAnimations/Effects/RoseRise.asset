@@ -1,0 +1,77 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
+  m_Name: RoseRise
+  m_EditorClassIdentifier: 
+  sequenceId: RoseRise
+  sourceFolder: 
+  action: 7
+  frameRate: 24
+  playbackDuration: 1.3333334
+  loop: 0
+  targetsEnemy: 0
+  targetsAllEnemies: 0
+  frames:
+  - {fileID: 5413437653071084203, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -907189384443740704, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -9048925542026536480, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -4726523600649511122, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -3954498899338667357, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: 8509674290747574905, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: 4417534877046071362, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: 9057502214358318604, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -7902803229013184635, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -594978125777519247, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: 4004136044397961001, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -1079030031783425895, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: 250273515367027430, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: 9054985591357993826, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: 459010905306121662, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -5325806095616598702, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -2536702579080547883, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: 9125768339937804845, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -1521799493748410104, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -5408502164798847502, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: 7695399274803011056, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -168065284796941946, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: 2532333126433042206, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -602348655055024772, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -5224616278649335455, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -4522024832843462527, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -755148432601806169, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -5605945869051546491, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -8377011917371542854, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: 2834500296052531299, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: -7837343422136937381, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  - {fileID: 8777034520132015620, guid: 697634e64288f5d42a69becd5bc5dfc6, type: 3}
+  frameTimes: []
+  approachDistance: 0
+  blinkApproach: 0
+  approachContact: {x: 0, y: 0}
+  recoveryFootX: 0
+  departureFootX: 0
+  attackTargetBodyOffset: {x: 0, y: 0}
+  restartTargetHitOnImpact: 0
+  presentationFrames: []
+  movementBodyFrames: []
+  movementTrailFrames: []
+  movementPreparationFrames: 
+  movementRecoveryFrames: 
+  movementTravelFirstFrame: 0
+  movementTravelLastFrame: 0
+  effects: []
+  audioCues: []
+  impactFrames: 
+  impactFeedback: []
+  defenseFrame: 0
+  releaseFrame: 0
+  deathBlendDuration: 0.08

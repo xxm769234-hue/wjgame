@@ -12,6 +12,16 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Swordsman_Hit_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.2972, y: 0.1174}
+    right: {x: 0.2954, y: 0.0214}
+  - frame: 3
+    left: {x: -0.4199, y: -0.0427}
+    right: {x: 0.1708, y: -0.1637}
+  - frame: 38
+    left: {x: -0.4128, y: -0.0463}
+    right: {x: 0.1851, y: -0.1601}
   sequenceId: Swordsman_Hit_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u53D7\u51FB\\\u5251\u58EB"
   action: 5

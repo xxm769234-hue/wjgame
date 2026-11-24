@@ -231,7 +231,7 @@ public partial class HomePageUI
             if (request.result != UnityWebRequest.Result.Success)
             {
                 mapEntryRunning = false;
-                SetStatus("地图同步失败：" + ApiRequestUtility.GetErrorMessage(request, "请求失败"));
+                SetStatus("地图暂时无法打开：" + ApiRequestUtility.GetErrorMessage(request, "请求失败"));
                 yield break;
             }
 
@@ -239,7 +239,7 @@ public partial class HomePageUI
             if (response == null || response.code != 200 || response.data == null)
             {
                 mapEntryRunning = false;
-                SetStatus("地图同步失败：" + (response == null ? "返回数据格式错误" : GetApiError(response)));
+                SetStatus("地图暂时无法打开：" + (response == null ? "返回数据格式错误" : GetApiError(response)));
                 yield break;
             }
 
@@ -893,7 +893,7 @@ public partial class HomePageUI
 
         paymentAccountRefreshRunning = true;
         paymentDeliveryRefreshPending = true;
-        StartCoroutine(RefreshAccountSnapshot("支付已到账，资源已刷新。", true));
+        StartCoroutine(RefreshAccountSnapshot("支付已到账。", true));
     }
 
     private void HandlePaymentDeliveredRealtimeNotification(string payload)
@@ -911,7 +911,7 @@ public partial class HomePageUI
 
         if (!paymentAccountRefreshRunning && !paymentDeliveryRefreshPending)
         {
-            StartCoroutine(RefreshAccountSnapshot("支付奖励已到账，资源已刷新。"));
+            StartCoroutine(RefreshAccountSnapshot("支付奖励已到账。"));
         }
     }
 

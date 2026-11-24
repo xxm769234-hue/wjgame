@@ -141,7 +141,7 @@ public partial class HomePageUI
                     }
                     else
                     {
-                        SetCustomerServiceStatus("客服入口已准备就绪");
+                        SetCustomerServiceStatus(string.Empty);
                     }
                     customerServiceRequestRunning = false;
                     RefreshCustomerServiceButtonState();

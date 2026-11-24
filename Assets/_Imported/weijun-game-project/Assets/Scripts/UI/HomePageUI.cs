@@ -67,7 +67,6 @@ public partial class HomePageUI : MonoBehaviour
     private string selectedInventoryItemKey = string.Empty;
     private string inventoryStatusMessage = string.Empty;
     private bool inventoryServerBacked;
-    private bool lotteryRolling;
     private Text popupNameText;
     private Text popupAccountText;
     private Text popupLevelText;
@@ -1563,7 +1562,7 @@ public partial class HomePageUI : MonoBehaviour
             return;
         }
 
-        if (lotteryRolling)
+        if (summonReveal != null && summonReveal.isActiveAndEnabled)
         {
             return;
         }
@@ -1601,30 +1600,15 @@ public partial class HomePageUI : MonoBehaviour
             rewardValue = 150;
         }
 
-        StartCoroutine(PlayLotteryFlipEffect(rewardName, rewardKey, rewardValue));
-    }
-
-    private IEnumerator PlayLotteryFlipEffect(string finalRewardName, string finalRewardKey, int finalRewardValue)
-    {
-        lotteryRolling = true;
-        string[] previewNames = { "金币", "木材", "石材", "铁矿", "抽奖券", "英雄箱" };
-        int[] previewValues = { 80, 150, 150, 120, 1, 1 };
-
-        for (int i = 0; i < 18; i++)
-        {
-            int index = (i + UnityEngine.Random.Range(0, previewNames.Length)) % previewNames.Length;
-            ShowLotteryPanel("奖品翻动中...", previewNames[index], previewValues[index], true, true);
-            yield return new WaitForSeconds(0.045f + i * 0.006f);
-        }
-
-        ShowLotteryPanel("即将开奖...", finalRewardName, finalRewardValue, true, true);
-        yield return new WaitForSeconds(0.22f);
-
-        lotteryRolling = false;
-        AddLocalResource(finalRewardKey, finalRewardValue);
+        AddLocalResource(rewardKey, rewardValue);
         PlayerPrefs.SetString("TaskLotteryDate", GetTaskDate());
         PlayerPrefs.Save();
-        ShowLotteryPanel($"获得：{finalRewardName} x{finalRewardValue}", finalRewardName, finalRewardValue, true);
+        PlaySummonReveal("Blue", new CardDrawData
+        {
+            drawCount = 1,
+            results = new[] { new CardDrawResultResponse { drawSequence = 1, grantedRewardType = "ITEM",
+                grantedRewardName = rewardName, grantedRewardKey = rewardKey, grantedRewardAmount = rewardValue } }
+        });
     }
 
     private void ShowDailySignContent()
@@ -2231,7 +2215,7 @@ public partial class HomePageUI : MonoBehaviour
             }
 
             string itemKey = GetInventoryItemKey(item);
-            Sprite sprite = view.ResolveIcon(item.itemKey, item.name, item.icon);
+            Sprite sprite = view.ResolveIcon(item.itemKey, item.name, item.icon, item.quality, item.itemType);
 
             string fallbackLabel = string.IsNullOrEmpty(item.name) ? "物" : item.name.Substring(0, 1);
             slot.ShowItem(

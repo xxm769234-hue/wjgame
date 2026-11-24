@@ -110,9 +110,7 @@ public static class SmallButtonIconUtility
             case "返回": approvedName = "10_return"; break;
             case "建造副": approvedName = "06_build"; break;
             case "一键收取": approvedName = "18_resource_reward"; break;
-            case "编队": approvedName = "13_formation"; break;
             case "对战副": approvedName = "19_battle"; break;
-            case "一键清除": approvedName = "20_formation_clear"; break;
             default: return null;
         }
         return Resources.Load<Sprite>("UI/ApprovedUi/Icons/" + approvedName);

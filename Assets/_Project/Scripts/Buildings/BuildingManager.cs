@@ -127,7 +127,7 @@ public sealed class BuildingManager : MonoBehaviour
             if (!result.Data.canBuild)
             {
                 remoteActionPending = false;
-                string message = string.IsNullOrEmpty(result.Data.message) ? "服务器拒绝了该建造操作。" : result.Data.message;
+                string message = string.IsNullOrEmpty(result.Data.message) ? "当前无法建造。" : result.Data.message;
                 Debug.LogWarning($"Backend building check rejected: {message}", slot);
             if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetBuildingMessage($"建筑操作失败：{message}");
                 return;
@@ -351,7 +351,7 @@ public sealed class BuildingManager : MonoBehaviour
 
     private static string ResultMessage<T>(BackendResult<T> result)
     {
-        if (result == null) return "未收到服务器响应。";
+        if (result == null) return "连接中断，请稍后重试。";
         return FrontendTextLocalization.Normalize(string.IsNullOrEmpty(result.Message) ? $"请求状态：{result.HttpStatus}" : result.Message);
     }
 }

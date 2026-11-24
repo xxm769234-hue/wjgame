@@ -12,6 +12,85 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Warhammer_SkillAttack_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.1162, y: 0.0163}
+    right: {x: 0.1497, y: 0.0517}
+  - frame: 3
+    left: {x: -0.3361, y: 0.0163}
+    right: {x: 0.1887, y: 0.0411}
+  - frame: 6
+    left: {x: -0.3361, y: 0.0163}
+    right: {x: 0.1887, y: 0.0411}
+  - frame: 9
+    left: {x: -0.3006, y: 0.0198}
+    right: {x: 0.2898, y: 0.0411}
+  - frame: 12
+    left: {x: -0.1304, y: 0.0198}
+    right: {x: 0.4653, y: 0.0376}
+  - frame: 25
+    left: {x: -0.1198, y: 0.0163}
+    right: {x: 0.4653, y: 0.0376}
+  - frame: 27
+    left: {x: -0.1198, y: 0.0163}
+    right: {x: 0.4015, y: 0.0411}
+  - frame: 30
+    left: {x: -0.1198, y: 0.0163}
+    right: {x: 0.1675, y: 0.0517}
+  - frame: 35
+    left: {x: -0.1393, y: 0.0234}
+    right: {x: 0.1462, y: 0.0517}
+  - frame: 36
+    left: {x: -0.1393, y: 0.0766}
+    right: {x: 0.1462, y: 0.0730}
+  - frame: 39
+    left: {x: -0.0417, y: 0.5517}
+    right: {x: 0.1214, y: 0.5517}
+  - frame: 40
+    left: {x: 0.0593, y: 0.7078}
+    right: {x: 0.1533, y: 0.7255}
+  - frame: 42
+    left: {x: 0.1019, y: 0.8638}
+    right: {x: 0.1568, y: 0.8993}
+  - frame: 45
+    left: {x: 0.1887, y: 1.0517}
+    right: {x: 0.2455, y: 1.0588}
+  - frame: 48
+    left: {x: 0.1887, y: 1.0517}
+    right: {x: 0.2455, y: 1.0588}
+  - frame: 51
+    left: {x: 0.1760, y: 0.9985}
+    right: {x: 0.2455, y: 1.0411}
+  - frame: 54
+    left: {x: 0.1533, y: 0.4480}
+    right: {x: 0.6994, y: 0.4134}
+  - frame: 56
+    left: {x: 0.1760, y: -0.0015}
+    right: {x: 0.6994, y: 0.0517}
+  - frame: 57
+    left: {x: 0.2987, y: -0.0936}
+    right: {x: 0.8731, y: -0.0405}
+  - frame: 60
+    left: {x: 0.3200, y: -0.1185}
+    right: {x: 0.8980, y: -0.1149}
+  - frame: 71
+    left: {x: 0.3483, y: -0.1185}
+    right: {x: 0.8519, y: -0.1149}
+  - frame: 81
+    left: {x: 0.3430, y: -0.1185}
+    right: {x: 0.8802, y: -0.1149}
+  - frame: 86
+    left: {x: 0.2490, y: -0.0936}
+    right: {x: 0.5469, y: -0.0936}
+  - frame: 91
+    left: {x: 0.0363, y: -0.1114}
+    right: {x: 0.2348, y: -0.1114}
+  - frame: 93
+    left: {x: -0.1162, y: 0.0163}
+    right: {x: 0.2100, y: 0.0446}
+  - frame: 96
+    left: {x: -0.1162, y: 0.0163}
+    right: {x: 0.1533, y: 0.0482}
   sequenceId: Warhammer_SkillAttack_01
   sourceFolder: "D:\\\u89D2\u8272\u52A8\u753B\\\u6218\u9524\\20261112_\u666E\u901A\u653B\u51FB\u4E0E\u6280\u80FD\u653B\u51FB\\\u6218\u9524\u6280\u80FD\u653B\u51FB\\Frames"
   action: 3

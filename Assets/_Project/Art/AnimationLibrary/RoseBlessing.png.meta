@@ -1,0 +1,2271 @@
+fileFormatVersion: 2
+guid: 697634e64288f5d42a69becd5bc5dfc6
+TextureImporter:
+  internalIDToNameTable: []
+  externalObjects: {}
+  serializedVersion: 13
+  mipmaps:
+    mipMapMode: 0
+    enableMipMap: 0
+    sRGBTexture: 1
+    linearTexture: 0
+    fadeOut: 0
+    borderMipMap: 0
+    mipMapsPreserveCoverage: 0
+    alphaTestReferenceValue: 0.5
+    mipMapFadeDistanceStart: 1
+    mipMapFadeDistanceEnd: 3
+  bumpmap:
+    convertToNormalMap: 0
+    externalNormalMap: 0
+    heightScale: 0.25
+    normalMapFilter: 0
+    flipGreenChannel: 0
+  isReadable: 0
+  streamingMipmaps: 0
+  streamingMipmapsPriority: 0
+  vTOnly: 0
+  ignoreMipmapLimit: 0
+  grayScaleToAlpha: 0
+  generateCubemap: 6
+  cubemapConvolution: 0
+  seamlessCubemap: 0
+  textureFormat: 1
+  maxTextureSize: 2048
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 1
+    aniso: 1
+    mipBias: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 1
+  nPOTScale: 0
+  lightmap: 0
+  compressionQuality: 50
+  spriteMode: 2
+  spriteExtrude: 1
+  spriteMeshType: 1
+  alignment: 0
+  spritePivot: {x: 0.5, y: 0.5}
+  spritePixelsToUnits: 100
+  spriteBorder: {x: 0, y: 0, z: 0, w: 0}
+  spriteGenerateFallbackPhysicsShape: 1
+  alphaUsage: 1
+  alphaIsTransparency: 1
+  spriteTessellationDetail: -1
+  textureType: 8
+  textureShape: 1
+  singleChannelComponent: 0
+  flipbookRows: 1
+  flipbookColumns: 1
+  maxTextureSizeSet: 0
+  compressionQualitySet: 0
+  textureFormatSet: 0
+  ignorePngGamma: 0
+  applyGammaDecoding: 0
+  swizzle: 50462976
+  cookieLightType: 0
+  platformSettings:
+  - serializedVersion: 3
+    buildTarget: DefaultTexturePlatform
+    maxTextureSize: 4096
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 2
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 3
+    buildTarget: Standalone
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 3
+    buildTarget: WebGL
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  spriteSheet:
+    serializedVersion: 2
+    sprites:
+    - serializedVersion: 2
+      name: RoseBlessing_00
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 2816
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 2e851c72e7b0575a8b0de9671646e461
+      internalID: 21300000
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_01
+      rect:
+        serializedVersion: 2
+        x: 320
+        y: 2816
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 866e906d56ef50b5b692efcd95d2c107
+      internalID: -4751328491500637315
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_02
+      rect:
+        serializedVersion: 2
+        x: 640
+        y: 2816
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 252463125cce54aa8e1f6826a7fb9a5a
+      internalID: 767689433049450500
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_03
+      rect:
+        serializedVersion: 2
+        x: 960
+        y: 2816
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 7ff3e8d237715a4895b5a0b012489cf4
+      internalID: -1301513454186719497
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_04
+      rect:
+        serializedVersion: 2
+        x: 1280
+        y: 2816
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 699dc4c825be5999ab8c1d1d0f94e6e4
+      internalID: 5076825765452870618
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_05
+      rect:
+        serializedVersion: 2
+        x: 1600
+        y: 2816
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b68566f57d2056529dcdffe4269b699e
+      internalID: 6333857036017839492
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_06
+      rect:
+        serializedVersion: 2
+        x: 1920
+        y: 2816
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 1ad07a6bf28a5e538e266d3334f85707
+      internalID: 9121682342403023905
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_07
+      rect:
+        serializedVersion: 2
+        x: 2240
+        y: 2816
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: feae458010d2586c8fefc0450fa85fb1
+      internalID: -515367202093167489
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_08
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 2560
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: e464fdff8d0854eba3f6a1aabbb4be8d
+      internalID: 5529438548360158892
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_09
+      rect:
+        serializedVersion: 2
+        x: 320
+        y: 2560
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: bcbc152fd94357509ee003076b39bcfb
+      internalID: -5819355854200037778
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_10
+      rect:
+        serializedVersion: 2
+        x: 640
+        y: 2560
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 77a13d385e2451a2a6266e1eae14acd5
+      internalID: -6721019157752587906
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_11
+      rect:
+        serializedVersion: 2
+        x: 960
+        y: 2560
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 59a07edfe6595abfa5dd0a1686df359a
+      internalID: 8673681859342496120
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_12
+      rect:
+        serializedVersion: 2
+        x: 1280
+        y: 2560
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: c475b089629c599ab56736a6b044eb92
+      internalID: 7096659418614679477
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_13
+      rect:
+        serializedVersion: 2
+        x: 1600
+        y: 2560
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 247e34764c05531f9e791bfb5ddb20b0
+      internalID: -2823247387189362948
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_14
+      rect:
+        serializedVersion: 2
+        x: 1920
+        y: 2560
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: ec36b59a5ac151b9b083019e4ca1522d
+      internalID: 308188629844038330
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_15
+      rect:
+        serializedVersion: 2
+        x: 2240
+        y: 2560
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 35e2a611e6a256898373f151b54f248a
+      internalID: 1874364490301826069
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_16
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 2304
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: fb41af8c84fb52f6bafb52bc30bb4c73
+      internalID: 6505807965238135849
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_17
+      rect:
+        serializedVersion: 2
+        x: 320
+        y: 2304
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 6f6442497268541e90804525fa1c5e74
+      internalID: -4651976403930840226
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_18
+      rect:
+        serializedVersion: 2
+        x: 640
+        y: 2304
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 7fc32e49ebaf542ba4072b2ba93eeee6
+      internalID: -2229665181241681657
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_19
+      rect:
+        serializedVersion: 2
+        x: 960
+        y: 2304
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 7aa159fd72b45a8eaa0db3edca76f1a4
+      internalID: 6899968285344548833
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_20
+      rect:
+        serializedVersion: 2
+        x: 1280
+        y: 2304
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 49d316bffaaf56ecb4d0c65fb03edeb3
+      internalID: 7956758401490202914
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_21
+      rect:
+        serializedVersion: 2
+        x: 1600
+        y: 2304
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 439205d24ff1586dbbc74694a0919c47
+      internalID: 464825464780805365
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_22
+      rect:
+        serializedVersion: 2
+        x: 1920
+        y: 2304
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f99ea794e3b35e4aa0c6e872ffa58130
+      internalID: -2297978917117268252
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_23
+      rect:
+        serializedVersion: 2
+        x: 2240
+        y: 2304
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f4335683e7cc54839c8cce8e622eee97
+      internalID: 2106185750506229661
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_24
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 2048
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 2222bcdf00b3589fb2ab1d1c3d64aaf5
+      internalID: 3850710933870664685
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_25
+      rect:
+        serializedVersion: 2
+        x: 320
+        y: 2048
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 194b51ea69e5531dab06a93d44a301e6
+      internalID: 523354182947898064
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_26
+      rect:
+        serializedVersion: 2
+        x: 640
+        y: 2048
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: dbfbfc388a94552fbcff512ba770b004
+      internalID: 3159732670894018124
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_27
+      rect:
+        serializedVersion: 2
+        x: 960
+        y: 2048
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 94da8f50fa735df48808282996d7a534
+      internalID: 2986552425993294400
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_28
+      rect:
+        serializedVersion: 2
+        x: 1280
+        y: 2048
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 734dc4d9e4635bdaa94bfe85ea202a3f
+      internalID: -5858351011920937367
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_29
+      rect:
+        serializedVersion: 2
+        x: 1600
+        y: 2048
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 5f772cc7626451e0bd3408574278b1af
+      internalID: -8555086792117768267
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_30
+      rect:
+        serializedVersion: 2
+        x: 1920
+        y: 2048
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 2d3e8b91455d5768825d1b1651006c1b
+      internalID: -7070789231419284928
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseBlessing_31
+      rect:
+        serializedVersion: 2
+        x: 2240
+        y: 2048
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 97462bd2a93153388c5dd955dd38fcb8
+      internalID: 1890527173915985135
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_00
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 1792
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 61e0e47818795f72a14f0e76fc0cd967
+      internalID: 5413437653071084203
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_01
+      rect:
+        serializedVersion: 2
+        x: 320
+        y: 1792
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 9b2ced592715531b96f42173b5f30945
+      internalID: -907189384443740704
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_02
+      rect:
+        serializedVersion: 2
+        x: 640
+        y: 1792
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 5e6c799f7abd5b70bb4afe3ea28dd583
+      internalID: -9048925542026536480
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_03
+      rect:
+        serializedVersion: 2
+        x: 960
+        y: 1792
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: e9526c1acd3b594fa0079979c81e936b
+      internalID: -4726523600649511122
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_04
+      rect:
+        serializedVersion: 2
+        x: 1280
+        y: 1792
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 1f7896220498537aabaaefc735dc0235
+      internalID: -3954498899338667357
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_05
+      rect:
+        serializedVersion: 2
+        x: 1600
+        y: 1792
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 69caa6b6c680579f8aa97a83e685fb3a
+      internalID: 8509674290747574905
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_06
+      rect:
+        serializedVersion: 2
+        x: 1920
+        y: 1792
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 895977d23d1d523fb2471f0ce05dca32
+      internalID: 4417534877046071362
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_07
+      rect:
+        serializedVersion: 2
+        x: 2240
+        y: 1792
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: c78ed9b5dce5593fab5cee5f9fe5e78f
+      internalID: 9057502214358318604
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_08
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 1536
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 17a6fc08f01756a3a9af3764f0227c36
+      internalID: -7902803229013184635
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_09
+      rect:
+        serializedVersion: 2
+        x: 320
+        y: 1536
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 667035f875da52eca1ed49c071978fea
+      internalID: -594978125777519247
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_10
+      rect:
+        serializedVersion: 2
+        x: 640
+        y: 1536
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 8e500f9771c559feaa84ee3d5d57ddaa
+      internalID: 4004136044397961001
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_11
+      rect:
+        serializedVersion: 2
+        x: 960
+        y: 1536
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4de7eaaf54795312b72b98c46699cb84
+      internalID: -1079030031783425895
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_12
+      rect:
+        serializedVersion: 2
+        x: 1280
+        y: 1536
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a9766788b19b56a6b286357368c7de82
+      internalID: 250273515367027430
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_13
+      rect:
+        serializedVersion: 2
+        x: 1600
+        y: 1536
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 736f44f8ab41514f8081c76c539991df
+      internalID: 9054985591357993826
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_14
+      rect:
+        serializedVersion: 2
+        x: 1920
+        y: 1536
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 40c4d531aaf2573da613becd90abf71f
+      internalID: 459010905306121662
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_15
+      rect:
+        serializedVersion: 2
+        x: 2240
+        y: 1536
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4cfa98a91177560a8a6868ebbd69fcc3
+      internalID: -5325806095616598702
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_16
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 1280
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: fd97ce9f7f61592c814a04dd69c90384
+      internalID: -2536702579080547883
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_17
+      rect:
+        serializedVersion: 2
+        x: 320
+        y: 1280
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4770141a55ce54d786e3f127dece9f9c
+      internalID: 9125768339937804845
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_18
+      rect:
+        serializedVersion: 2
+        x: 640
+        y: 1280
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 110efe83cd9c5befb59ca73ad84e333d
+      internalID: -1521799493748410104
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_19
+      rect:
+        serializedVersion: 2
+        x: 960
+        y: 1280
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: ac1f923778fd530b8650888a83dca8ef
+      internalID: -5408502164798847502
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_20
+      rect:
+        serializedVersion: 2
+        x: 1280
+        y: 1280
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: bddaf4659ce75267aef478ab5f5dd8f4
+      internalID: 7695399274803011056
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_21
+      rect:
+        serializedVersion: 2
+        x: 1600
+        y: 1280
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 22645f0c6e4c55c2ada3c7c9c88849b5
+      internalID: -168065284796941946
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_22
+      rect:
+        serializedVersion: 2
+        x: 1920
+        y: 1280
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 2d90794454985014990a04f3665741c5
+      internalID: 2532333126433042206
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_23
+      rect:
+        serializedVersion: 2
+        x: 2240
+        y: 1280
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 1dbc30ee62025956aa5857e1394b26b2
+      internalID: -602348655055024772
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_24
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 1024
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 6d2d7c73523f531fb85cc9488d391ac3
+      internalID: -5224616278649335455
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_25
+      rect:
+        serializedVersion: 2
+        x: 320
+        y: 1024
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 860d868919255ffda6f9a8f049a9e811
+      internalID: -4522024832843462527
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_26
+      rect:
+        serializedVersion: 2
+        x: 640
+        y: 1024
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f84383b9058e5884aa4626c9dcbccaa3
+      internalID: -755148432601806169
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_27
+      rect:
+        serializedVersion: 2
+        x: 960
+        y: 1024
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b14760f264355f87adf71b3dbd509843
+      internalID: -5605945869051546491
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_28
+      rect:
+        serializedVersion: 2
+        x: 1280
+        y: 1024
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 71e7b068cf555a6a9a5149ecc3e8777d
+      internalID: -8377011917371542854
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_29
+      rect:
+        serializedVersion: 2
+        x: 1600
+        y: 1024
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: c53af70e3193560797d0d4a6bc854377
+      internalID: 2834500296052531299
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_30
+      rect:
+        serializedVersion: 2
+        x: 1920
+        y: 1024
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b6f65583a45158838204d2f08976cd42
+      internalID: -7837343422136937381
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseRise_31
+      rect:
+        serializedVersion: 2
+        x: 2240
+        y: 1024
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.2578125}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 285eac3026be5c0d9175ac4bf001421a
+      internalID: 8777034520132015620
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_00
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 768
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 9fede3be054b5f54bfba5faa373ac890
+      internalID: 4786871938382418548
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_01
+      rect:
+        serializedVersion: 2
+        x: 320
+        y: 768
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d034aeb6d5f55bf0b9ed33774878acf7
+      internalID: -8690244211117564008
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_02
+      rect:
+        serializedVersion: 2
+        x: 640
+        y: 768
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: e4c6489f33115d6ea2274d3b3548dd15
+      internalID: 8328771975764210471
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_03
+      rect:
+        serializedVersion: 2
+        x: 960
+        y: 768
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 6b282fa2e02359779a956b306d7beab2
+      internalID: -253204222091597111
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_04
+      rect:
+        serializedVersion: 2
+        x: 1280
+        y: 768
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 4b956ffd20ff5b68afb929b007e41fd2
+      internalID: -2281012476530845617
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_05
+      rect:
+        serializedVersion: 2
+        x: 1600
+        y: 768
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a4a80058e21d52fd84350898954914b4
+      internalID: 8838155047700063260
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_06
+      rect:
+        serializedVersion: 2
+        x: 1920
+        y: 768
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d2800b2b29915f809b6eca78b86d9ad3
+      internalID: 4941849534554581503
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_07
+      rect:
+        serializedVersion: 2
+        x: 2240
+        y: 768
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 2d9528ea8cbb57ca91101141ed82e055
+      internalID: -7717874278399404078
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_08
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 512
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 5b36fb4f2ae85cc1bf57fd345003761b
+      internalID: -7339180633634386258
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_09
+      rect:
+        serializedVersion: 2
+        x: 320
+        y: 512
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 70141b9b333f5de585fdc21ce5338254
+      internalID: 4698358548368477370
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_10
+      rect:
+        serializedVersion: 2
+        x: 640
+        y: 512
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 53a424e043a55ba79b3c45b6255ca75a
+      internalID: -1691625605937128437
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_11
+      rect:
+        serializedVersion: 2
+        x: 960
+        y: 512
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 872023e75d285c1586b48acce218771e
+      internalID: 3564952065355999440
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_12
+      rect:
+        serializedVersion: 2
+        x: 1280
+        y: 512
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 3676f4ec313f596e8c215f680060eff5
+      internalID: 2291057402142826863
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_13
+      rect:
+        serializedVersion: 2
+        x: 1600
+        y: 512
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 03698f31a0135cacbe07dede9795e993
+      internalID: 6479198255452730865
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_14
+      rect:
+        serializedVersion: 2
+        x: 1920
+        y: 512
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 72c483153c925c6e96ddd7512b4daf1c
+      internalID: -3778283001237690390
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_15
+      rect:
+        serializedVersion: 2
+        x: 2240
+        y: 512
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: c7ca73b238e05098b4c6b4e28e468971
+      internalID: 4252787712967959135
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_16
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 256
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: e42980651d7f58f2b956ba1cbd43adfa
+      internalID: -7443058792940681331
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_17
+      rect:
+        serializedVersion: 2
+        x: 320
+        y: 256
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: c34318049ffb59e2a71098e0172a6fdc
+      internalID: 914083267358971611
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_18
+      rect:
+        serializedVersion: 2
+        x: 640
+        y: 256
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 8d8d8f85a37f5e78b816cf0f37ceaed5
+      internalID: -3224100445622760506
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_19
+      rect:
+        serializedVersion: 2
+        x: 960
+        y: 256
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: facfb696c5da5462a750d0cea511a08b
+      internalID: -515346483699626032
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_20
+      rect:
+        serializedVersion: 2
+        x: 1280
+        y: 256
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 19e70c721df955929c69329e477644a8
+      internalID: 1804033018292550935
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_21
+      rect:
+        serializedVersion: 2
+        x: 1600
+        y: 256
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: dda901e4775d536685084206704e7fe4
+      internalID: 110149346993952148
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_22
+      rect:
+        serializedVersion: 2
+        x: 1920
+        y: 256
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: e69da99028ec5dd0bd0500a1c3ee0288
+      internalID: 6062060918150061793
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_23
+      rect:
+        serializedVersion: 2
+        x: 2240
+        y: 256
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d446195523005c37a06aad7a2dd700cf
+      internalID: -8845914093263268593
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_24
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 0
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 919f73ca86d5565cb8dfc3a596815fc5
+      internalID: 8681033558134232343
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_25
+      rect:
+        serializedVersion: 2
+        x: 320
+        y: 0
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b8e2e93df22b5a939583d53c817cb027
+      internalID: -3468601867364671149
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_26
+      rect:
+        serializedVersion: 2
+        x: 640
+        y: 0
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: a84c224843b852849006e462460ea49b
+      internalID: -5870296651870548803
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_27
+      rect:
+        serializedVersion: 2
+        x: 960
+        y: 0
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 423888cc5ae45ce8abdd0cdecb3278d4
+      internalID: 5516450317021350490
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_28
+      rect:
+        serializedVersion: 2
+        x: 1280
+        y: 0
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: eaef873ef8c6592b9fb8e3b9704b5bf7
+      internalID: 2682205433401827736
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_29
+      rect:
+        serializedVersion: 2
+        x: 1600
+        y: 0
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 68ce5fb666ba506e83194ccb1a3f2e9a
+      internalID: -6607281992667952051
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_30
+      rect:
+        serializedVersion: 2
+        x: 1920
+        y: 0
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d67147c1f5285d16ae4333172de3972f
+      internalID: 5465860551210364708
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: RoseTravel_31
+      rect:
+        serializedVersion: 2
+        x: 2240
+        y: 0
+        width: 320
+        height: 256
+      alignment: 9
+      pivot: {x: 0.5, y: 0.5}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 13bf56be242b5fc79e4c690339af820d
+      internalID: 8743183361303359722
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    outline: []
+    physicsShape: []
+    bones: []
+    spriteID: 5e97eb03825dee720800000000000000
+    internalID: 0
+    vertices: []
+    indices: 
+    edges: []
+    weights: []
+    secondaryTextures: []
+    nameFileIdTable:
+      RoseBlessing_00: 21300000
+      RoseBlessing_01: -4751328491500637315
+      RoseBlessing_02: 767689433049450500
+      RoseBlessing_03: -1301513454186719497
+      RoseBlessing_04: 5076825765452870618
+      RoseBlessing_05: 6333857036017839492
+      RoseBlessing_06: 9121682342403023905
+      RoseBlessing_07: -515367202093167489
+      RoseBlessing_08: 5529438548360158892
+      RoseBlessing_09: -5819355854200037778
+      RoseBlessing_10: -6721019157752587906
+      RoseBlessing_11: 8673681859342496120
+      RoseBlessing_12: 7096659418614679477
+      RoseBlessing_13: -2823247387189362948
+      RoseBlessing_14: 308188629844038330
+      RoseBlessing_15: 1874364490301826069
+      RoseBlessing_16: 6505807965238135849
+      RoseBlessing_17: -4651976403930840226
+      RoseBlessing_18: -2229665181241681657
+      RoseBlessing_19: 6899968285344548833
+      RoseBlessing_20: 7956758401490202914
+      RoseBlessing_21: 464825464780805365
+      RoseBlessing_22: -2297978917117268252
+      RoseBlessing_23: 2106185750506229661
+      RoseBlessing_24: 3850710933870664685
+      RoseBlessing_25: 523354182947898064
+      RoseBlessing_26: 3159732670894018124
+      RoseBlessing_27: 2986552425993294400
+      RoseBlessing_28: -5858351011920937367
+      RoseBlessing_29: -8555086792117768267
+      RoseBlessing_30: -7070789231419284928
+      RoseBlessing_31: 1890527173915985135
+      RoseRise_00: 5413437653071084203
+      RoseRise_01: -907189384443740704
+      RoseRise_02: -9048925542026536480
+      RoseRise_03: -4726523600649511122
+      RoseRise_04: -3954498899338667357
+      RoseRise_05: 8509674290747574905
+      RoseRise_06: 4417534877046071362
+      RoseRise_07: 9057502214358318604
+      RoseRise_08: -7902803229013184635
+      RoseRise_09: -594978125777519247
+      RoseRise_10: 4004136044397961001
+      RoseRise_11: -1079030031783425895
+      RoseRise_12: 250273515367027430
+      RoseRise_13: 9054985591357993826
+      RoseRise_14: 459010905306121662
+      RoseRise_15: -5325806095616598702
+      RoseRise_16: -2536702579080547883
+      RoseRise_17: 9125768339937804845
+      RoseRise_18: -1521799493748410104
+      RoseRise_19: -5408502164798847502
+      RoseRise_20: 7695399274803011056
+      RoseRise_21: -168065284796941946
+      RoseRise_22: 2532333126433042206
+      RoseRise_23: -602348655055024772
+      RoseRise_24: -5224616278649335455
+      RoseRise_25: -4522024832843462527
+      RoseRise_26: -755148432601806169
+      RoseRise_27: -5605945869051546491
+      RoseRise_28: -8377011917371542854
+      RoseRise_29: 2834500296052531299
+      RoseRise_30: -7837343422136937381
+      RoseRise_31: 8777034520132015620
+      RoseTravel_00: 4786871938382418548
+      RoseTravel_01: -8690244211117564008
+      RoseTravel_02: 8328771975764210471
+      RoseTravel_03: -253204222091597111
+      RoseTravel_04: -2281012476530845617
+      RoseTravel_05: 8838155047700063260
+      RoseTravel_06: 4941849534554581503
+      RoseTravel_07: -7717874278399404078
+      RoseTravel_08: -7339180633634386258
+      RoseTravel_09: 4698358548368477370
+      RoseTravel_10: -1691625605937128437
+      RoseTravel_11: 3564952065355999440
+      RoseTravel_12: 2291057402142826863
+      RoseTravel_13: 6479198255452730865
+      RoseTravel_14: -3778283001237690390
+      RoseTravel_15: 4252787712967959135
+      RoseTravel_16: -7443058792940681331
+      RoseTravel_17: 914083267358971611
+      RoseTravel_18: -3224100445622760506
+      RoseTravel_19: -515346483699626032
+      RoseTravel_20: 1804033018292550935
+      RoseTravel_21: 110149346993952148
+      RoseTravel_22: 6062060918150061793
+      RoseTravel_23: -8845914093263268593
+      RoseTravel_24: 8681033558134232343
+      RoseTravel_25: -3468601867364671149
+      RoseTravel_26: -5870296651870548803
+      RoseTravel_27: 5516450317021350490
+      RoseTravel_28: 2682205433401827736
+      RoseTravel_29: -6607281992667952051
+      RoseTravel_30: 5465860551210364708
+      RoseTravel_31: 8743183361303359722
+      Rose_00: 3895893593927998831
+      Rose_01: -877589952202565417
+      Rose_02: 6413200236840173324
+      Rose_03: 8134893008058383244
+      Rose_04: -1040210720487986312
+      Rose_05: -7121226059450038381
+      Rose_06: -1574615027097459915
+      Rose_07: 4724659843090685140
+      Rose_08: 2217450828064784971
+      Rose_09: -4123371307579527639
+      Rose_10: 6529357393037691757
+      Rose_11: -2123515214313854881
+      Rose_12: -5879160045034189714
+      Rose_13: 8279224923058419716
+      Rose_14: 6730602068538794988
+      Rose_15: 545391935892926218
+      Rose_16: -6831563098562258243
+      Rose_17: -264193209121560393
+      Rose_18: 4981158214087385874
+      Rose_19: -2384703132186859375
+      Rose_20: -1029384095628856288
+      Rose_21: -2983182476418645443
+      Rose_22: -314180910393922640
+      Rose_23: -6499565613151258349
+      Rose_24: 5699575395801721106
+      Rose_25: -7407267409089392151
+      Rose_26: -4602523762889339463
+      Rose_27: -6739945526652261758
+      Rose_28: -4580766686526400086
+      Rose_29: 7926681040812459298
+      Rose_30: 4243114120948845815
+      Rose_31: 717185195587672076
+  mipmapLimitGroupName: 
+  pSDRemoveMatte: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

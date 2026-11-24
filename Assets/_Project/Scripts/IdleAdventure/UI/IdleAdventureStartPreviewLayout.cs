@@ -16,8 +16,6 @@ public sealed partial class IdleAdventureStartPreviewLayout : MonoBehaviour
     private const string RewardFrameResource = "IdleAdventureUI/RewardPreviewFrame";
     private const string PreviewFrameResource = "IdleAdventureUI/PreviewFrame";
     private const string FormationBackgroundResource = "IdleAdventureUI/FormationPreviewBackground";
-    private const string ForestSlimeResource = "IdleAdventureEnemyForestSlime";
-    private const string FlameRaiderResource = "IdleAdventureEnemyFlameRaider";
 
     [SerializeField] private RectTransform layoutRoot;
     [SerializeField] private TextMeshProUGUI formationCountText;
@@ -172,32 +170,7 @@ public sealed partial class IdleAdventureStartPreviewLayout : MonoBehaviour
     {
         if (!HasEnemyBindings()) return;
 
-        List<EnemyDisplay> groups = BuildEnemyGroups(preview);
-        int enemyCount = 0;
-        foreach (EnemyDisplay group in groups) enemyCount += group.Count;
-        enemySummaryText.text = FrontendTextLocalization.Normalize(preview == null
-            ? "关卡敌人预览  ·  数据读取中"
-            : $"关卡敌人预览  ·  共 {enemyCount} 名");
-        LayoutEnemyGroups(Mathf.Min(groups.Count, EnemyGroupCount));
-
-        for (int i = 0; i < EnemyGroupCount; i++)
-        {
-            bool visible = i < groups.Count;
-            enemyImages[i].transform.parent.gameObject.SetActive(visible);
-            if (!visible) continue;
-
-            EnemyDisplay group = groups[i];
-            enemyImages[i].sprite = LoadSprite(group.IconKey) ?? ResolveEnemySprite(group.SearchKey);
-            enemyImages[i].color = enemyImages[i].sprite != null ? Color.white : new Color(0.36f, 0.28f, 0.19f, 0.35f);
-            enemyImages[i].preserveAspect = true;
-            bool unknownAppearance = enemyImages[i].sprite == LoadSprite("UI/ApprovedUi/Controls/11_unknown_enemy_candidate");
-            enemyImages[i].rectTransform.localScale = new Vector3(unknownAppearance ? 1f : -1f, 1f, 1f);
-
-            string levelText = group.Level > 0 ? $"Lv.{group.Level}  " : string.Empty;
-            enemyLabels[i].text = FrontendTextLocalization.Normalize(bookSkinReady
-                ? $"{group.Name}\n{levelText}×{Mathf.Max(1, group.Count)}"
-                : $"{levelText}{group.Name}\n×{Mathf.Max(1, group.Count)}");
-        }
+        RefreshEnemyField(preview);
     }
 
     public void SetRewards(IdleAdventureRewardItemResponse[] backendRewards, IdleAdventureRewardItemDefinition[] fallbackRewards)
@@ -413,7 +386,7 @@ public sealed partial class IdleAdventureStartPreviewLayout : MonoBehaviour
             enemyImages[i] = enemyImage;
             enemyLabels[i] = label;
         }
-        LayoutEnemyGroups(EnemyGroupCount);
+
 
         Image enemyFrame = CreateImage("Enemy Preview Frame", layoutRoot, Color.white);
         Anchor(enemyFrame.rectTransform, new Vector2(0.515f, 0.3325f), new Vector2(0.84f, 0.795f));
@@ -861,85 +834,6 @@ public sealed partial class IdleAdventureStartPreviewLayout : MonoBehaviour
         }
     }
 
-    private List<EnemyDisplay> BuildEnemyGroups(IdleAdventureStageEnemiesResponse preview)
-    {
-        List<EnemyDisplay> groups = new List<EnemyDisplay>();
-        if (preview != null && preview.slots != null)
-        {
-            for (int i = 0; i < preview.slots.Length; i++)
-            {
-                IdleAdventureEnemySlotResponse slot = preview.slots[i];
-                if (slot == null || slot.enemy == null) continue;
-
-                string name = slot.enemy.ResolvedCombatantName;
-                string key = slot.enemy.ResolvedCombatantKey;
-                if (slot.enemy.ResolvedDefinitionId <= 0L && string.IsNullOrWhiteSpace(key) && string.IsNullOrWhiteSpace(name)) continue;
-                if (string.IsNullOrWhiteSpace(name)) name = "敌人";
-                string searchKey = (key + " " + name).Trim();
-                string identity = slot.enemy.ResolvedDefinitionId > 0L ? slot.enemy.ResolvedDefinitionId.ToString() : searchKey;
-                int level = Mathf.Max(0, slot.enemy.level);
-
-                EnemyDisplay existing = null;
-                for (int groupIndex = 0; groupIndex < groups.Count; groupIndex++)
-                {
-                    if (groups[groupIndex].Level == level && string.Equals(groups[groupIndex].Identity, identity, StringComparison.OrdinalIgnoreCase))
-                    {
-                        existing = groups[groupIndex];
-                        break;
-                    }
-                }
-
-                if (existing != null) existing.Count++;
-                else groups.Add(new EnemyDisplay(name, searchKey, identity, slot.enemy.icon, level, 1));
-            }
-        }
-
-        return groups;
-    }
-
-    private void LayoutEnemyGroups(int count)
-    {
-        if (enemyImages == null) return;
-        int visibleCount = Mathf.Clamp(count, 1, EnemyGroupCount);
-        for (int i = 0; i < enemyImages.Length; i++)
-        {
-            if (enemyImages[i] == null || enemyImages[i].transform.parent == null) continue;
-            RectTransform group = enemyImages[i].transform.parent as RectTransform;
-            if (group == null) continue;
-
-            if (visibleCount == 1)
-            {
-                Anchor(group, new Vector2(0.32f, 0.06f), new Vector2(0.68f, 0.86f));
-            }
-            else if (visibleCount == 2)
-            {
-                float left = i == 0 ? 0.14f : 0.54f;
-                Anchor(group, new Vector2(left, 0.06f), new Vector2(left + 0.32f, 0.86f));
-            }
-            else
-            {
-                float left = 0.035f + (i % 3) * 0.325f;
-                float top = visibleCount <= 3 ? 0.86f : 0.86f - (i / 3) * 0.41f;
-                float bottom = visibleCount <= 3 ? 0.06f : top - 0.39f;
-                Anchor(group, new Vector2(left, bottom), new Vector2(left + 0.28f, top));
-            }
-        }
-    }
-
-    private Sprite ResolveEnemySprite(string searchKey)
-    {
-        string normalized = (searchKey ?? string.Empty).ToLowerInvariant();
-        if (normalized.Contains("forest_slime") || normalized.Contains("森林史莱姆"))
-        {
-            return LoadSprite(ForestSlimeResource);
-        }
-        if (normalized.Contains("flame_raider") || normalized.Contains("fire_raider") || normalized.Contains("烈焰掠夺者"))
-        {
-            return LoadSprite(FlameRaiderResource);
-        }
-        return LoadSprite("UI/ApprovedUi/Controls/11_unknown_enemy_candidate");
-    }
-
     private void MoveLayoutBelowFormationWindow(RectTransform startPanel)
     {
         if (layoutRoot == null || startPanel == null) return;
@@ -1136,26 +1030,6 @@ public sealed partial class IdleAdventureStartPreviewLayout : MonoBehaviour
         rectTransform.anchorMax = anchorMax;
         rectTransform.offsetMin = Vector2.zero;
         rectTransform.offsetMax = Vector2.zero;
-    }
-
-    private sealed class EnemyDisplay
-    {
-        public readonly string Name;
-        public readonly string SearchKey;
-        public readonly string Identity;
-        public readonly string IconKey;
-        public readonly int Level;
-        public int Count;
-
-        public EnemyDisplay(string name, string searchKey, string identity, string iconKey, int level, int count)
-        {
-            Name = name;
-            SearchKey = searchKey;
-            Identity = identity;
-            IconKey = iconKey;
-            Level = level;
-            Count = count;
-        }
     }
 
     private sealed class RewardDisplay

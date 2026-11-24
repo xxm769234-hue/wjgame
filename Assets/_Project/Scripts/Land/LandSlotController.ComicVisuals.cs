@@ -11,10 +11,21 @@ public sealed partial class LandSlotController
     private bool UsesSimulationComicShape => simulationShapeRenderer != null
         && simulationShapeRenderer.enabled && simulationShapeRenderer.sprite != null;
 
+    private Sprite BuildingScene()
+    {
+        int slotKey = HasGridPosition ? GridPosition.x * 31 + GridPosition.y : SlotId;
+        return SimulationBuildingSceneCatalog.GetScene(currentBuilding, slotKey);
+    }
+
+    public Sprite ArchiveScene => HasBuilding ? BuildingScene()
+        : landRenderer != null && landRenderer.sprite != null ? landRenderer.sprite
+        : LandTerrainCatalog.GetTerrain(currentLand) ?? currentLand?.landSprite;
+
     private void ConfigureComicBuildingScene()
     {
-        Sprite scene = SimulationBuildingSceneCatalog.GetScene(currentBuilding);
+        Sprite scene = BuildingScene();
         buildingRenderer.sprite = scene;
+        LandSceneMotion.Apply(buildingRenderer, scene);
         buildingRenderer.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
         buildingRenderer.sortingLayerName = landSortingLayer;
         buildingRenderer.sortingOrder = GetRuntimeSortingOrder() + 1;

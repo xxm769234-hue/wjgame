@@ -14,16 +14,20 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   priority: 30
   hitStop: 0.08
-  shakePixels: 4.5
+  shakePixels: 5.5
   shakeDuration: 0.16
-  recoilPixels: 5
+  recoilPixels: 8
   recoilAttack: 0.035
   recoilReturn: 0.14
-  flashAmount: 0.5
+  flashAmount: 0.6
   flashDuration: 0.04
   afterglowDuration: 0.08
-  flashBodyFraction: 0.28
-  sparkPixels: 25
+  flashColor: {r: 1, g: 0.12, b: 0.16, a: 1}
+  afterglowColor: {r: 1, g: 0.35, b: 0.38, a: 1}
+  flashBodyFraction: 0.625
+  sparkPixels: 31
+  sparkWidthPixels: 3.4
+  sparkRayWidthPixels: 2.4
   sparkDuration: 0.18
   contactColor: {r: 1, g: 0.78, b: 0.37, a: 1}
   windupSounds:

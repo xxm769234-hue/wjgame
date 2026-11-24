@@ -152,7 +152,7 @@ public partial class HomePageUI
             starterGenderVerified = true;
             if (response.data.selected)
             {
-                starterSelectionMessage = "已确认角色，正在同步伙伴资料…";
+                starterSelectionMessage = "已选定角色，正在载入伙伴…";
             }
             else if (!response.data.selectable)
             {
@@ -190,7 +190,7 @@ public partial class HomePageUI
                 starterGenderSnapshot = response.data;
                 starterGenderVerified = true;
                 starterSubmissionMessage = string.Empty;
-                starterSelectionMessage = "已确认角色，正在同步伙伴资料…";
+                starterSelectionMessage = "已选定角色，正在载入伙伴…";
                 UpdateStarterSelectionView();
                 yield break;
             }
@@ -276,7 +276,7 @@ public partial class HomePageUI
             entry => entry != null && entry.npcId == starterGenderSnapshot.starterNpcId && entry.owned);
         if (starter == null || starterCatalog == null)
         {
-            starterSelectionMessage = "角色选择已保存，伙伴资料暂未同步完成。请重新查询。";
+            starterSelectionMessage = "已选定角色，暂时无法查看伙伴，请重试。";
             PlayerOnboardingManager.NotifyBusinessSucceeded();
             yield break;
         }

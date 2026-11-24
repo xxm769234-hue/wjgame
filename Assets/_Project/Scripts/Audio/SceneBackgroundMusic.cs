@@ -14,6 +14,27 @@ public sealed class SceneBackgroundMusic : MonoBehaviour
     private string currentTrack;
     private bool preparationVisible;
     private bool battleVisible;
+    private AudioClip battleMusic;
+    private float trackGain = 1f;
+    private float duckGain = 1f;
+    private float duckUntil;
+
+    public static void EmphasizeBattleSound()
+    {
+        if (instance != null && instance.currentTrack == "Battle")
+            instance.duckUntil = Time.unscaledTime + .18f;
+    }
+
+    private void Update()
+    {
+        if (currentTrack != "Battle") return;
+        bool attacking = Time.unscaledTime < duckUntil;
+        float next = Mathf.MoveTowards(duckGain, attacking ? .60f : 1f,
+            Time.unscaledDeltaTime * (attacking ? 16f : 1.6f));
+        if (next == duckGain) return;
+        duckGain = next;
+        BattleAudioSettingsBridge.RegisterAudioSource(musicSource, true, trackGain * duckGain);
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetState()
@@ -49,12 +70,13 @@ public sealed class SceneBackgroundMusic : MonoBehaviour
         instance.RefreshForScene(SceneManager.GetActiveScene());
     }
 
-    public static void SetBattleVisible(bool visible)
+    public static void SetBattleVisible(bool visible, AudioClip music = null)
     {
         if (!Application.isPlaying || quitting) return;
         if (visible) EnsureInstance();
         if (instance == null) return;
         instance.battleVisible = visible;
+        instance.battleMusic = visible ? music : null;
         instance.RefreshForScene(SceneManager.GetActiveScene());
     }
 
@@ -141,6 +163,7 @@ public sealed class SceneBackgroundMusic : MonoBehaviour
         if (scene.name != "Idle Adventure mode")
         {
             battleVisible = false;
+            battleMusic = null;
             preparationVisible = false;
         }
         string track = null;
@@ -165,24 +188,25 @@ public sealed class SceneBackgroundMusic : MonoBehaviour
 
     private void PlayTrack(string track)
     {
-        if (currentTrack == track)
+        AudioClip clip = track == "Battle" ? battleMusic : null;
+        if (clip == null && !string.IsNullOrEmpty(track) && !clips.TryGetValue(track, out clip))
+        {
+            clip = Resources.Load<AudioClip>(MusicPath + track);
+            if (clip != null) clips[track] = clip;
+        }
+        if (currentTrack == track && musicSource.clip == clip)
         {
             return;
         }
 
         musicSource.Stop();
         musicSource.clip = null;
-        if (currentTrack == "Battle") clips.Remove("Battle");
         currentTrack = track;
+        duckGain = 1f;
+        duckUntil = 0f;
         if (string.IsNullOrEmpty(track))
         {
             return;
-        }
-
-        if (!clips.TryGetValue(track, out AudioClip clip))
-        {
-            clip = Resources.Load<AudioClip>(MusicPath + track);
-            clips[track] = clip;
         }
 
         if (clip == null)
@@ -193,7 +217,8 @@ public sealed class SceneBackgroundMusic : MonoBehaviour
 
         musicSource.clip = clip;
         musicSource.loop = true;
-        BattleAudioSettingsBridge.RegisterAudioSource(musicSource, true, track == "Battle" ? .3f : 1f);
+        trackGain = track == "Battle" ? (battleMusic != null ? .18f : .24f) : 1f;
+        BattleAudioSettingsBridge.RegisterAudioSource(musicSource, true, trackGain);
         musicSource.Play();
     }
 }

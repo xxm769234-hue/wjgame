@@ -82,7 +82,7 @@ public sealed class LandDragItem : MonoBehaviour, IBeginDragHandler, IDragHandle
         if (!config.canPlace)
         {
             string reason = string.IsNullOrEmpty(config.disabledReason)
-                ? "服务器当前不允许放置此地块。"
+                ? "这块地暂时无法放置。"
                 : config.disabledReason;
             Debug.LogWarning($"Land drag rejected by backend availability: {reason}", this);
             return;

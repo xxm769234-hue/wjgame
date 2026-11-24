@@ -12,6 +12,64 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Cangqi_Move_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.2765, y: 0.0239}
+    right: {x: 0.2696, y: 0.0137}
+  - frame: 3
+    left: {x: -0.3208, y: 0.0239}
+    right: {x: 0.2184, y: 0.0137}
+  - frame: 6
+    left: {x: -0.3250, y: 0.0341}
+    right: {x: 0.0614, y: 0.0171}
+  - frame: 9
+    left: {x: -0.3783, y: 0.1000}
+    right: {x: -0.0350, y: 0.1000}
+  - frame: 12
+    left: {x: -0.3783, y: 0.2433}
+    right: {x: -0.0417, y: 0.2433}
+  - frame: 15
+    left: {x: -0.4164, y: 0.5188}
+    right: {x: -0.0417, y: 0.3867}
+  - frame: 18
+    left: {x: -0.4710, y: 0.5939}
+    right: {x: -0.0483, y: 0.5700}
+  - frame: 24
+    left: {x: -0.4710, y: 0.6519}
+    right: {x: -0.0580, y: 0.5836}
+  - frame: 27
+    left: {x: -0.4483, y: 0.6519}
+    right: {x: 0.0273, y: 0.6212}
+  - frame: 30
+    left: {x: -0.4483, y: 0.5300}
+    right: {x: 0.0273, y: 0.6212}
+  - frame: 33
+    left: {x: -0.4483, y: 0.4949}
+    right: {x: 0.0273, y: 0.6109}
+  - frame: 36
+    left: {x: -0.3345, y: 0.4900}
+    right: {x: -0.0183, y: 0.5836}
+  - frame: 39
+    left: {x: -0.3140, y: 0.4437}
+    right: {x: -0.0183, y: 0.3733}
+  - frame: 45
+    left: {x: -0.2765, y: 0.2730}
+    right: {x: -0.0117, y: 0.2200}
+  - frame: 51
+    left: {x: -0.3333, y: 0.1633}
+    right: {x: 0.0478, y: 0.0102}
+  - frame: 54
+    left: {x: -0.4061, y: 0.0785}
+    right: {x: 0.0922, y: 0.0102}
+  - frame: 57
+    left: {x: -0.4061, y: 0.0239}
+    right: {x: 0.1229, y: 0.0137}
+  - frame: 60
+    left: {x: -0.3259, y: 0.0239}
+    right: {x: 0.2218, y: 0.0137}
+  - frame: 72
+    left: {x: -0.2765, y: 0.0239}
+    right: {x: 0.2696, y: 0.0137}
   sequenceId: Cangqi_Move_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u79FB\u52A8\\\u6CA7\u7948"
   action: 1

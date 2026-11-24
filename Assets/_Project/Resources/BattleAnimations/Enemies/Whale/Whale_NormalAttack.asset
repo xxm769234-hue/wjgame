@@ -16,6 +16,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Whale_NormalAttack
   m_EditorClassIdentifier: ''
+  footContacts:
+  - frame: 0
+    left: {x: -0.2500, y: -0.1900}
+    right: {x: 0.5500, y: -0.1900}
   sequenceId: Whale_NormalAttack
   sourceFolder: D:\动画演示\动画演示\Assets\Animations\WhaleAttack\WhaleAttack.anim
   action: 2

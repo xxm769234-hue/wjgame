@@ -12,6 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Cangqi_Death_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.2765, y: 0.0239}
+    right: {x: 0.2747, y: 0.0137}
+  - frame: 106
+    left: {x: -0.2730, y: 0.0205}
+    right: {x: 0.2560, y: 0.0102}
   sequenceId: Cangqi_Death_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u6B7B\u4EA1\\\u6CA7\u7948"
   action: 6

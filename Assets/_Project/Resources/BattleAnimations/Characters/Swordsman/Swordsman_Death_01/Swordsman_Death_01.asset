@@ -12,6 +12,28 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Swordsman_Death_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.2989, y: 0.1174}
+    right: {x: 0.2989, y: 0.0214}
+  - frame: 14
+    left: {x: -0.2811, y: 0.1068}
+    right: {x: 0.3025, y: 0.0285}
+  - frame: 15
+    left: {x: -0.3500, y: 0.0107}
+    right: {x: 0.3025, y: 0.0320}
+  - frame: 18
+    left: {x: -0.5089, y: 0.0107}
+    right: {x: 0.2420, y: 0.0605}
+  - frame: 21
+    left: {x: -0.5516, y: -0.0107}
+    right: {x: -0.0320, y: 0.0605}
+  - frame: 24
+    left: {x: -0.5836, y: -0.0605}
+    right: {x: -0.0356, y: 0.0463}
+  - frame: 55
+    left: {x: -0.5907, y: -0.0605}
+    right: {x: -0.0391, y: 0.0427}
   sequenceId: Swordsman_Death_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u6B7B\u4EA1\\\u5251\u58EB"
   action: 6

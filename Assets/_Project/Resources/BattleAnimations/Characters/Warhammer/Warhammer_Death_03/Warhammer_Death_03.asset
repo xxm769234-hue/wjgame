@@ -12,6 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Warhammer_Death_03
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.1277, y: 0.0177}
+    right: {x: 0.1454, y: 0.0532}
+  - frame: 72
+    left: {x: -0.1300, y: 0.0100}
+    right: {x: 0.1200, y: 0.0300}
   sequenceId: Warhammer_Death_03
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u5F85\u673A\\\u83B1\u838E\u6B7B\u4EA1\u52A8\u753B\\\u6218\u9524"
   action: 6

@@ -3,6 +3,31 @@ using UnityEngine;
 public enum BattleHitShakeMode { Directional, DualAxis }
 public enum BattleHitRecoilMode { SnapReturn, SoftArc }
 
+public struct BattleHitStopWindow
+{
+    private float windowStart;
+    private float used;
+    private float lastStop;
+    private int lastPriority;
+
+    public float Take(float now, BattleHitFeedbackProfile profile)
+    {
+        if (profile == null || profile.hitStop <= 0f) return 0f;
+        if (used == 0f || now - windowStart >= .25f)
+        {
+            windowStart = now;
+            used = 0f;
+        }
+        if (lastPriority > 0 && now - lastStop < .08f && profile.priority <= lastPriority) return 0f;
+        float seconds = Mathf.Min(profile.hitStop, Mathf.Max(0f, .1f - used));
+        if (seconds <= 0f) return 0f;
+        used += seconds;
+        lastPriority = profile.priority;
+        lastStop = now;
+        return seconds;
+    }
+}
+
 public sealed class BattleHitFeedbackProfile : ScriptableObject
 {
     public int priority = 20;

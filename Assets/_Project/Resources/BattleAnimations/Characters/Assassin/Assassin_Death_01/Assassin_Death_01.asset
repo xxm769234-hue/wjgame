@@ -12,6 +12,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Assassin_Death_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.1844, y: 0.0142}
+    right: {x: 0.0709, y: 0.0461}
+  - frame: 74
+    left: {x: -0.1631, y: 0.0213}
+    right: {x: 0.0532, y: 0.0355}
   sequenceId: Assassin_Death_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u6B7B\u4EA1\\\u523A\u5BA2"
   action: 6

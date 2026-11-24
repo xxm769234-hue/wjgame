@@ -16,6 +16,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Monster4_Spider_Idle
   m_EditorClassIdentifier: ''
+  footContacts:
+  - frame: 0
+    left: {x: -0.2742, y: 0.1246}
+    right: {x: 0.1730, y: 0.0440}
   sequenceId: Monster4_Spider_Idle
   sourceFolder: D:/怪物动画/怪物4_蜘蛛/待机_20261112_3578/Frames
   action: 0

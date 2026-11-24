@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -7,9 +8,10 @@ using UnityEngine.UI;
 public sealed class IdleAdventureActorView : MonoBehaviour
 {
     private const int MaxVisibleBuffIcons = 6;
-    private const float HealthBarHeight = 18f;
-    private const float NameHeight = 26f;
-    private const float HealthFillInset = 1.5f;
+    private static Sprite groundShadowSprite;
+    private Image groundShadow;
+    private Image leftContactShadow;
+    private Image rightContactShadow;
     private const float EnemyFacingRightScaleX = 1f;
     private const float ForestSlimeHorizontalFlipScaleX = -1f;
     private const string CharacterSpriteResourceName = "IdleAdventureCharacter";
@@ -36,11 +38,14 @@ public sealed class IdleAdventureActorView : MonoBehaviour
     private BattleActorAnimation battleAnimation;
     private Func<bool> pauseQuery;
     private float headerBodyHeight = -1f;
+    private Vector2 buffRowPosition;
     private readonly Image[] buffArtwork = new Image[MaxVisibleBuffIcons];
     private readonly TextMeshProUGUI[] buffFallbackLabels = new TextMeshProUGUI[MaxVisibleBuffIcons];
     private readonly TextMeshProUGUI[] buffDirectionLabels = new TextMeshProUGUI[MaxVisibleBuffIcons];
-    private Image nameBackdrop;
-    private float healthRatio = 1f;
+    private BattleHealthBar bladeBar;
+    private Vector2 headerSoleOffset;
+    private RectTransform labelsAnchor;
+    private RectTransform LabelParent => labelsAnchor != null ? labelsAnchor : actorRoot;
 
     public RectTransform Root => root != null ? root : transform as RectTransform;
     public RectTransform ActorRoot => actorRoot;
@@ -57,6 +62,19 @@ public sealed class IdleAdventureActorView : MonoBehaviour
         actorRoot.pivot = new Vector2(0.5f, 0f);
         actorRoot.sizeDelta = new Vector2(84f, 84f);
         actorRoot.anchoredPosition = new Vector2(0f, 8f);
+        var field = BattleFieldLayers.For(root);
+        if (field != null)
+        {
+            field.PlaceActor(this);
+            if (labelsAnchor == null)
+            {
+                labelsAnchor = new GameObject(name + " Labels", typeof(RectTransform)).GetComponent<RectTransform>();
+                labelsAnchor.SetParent(field.Labels, false);
+                labelsAnchor.sizeDelta = Vector2.zero;
+                labelsAnchor.position = actorRoot.position;
+                labelsAnchor.gameObject.SetActive(actorRoot.gameObject.activeInHierarchy);
+            }
+        }
         if (buffIconRow != null)
         {
             ConfigureBuffRow();
@@ -65,13 +83,154 @@ public sealed class IdleAdventureActorView : MonoBehaviour
 
     private void LateUpdate()
     {
+        if (labelsAnchor != null)
+        {
+            bool visible = actorRoot.gameObject.activeInHierarchy;
+            if (labelsAnchor.gameObject.activeSelf != visible) labelsAnchor.gameObject.SetActive(visible);
+            if (visible)
+                labelsAnchor.position = battleAnimation != null && battleAnimation.InMeleeContact
+                    ? battleAnimation.GroundShadowCenter() - actorRoot.TransformVector(headerSoleOffset)
+                    : actorRoot.position;
+        }
         if (battleAnimation != null && battleAnimation.IsBound && !Mathf.Approximately(headerBodyHeight, battleAnimation.BodyHeight))
             ConfigureActorHeader();
+        if (groundShadow != null) UpdateGroundShadow();
+    }
+
+    private void EnsureGroundShadow()
+    {
+        if (groundShadow != null) return;
+        if (groundShadowSprite == null) groundShadowSprite = Resources.Load<Sprite>("IdleAdventureUI/FormationFootShadow");
+        if (groundShadowSprite == null) return;
+        var field = BattleFieldLayers.For(transform);
+        Transform layer = field != null ? field.Shadows : null;
+        groundShadow = new GameObject(name + " Ground Shadow", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image)).GetComponent<Image>();
+        groundShadow.rectTransform.SetParent(layer != null ? layer : actorRoot, false);
+        groundShadow.rectTransform.SetAsFirstSibling();
+        groundShadow.sprite = groundShadowSprite;
+        groundShadow.enabled = false;
+        groundShadow.raycastTarget = false;
+        leftContactShadow = CreateContactShadow("Left sole");
+        rightContactShadow = CreateContactShadow("Right sole");
+    }
+
+    private Image CreateContactShadow(string label)
+    {
+        var contact = new GameObject(label, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image)).GetComponent<Image>();
+        contact.rectTransform.SetParent(groundShadow.transform, false);
+        contact.sprite = groundShadowSprite;
+        contact.raycastTarget = false;
+        contact.enabled = false;
+        return contact;
+    }
+
+    private void UpdateGroundShadow()
+    {
+        groundShadow.enabled = actorRoot.gameObject.activeInHierarchy && body.isActiveAndEnabled && battleAnimation != null && !battleAnimation.IsDead;
+        if (!groundShadow.enabled)
+        {
+            leftContactShadow.enabled = rightContactShadow.enabled = false;
+            return;
+        }
+        var appearance = battleAnimation.Appearance;
+        var clip = battleAnimation.CurrentSequence;
+        RectTransform visual = body.rectTransform;
+        float height = battleAnimation.IsBound ? battleAnimation.BodyHeight : visual.rect.height;
+        Vector2 left, right;
+        float lift = 0f;
+        var pose = battleAnimation.DisplayedPoseSequence;
+        if (pose != null && pose.TryGetFootContacts(battleAnimation.DisplayedPoseFrame, out left, out right))
+        {
+            if (pose.action != BattleAnimationAction.Idle)
+                lift = BattleActorAnimation.GroundLift(left, right);
+            left.y -= lift;
+            right.y -= lift;
+            left *= height;
+            right *= height;
+        }
+        else if (battleAnimation.IsBound)
+        {
+            Vector2 center = appearance.groundShadowOffset * height;
+            left = center - Vector2.right * height * .22f;
+            right = center + Vector2.right * height * .22f;
+        }
+        else GetStaticSoles(out left, out right);
+
+        Vector2 span = right - left;
+        Vector2 size = appearance != null && appearance.groundShadowSize.x > 0f
+            ? appearance.groundShadowSize * height
+            : new Vector2(Mathf.Clamp(span.magnitude + height * .31f, height * .39f, height * 1.28f), height * .13f);
+        RectTransform shadow = groundShadow.rectTransform;
+        shadow.position = visual.TransformPoint((left + right) * .5f);
+        Vector3 axis = shadow.parent.InverseTransformVector(visual.TransformVector(span));
+        float angle = Mathf.Atan2(axis.y, axis.x) * Mathf.Rad2Deg;
+        shadow.localRotation = Quaternion.Euler(0f, 0f, Mathf.Clamp(Mathf.DeltaAngle(0f, angle * 2f) * .5f, -28f, 28f));
+        shadow.sizeDelta = Vector2.Scale(size, new Vector2(1.12f, 1.16f)) * Mathf.Lerp(1f, .78f, Mathf.Clamp01(lift));
+        float strength = appearance != null && appearance.groundShadowOpacity > 0f ? appearance.groundShadowOpacity : .51f;
+        float fade = body.color.a * Mathf.Lerp(1f, .58f, Mathf.Clamp01(lift));
+        if (battleAnimation.IsPlayingDeath && clip != null && clip.action == BattleAnimationAction.Death)
+            fade *= 1f - Mathf.SmoothStep(0f, 1f, battleAnimation.CurrentSourceFrame / clip.FrameCount);
+        groundShadow.color = new Color(0f, 0f, 0f, Mathf.Min(1f, strength * 1.12f) * fade);
+        bool showContacts = (appearance == null || appearance.groundShadowSize.x <= 0f) &&
+            body.sprite != null && body.sprite != unknownEnemySprite && body.sprite != forestSlimeSprite;
+        float contactStrength = showContacts ? .59f * fade * (1f - Mathf.InverseLerp(.01f, .12f, lift)) : 0f;
+        bool resting = pose == null || pose.action == BattleAnimationAction.Idle;
+        float lowest = Mathf.Min(left.y, right.y);
+        UpdateSoleShadow(leftContactShadow, visual, left, height, resting ? 0f : (left.y - lowest) / height, contactStrength);
+        UpdateSoleShadow(rightContactShadow, visual, right, height, resting ? 0f : (right.y - lowest) / height, contactStrength);
+    }
+
+    private void UpdateSoleShadow(Image contact, RectTransform visual, Vector2 sole, float height, float raisedBy, float strength)
+    {
+        float opacity = strength * (1f - Mathf.InverseLerp(.09f, .23f, raisedBy));
+        contact.enabled = opacity > .005f;
+        if (!contact.enabled) return;
+        RectTransform rect = contact.rectTransform;
+        rect.position = visual.TransformPoint(sole);
+        rect.rotation = groundShadow.rectTransform.parent.rotation;
+        rect.sizeDelta = new Vector2(.224f, .071f) * height;
+        contact.color = new Color(0f, 0f, 0f, opacity);
+    }
+
+    internal void GetStaticSoles(out Vector2 left, out Vector2 right)
+    {
+        Sprite sprite = body.sprite;
+        Rect drawn = body.rectTransform.rect;
+        left = new Vector2(.32f, 0f);
+        right = new Vector2(.68f, 0f);
+        if (sprite != null)
+        {
+            Vector2 fit = sprite.rect.size * Mathf.Min(drawn.width / sprite.rect.width, drawn.height / sprite.rect.height);
+            drawn = new Rect(drawn.min + Vector2.Scale(drawn.size - fit, body.rectTransform.pivot), fit);
+            if (sprite == flameRaiderSprite) { left = new Vector2(.385f, .166f); right = new Vector2(.765f, .013f); }
+            else if (sprite == forestSlimeSprite) { left = new Vector2(.44f, .115f); right = new Vector2(.62f, .095f); }
+            else if (sprite == characterSprite) { left = new Vector2(.47f, .043f); right = new Vector2(.65f, .01f); }
+            else if (sprite.name == "Npc_1") { left = new Vector2(.39f, .037f); right = new Vector2(.59f, .04f); }
+        }
+        left = drawn.min + Vector2.Scale(drawn.size, left);
+        right = drawn.min + Vector2.Scale(drawn.size, right);
+    }
+
+    private void OnDisable()
+    {
+        if (bladeBar != null) bladeBar.ResetPresentation();
+        if (labelsAnchor != null) labelsAnchor.gameObject.SetActive(false);
+        if (groundShadow != null) groundShadow.enabled = false;
+        if (leftContactShadow != null) leftContactShadow.enabled = rightContactShadow.enabled = false;
+    }
+
+    private void OnDestroy()
+    {
+        if (labelsAnchor != null) Destroy(labelsAnchor.gameObject);
+        if (groundShadow == null) return;
+        if (Application.isPlaying) Destroy(groundShadow.gameObject);
+        else DestroyImmediate(groundShadow.gameObject);
     }
 
     public void CancelAnimation()
     {
         if (battleAnimation != null) battleAnimation.Cancel();
+        if (bladeBar != null) bladeBar.ResetPresentation();
     }
 
     public void Initialize(RectTransform rootTransform, RectTransform actorRootTransform, Image bodyImage, Image healthFillImage, TextMeshProUGUI nameLabel, TextMeshProUGUI healthLabel, RectTransform buffRow, Image[] buffBackgrounds, TextMeshProUGUI[] buffLabels, TextMeshProUGUI emptyLabel, Image headImage = null)
@@ -87,13 +246,11 @@ public sealed class IdleAdventureActorView : MonoBehaviour
         buffIconBackgrounds = buffBackgrounds ?? new Image[0];
         buffIconLabels = buffLabels ?? new TextMeshProUGUI[0];
         emptyText = emptyLabel;
-        ConfigureTextLayout();
     }
 
     public void Apply(IdleAdventureCombatant combatant)
     {
         if (!HasViewBindings) return;
-        ConfigureTextLayout();
 
         bool hasCombatant = combatant != null;
         bool visibleCombatant = hasCombatant && !combatant.IsDefeated;
@@ -101,9 +258,7 @@ public sealed class IdleAdventureActorView : MonoBehaviour
         root.gameObject.SetActive(hasCombatant);
         actorRoot.gameObject.SetActive(visibleCombatant || battleAnimation != null && battleAnimation.IsPlayingDeath);
         healthFill.transform.parent.gameObject.SetActive(visibleCombatant);
-        nameText.gameObject.SetActive(visibleCombatant);
-        if (nameBackdrop != null) nameBackdrop.gameObject.SetActive(visibleCombatant);
-        healthText.gameObject.SetActive(visibleCombatant);
+        nameText.gameObject.SetActive(false);
         buffIconRow.gameObject.SetActive(visibleCombatant);
         emptyText.gameObject.SetActive(false);
 
@@ -116,6 +271,7 @@ public sealed class IdleAdventureActorView : MonoBehaviour
 
         if (!visibleCombatant)
         {
+            if (bladeBar != null) bladeBar.ResetPresentation();
             ClearBuffIcons();
             return;
         }
@@ -126,15 +282,16 @@ public sealed class IdleAdventureActorView : MonoBehaviour
             return;
         }
 
-        nameText.text = FrontendTextLocalization.Normalize(combatant.CombatantName);
-        SetHealthRatio(combatant.HealthRatio);
-        healthFill.color = combatant.IsFriendly ? new Color(0.23f, 0.74f, 0.43f, 1f) : new Color(0.88f, 0.25f, 0.22f, 1f);
-        healthText.text = $"{combatant.CurrentHealth}/{combatant.MaxHealth}";
+        BattleHealthBar bar = EnsureBladeBar();
+        bar.SetPauseQuery(pauseQuery);
+        bar.Configure(BattleUnitRankTable.Resolve(combatant), combatant.IsFriendly, healthText);
+        bar.SetHealth(combatant.GetInstanceID(), combatant.CurrentHealth, combatant.MaxHealth);
         ApplyBuffIcons(combatant);
         if (battleAnimation == null) battleAnimation = GetComponent<BattleActorAnimation>();
         if (battleAnimation == null) battleAnimation = gameObject.AddComponent<BattleActorAnimation>();
         if (battleAnimation.IsDead || battleAnimation.IsPlayingDeath) battleAnimation.Cancel();
         bool battleAnimated = battleAnimation.Bind(body, actorRoot, combatant.GetInstanceID().ToString(), combatant.IsFriendly, pauseQuery, combatant.AppearanceKey, combatant.CombatantName);
+        EnsureGroundShadow();
         if (battleAnimated)
         {
             if (head != null) head.gameObject.SetActive(false);
@@ -142,6 +299,7 @@ public sealed class IdleAdventureActorView : MonoBehaviour
             return;
         }
         bool animated = combatant.IsFriendly && CharacterIdleImage.TryApply(body, combatant.AppearanceKey, combatant.CombatantName);
+        if (animated && body.TryGetComponent(out CharacterIdleImage idlePlayer)) idlePlayer.BattlePlayback = battleAnimation;
         if (!combatant.IsFriendly) CharacterIdleImage.Stop(body);
         Sprite actorSprite = animated ? body.sprite : combatant.IsFriendly ? ResolveCharacterSprite() : ResolveEnemySprite(combatant);
         bool useActorSprite = actorSprite != null;
@@ -165,102 +323,85 @@ public sealed class IdleAdventureActorView : MonoBehaviour
         return characterSprite;
     }
 
-    private void ConfigureTextLayout()
-    {
-        ConfigureLabel(nameText, 18f, 22f);
-        ConfigureLabel(healthText, 13f, 15f);
-        foreach (TextMeshProUGUI label in buffIconLabels)
-        {
-            ConfigureLabel(label, 12f, 14f);
-            if (label != null) label.margin = Vector4.zero;
-        }
-    }
-
     private void ConfigureActorHeader()
     {
         RectTransform healthBar = healthFill.transform.parent as RectTransform;
         if (healthBar == null || actorRoot == null) return;
-        float bodyHeight = battleAnimation != null && battleAnimation.IsBound ? battleAnimation.BodyHeight : 124f;
+        bool animated = battleAnimation.IsBound;
+        float bodyHeight = animated ? battleAnimation.BodyHeight : body.rectTransform.rect.height;
         headerBodyHeight = bodyHeight;
-        float fit = battleAnimation != null && battleAnimation.IsBound ? battleAnimation.PresentationScale : 1f;
-        float width = battleAnimation != null && battleAnimation.IsBound
-            ? (bodyHeight / Mathf.Max(0.01f, fit) > BattleActorAnimation.ReferenceBodyHeight * 1.5f ? 200f : 128f) * fit : 128f;
-        float barBottom = bodyHeight + 12f;
-        ConfigureHeaderRect(healthBar, width, HealthBarHeight, barBottom);
-        ConfigureHeaderRect(nameText.rectTransform, width + 12f, NameHeight, barBottom + HealthBarHeight + 4f);
-        nameText.alignment = TextAlignmentOptions.Center;
-        nameText.color = new Color(0.98f, 0.96f, 0.9f, 1f);
-        nameText.raycastTarget = false;
-        ConfigureNameBackdrop(width + 12f, barBottom + HealthBarHeight + 4f);
-        Image healthBackground = healthBar.GetComponent<Image>();
-        if (healthBackground != null)
+        float scale = Mathf.Max(.01f, battleAnimation.PresentationScale);
+        Vector2 sole;
+        if (animated)
         {
-            healthBackground.color = new Color(0.06f, 0.07f, 0.1f, 0.88f);
-            healthBackground.raycastTarget = false;
+            var appearance = battleAnimation.Appearance;
+            var idle = appearance.Resolve(BattleAnimationAction.Idle);
+            Vector2 contact = appearance.groundShadowOffset;
+            if (idle != null && idle.TryGetFootContacts(0, out Vector2 left, out Vector2 right))
+            {
+                contact = new Vector2((left.x + right.x) * .5f, Mathf.Min(left.y, right.y));
+            }
+            // Resting soles stay stable through jumps, weapon swings and hit recoil.
+            contact.x *= battleAnimation.SourceMirror;
+            sole = battleAnimation.BaseBodyPosition + contact * bodyHeight;
         }
-        ApplyHealthFillLayout();
-        healthFill.raycastTarget = false;
-        healthText.rectTransform.anchorMin = Vector2.zero;
-        healthText.rectTransform.anchorMax = Vector2.one;
-        healthText.rectTransform.offsetMin = new Vector2(2f, 0f);
-        healthText.rectTransform.offsetMax = new Vector2(-2f, 0f);
-        healthText.alignment = TextAlignmentOptions.Center;
-        healthText.raycastTarget = false;
+        else
+        {
+            GetStaticSoles(out Vector2 left, out Vector2 right);
+            left = actorRoot.InverseTransformPoint(body.rectTransform.TransformPoint(left));
+            right = actorRoot.InverseTransformPoint(body.rectTransform.TransformPoint(right));
+            sole = new Vector2((left.x + right.x) * .5f, Mathf.Min(left.y, right.y)) - actorRoot.rect.min.y * Vector2.up;
+        }
+
+        BattleUnitRank rank = bladeBar != null ? bladeBar.Rank : BattleUnitRank.Friendly;
+        Vector2 barSize = BattleHealthBar.SizeFor(rank) * scale;
+        float width = barSize.x;
+        float height = barSize.y;
+        float gap = Mathf.Clamp(bodyHeight * .06f, 8f * scale, 16f * scale);
+        Vector2 bottom = sole - Vector2.up * (gap + height);
+        headerSoleOffset = sole;
+        ConfigureHeaderRect(healthBar, width, height, bottom);
+        buffRowPosition = bottom - Vector2.up * (4f * scale);
+        if (buffIconRow != null) buffIconRow.anchoredPosition = buffRowPosition;
     }
 
-    private void SetHealthRatio(float ratio)
+    private BattleHealthBar EnsureBladeBar()
     {
-        healthRatio = Mathf.Clamp01(ratio);
-        ApplyHealthFillLayout();
+        if (bladeBar != null) return bladeBar;
+        RectTransform frame = (RectTransform)healthFill.transform.parent;
+        Image oldFrame = frame.GetComponent<Image>();
+        if (oldFrame != null) oldFrame.enabled = false;
+        healthFill.enabled = false;
+        var go = new GameObject("Blade Health Bar", typeof(RectTransform), typeof(CanvasRenderer), typeof(BattleHealthBar));
+        go.layer = frame.gameObject.layer;
+        RectTransform rect = go.GetComponent<RectTransform>();
+        rect.SetParent(frame, false);
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = rect.offsetMax = Vector2.zero;
+        rect.SetAsFirstSibling();
+        healthText.transform.SetAsLastSibling();
+        bladeBar = go.GetComponent<BattleHealthBar>();
+        return bladeBar;
     }
 
-    // The fill has no sprite, and a sprite-less UGUI Image ignores fillAmount (it always
-    // draws the whole rect), so the bar is sized through its anchors instead.
-    private void ApplyHealthFillLayout()
+    /// <summary>多段攻击每段命中时由 BattleDamagePlan 调用，血条先逐段下降。</summary>
+    public void PreviewHealthDrop(long amount, bool finalSegment)
     {
-        if (healthFill == null) return;
-        RectTransform fill = healthFill.rectTransform;
-        healthFill.type = Image.Type.Simple;
-        fill.anchorMin = Vector2.zero;
-        fill.anchorMax = new Vector2(healthRatio, 1f);
-        fill.offsetMin = new Vector2(HealthFillInset, HealthFillInset);
-        fill.offsetMax = new Vector2(HealthFillInset - 2f * HealthFillInset * healthRatio, -HealthFillInset);
+        if (bladeBar != null && bladeBar.isActiveAndEnabled) bladeBar.PreviewDamage(amount, finalSegment);
     }
 
-    private void ConfigureHeaderRect(RectTransform rect, float width, float height, float bottom)
+    private void ConfigureHeaderRect(RectTransform rect, float width, float height, Vector2 bottom)
     {
-        if (rect.parent != actorRoot) rect.SetParent(actorRoot, false);
+        if (rect.parent != LabelParent) rect.SetParent(LabelParent, false);
         rect.anchorMin = new Vector2(0.5f, 0f);
         rect.anchorMax = new Vector2(0.5f, 0f);
         rect.pivot = new Vector2(0.5f, 0f);
         rect.sizeDelta = new Vector2(width, height);
-        rect.anchoredPosition = new Vector2(0f, bottom);
+        rect.anchoredPosition = bottom;
         rect.localRotation = Quaternion.identity;
         rect.localScale = Vector3.one;
         rect.SetAsLastSibling();
-    }
-
-    private void ConfigureNameBackdrop(float width, float bottom)
-    {
-        if (nameBackdrop == null)
-        {
-            Transform existing = actorRoot.Find("Name Backdrop");
-            if (existing != null) nameBackdrop = existing.GetComponent<Image>();
-            if (nameBackdrop == null)
-            {
-                GameObject backdrop = new GameObject("Name Backdrop", typeof(RectTransform), typeof(Image));
-                backdrop.layer = nameText.gameObject.layer;
-                backdrop.transform.SetParent(actorRoot, false);
-                nameBackdrop = backdrop.GetComponent<Image>();
-            }
-            nameBackdrop.sprite = Resources.Load<Sprite>("IdleAdventureUI/RoundedPanel");
-            nameBackdrop.type = Image.Type.Sliced;
-            nameBackdrop.color = new Color(0.16f, 0.14f, 0.12f, 0.72f);
-            nameBackdrop.raycastTarget = false;
-        }
-        ConfigureHeaderRect(nameBackdrop.rectTransform, width, NameHeight, bottom);
-        nameBackdrop.gameObject.SetActive(nameText.gameObject.activeSelf);
-        nameBackdrop.transform.SetSiblingIndex(nameText.transform.GetSiblingIndex());
     }
 
     private static void ConfigureLabel(TextMeshProUGUI label, float minimum, float maximum)
@@ -320,14 +461,19 @@ public sealed class IdleAdventureActorView : MonoBehaviour
         RectTransform bodyRect = body.rectTransform;
         bodyRect.anchorMin = new Vector2(0.5f, 0f);
         bodyRect.anchorMax = new Vector2(0.5f, 0f);
-        bodyRect.offsetMin = useActorSprite ? new Vector2(-62f, -8f) : new Vector2(-34f, 4f);
-        bodyRect.offsetMax = useActorSprite ? new Vector2(62f, 116f) : new Vector2(34f, 66f);
+        bodyRect.pivot = new Vector2(.5f, .5f);
+        float scale = battleAnimation.SideSizeMultiplier;
+        float halfWidth = (useActorSprite ? 62f : 34f) * scale;
+        float bottom = useActorSprite ? -8f : 4f;
+        float height = (useActorSprite ? 124f : 62f) * scale;
+        bodyRect.offsetMin = new Vector2(-halfWidth, bottom);
+        bodyRect.offsetMax = new Vector2(halfWidth, bottom + height);
 
         if (head != null && !useActorSprite)
         {
             RectTransform headRect = head.rectTransform;
-            headRect.offsetMin = new Vector2(-24f, -31f);
-            headRect.offsetMax = new Vector2(24f, 17f);
+            headRect.offsetMin = new Vector2(-24f, -31f) * scale;
+            headRect.offsetMax = new Vector2(24f, 17f) * scale;
         }
     }
 
@@ -373,17 +519,20 @@ public sealed class IdleAdventureActorView : MonoBehaviour
             buffFallbackLabels[i].text = icon == null ? buff.EffectShortLabel : string.Empty;
             bool bakedDirection = iconKey == "01_fire_damage_down_candidate" || iconKey == "02_fire_field_up_candidate";
             buffDirectionLabels[i].text = bakedDirection ? string.Empty : ResolveBuffDirection(buff);
-            label.text = Mathf.Max(0, buff.RemainingRounds).ToString();
+            label.text = buff.RemainingRounds.ToString(CultureInfo.InvariantCulture);
+            RectTransform badge = (RectTransform)label.transform.parent;
+            badge.sizeDelta = new Vector2(Mathf.Max(13f, 5f + label.text.Length * 6f), 14f);
         }
     }
 
     private void ConfigureBuffRow(int visibleCount = MaxVisibleBuffIcons)
     {
         if (buffIconRow == null) return;
+        if (LabelParent != null && buffIconRow.parent != LabelParent) buffIconRow.SetParent(LabelParent, false);
         buffIconRow.anchorMin = buffIconRow.anchorMax = new Vector2(.5f, 0f);
         buffIconRow.pivot = new Vector2(.5f, 1f);
         buffIconRow.sizeDelta = new Vector2(Mathf.Max(1, visibleCount) * 32f - 4f, 32f);
-        buffIconRow.anchoredPosition = new Vector2(0f, -6f);
+        buffIconRow.anchoredPosition = buffRowPosition;
         for (int index = 0; index < Mathf.Min(MaxVisibleBuffIcons, buffIconBackgrounds.Length); index++)
         {
             Image background = buffIconBackgrounds[index];
@@ -425,13 +574,13 @@ public sealed class IdleAdventureActorView : MonoBehaviour
         badge.raycastTarget = false;
         RectTransform badgeRect = badge.rectTransform;
         badgeRect.anchorMin = badgeRect.anchorMax = new Vector2(1f, 0f);
-        badgeRect.pivot = new Vector2(1f, 0f);
-        badgeRect.anchoredPosition = new Vector2(2f, -2f);
-        badgeRect.sizeDelta = new Vector2(24f, 17f);
+        badgeRect.pivot = new Vector2(1f, 0.65f);
+        badgeRect.anchoredPosition = new Vector2(2f, 0f);
         rounds.rectTransform.SetParent(badgeRect, false);
         rounds.rectTransform.anchorMin = Vector2.zero;
         rounds.rectTransform.anchorMax = Vector2.one;
         rounds.rectTransform.offsetMin = rounds.rectTransform.offsetMax = Vector2.zero;
+        ConfigureLabel(rounds, 9f, 11f);
         rounds.alignment = TextAlignmentOptions.Center;
         rounds.margin = Vector4.zero;
         rounds.color = new Color(1f, .97f, .88f, 1f);

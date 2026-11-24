@@ -12,6 +12,37 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Warhammer_Move_02
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.1348, y: 0.0106}
+    right: {x: 0.1348, y: 0.0461}
+  - frame: 3
+    left: {x: -0.1348, y: 0.0106}
+    right: {x: 0.1348, y: 0.0461}
+  - frame: 9
+    left: {x: -0.3014, y: 0.0177}
+    right: {x: 0.1312, y: 0.0390}
+  - frame: 45
+    left: {x: -0.3156, y: 0.0177}
+    right: {x: 0.1277, y: 0.0426}
+  - frame: 48
+    left: {x: -0.5426, y: 0.1525}
+    right: {x: 0.0177, y: 0.2234}
+  - frame: 51
+    left: {x: -0.5426, y: 0.1525}
+    right: {x: 0.0177, y: 0.2270}
+  - frame: 72
+    left: {x: -0.5284, y: 0.1596}
+    right: {x: 0.0496, y: 0.2270}
+  - frame: 75
+    left: {x: -0.5213, y: 0.0674}
+    right: {x: 0.1631, y: 0.0142}
+  - frame: 87
+    left: {x: -0.4965, y: 0.0177}
+    right: {x: 0.1277, y: 0.0142}
+  - frame: 96
+    left: {x: -0.1028, y: 0.0106}
+    right: {x: 0.1383, y: 0.0461}
   sequenceId: Warhammer_Move_02
   sourceFolder: "D:\\\u89D2\u8272\u52A8\u753B\\\u6218\u9524\\\u7A81\u8FDB\u79FB\u52A8_20261116_8104"
   action: 1

@@ -12,6 +12,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
   m_Name: Cangqi_Idle_01
   m_EditorClassIdentifier: 
+  footContacts:
+  - frame: 0
+    left: {x: -0.2782, y: 0.0273}
+    right: {x: 0.2833, y: 0.0171}
   sequenceId: Cangqi_Idle_01
   sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u6CA7\u7948\u5F85\u673A\u52A8\u753B"
   action: 0

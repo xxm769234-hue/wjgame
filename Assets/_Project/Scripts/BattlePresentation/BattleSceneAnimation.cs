@@ -5,18 +5,30 @@ using UnityEngine.UI;
 [DisallowMultipleComponent]
 public sealed class BattleSceneAnimation : MonoBehaviour
 {
+    private const string DefaultEnvironment = "BattleAnimations/Environment/BattleBackground";
+    private const string StageFolder = "IdleAdventure/Backgrounds/";
     private static readonly HashSet<BattleSceneAnimation> Instances = new HashSet<BattleSceneAnimation>();
     [SerializeField] private string environmentKey = "BattleBackground";
     private BattleAnimationSequence sequence;
     private RawImage overlay;
     private float elapsed;
     private bool visible;
+    private bool preview;
     private bool paused;
     private bool applicationPaused;
 
     public bool IsVisible => visible && overlay != null && overlay.enabled;
     public int CurrentFrame { get; private set; }
     public string EnvironmentKey => environmentKey;
+
+    public Sprite CoverFrame
+    {
+        get
+        {
+            if (sequence == null) sequence = LoadSequence();
+            return sequence != null && sequence.IsValid ? sequence.frames[0] : null;
+        }
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetInstances() => Instances.Clear();
@@ -29,12 +41,22 @@ public sealed class BattleSceneAnimation : MonoBehaviour
         if (target == null) return null;
         BattleSceneAnimation animation = target.GetComponent<BattleSceneAnimation>();
         if (animation == null) animation = target.gameObject.AddComponent<BattleSceneAnimation>();
-        if (animation.isActiveAndEnabled) Instances.Add(animation);
+        if (animation.isActiveAndEnabled && !animation.preview) Instances.Add(animation);
         animation.EnsureOverlay();
         return animation;
     }
 
-    public static void SetBattleVisible(bool show)
+    public static BattleSceneAnimation ConfigurePreview(Image target, string key)
+    {
+        var player = ConfigureTarget(target);
+        Instances.Remove(player);
+        player.preview = true;
+        player.visible = true;
+        player.SetEnvironment(key);
+        return player;
+    }
+
+    public static void SetBattleVisible(bool show, BattleSceneAnimation scenery = null)
     {
         foreach (BattleSceneAnimation animation in Instances)
         {
@@ -48,7 +70,7 @@ public sealed class BattleSceneAnimation : MonoBehaviour
             }
             animation.ApplyFrame();
         }
-        SceneBackgroundMusic.SetBattleVisible(show);
+        SceneBackgroundMusic.SetBattleVisible(show, scenery != null && scenery.sequence != null ? scenery.sequence.environmentMusic : null);
     }
 
     public static void SetPaused(bool value)
@@ -57,13 +79,47 @@ public sealed class BattleSceneAnimation : MonoBehaviour
             if (animation != null) animation.paused = value;
     }
 
+    public static string StageResource(IdleAdventureStagePresentationResponse presentation, string stageName, string fallback = DefaultEnvironment)
+    {
+        if (!string.IsNullOrWhiteSpace(presentation?.background_resource_key))
+            return presentation.background_resource_key.Trim().Replace('\\', '/');
+        if (!string.IsNullOrWhiteSpace(presentation?.background_code))
+            return StageFolder + presentation.background_code.Trim().ToLowerInvariant();
+        switch ((presentation?.background_name ?? stageName)?.Trim())
+        {
+            case "暗影宫殿": return StageFolder + "shadow_palace";
+            case "暗影裂隙": return StageFolder + "shadow_rift";
+            case "冰原": return StageFolder + "ice_field";
+            case "腐毒沼泽": return StageFolder + "toxic_swamp";
+            case "机械平台": return StageFolder + "mechanical_platform";
+            case "炼金实验室": return StageFolder + "alchemy_lab";
+            case "熔岩火山": return StageFolder + "lava_volcano";
+            case "太阳熔炉": return StageFolder + "solar_furnace";
+            case "天空平台": return StageFolder + "sky_platform";
+            case "岩石要塞": return StageFolder + "rock_fortress";
+            default: return fallback;
+        }
+    }
+
+    private BattleAnimationSequence LoadSequence()
+    {
+        string path = environmentKey.Contains("/") ? environmentKey : "BattleAnimations/Environment/" + environmentKey;
+        var clip = Resources.Load<BattleAnimationSequence>(path);
+        if (clip != null && clip.IsValid) return clip;
+        return path == DefaultEnvironment ? null : Resources.Load<BattleAnimationSequence>(DefaultEnvironment);
+    }
+
     public void SetEnvironment(string key)
     {
         if (string.IsNullOrWhiteSpace(key) || environmentKey == key) return;
         environmentKey = key;
+        bool releasePrevious = sequence != null && visible;
         sequence = null;
         elapsed = 0f;
+        CurrentFrame = 0;
         ApplyFrame();
+        if (visible && !preview) SceneBackgroundMusic.SetBattleVisible(true, sequence != null ? sequence.environmentMusic : null);
+        if (releasePrevious && Application.isPlaying) Resources.UnloadUnusedAssets();
     }
 
     private void EnsureOverlay()
@@ -96,7 +152,7 @@ public sealed class BattleSceneAnimation : MonoBehaviour
             overlay.texture = null;
             return;
         }
-        if (sequence == null) sequence = Resources.Load<BattleAnimationSequence>("BattleAnimations/Environment/" + environmentKey);
+        if (sequence == null) sequence = LoadSequence();
         if (sequence == null || !sequence.IsValid)
         {
             overlay.enabled = false;
@@ -130,7 +186,11 @@ public sealed class BattleSceneAnimation : MonoBehaviour
         overlay.enabled = true;
     }
 
-    private void OnEnable() => Instances.Add(this);
+    private void OnEnable()
+    {
+        if (preview) visible = true;
+        else Instances.Add(this);
+    }
     private void OnDisable()
     {
         Instances.Remove(this);
