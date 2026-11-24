@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
@@ -8,6 +9,9 @@ using LegacyText = UnityEngine.UI.Text;
 [DisallowMultipleComponent]
 public sealed class InventoryPanelView : MonoBehaviour
 {
+    public const int GridColumns = 7;
+    public const int GridVisibleRows = 4;
+
     [SerializeField, HideInInspector] private int schemaVersion;
 
     [Serializable]
@@ -69,6 +73,27 @@ public sealed class InventoryPanelView : MonoBehaviour
     [SerializeField] private InventorySlotView[] slots = new InventorySlotView[0];
     [SerializeField] private SideActionControl[] sideActions = new SideActionControl[0];
 
+    private InventorySlotView slotTemplate;
+    private RectTransform slotContent;
+    private GridLayoutGroup slotGrid;
+    private ScrollRect slotScroll;
+    private ScrollRect detailDescriptionScroll;
+    private readonly List<InventorySlotView> runtimeSlots = new List<InventorySlotView>();
+
+    [Header("Item Quality Backgrounds")]
+    [Tooltip("COMMON / 普通：白色品质框")]
+    [SerializeField] private Sprite _commonBackground;
+    [Tooltip("FINE / 优秀：绿色品质框")]
+    [SerializeField] private Sprite _fineBackground;
+    [Tooltip("EXCELLENT / 稀有：蓝色品质框")]
+    [SerializeField] private Sprite _excellentBackground;
+    [Tooltip("EPIC / 史诗：紫色品质框")]
+    [SerializeField] private Sprite _epicBackground;
+    [Tooltip("LEGENDARY / 传说：金色品质框")]
+    [SerializeField] private Sprite _legendaryBackground;
+
+    private readonly HashSet<string> _qualityWarnings = new HashSet<string>();
+
     [Header("Item Action Menu")]
     [SerializeField] private RectTransform contextMenu;
     [SerializeField] private TMP_Text contextNameText;
@@ -88,11 +113,11 @@ public sealed class InventoryPanelView : MonoBehaviour
     [SerializeField] private TMP_FontAsset fontAsset;
 
     [Header("Editable Copy")]
-    [SerializeField] private string inventoryTitle = "背包";
+    [SerializeField] private string inventoryTitle = "仓库";
     [SerializeField] private string inventorySubtitle = "领地物资与道具管理";
     [SerializeField] private string inventoryGridTitle = "物品栏";
-    [SerializeField] private string localInventoryHint = "本地奖励库存\n仅用于本地任务奖励";
-    [SerializeField] private string serverInventoryHint = "服务器库存\n按正式报价出售";
+    [SerializeField] private string localInventoryHint = "任务奖励物品\n点击物品查看详情";
+    [SerializeField] private string serverInventoryHint = "领地物资\n选择物品查看详情或出售";
     [SerializeField] private string emptyCategoryText = "暂无物品，请获取";
     [SerializeField] private string capacityFormat = "背包空间：{0:00}/{1}";
     [SerializeField] private string visibleCountFormat = "当前物品 {0} 件  已开放 {1} 格";
@@ -103,17 +128,13 @@ public sealed class InventoryPanelView : MonoBehaviour
     [SerializeField] private Color categoryNormalTextColor = new Color(0.44f, 0.21f, 0.07f, 1f);
     [SerializeField] private Color categorySelectedTextColor = Color.white;
 
-    [Header("Side Action Style")]
-    [SerializeField] private Color sideNormalColor = new Color(0.69f, 0.38f, 0.14f, 1f);
-    [SerializeField] private Color sideSelectedColor = new Color(0.91f, 0.49f, 0.16f, 1f);
-    [SerializeField] private Color sideNormalTextColor = new Color(1f, 0.91f, 0.66f, 1f);
-    [SerializeField] private Color sideSelectedTextColor = Color.white;
-
     public int SlotCount => slots == null ? 0 : slots.Length;
     public int SchemaVersion => schemaVersion;
 
     private void Awake()
     {
+        RemoveInventoryFooter();
+        RemoveInventoryResourceBadges();
         if (fontAsset == null)
         {
             fontAsset = RuntimeFontAssetProvider.Resolve();
@@ -124,9 +145,220 @@ public sealed class InventoryPanelView : MonoBehaviour
         EnsureResourceDetailPanel();
     }
 
+    private void ApplyApprovedGridFrame()
+    {
+        GameObject frameObject = FindObject("InventoryGridFrame");
+        Image frame = frameObject != null ? frameObject.GetComponent<Image>() : null;
+        Sprite sprite = Resources.Load<Sprite>("UI/ApprovedUi/Panels/InventoryFrame");
+        if (frame == null || sprite == null) return;
+        frame.sprite = sprite;
+        frame.overrideSprite = null;
+        frame.type = Image.Type.Simple;
+        frame.preserveAspect = false;
+        frame.color = Color.white;
+    }
+
+    private void RemoveInventoryResourceBadges()
+    {
+        resources = new ResourceControl[0];
+        string[] names =
+        {
+            "InventoryResourceBadge_Gold",
+            "InventoryResourceBadge_Diamond",
+            "InventoryResourceShadow_Gold",
+            "InventoryResourceShadow_Diamond"
+        };
+
+        Transform[] children = GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < children.Length; i++)
+        {
+            Transform child = children[i];
+            if (child == transform || child == null)
+            {
+                continue;
+            }
+
+            for (int nameIndex = 0; nameIndex < names.Length; nameIndex++)
+            {
+                if (child.name == names[nameIndex])
+                {
+                    Destroy(child.gameObject);
+                    break;
+                }
+            }
+        }
+    }
+
+    private void RemoveInventoryFooter()
+    {
+        Transform footer = transform.Find("InventoryFooter");
+        if (footer == null)
+        {
+            return;
+        }
+
+        Transform organizeButton = footer.Find("InventoryOrganizeButton");
+        if (organizeButton != null)
+        {
+            organizeButton.SetParent(transform, false);
+        }
+
+        Destroy(footer.gameObject);
+    }
+
     public InventorySlotView GetSlot(int index)
     {
         return slots != null && index >= 0 && index < slots.Length ? slots[index] : null;
+    }
+
+    public static int GetRequiredSlotCount(int itemCount)
+    {
+        int rows = Mathf.Max(GridVisibleRows, Mathf.CeilToInt(Mathf.Max(0, itemCount) / (float)GridColumns));
+        return rows * GridColumns;
+    }
+
+    public int PrepareSlotGrid(int itemCount)
+    {
+        if (slotTemplate == null && !InitializeSlotGrid()) return 0;
+
+        int requiredCount = GetRequiredSlotCount(itemCount);
+        while (runtimeSlots.Count < requiredCount)
+        {
+            InventorySlotView slot = Instantiate(slotTemplate, slotContent, false);
+            slot.name = "InventoryRuntimeSlot_" + runtimeSlots.Count.ToString("00");
+            slot.ShowEmpty();
+            runtimeSlots.Add(slot);
+        }
+        slots = runtimeSlots.ToArray();
+        for (int slotIndex = 0; slotIndex < slots.Length; slotIndex++)
+        {
+            slots[slotIndex].gameObject.SetActive(slotIndex < requiredCount);
+        }
+
+        slotGrid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
+        slotGrid.constraintCount = GridColumns;
+        slotGrid.startCorner = GridLayoutGroup.Corner.UpperLeft;
+        slotGrid.startAxis = GridLayoutGroup.Axis.Horizontal;
+        float rowStride = slotGrid.cellSize.y + slotGrid.spacing.y;
+        float viewportHeight = slotGrid.padding.vertical + GridVisibleRows * rowStride - slotGrid.spacing.y;
+        float contentHeight = slotGrid.padding.vertical + (requiredCount / GridColumns) * rowStride - slotGrid.spacing.y;
+        float scrollOffset = slotContent.anchoredPosition.y;
+        slotScroll.viewport.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, viewportHeight);
+        slotContent.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, contentHeight);
+        LayoutRebuilder.ForceRebuildLayoutImmediate(slotContent);
+
+        bool canScroll = itemCount > GridColumns * GridVisibleRows;
+        slotScroll.StopMovement();
+        slotScroll.horizontal = false;
+        slotScroll.vertical = canScroll;
+        slotScroll.enabled = canScroll;
+        slotContent.anchoredPosition = new Vector2(0f,
+            canScroll ? Mathf.Clamp(scrollOffset, 0f, contentHeight - viewportHeight) : 0f);
+        return requiredCount;
+    }
+
+    private bool InitializeSlotGrid()
+    {
+        GameObject parentObject = FindObject("ItemParent");
+        slotContent = parentObject != null ? parentObject.transform as RectTransform : null;
+        Transform templateTransform = slotContent != null ? slotContent.Find("InventorySlot_02") : null;
+        InventorySlotView template = templateTransform != null ? templateTransform.GetComponent<InventorySlotView>() : null;
+        RectTransform contentParent = slotContent != null ? slotContent.parent as RectTransform : null;
+        if (template == null || contentParent == null)
+        {
+            Debug.LogWarning("Inventory requires ItemParent/InventorySlot_02 to create its item grid.", this);
+            return false;
+        }
+
+        slotGrid = slotContent.GetComponent<GridLayoutGroup>();
+        if (slotGrid == null)
+        {
+            slotGrid = slotContent.gameObject.AddComponent<GridLayoutGroup>();
+            RectTransform templateRect = template.transform as RectTransform;
+            slotGrid.cellSize = templateRect.rect.size;
+            slotGrid.spacing = new Vector2(12f, 12f);
+        }
+        ContentSizeFitter fitter = slotContent.GetComponent<ContentSizeFitter>();
+        if (fitter != null) fitter.enabled = false;
+
+        Vector3 topLeft = contentParent.InverseTransformPoint(
+            slotContent.TransformPoint(new Vector3(slotContent.rect.xMin, slotContent.rect.yMax, 0f)));
+        GameObject viewportObject = new GameObject("InventoryItemsViewport", typeof(RectTransform),
+            typeof(CanvasRenderer), typeof(Image), typeof(RectMask2D), typeof(ScrollRect));
+        viewportObject.layer = parentObject.layer;
+        RectTransform viewport = viewportObject.GetComponent<RectTransform>();
+        viewport.SetParent(contentParent, false);
+        viewport.SetSiblingIndex(slotContent.GetSiblingIndex());
+        viewport.anchorMin = viewport.anchorMax = viewport.pivot = new Vector2(0f, 1f);
+        viewport.anchoredPosition = new Vector2(topLeft.x - contentParent.rect.xMin, topLeft.y - contentParent.rect.yMax);
+        viewport.sizeDelta = slotContent.rect.size;
+        Image hitArea = viewportObject.GetComponent<Image>();
+        hitArea.color = Color.clear;
+        hitArea.raycastTarget = true;
+
+        slotContent.SetParent(viewport, false);
+        slotContent.anchorMin = new Vector2(0f, 1f);
+        slotContent.anchorMax = new Vector2(1f, 1f);
+        slotContent.pivot = new Vector2(0f, 1f);
+        slotContent.anchoredPosition = Vector2.zero;
+        slotContent.sizeDelta = new Vector2(0f, viewport.rect.height);
+        slotScroll = viewportObject.GetComponent<ScrollRect>();
+        slotScroll.viewport = viewport;
+        slotScroll.content = slotContent;
+        slotScroll.horizontal = false;
+        slotScroll.movementType = ScrollRect.MovementType.Clamped;
+        slotScroll.scrollSensitivity = Mathf.Max(1f, slotGrid.cellSize.y + slotGrid.spacing.y);
+
+        for (int childIndex = 0; childIndex < slotContent.childCount; childIndex++)
+        {
+            Transform child = slotContent.GetChild(childIndex);
+            const string prefix = "InventorySlot_";
+            if (child.name.StartsWith(prefix, StringComparison.Ordinal)
+                && int.TryParse(child.name.Substring(prefix.Length), out int slotNumber))
+            {
+                child.gameObject.SetActive(false);
+            }
+        }
+        slotTemplate = template;
+        return true;
+    }
+
+    /// <summary>
+    /// Resolves the server quality code to an Inspector-assigned slot background.
+    /// Missing or unknown quality uses the common style without changing item data.
+    /// </summary>
+    public Sprite ResolveQualityBackground(string quality)
+    {
+        string qualityCode = (quality ?? string.Empty).Trim().ToUpperInvariant();
+        Sprite background;
+        switch (qualityCode)
+        {
+            case "COMMON": background = _commonBackground; break;
+            case "FINE": background = _fineBackground; break;
+            case "EXCELLENT": background = _excellentBackground; break;
+            case "EPIC": background = _epicBackground; break;
+            case "LEGENDARY": background = _legendaryBackground; break;
+            default:
+                if (_qualityWarnings.Add("quality:" + qualityCode))
+                {
+                    Debug.LogWarning("Inventory quality is missing or unknown: '" + quality
+                        + "'. Using the COMMON background; check the server item configuration.", this);
+                }
+                background = _commonBackground;
+                break;
+        }
+
+        if (background == null)
+        {
+            if (_qualityWarnings.Add("sprite:" + qualityCode))
+            {
+                Debug.LogWarning("Inventory quality background is not assigned for '" + quality
+                    + "'. Check Item Quality Backgrounds on InventoryPanelView.", this);
+            }
+            return _commonBackground;
+        }
+
+        return background;
     }
 
     public void SetSlotVisible(int index, bool visible)
@@ -156,17 +388,21 @@ public sealed class InventoryPanelView : MonoBehaviour
 
     public void SetMode(bool serverBacked)
     {
+        ResolveReferences();
         SetText(titleText, inventoryTitle);
         SetText(subtitleText, inventorySubtitle);
         SetText(gridTitleText, inventoryGridTitle);
-        SetText(sidebarHintText, serverBacked ? serverInventoryHint : localInventoryHint);
+        string hint = serverBacked ? serverInventoryHint : localInventoryHint;
+        string defaultHint = serverBacked ? "领地物资\n选择物品查看详情或出售" : "任务奖励物品\n点击物品查看详情";
+        if (string.IsNullOrWhiteSpace(hint) || hint.Contains("服务器") || hint.Contains("本地")) hint = defaultHint;
+        SetText(sidebarHintText, FrontendTextLocalization.NormalizePlayerMessage(hint, defaultHint));
         SetText(emptyText, emptyCategoryText);
         SetCategoriesVisible(false);
     }
 
     public void SetSidebarHint(string value)
     {
-        SetText(sidebarHintText, value);
+        SetText(sidebarHintText, string.IsNullOrWhiteSpace(value) ? string.Empty : FrontendTextLocalization.NormalizePlayerMessage(value));
     }
 
     public void SetResourceValue(string key, int value)
@@ -223,26 +459,22 @@ public sealed class InventoryPanelView : MonoBehaviour
 
     public Sprite ResolveIcon(string itemKey, string itemName, string iconKey)
     {
-        string[] candidates = { itemKey, iconKey, itemName };
-        for (int candidateIndex = 0; candidateIndex < candidates.Length; candidateIndex++)
+        if (icons == null) return null;
+
+        string[] candidates = { iconKey, itemKey, itemName };
+        foreach (string value in candidates)
         {
-            string candidate = NormalizeIconKey(candidates[candidateIndex]);
-            if (string.IsNullOrEmpty(candidate))
+            for (int matchPass = 0; matchPass < 2; matchPass++)
             {
-                continue;
-            }
+                string candidate = matchPass == 0 ? NormalizeIconLookupKey(value) : NormalizeIconKey(value);
+                if (string.IsNullOrEmpty(candidate)) continue;
 
-            if (icons == null)
-            {
-                continue;
-            }
-
-            for (int i = 0; i < icons.Length; i++)
-            {
-                IconControl icon = icons[i];
-                if (icon != null && NormalizeKey(icon.Key) == candidate && icon.Icon != null)
+                foreach (IconControl icon in icons)
                 {
-                    return icon.Icon;
+                    if (icon != null && icon.Icon != null && NormalizeIconLookupKey(icon.Key) == candidate)
+                    {
+                        return icon.Icon;
+                    }
                 }
             }
         }
@@ -252,26 +484,54 @@ public sealed class InventoryPanelView : MonoBehaviour
 
     private static string NormalizeIconKey(string value)
     {
-        string normalized = NormalizeKey(value);
-        if (string.IsNullOrEmpty(normalized))
+        string normalized = NormalizeIconLookupKey(value);
+        switch (normalized)
         {
-            return string.Empty;
+            case "金币": return "gold";
+            case "crystal":
+            case "bluecrystal":
+            case "钻石":
+            case "万能彩墨": return "diamond";
+            case "木材": return "wood";
+            case "woodplank":
+            case "woodboard":
+            case "木板": return "plank";
+            case "石材": return "stone";
+            case "iron":
+            case "ironore":
+            case "矿石":
+            case "铁矿": return "ore";
+            case "小麦": return "wheat";
+            case "鱼": return "fish";
+            case "cookedfish":
+            case "roastfish":
+            case "roastedfish":
+            case "烤鱼": return "grilledfish";
+            case "肉": return "meat";
+            case "cookedmeat":
+            case "roastmeat":
+            case "roastedmeat":
+            case "烤肉": return "grilledmeat";
+            case "food":
+            case "面包":
+            case "食物": return "bread";
+            case "金属": return "metal";
+            case "体力": return "stamina";
+            case "purification":
+            case "净化剂": return "purificationagent";
+            case "宝箱":
+            case "宝箱（未打开）": return "chest";
+            case "lotteryticket":
+            case "抽奖券": return "carddrawticket";
+            default: return normalized;
         }
+    }
 
-        if (normalized.Contains("gold") || normalized.Contains("金币")) return "gold";
-        if (normalized.Contains("diamond") || normalized.Contains("crystal") || normalized.Contains("bluecrystal") || normalized.Contains("钻石") || normalized.Contains("万能彩墨")) return "diamond";
-        if (normalized.Contains("wood") || normalized.Contains("木材")) return "wood";
-        if (normalized.Contains("stone") || normalized.Contains("石材")) return "stone";
-        if (normalized.Contains("iron") || normalized.Contains("ore") || normalized.Contains("矿石") || normalized.Contains("铁矿")) return "ore";
-        if (normalized.Contains("wheat") || normalized.Contains("小麦")) return "wheat";
-        if (normalized.Contains("fish") || normalized.Contains("鱼")) return "fish";
-        if (normalized.Contains("meat") || normalized.Contains("肉")) return "meat";
-        if (normalized.Contains("bread") || normalized.Contains("food") || normalized.Contains("面包") || normalized.Contains("食物")) return "bread";
-        if (normalized.Contains("metal") || normalized.Contains("金属")) return "metal";
-        if (normalized.Contains("stamina") || normalized.Contains("体力")) return "stamina";
-        if (normalized.Contains("purification") || normalized.Contains("净化剂")) return "purificationagent";
-        if (normalized.Contains("chest") || normalized.Contains("宝箱")) return "chest";
-        return normalized;
+    private static string NormalizeIconLookupKey(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return string.Empty;
+        string fileName = System.IO.Path.GetFileNameWithoutExtension(value.Trim().Replace('\\', '/'));
+        return NormalizeKey(fileName);
     }
 
     public void SetCounts(int ownedCount, int visibleCount, int capacity, int unlockedSlots)
@@ -282,7 +542,7 @@ public sealed class InventoryPanelView : MonoBehaviour
 
     public void SetStatus(string message)
     {
-        SetText(statusText, message ?? string.Empty);
+        SetText(statusText, string.IsNullOrWhiteSpace(message) ? string.Empty : FrontendTextLocalization.NormalizePlayerMessage(message));
     }
 
     public void SetEmptyVisible(bool visible)
@@ -298,10 +558,23 @@ public sealed class InventoryPanelView : MonoBehaviour
     {
         EnsureResourceDetailPanel();
         SetActive(detailRoot, true);
+
         SetText(detailNameText, string.IsNullOrEmpty(itemName) ? "资源详情" : itemName);
         SetText(detailTypeText, string.IsNullOrEmpty(itemType) ? "物品" : itemType);
         SetText(detailQuantityText, $"数量  {Mathf.Max(0, quantity)}");
-        SetText(detailDescriptionText, string.IsNullOrEmpty(description) ? "服务器物品配置未提供额外说明" : description);
+        SetText(detailDescriptionText, string.IsNullOrEmpty(description) ? "暂无物品说明" : description);
+        if (detailDescriptionScroll != null)
+        {
+            Canvas.ForceUpdateCanvases();
+            detailDescriptionScroll.StopMovement();
+            detailDescriptionScroll.verticalNormalizedPosition = 1f;
+            if (detailDescriptionScroll.content != null)
+            {
+                detailDescriptionScroll.content.anchoredPosition = new Vector2(detailDescriptionScroll.content.anchoredPosition.x, 0f);
+            }
+            Transform hint = detailRoot.Find("InventoryDetailScrollHint");
+            if (hint != null) hint.gameObject.SetActive(detailDescriptionScroll.content.rect.height > detailDescriptionScroll.viewport.rect.height + 1f);
+        }
     }
 
     public void HideResourceDetail()
@@ -398,17 +671,6 @@ public sealed class InventoryPanelView : MonoBehaviour
                 continue;
             }
 
-            bool selected = control.Id == "warehouse";
-            if (control.Background != null)
-            {
-                control.Background.color = selected ? sideSelectedColor : sideNormalColor;
-            }
-
-            if (control.Label != null)
-            {
-                control.Label.color = selected ? sideSelectedTextColor : sideNormalTextColor;
-            }
-
             UnityAction action = control.Id == "warehouse" ? warehouseAction : storeAction;
             Bind(control.Button, action);
         }
@@ -424,21 +686,17 @@ public sealed class InventoryPanelView : MonoBehaviour
         UnityAction sellAction,
         UnityAction dismissAction)
     {
-        if (contextMenu == null)
-        {
-            return;
-        }
-
-        contextMenu.gameObject.SetActive(true);
-        contextMenu.anchoredPosition = anchoredPosition;
-        contextMenu.SetAsLastSibling();
-        SetText(contextNameText, string.IsNullOrEmpty(itemName) ? "物品" : itemName);
-        SetText(contextTypeText, itemType ?? string.Empty);
-        SetText(contextHintText, hint ?? string.Empty);
-        SetText(contextPrimaryLabel, primaryLabel ?? string.Empty);
-        Bind(contextPrimaryButton, primaryAction);
+        // The former context menu is intentionally no longer shown. Keep this
+        // method as a compatibility bridge for existing inventory callers and
+        // bind only the sale action that now lives under the resource detail.
         Bind(contextSellButton, sellAction);
-        Bind(contextDismissButton, dismissAction);
+        SetActive(contextSellButton, true);
+    }
+
+    public void BindSellAction(UnityAction sellAction)
+    {
+        Bind(contextSellButton, sellAction);
+        SetActive(contextSellButton, sellAction != null);
     }
 
     public void HideContextMenu()
@@ -447,6 +705,9 @@ public sealed class InventoryPanelView : MonoBehaviour
         {
             contextMenu.gameObject.SetActive(false);
         }
+
+        Bind(contextSellButton, null);
+        SetActive(contextSellButton, false);
     }
 
     private static void Bind(Button button, UnityAction action)
@@ -467,7 +728,7 @@ public sealed class InventoryPanelView : MonoBehaviour
     {
         if (label != null)
         {
-            label.text = FrontendTextLocalization.Normalize(value);
+            label.text = value;
         }
     }
 
@@ -488,6 +749,16 @@ public sealed class InventoryPanelView : MonoBehaviour
     }
 
 #if UNITY_EDITOR
+    /// <summary>Assigns serialized quality sprites when creating an inventory prefab.</summary>
+    public void EditorSetQualityBackgrounds(Sprite common, Sprite fine, Sprite excellent, Sprite epic, Sprite legendary)
+    {
+        _commonBackground = common;
+        _fineBackground = fine;
+        _excellentBackground = excellent;
+        _epicBackground = epic;
+        _legendaryBackground = legendary;
+    }
+
     public void EditorSetReferences(
         RectTransform panel,
         Button back,
@@ -576,7 +847,7 @@ public sealed class InventoryPanelView : MonoBehaviour
             }
 
             TextMeshProUGUI replacement = legacy.gameObject.AddComponent<TextMeshProUGUI>();
-            replacement.text = FrontendTextLocalization.Normalize(legacy.text);
+            replacement.text = legacy.text;
             replacement.fontSize = legacy.fontSize;
             replacement.color = legacy.color;
             replacement.raycastTarget = legacy.raycastTarget;
@@ -605,6 +876,7 @@ public sealed class InventoryPanelView : MonoBehaviour
         contextTypeText = ResolveText(contextTypeText, "Type");
         contextHintText = ResolveText(contextHintText, "Hint");
         contextPrimaryLabel = ResolveText(contextPrimaryLabel, "Label");
+        ApplyApprovedGridFrame();
     }
 
     private TMP_Text ResolveText(TMP_Text current, string objectName)
@@ -661,11 +933,111 @@ public sealed class InventoryPanelView : MonoBehaviour
             root.GetComponent<Image>().color = new Color(0.30f, 0.15f, 0.05f, 0.96f);
         }
 
+        float widthChange = 360f - detailRoot.rect.width;
+        if (Mathf.Abs(widthChange) > 0.01f)
+        {
+            detailRoot.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 360f);
+            detailRoot.anchoredPosition += Vector2.right * widthChange * detailRoot.pivot.x;
+        }
+
         detailNameText = EnsureDetailText(detailNameText, "InventoryDetailName", "资源详情", 26, TextAlignmentOptions.Left);
         detailTypeText = EnsureDetailText(detailTypeText, "InventoryDetailType", "物品", 17, TextAlignmentOptions.Left);
         detailQuantityText = EnsureDetailText(detailQuantityText, "InventoryDetailQuantity", "数量  0", 19, TextAlignmentOptions.Left);
         detailDescriptionText = EnsureDetailText(detailDescriptionText, "InventoryDetailDescription", "点击物品查看详情", 16, TextAlignmentOptions.TopLeft);
+        ConfigureDetailHeading(detailNameText, 18f, 25f);
+        detailNameText.enableWordWrapping = true;
+        detailNameText.maxVisibleLines = 2;
+        ConfigureDetailHeading(detailTypeText, 14f, 18f);
+        ConfigureDetailHeading(detailQuantityText, 15f, 19f);
+        EnsureDetailDescriptionScroll();
+        SetDetailTextRegion(detailNameText.rectTransform, 24f, 24f, 22f, 54f);
+        SetDetailTextRegion(detailTypeText.rectTransform, 24f, 24f, 112f, 32f);
+        SetDetailTextRegion(detailQuantityText.rectTransform, 24f, 24f, 180f, 32f);
+        if (detailDescriptionScroll != null)
+        {
+            RectTransform viewport = detailDescriptionScroll.viewport;
+            viewport.anchorMin = Vector2.zero;
+            viewport.anchorMax = Vector2.one;
+            viewport.offsetMin = new Vector2(24f, 136f);
+            viewport.offsetMax = new Vector2(-24f, -254f);
+        }
+        TMP_Text scrollHint = detailRoot.Find("InventoryDetailScrollHint")?.GetComponent<TMP_Text>();
+        scrollHint = EnsureDetailText(scrollHint, "InventoryDetailScrollHint", "上下滑动查看说明", 16f, TextAlignmentOptions.Center);
+        scrollHint.color = new Color(0.44f, 0.34f, 0.25f, 1f);
+        scrollHint.enableWordWrapping = false;
+        scrollHint.rectTransform.anchorMin = new Vector2(0f, 0f);
+        scrollHint.rectTransform.anchorMax = new Vector2(1f, 0f);
+        scrollHint.rectTransform.pivot = new Vector2(0.5f, 0f);
+        scrollHint.rectTransform.offsetMin = new Vector2(24f, 101f);
+        scrollHint.rectTransform.offsetMax = new Vector2(-24f, 129f);
+        LoginCanvasStyle.ApplyDialogButton(contextSellButton, true);
+    }
+
+    private static void SetDetailTextRegion(RectTransform rect, float left, float right, float top, float height)
+    {
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = Vector2.one;
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.offsetMin = new Vector2(left, -top - height);
+        rect.offsetMax = new Vector2(-right, -top);
+    }
+
+    private static void ConfigureDetailHeading(TMP_Text text, float minimum, float maximum)
+    {
+        if (text == null) return;
+        text.enableAutoSizing = true;
+        text.fontSizeMin = minimum;
+        text.fontSizeMax = maximum;
+        text.enableWordWrapping = false;
+        text.overflowMode = TextOverflowModes.Ellipsis;
+        text.raycastTarget = false;
+    }
+
+    private void EnsureDetailDescriptionScroll()
+    {
+        if (detailDescriptionText == null || detailDescriptionScroll != null) return;
+        RectTransform content = detailDescriptionText.rectTransform;
+        GameObject viewportObject = new GameObject("InventoryDetailDescriptionViewport", typeof(RectTransform), typeof(Image), typeof(RectMask2D), typeof(ScrollRect));
+        RectTransform viewport = viewportObject.GetComponent<RectTransform>();
+        viewport.SetParent(content.parent, false);
+        viewport.SetSiblingIndex(content.GetSiblingIndex());
+        viewport.anchorMin = content.anchorMin;
+        viewport.anchorMax = content.anchorMax;
+        viewport.pivot = content.pivot;
+        viewport.anchoredPosition = content.anchoredPosition;
+        viewport.sizeDelta = content.sizeDelta;
+        viewport.localScale = content.localScale;
+        viewport.localRotation = content.localRotation;
+        viewportObject.GetComponent<Image>().color = Color.clear;
+        content.SetParent(viewport, false);
+        content.anchorMin = new Vector2(0f, 1f);
+        content.anchorMax = Vector2.one;
+        content.pivot = new Vector2(0.5f, 1f);
+        content.anchoredPosition = Vector2.zero;
+        content.sizeDelta = Vector2.zero;
+        content.localScale = Vector3.one;
+        content.localRotation = Quaternion.identity;
+        detailDescriptionText.enableAutoSizing = false;
+        detailDescriptionText.fontSize = 18f;
+        detailDescriptionText.color = new Color(0.29f, 0.22f, 0.16f, 1f);
+        detailDescriptionText.fontStyle = FontStyles.Normal;
+        detailDescriptionText.characterSpacing = 0f;
+        detailDescriptionText.lineSpacing = 3f;
+        detailDescriptionText.paragraphSpacing = 6f;
+        detailDescriptionText.alignment = TextAlignmentOptions.TopLeft;
         detailDescriptionText.enableWordWrapping = true;
+        detailDescriptionText.overflowMode = TextOverflowModes.Overflow;
+        detailDescriptionText.raycastTarget = false;
+        ContentSizeFitter fitter = content.GetComponent<ContentSizeFitter>();
+        if (fitter == null) fitter = content.gameObject.AddComponent<ContentSizeFitter>();
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        detailDescriptionScroll = viewportObject.GetComponent<ScrollRect>();
+        detailDescriptionScroll.viewport = viewport;
+        detailDescriptionScroll.content = content;
+        detailDescriptionScroll.horizontal = false;
+        detailDescriptionScroll.vertical = true;
+        detailDescriptionScroll.movementType = ScrollRect.MovementType.Clamped;
+        detailDescriptionScroll.scrollSensitivity = 24f;
     }
 
     private TMP_Text EnsureDetailText(TMP_Text current, string objectName, string value, float size, TextAlignmentOptions alignment)
@@ -678,7 +1050,7 @@ public sealed class InventoryPanelView : MonoBehaviour
         GameObject child = new GameObject(objectName, typeof(RectTransform), typeof(TextMeshProUGUI));
         child.transform.SetParent(detailRoot, false);
         TextMeshProUGUI text = child.GetComponent<TextMeshProUGUI>();
-        text.text = FrontendTextLocalization.Normalize(value);
+        text.text = value;
         text.font = fontAsset;
         text.fontSize = size;
         text.color = new Color(1f, 0.90f, 0.66f, 1f);

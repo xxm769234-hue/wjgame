@@ -67,7 +67,8 @@ public partial class GameBoot : MonoBehaviour
 
     private void Update()
     {
-        if ((privacyPolicyOverlay != null && privacyPolicyOverlay.activeSelf)
+        if (IsAgreementNoticeOpen
+            || (privacyPolicyOverlay != null && privacyPolicyOverlay.activeSelf)
             || (accountManagementPanel != null && accountManagementPanel.activeSelf)
             || (realNamePanel != null && realNamePanel.activeSelf)
             || (settingsPanel != null && settingsPanel.activeSelf))
@@ -144,12 +145,62 @@ public partial class GameBoot : MonoBehaviour
         contentView.SettingsButton.onClick.AddListener(ShowSettingsPanel);
         contentView.MailButton.onClick.AddListener(() => ShowError("登录后可在首页查看系统邮件"));
         contentView.SettingsCloseButton.onClick.AddListener(HideSettingsPanel);
+        ApplyLoginDialogVisuals(contentView);
 
         loginDialog.SetActive(false);
         settingsPanel.SetActive(false);
         InitializeLoginFields();
         SetStatus(string.Empty, ErrorColor);
         return true;
+    }
+
+    private void ApplyLoginDialogVisuals(LoginContentView contentView)
+    {
+        Image paper = loginDialog.transform.Find("DialogPanel")?.GetComponent<Image>();
+        LoginCanvasStyle.ApplyDialogPaper(paper);
+        Transform shadow = loginDialog.transform.Find("DialogShadow");
+        if (shadow != null) shadow.gameObject.SetActive(false);
+        LoginCanvasStyle.ApplyDialogInput(accountInput);
+        LoginCanvasStyle.ApplyDialogInput(nicknameInput);
+        LoginCanvasStyle.ApplyDialogInput(passwordInput);
+        LoginCanvasStyle.ApplyDialogButton(loginButton, true);
+        LoginCanvasStyle.ApplyDialogButton(registerButton, false);
+        LoginCanvasStyle.ApplyDialogButton(weChatButton, false);
+        LoginCanvasStyle.ApplyDialogButton(contentView.SettingsButton, false);
+        LoginCanvasStyle.ApplyDialogButton(contentView.MailButton, false);
+        LoginCanvasStyle.ApplyDialogPaper(settingsPanel.GetComponent<Image>());
+        LoginCanvasStyle.ApplyDialogButton(contentView.SettingsCloseButton, true);
+        if (loginDialogCloseButton.targetGraphic is Image closeImage)
+        {
+            LoginCanvasStyle.ApplyDialogCloseButton(loginDialogCloseButton);
+            RectTransform closeRect = closeImage.rectTransform;
+            closeRect.anchoredPosition = new Vector2(350f, 264f);
+            closeRect.sizeDelta = new Vector2(64f, 80f);
+            Transform closeShadow = closeRect.parent.Find(loginDialogCloseButton.name + "Shadow");
+            if (closeShadow != null) closeShadow.gameObject.SetActive(false);
+        }
+        foreach (Text label in loginDialog.GetComponentsInChildren<Text>(true))
+        {
+            if (label.name.EndsWith("InputLabel", StringComparison.Ordinal)) label.color = new Color(0.40f, 0.25f, 0.14f, 1f);
+            if (label.name == "DialogSubtitle") label.color = new Color(0.49f, 0.38f, 0.27f, 1f);
+        }
+        LoginCanvasStyle.ApplyCheckbox(rememberToggle);
+        if (rememberToggle.targetGraphic != null)
+            rememberToggle.targetGraphic.rectTransform.sizeDelta = new Vector2(28f, 28f);
+        if (rememberToggle.graphic != null)
+            rememberToggle.graphic.rectTransform.sizeDelta = new Vector2(20f, 20f);
+        Image rememberHitArea = rememberToggle.GetComponent<Image>();
+        if (rememberHitArea == null) rememberHitArea = rememberToggle.gameObject.AddComponent<Image>();
+        rememberHitArea.color = Color.clear;
+        rememberHitArea.raycastTarget = true;
+        Text rememberLabel = rememberToggle.GetComponentInChildren<Text>(true);
+        if (rememberLabel != null)
+        {
+            rememberLabel.color = new Color32(88, 66, 47, 255);
+            rememberLabel.fontSize = rememberLabel.resizeTextMaxSize = 20;
+            rememberLabel.resizeTextMinSize = 18;
+            rememberLabel.rectTransform.offsetMin = new Vector2(42f, 0f);
+        }
     }
 
     private void ShowLoginDialog()
@@ -161,6 +212,7 @@ public partial class GameBoot : MonoBehaviour
 
         loginDialog.SetActive(true);
         loginDialog.transform.SetAsLastSibling();
+        PlacePrivacyControlsInLogin(true);
         if (accountInput != null)
         {
             accountInput.Select();
@@ -177,6 +229,7 @@ public partial class GameBoot : MonoBehaviour
 
         HideSettingsPanel();
         loginDialog.SetActive(false);
+        PlacePrivacyControlsInLogin(false);
     }
 
     private void InitializeLoginFields()
@@ -422,10 +475,10 @@ public partial class GameBoot : MonoBehaviour
         settingsPanel = panel.gameObject;
         SetRect(panel.rectTransform, CenterAnchor(), CenterAnchor(), CenterAnchor(), Vector2.zero, new Vector2(460f, 320f));
 
-        Text title = CreateText("Title", panel.transform, "设置", 30, FontStyle.Bold, FieldTextColor, TextAnchor.MiddleCenter);
+        Text title = CreateText("Title", panel.transform, "音频状态", 30, FontStyle.Bold, FieldTextColor, TextAnchor.MiddleCenter);
         SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(0f, 46f));
 
-        Text body = CreateText("Body", panel.transform, "音乐：开启\n音效：开启\n画质：标准\n\n后续可在这里接入更多设置项。", 20, FontStyle.Normal, FieldTextColor, TextAnchor.UpperLeft);
+        Text body = CreateText("Body", panel.transform, string.Empty, 20, FontStyle.Normal, FieldTextColor, TextAnchor.UpperLeft);
         SetRect(body.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -86f), new Vector2(-72f, 150f));
 
         Button closeButton = CreateFixedButton(panel.transform, "CloseButton", "关闭", new Vector2(0f, -118f), new Vector2(130f, 46f), new Color(0.55f, 0.34f, 0.18f, 1f), Color.white, 18);
@@ -438,6 +491,23 @@ public partial class GameBoot : MonoBehaviour
     {
         if (settingsPanel != null)
         {
+            Text title = settingsPanel.transform.Find("Title")?.GetComponent<Text>();
+            if (title != null) title.text = "音频状态";
+            Transform bodyTransform = settingsPanel.transform.Find("Body");
+            Text body = bodyTransform != null ? bodyTransform.GetComponent<Text>() : null;
+            if (body != null)
+            {
+                string music = GameSettingsRuntime.MusicEnabled && GameSettingsRuntime.MusicVolume > 0
+                    ? GameSettingsRuntime.MusicVolume + "%" : "已静音";
+                string sound = GameSettingsRuntime.SoundEnabled && GameSettingsRuntime.SoundVolume > 0
+                    ? GameSettingsRuntime.SoundVolume + "%" : "已静音";
+                body.text = "背景音乐  " + music + "\n游戏音效  " + sound + "\n\n可在主页设置中调整音量。";
+                body.fontSize = 20;
+                body.lineSpacing = 1.15f;
+                body.horizontalOverflow = HorizontalWrapMode.Wrap;
+                body.verticalOverflow = VerticalWrapMode.Truncate;
+                SetRect(body.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -84f), new Vector2(-72f, 150f));
+            }
             settingsPanel.SetActive(true);
             settingsPanel.transform.SetAsLastSibling();
         }
@@ -776,7 +846,7 @@ public partial class GameBoot : MonoBehaviour
                 && !response.data.privacyConsentRequired
                 && response.data.compliance == null)
             {
-                SetBusyState(false, "服务器未返回实名和防沉迷准入状态，暂不能进入游戏。");
+                SetBusyState(false, "实名与防沉迷状态暂时无法确认，请稍后重试。");
                 yield break;
             }
 
@@ -799,7 +869,7 @@ public partial class GameBoot : MonoBehaviour
             yield break;
         }
 
-        SetBusyState(true, "正在检查客户端版本和服务器状态...");
+        SetBusyState(true, "正在检查版本与登录状态...");
         string path = string.Format(
             CultureInfo.InvariantCulture,
             "/client/runtime-policy?platform=UNITY&channel={0}&versionCode={1}",
@@ -833,8 +903,8 @@ public partial class GameBoot : MonoBehaviour
                 || response.data == null)
             {
                 runtimePolicyBlocked = true;
-                SetBusyState(false, "启动策略读取失败，暂时无法登录：" + ApiRequestUtility.GetErrorMessage(request, "请求失败"));
-                ShowRuntimePolicyOverlay("启动策略不可用", "客户端启动策略或隐私协议暂时不可用，请稍后重试。", string.Empty);
+                SetBusyState(false, "暂时无法登录：" + ApiRequestUtility.GetErrorMessage(request, "请稍后重试"));
+                ShowRuntimePolicyOverlay("暂时无法登录", "登录检查或隐私协议暂时不可用，请稍后重试。", string.Empty);
                 yield break;
             }
 
@@ -844,7 +914,7 @@ public partial class GameBoot : MonoBehaviour
                 runtimePolicyBlocked = true;
                 SetBusyState(false, string.Empty);
                 ShowRuntimePolicyOverlay(
-                    "需要更新客户端",
+                    "需要更新游戏",
                     string.IsNullOrWhiteSpace(policy.message)
                         ? $"当前版本需要更新到 {policy.minimumVersionName ?? policy.latestVersionName} 后才能继续。"
                         : policy.message,
@@ -1006,7 +1076,7 @@ public partial class GameBoot : MonoBehaviour
         if (statusText != null)
         {
             statusText.color = color;
-            statusText.text = FrontendTextLocalization.Normalize(message ?? string.Empty);
+            statusText.text = string.IsNullOrWhiteSpace(message) ? string.Empty : FrontendTextLocalization.NormalizePlayerMessage(message);
         }
     }
 
@@ -1107,6 +1177,7 @@ public partial class GameBoot : MonoBehaviour
 
         toggle.targetGraphic = box;
         toggle.graphic = checkmark;
+        LoginCanvasStyle.ApplyCheckbox(toggle);
 
         Text label = CreateText("Label", obj.transform, "记住账号", 13, FontStyle.Normal, MutedTextColor, TextAnchor.MiddleLeft);
         RectTransform labelRect = label.rectTransform;

@@ -6,10 +6,12 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using Text = TMPro.TMP_Text;
+using InputField = TMPro.TMP_InputField;
+using LegacyText = UnityEngine.UI.Text;
 
 public partial class HomePageUI
 {
-    private const int FriendsPerPage = 5;
 
     private GameObject accountProfilePanelObject;
     private GameObject friendsPanelObject;
@@ -17,6 +19,7 @@ public partial class HomePageUI
     private bool profileRefreshRunning;
     private bool profileNicknamePolicyLoading;
     private bool profileNicknameSaving;
+    private bool profileNicknameEditing;
     private bool profileSwitchLoginConfirmation;
     private bool profileCancellationStatusLoading;
     private bool profileCancellationRequestRunning;
@@ -40,11 +43,6 @@ public partial class HomePageUI
     private string profileComplianceStatusMessage = string.Empty;
     private string profileCancellationRequestId = string.Empty;
     private string profileCancellationRecoveryRequestId = string.Empty;
-    private bool profileStatisticsRefreshRunning;
-    private int profileServerSignInDays = -1;
-    private int profileServerFriendCount = -1;
-    private int profileServerExploreCount = -1;
-    private string profileStatisticsStatus = string.Empty;
 
     private void ShowAccountProfilePanel()
     {
@@ -54,11 +52,12 @@ public partial class HomePageUI
         HomePageScenePanel panel = OpenRegisteredScenePanel(HomePageScenePanelType.AccountProfile);
         if (panel == null)
         {
-            SetLeftContent("个人信息", BuildAccountProfileFallbackText(), "个人档案场景组件未找到");
+            SetLeftContent("个人信息", BuildAccountProfileFallbackText(), "个人档案暂时无法打开");
             return;
         }
 
         accountProfilePanelObject = panel.gameObject;
+        profileNicknameEditing = false;
         profileSwitchLoginConfirmation = false;
         profileCancellationConfirmation = false;
         profileCancellationStatusLoading = false;
@@ -70,11 +69,7 @@ public partial class HomePageUI
         profileComplianceStatusLoaded = false;
         profileComplianceStatus = null;
         profileComplianceStatusMessage = string.Empty;
-        profileServerSignInDays = -1;
-        profileServerFriendCount = -1;
-        profileServerExploreCount = -1;
-        profileStatisticsStatus = "尚未同步统计";
-        RefreshAccountProfileScenePanel(panel.PanelRoot, "账号资料来自当前登录存档");
+        RefreshAccountProfileScenePanel(panel.PanelRoot, string.Empty);
         if (HasAuthSession())
         {
             StartCoroutine(RefreshCurrentUserProfile(panel.PanelRoot));
@@ -90,7 +85,6 @@ public partial class HomePageUI
         }
 
         EnsureAccountProfileTextMeshPro(root);
-        EnsureAccountProfileDetailControls(root);
 
         string nickname = PlayerPrefs.GetString("PlayerNickname", "玩家");
         string identifier = GetCurrentProfileIdentifier();
@@ -100,16 +94,19 @@ public partial class HomePageUI
         SetSceneText(root, "ProfileTitle", "个人信息");
         SetSceneText(root, "ProfileModeBadge", "账号登录");
         SetSceneText(root, "ProfileAvatarInitial", GetNicknameInitial(nickname));
-        SetSceneText(root, "ProfileIdentifier", $"玩家编号  {identifier}");
+        SetSceneText(root, "ProfileIdentifier", $"玩家ID  {identifier}");
         SetSceneText(root, "ProfileAccount", $"登录账号  {(string.IsNullOrEmpty(username) ? "未设置" : username)}");
-        SetSceneText(root, "ProfileLevel", $"领主等级  {PlayerPrefs.GetInt("PlayerLv", 1)}");
+        SetSceneText(root, "ProfileLevel", $"领主等级  Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}");
         SetSceneText(root, "ProfileVital", $"生命  {PlayerPrefs.GetInt("PlayerHp", 1000)}    体力  {GetHomeStamina()}");
-        SetSceneText(root, "ProfileSignStat", BuildProfileSignStat());
-        SetSceneText(root, "ProfileFriendStat", BuildProfileFriendStat());
-        SetSceneText(root, "ProfileExploreStat", BuildProfileExploreStat());
+        SetSceneText(root, "ProfileSignStat", $"签到天数\n{PlayerPrefs.GetInt("DailySignDays", 0)} 天");
+        SetSceneText(root, "ProfileFriendStat", $"好友数量\n{v37Friends.Count} 人");
+        SetSceneText(root, "ProfileGrowthTitle", "旅途概览");
         SetSceneText(root, "ProfileSyncText", GetProfileSyncText(isAuthenticated));
         SetSceneText(root, "ProfileStatus", status);
-        SetSceneText(root, "ProfileCancellationStatus", BuildProfileCancellationStatus(isAuthenticated));
+        bool hasCancellationDetails = FindSceneTransform(root, "ProfileCancellationDetailsText") != null;
+        SetSceneObjectActive(root, "ProfileCancellationStatus", !hasCancellationDetails);
+        if (!hasCancellationDetails)
+            SetSceneText(root, "ProfileCancellationStatus", BuildProfileCancellationStatus(isAuthenticated));
         SetSceneText(root, "ProfileExperienceText", BuildProfileExperienceText(isAuthenticated));
         SetSceneText(root, "ProfileAccountStatusText", BuildProfileAccountStatusText(isAuthenticated));
         SetSceneText(root, "ProfileCancellationDetailsText", BuildProfileCancellationDetailsText(isAuthenticated));
@@ -122,11 +119,29 @@ public partial class HomePageUI
             && profileNicknamePolicy != null
             && profileNicknamePolicy.enabled
             && profileNicknamePolicy.canChangeNow
+            && !profileRefreshRunning
             && !profileNicknameSaving
             && !profileNicknamePolicyLoading;
+        SetSceneText(root, "ProfileNicknameLabel", nickname);
+        SetSceneObjectActive(root, "ProfileNicknameLabel", !profileNicknameEditing);
+        SetSceneObjectActive(root, "ProfileNicknameInput", profileNicknameEditing);
+        SetSceneObjectActive(root, "ProfileNicknameHint", profileNicknameEditing);
         if (nicknameInput != null)
         {
-            nicknameInput.SetTextWithoutNotify(nickname);
+            // Background profile/status refreshes must not replace an unfinished nickname draft.
+            if (!profileNicknameEditing)
+            {
+                nicknameInput.SetTextWithoutNotify(nickname);
+            }
+            if (nicknameInput.textViewport == null)
+            {
+                nicknameInput.textViewport = nicknameInput.transform as RectTransform;
+            }
+            TMP_Text placeholder = nicknameInput.placeholder as TMP_Text;
+            if (placeholder != null)
+            {
+                placeholder.text = "请输入昵称";
+            }
             nicknameInput.characterLimit = 12;
             nicknameInput.readOnly = !canEditNickname;
             nicknameInput.interactable = isAuthenticated && !profileRefreshRunning && !profileNicknameSaving && !profileNicknamePolicyLoading;
@@ -135,17 +150,15 @@ public partial class HomePageUI
         Button saveButton = FindSceneComponent<Button>(root, "ProfileSaveNicknameButton");
         if (saveButton != null)
         {
-            saveButton.interactable = canEditNickname;
-            SetSceneButtonText(saveButton, profileNicknameSaving ? "保存中..." : "保存昵称");
-            BindSceneButton(saveButton, () => TrySaveProfileNickname(root));
-        }
-
-        Button refreshButton = FindSceneComponent<Button>(root, "ProfileRefreshButton");
-        if (refreshButton != null)
-        {
-            refreshButton.interactable = !profileRefreshRunning;
-            SetSceneButtonText(refreshButton, profileRefreshRunning ? "同步中..." : "刷新资料");
-            BindSceneButton(refreshButton, () => StartCoroutine(RefreshCurrentUserProfile(root)));
+            saveButton.interactable = nicknameInput != null && (profileNicknameEditing
+                ? canEditNickname
+                : isAuthenticated && !profileRefreshRunning && !profileNicknameSaving && !profileNicknamePolicyLoading);
+            SetSceneButtonText(saveButton, profileNicknameSaving ? "保存中..." : profileNicknameEditing ? "保存昵称" : "编辑昵称");
+            BindSceneButton(saveButton, () =>
+            {
+                if (profileNicknameEditing) TrySaveProfileNickname(root);
+                else BeginEditProfileNickname(root);
+            });
         }
 
         Button switchButton = FindSceneComponent<Button>(root, "ProfileSwitchLoginButton");
@@ -167,7 +180,7 @@ public partial class HomePageUI
         }
         BindSceneButton(cancellationButton, () => HandleProfileCancellation(root));
         Button copyButton = FindSceneComponent<Button>(root, "ProfileCopyIdButton");
-        SetSceneButtonText(copyButton, "复制玩家编号");
+        SetSceneButtonText(copyButton, "复制玩家ID");
         BindSceneButton(copyButton, () => CopyProfileIdentifier(root));
         BindSceneButton(FindSceneComponent<Button>(root, "ProfileCloseButton"), HideAccountProfilePanel);
     }
@@ -176,27 +189,18 @@ public partial class HomePageUI
     {
         GUIUtility.systemCopyBuffer = GetCurrentProfileIdentifier();
         profileSwitchLoginConfirmation = false;
-        RefreshAccountProfileScenePanel(root, "玩家编号已复制");
+        RefreshAccountProfileScenePanel(root, "玩家ID已复制");
     }
 
     private void EnsureAccountProfileTextMeshPro(Transform root)
     {
         Transform nicknameInput = FindSceneTransform(root, "ProfileNicknameInput");
-        TMP_FontAsset fontAsset = null;
-        TMP_Text[] existingTmpLabels = root.GetComponentsInChildren<TMP_Text>(true);
-        for (int i = 0; i < existingTmpLabels.Length; i++)
-        {
-            if (existingTmpLabels[i] != null && existingTmpLabels[i].font != null)
-            {
-                fontAsset = existingTmpLabels[i].font;
-                break;
-            }
-        }
+        TMP_FontAsset fontAsset = RuntimeFontAssetProvider.Resolve();
 
-        Text[] legacyLabels = root.GetComponentsInChildren<Text>(true);
+        LegacyText[] legacyLabels = root.GetComponentsInChildren<LegacyText>(true);
         for (int i = 0; i < legacyLabels.Length; i++)
         {
-            Text legacy = legacyLabels[i];
+            LegacyText legacy = legacyLabels[i];
             if (legacy == null || (nicknameInput != null && (legacy.transform == nicknameInput || legacy.transform.IsChildOf(nicknameInput))))
             {
                 continue;
@@ -233,12 +237,12 @@ public partial class HomePageUI
                 continue;
             }
 
-            TMP_FontAsset fallbackFontAsset = fontAsset != null ? fontAsset : TMP_Settings.GetFontAsset();
+            TMP_FontAsset fallbackFontAsset = fontAsset != null ? fontAsset : TMP_Settings.defaultFontAsset;
             if (fallbackFontAsset != null)
             {
                 replacement.font = fallbackFontAsset;
             }
-            replacement.text = FrontendTextLocalization.Normalize(value);
+            replacement.text = value;
             replacement.fontSize = Mathf.Max(1, fontSize);
             replacement.color = color;
             replacement.alignment = ConvertProfileTextAlignment(alignment);
@@ -296,56 +300,6 @@ public partial class HomePageUI
             default:
                 return FontStyles.Normal;
         }
-    }
-
-    private void EnsureAccountProfileDetailControls(Transform root)
-    {
-        if (FindSceneTransform(root, "ProfileDetailsCard") != null)
-        {
-            return;
-        }
-
-        Transform panel = FindSceneTransform(root, "ProfilePanel");
-        if (panel == null)
-        {
-            Debug.LogWarning("ProfilePanel was not found while creating account profile details.", this);
-            return;
-        }
-
-        Image card = CreateImage("ProfileDetailsCard", panel, new Color(1f, 0.90f, 0.69f, 1f));
-        SetRect(card.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(454f, -126f), new Vector2(746f, 160f));
-
-        TMP_Text title = CreateProfileRuntimeText(card.transform, "ProfileDetailsTitle", "账号与成长详情", 18, new Color(0.42f, 0.20f, 0.10f, 1f), TextAlignmentOptions.MidlineLeft);
-        SetRect(title.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(20f, -10f), new Vector2(700f, 26f));
-
-        TMP_Text experience = CreateProfileRuntimeText(card.transform, "ProfileExperienceText", "经验详情\n总经验：0\n本级经验：0/0", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
-        SetRect(experience.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(20f, -40f), new Vector2(342f, 48f));
-
-        TMP_Text accountStatus = CreateProfileRuntimeText(card.transform, "ProfileAccountStatusText", "账号状态\n状态：正常\n可正常进入游戏", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
-        SetRect(accountStatus.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(382f, -40f), new Vector2(342f, 48f));
-
-        TMP_Text cancellation = CreateProfileRuntimeText(card.transform, "ProfileCancellationDetailsText", "注销详情\n状态：未申请\n冷静期截止：未设置", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
-        SetRect(cancellation.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(20f, -92f), new Vector2(342f, 58f));
-
-        TMP_Text compliance = CreateProfileRuntimeText(card.transform, "ProfileComplianceText", "实名/防沉迷\n实名：未知\n防沉迷：等待服务器状态", 14, new Color(0.40f, 0.31f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
-        SetRect(compliance.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(382f, -92f), new Vector2(342f, 58f));
-    }
-
-    private static TMP_Text CreateProfileRuntimeText(Transform parent, string name, string value, int fontSize, Color color, TextAlignmentOptions alignment)
-    {
-        GameObject textObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
-        textObject.transform.SetParent(parent, false);
-        TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
-        text.font = RuntimeFontAssetProvider.Resolve();
-        text.text = FrontendTextLocalization.Normalize(value ?? string.Empty);
-        text.fontSize = fontSize;
-        text.fontStyle = FontStyles.Normal;
-        text.color = color;
-        text.alignment = alignment;
-        text.enableWordWrapping = true;
-        text.overflowMode = TextOverflowModes.Ellipsis;
-        text.raycastTarget = false;
-        return text;
     }
 
     private void HandleProfileSwitchLogin(Transform root)
@@ -699,6 +653,7 @@ public partial class HomePageUI
 
     private void ClearClosedAccountProfileState()
     {
+        int playerId = GameSession.PlayerId;
         GameSession.Clear();
         string[] accountStateKeys =
         {
@@ -709,7 +664,6 @@ public partial class HomePageUI
             "PlayerAvatarCode",
             "PlayerAvatarVersion",
             "PlayerAvatarUpdatedTime",
-            "PlayerAvatarResourcePath",
             "AccountStatus",
             "AccountManagementOnly",
             "PrivacyConsentRequired",
@@ -735,6 +689,17 @@ public partial class HomePageUI
             PlayerPrefs.DeleteKey(accountStateKeys[index]);
         }
 
+        if (playerId > 0)
+        {
+            string avatarStateKeyPrefix = GetPlayerAvatarStateKeyPrefix(playerId);
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "Code");
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "Source");
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "Version");
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "UpdatedTime");
+            PlayerPrefs.DeleteKey(avatarStateKeyPrefix + "HasState");
+            avatarByPlayerId.Remove(playerId);
+        }
+
         PlayerPrefs.Save();
     }
 
@@ -754,7 +719,7 @@ public partial class HomePageUI
 
         if (profileCancellationStatusLoading)
         {
-            return "读取中...";
+            return "查询中";
         }
 
         if (profileCancellationRequestRunning)
@@ -777,7 +742,10 @@ public partial class HomePageUI
             return profileCancellationConfirmation ? "确认注销账号" : "注销账号";
         }
 
-        return "注销状态处理中";
+        string cancellationState = profileCancellationStatus == null ? string.Empty : profileCancellationStatus.cancellationStatus;
+        return string.Equals(cancellationState, "PENDING", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(cancellationState, "PROCESSING", StringComparison.OrdinalIgnoreCase)
+            ? "注销处理中" : "待确认";
     }
 
     private string BuildProfileCancellationStatus(bool isAuthenticated)
@@ -789,12 +757,12 @@ public partial class HomePageUI
 
         if (profileCancellationStatusLoading)
         {
-            return "账号注销状态：读取中...";
+            return "注销状态：查询中";
         }
 
         if (!profileCancellationStatusLoaded || profileCancellationStatus == null)
         {
-            return "账号注销状态：暂未同步";
+            return "注销状态：待确认";
         }
 
         if (string.IsNullOrEmpty(profileCancellationStatus.cancellationStatus))
@@ -809,7 +777,7 @@ public partial class HomePageUI
             string scheduledTime = string.IsNullOrEmpty(profileCancellationStatus.scheduledTime)
                 ? string.Empty
                 : "，冷静期截止：" + profileCancellationStatus.scheduledTime;
-            return "账号注销状态：" + GetProfileStatusDisplayLabel(state) + scheduledTime;
+            return "账号注销状态：" + FrontendTextLocalization.DisplayStatus(state) + scheduledTime;
         }
 
         if (string.Equals(state, "CANCELLED", StringComparison.OrdinalIgnoreCase))
@@ -822,7 +790,7 @@ public partial class HomePageUI
             return "账号注销状态：已完成，账号不可恢复";
         }
 
-        return "账号注销状态：" + GetProfileStatusDisplayLabel(state);
+        return "账号注销状态：" + FrontendTextLocalization.DisplayStatus(state);
     }
 
     private string BuildProfileExperienceText(bool isAuthenticated)
@@ -871,13 +839,12 @@ public partial class HomePageUI
         string accountStatus = profileCancellationStatus != null
             && !string.IsNullOrEmpty(profileCancellationStatus.accountStatus)
             ? profileCancellationStatus.accountStatus
-            : PlayerPrefs.GetString("AccountStatus", "ACTIVE");
+            : PlayerPrefs.GetString("AccountStatus", "UNKNOWN");
         bool managementOnly = PlayerPrefs.GetInt("AccountManagementOnly", 0) == 1;
         bool economyFrozen = PlayerPrefs.GetInt("PlayerEconomyFrozen", 0) == 1;
-        string mode = managementOnly ? "仅可进行账号管理" : "可正常进入游戏";
-        string economy = economyFrozen ? "经济状态：冻结" : "经济状态：正常";
-        return "账号状态\n状态：" + GetProfileStatusDisplayLabel(accountStatus)
-            + "\n" + mode + "  " + economy;
+        string mode = managementOnly ? "\n仅可进行账号管理" : string.Empty;
+        string economy = economyFrozen ? "\n交易状态：受限" : string.Empty;
+        return "账号状态\n" + FrontendTextLocalization.DisplayStatus(accountStatus) + mode + economy;
     }
 
     private string BuildProfileCancellationDetailsText(bool isAuthenticated)
@@ -889,19 +856,19 @@ public partial class HomePageUI
 
         if (profileCancellationStatusLoading)
         {
-            return "注销详情\n正在读取服务器状态...";
+            return "注销详情\n查询中";
         }
 
         if (!profileCancellationStatusLoaded || profileCancellationStatus == null)
         {
             return "注销详情\n" + (string.IsNullOrEmpty(profileCancellationStatusMessage)
-                ? "等待服务器状态"
-                : profileCancellationStatusMessage);
+                ? "待确认"
+                : FrontendTextLocalization.NormalizePlayerMessage(profileCancellationStatusMessage));
         }
 
         string cancellationState = string.IsNullOrEmpty(profileCancellationStatus.cancellationStatus)
             ? "未申请"
-            : GetProfileStatusDisplayLabel(profileCancellationStatus.cancellationStatus);
+            : FrontendTextLocalization.DisplayStatus(profileCancellationStatus.cancellationStatus);
         string requestedTime = string.IsNullOrEmpty(profileCancellationStatus.requestedTime)
             ? "未记录"
             : profileCancellationStatus.requestedTime;
@@ -922,31 +889,31 @@ public partial class HomePageUI
 
         if (profileComplianceStatusLoading)
         {
-            return "实名/防沉迷\n正在读取服务器状态...";
+            return "实名/防沉迷\n查询中";
         }
 
         if (!profileComplianceStatusLoaded || profileComplianceStatus == null)
         {
             return "实名/防沉迷\n" + (string.IsNullOrEmpty(profileComplianceStatusMessage)
-                ? "等待服务器状态"
-                : profileComplianceStatusMessage);
+                ? "待确认"
+                : FrontendTextLocalization.NormalizePlayerMessage(profileComplianceStatusMessage));
         }
 
-        string verificationStatus = GetProfileStatusDisplayLabel(profileComplianceStatus.verificationStatus);
-        string ageGroup = GetProfileAgeGroupDisplayLabel(profileComplianceStatus.ageGroup);
+        string verificationStatus = FrontendTextLocalization.DisplayStatus(profileComplianceStatus.verificationStatus);
+        string ageGroup = FrontendTextLocalization.DisplayStatus(profileComplianceStatus.ageGroup);
         string access = profileComplianceStatus.gameAccessAllowed ? "允许进入" : "暂不允许进入";
         string remaining = profileComplianceStatus.remainingSeconds < 0
             ? "不限时"
             : FormatProfileRemainingSeconds(profileComplianceStatus.remainingSeconds);
         string reason = string.IsNullOrEmpty(profileComplianceStatus.blockReason)
             ? "无"
-            : profileComplianceStatus.blockReason;
+            : FrontendTextLocalization.DisplayStatus(profileComplianceStatus.blockReason);
         string nextAllowed = string.IsNullOrEmpty(profileComplianceStatus.nextAllowedTime)
             ? string.Empty
             : "，下次可进入：" + profileComplianceStatus.nextAllowedTime;
         string message = string.IsNullOrEmpty(profileComplianceStatus.message)
             ? string.Empty
-            : "\n提示：" + profileComplianceStatus.message;
+            : "\n提示：" + FrontendTextLocalization.NormalizePlayerMessage(profileComplianceStatus.message);
         return "实名：" + verificationStatus + "  年龄：" + ageGroup
             + "\n防沉迷：" + (profileComplianceStatus.enforcementEnabled ? access : "未启用")
             + "  剩余：" + remaining
@@ -976,51 +943,6 @@ public partial class HomePageUI
         return remainder + "秒";
     }
 
-    private static bool ContainsAsciiLetter(string value)
-    {
-        if (string.IsNullOrEmpty(value)) return false;
-        for (int i = 0; i < value.Length; i++)
-        {
-            char character = value[i];
-            if ((character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z')) return true;
-        }
-        return false;
-    }
-
-    private static string GetProfileStatusDisplayLabel(string status)
-    {
-        string normalized = (status ?? string.Empty).Trim().ToUpperInvariant();
-        switch (normalized)
-        {
-            case "ACTIVE": return "正常";
-            case "INACTIVE": return "未启用";
-            case "CLOSED": return "已关闭";
-            case "UNKNOWN": return "未知";
-            case "PENDING": return "待处理";
-            case "PROCESSING": return "处理中";
-            case "CANCELLED": return "已撤销";
-            case "COMPLETED": return "已完成";
-            case "AVAILABLE": return "可用";
-            case "LOCKED": return "已锁定";
-            case "UNAVAILABLE": return "不可用";
-            default: return string.IsNullOrEmpty(status) || ContainsAsciiLetter(status) ? "未知" : status;
-        }
-    }
-
-    private static string GetProfileAgeGroupDisplayLabel(string ageGroup)
-    {
-        string normalized = (ageGroup ?? string.Empty).Trim().ToUpperInvariant();
-        switch (normalized)
-        {
-            case "UNKNOWN": return "未知";
-            case "MINOR": return "未成年";
-            case "ADULT": return "成年";
-            case "CHILD": return "儿童";
-            case "TEEN": return "青少年";
-            default: return string.IsNullOrEmpty(ageGroup) || ContainsAsciiLetter(ageGroup) ? "未知" : ageGroup;
-        }
-    }
-
     private void SaveProfileAccountStatus(string accountStatus)
     {
         if (string.IsNullOrEmpty(accountStatus))
@@ -1034,14 +956,14 @@ public partial class HomePageUI
 
     private IEnumerator RefreshCurrentUserProfile(Transform root)
     {
-        if (profileRefreshRunning || !HasAuthSession())
+        if (profileRefreshRunning || profileNicknameSaving || !HasAuthSession())
         {
             yield break;
         }
 
         profileRefreshRunning = true;
         profileSwitchLoginConfirmation = false;
-        RefreshAccountProfileScenePanel(root, "正在同步服务器资料...");
+        RefreshAccountProfileScenePanel(root, "正在刷新资料...");
 
         UnityWebRequest request = CreateAuthorizedGet("/user/me");
         if (request == null)
@@ -1076,292 +998,49 @@ public partial class HomePageUI
             catch (Exception)
             {
                 profileRefreshRunning = false;
-                RefreshAccountProfileScenePanel(root, "服务器资料格式无法解析");
+                RefreshAccountProfileScenePanel(root, "资料读取失败，请稍后重试");
                 yield break;
             }
 
             if (response == null || response.code != 200 || response.data == null)
             {
                 profileRefreshRunning = false;
-                RefreshAccountProfileScenePanel(root, response == null ? "服务器未返回资料" : GetApiError(response));
+                RefreshAccountProfileScenePanel(root, response == null ? "暂时无法读取资料" : GetApiError(response));
                 yield break;
             }
 
             SaveUserProfile(response.data);
-            QueueBackendSnapshotRefresh(true, true);
-            yield return RefreshServerStamina();
-            yield return RefreshProfileStatistics(root);
             yield return RefreshProfileNicknamePolicy(root);
             yield return RefreshProfileCancellationStatus(root, "正在同步账号注销状态...");
             yield return RefreshProfileComplianceStatus(root, "正在同步实名及防沉迷状态...");
             profileRefreshRunning = false;
-            RefreshAccountProfileScenePanel(root, "服务器资料同步完成");
+            RefreshAccountProfileScenePanel(root, string.Empty);
             SetStatus("个人资料已刷新");
         }
     }
 
-    private string BuildProfileSignStat()
-    {
-        if (profileServerSignInDays >= 0)
-        {
-            return $"本期签到天数\n{profileServerSignInDays} 天";
-        }
-
-        return profileStatisticsRefreshRunning
-            ? "本期签到天数\n同步中..."
-            : "本期签到天数\n暂无服务端数据";
-    }
-
-    private string BuildProfileFriendStat()
-    {
-        if (profileServerFriendCount >= 0)
-        {
-            return $"好友数量\n{profileServerFriendCount} 人";
-        }
-
-        return profileStatisticsRefreshRunning
-            ? "好友数量\n同步中..."
-            : "好友数量\n暂无服务端数据";
-    }
-
-    private string BuildProfileExploreStat()
-    {
-        if (profileServerExploreCount >= 0)
-        {
-            return $"场景任务进度\n{profileServerExploreCount}";
-        }
-
-        return profileStatisticsRefreshRunning
-            ? "场景任务进度\n同步中..."
-            : "场景任务进度\n后端未提供统计";
-    }
-
-    private IEnumerator RefreshProfileStatistics(Transform root)
-    {
-        if (root == null || !HasAuthSession() || profileStatisticsRefreshRunning)
-        {
-            yield break;
-        }
-
-        profileStatisticsRefreshRunning = true;
-        profileStatisticsStatus = "正在同步统计...";
-        RefreshAccountProfileScenePanel(root, profileStatisticsStatus);
-
-        bool signInLoaded = false;
-        bool friendLoaded = false;
-        bool taskLoaded = false;
-        string firstError = string.Empty;
-
-        UnityWebRequest friendRequest = CreateAuthorizedGet("/friends/requests/summary");
-        if (friendRequest != null)
-        {
-            using (friendRequest)
-            {
-                yield return friendRequest.SendWebRequest();
-                if (HandleUnauthorizedResponse(friendRequest))
-                {
-                    profileStatisticsRefreshRunning = false;
-                    yield break;
-                }
-
-                ServerFriendRequestSummaryApiResponse friendResponse =
-                    ParseJson<ServerFriendRequestSummaryApiResponse>(friendRequest.downloadHandler.text);
-                if (friendRequest.result == UnityWebRequest.Result.Success
-                    && friendResponse != null
-                    && friendResponse.code == 200
-                    && friendResponse.data != null)
-                {
-                    profileServerFriendCount = Mathf.Max(0, friendResponse.data.friendCount);
-                    friendLoaded = true;
-                }
-                else
-                {
-                    firstError = GetProfileStatisticsError(friendRequest, friendResponse, "好友统计读取失败");
-                }
-            }
-        }
-        else
-        {
-            firstError = requestCreationError;
-        }
-
-        UnityWebRequest signRequest = CreateAuthorizedGet("/sign-in/overview");
-        if (signRequest != null)
-        {
-            using (signRequest)
-            {
-                yield return signRequest.SendWebRequest();
-                if (HandleUnauthorizedResponse(signRequest))
-                {
-                    profileStatisticsRefreshRunning = false;
-                    yield break;
-                }
-
-                SignInOverviewApiResponse signResponse =
-                    ParseJson<SignInOverviewApiResponse>(signRequest.downloadHandler.text);
-                if (signRequest.result == UnityWebRequest.Result.Success
-                    && signResponse != null
-                    && signResponse.code == 200
-                    && signResponse.data != null)
-                {
-                    profileServerSignInDays = CountProfileClaimedSignInDays(signResponse.data);
-                    signInLoaded = true;
-                }
-                else if (string.IsNullOrEmpty(firstError))
-                {
-                    firstError = GetProfileStatisticsError(signRequest, signResponse, "签到统计读取失败");
-                }
-            }
-        }
-        else if (string.IsNullOrEmpty(firstError))
-        {
-            firstError = requestCreationError;
-        }
-
-        UnityWebRequest taskRequest = CreateAuthorizedGet("/tasks");
-        if (taskRequest != null)
-        {
-            using (taskRequest)
-            {
-                yield return taskRequest.SendWebRequest();
-                if (HandleUnauthorizedResponse(taskRequest))
-                {
-                    profileStatisticsRefreshRunning = false;
-                    yield break;
-                }
-
-                ServerTaskListApiResponse taskResponse =
-                    ParseJson<ServerTaskListApiResponse>(taskRequest.downloadHandler.text);
-                if (taskRequest.result == UnityWebRequest.Result.Success
-                    && taskResponse != null
-                    && taskResponse.code == 200
-                    && taskResponse.data != null)
-                {
-                    profileServerExploreCount = CalculateProfileSceneTaskProgress(taskResponse.data.tasks);
-                    taskLoaded = true;
-                }
-                else if (string.IsNullOrEmpty(firstError))
-                {
-                    firstError = GetProfileStatisticsError(taskRequest, taskResponse, "场景任务统计读取失败");
-                }
-            }
-        }
-        else if (string.IsNullOrEmpty(firstError))
-        {
-            firstError = requestCreationError;
-        }
-
-        profileStatisticsRefreshRunning = false;
-        profileStatisticsStatus = signInLoaded && friendLoaded && taskLoaded
-            ? "服务器统计已同步"
-            : (string.IsNullOrEmpty(firstError) ? "部分服务器统计暂不可用" : firstError);
-        RefreshAccountProfileScenePanel(root, profileStatisticsStatus);
-    }
-
-    private static int CountProfileClaimedSignInDays(SignInOverviewData overview)
-    {
-        if (overview == null || overview.plans == null || overview.plans.Length == 0)
-        {
-            return 0;
-        }
-
-        SignInPlanResponse selectedPlan = null;
-        for (int i = 0; i < overview.plans.Length; i++)
-        {
-            SignInPlanResponse plan = overview.plans[i];
-            if (plan == null)
-            {
-                continue;
-            }
-
-            if (string.Equals(plan.planCode, "MONTHLY", StringComparison.OrdinalIgnoreCase))
-            {
-                selectedPlan = plan;
-                break;
-            }
-
-            if (selectedPlan == null)
-            {
-                selectedPlan = plan;
-            }
-        }
-
-        int count = 0;
-        SignInDayResponse[] days = selectedPlan == null ? null : selectedPlan.days;
-        if (days == null)
-        {
-            return 0;
-        }
-
-        for (int i = 0; i < days.Length; i++)
-        {
-            if (days[i] != null && days[i].claimed)
-            {
-                count++;
-            }
-        }
-
-        return count;
-    }
-
-    private static int CalculateProfileSceneTaskProgress(ServerTaskResponse[] tasks)
-    {
-        if (tasks == null)
-        {
-            return 0;
-        }
-
-        int maximumProgress = 0;
-        for (int i = 0; i < tasks.Length; i++)
-        {
-            ServerTaskResponse task = tasks[i];
-            if (task == null || string.IsNullOrEmpty(task.objectiveType))
-            {
-                continue;
-            }
-
-            string objective = task.objectiveType.Trim().ToUpperInvariant();
-            if (objective != "SCENE_SLOT_UNLOCK_COUNT" && objective != "SCENE_FULLY_BUILT")
-            {
-                continue;
-            }
-
-            maximumProgress = Mathf.Max(maximumProgress, ClampLongToInt(task.progressAmount, 0));
-        }
-
-        return maximumProgress;
-    }
-
-    private string GetProfileStatisticsError<T>(UnityWebRequest request, T response, string fallback)
-        where T : BasicApiResponse
-    {
-        return response == null
-            ? ApiRequestUtility.GetErrorMessage(request, fallback)
-            : GetApiError(response);
-    }
-
     private void SaveUserProfile(UserProfileData profile)
     {
-        PlayerPrefs.SetInt(PlayerIdKey, ClampLongToInt(profile.id, 0));
+        PlayerPrefs.SetInt(PlayerIdKey, profile.id);
         PlayerPrefs.SetString("LoginUsername", profile.username ?? string.Empty);
         PlayerPrefs.SetString("PlayerNickname", profile.nickname ?? string.Empty);
         PlayerPrefs.SetString("PlayerNicknameVersion", Math.Max(0L, profile.nicknameVersion).ToString());
         PlayerPrefs.SetString("PlayerNicknameUpdatedTime", profile.nicknameUpdatedTime ?? string.Empty);
         PlayerPrefs.SetInt("PlayerNicknameChangeCount", Math.Max(0, profile.nicknameChangeCount));
         PlayerPrefs.SetInt("PlayerNicknameChangeRequired", profile.nicknameChangeRequired ? 1 : 0);
-        PlayerPrefs.SetInt("PlayerLv", Mathf.Max(1, profile.level));
+        PlayerPrefs.SetInt("PlayerLv", profile.level);
         PlayerPrefs.SetString("PlayerTotalExperience", Math.Max(0L, profile.totalExperience).ToString());
-        PlayerPrefs.SetInt("PlayerLevelCurveRevision", ClampLongToInt(profile.levelCurveRevision, 0));
-        PlayerPrefs.SetInt("PlayerCurrentLevelExperience", ClampLongToInt(profile.currentLevelExperience, 0));
-        PlayerPrefs.SetInt("PlayerRequiredExperience", ClampLongToInt(profile.requiredExperienceForNextLevel, 0));
+        PlayerPrefs.SetInt("PlayerLevelCurveRevision", Mathf.Max(0, profile.levelCurveRevision));
+        PlayerPrefs.SetInt("PlayerCurrentLevelExperience", Mathf.Max(0, profile.currentLevelExperience));
+        PlayerPrefs.SetInt("PlayerRequiredExperience", Mathf.Max(0, profile.requiredExperienceForNextLevel));
         PlayerPrefs.SetInt("PlayerExperienceProgressBps", Mathf.Clamp(profile.experienceProgressBps, 0, 10000));
         PlayerPrefs.SetInt("PlayerMaxLevel", profile.maxLevel ? 1 : 0);
         PlayerPrefs.SetInt("PlayerEconomyFrozen", profile.economyFrozen ? 1 : 0);
-        PlayerPrefs.SetInt("Gold", ClampLongToInt(profile.gold, 0));
-        PlayerPrefs.SetInt("Wood", ClampLongToInt(profile.wood, 0));
-        PlayerPrefs.SetInt("Stone", ClampLongToInt(profile.stone, 0));
-        PlayerPrefs.SetInt("Iron", ClampLongToInt(profile.iron, 0));
-        PlayerPrefs.SetInt("Crystal", ClampLongToInt(profile.diamond, 0));
+        PlayerPrefs.SetInt("Gold", profile.gold);
+        PlayerPrefs.SetInt("Wood", profile.wood);
+        PlayerPrefs.SetInt("Stone", profile.stone);
+        PlayerPrefs.SetInt("Iron", profile.iron);
+        PlayerPrefs.SetInt("Crystal", Mathf.Max(0, profile.diamond));
         SaveCurrentAvatarState(
             profile.avatarUrl,
             profile.avatarSource,
@@ -1370,11 +1049,6 @@ public partial class HomePageUI
             profile.avatarUpdatedTime);
         PlayerPrefs.SetString("ProfileLastSync", DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
         PlayerPrefs.Save();
-        if (profile.items != null)
-        {
-            currentInventoryItems = profile.items;
-            inventoryServerBacked = true;
-        }
         WeChatPlatformBridge.SyncFriendLevel(profile.level);
         SyncInventoryResourceValues(profile.items);
         RefreshHomeResourceMetrics();
@@ -1394,7 +1068,7 @@ public partial class HomePageUI
     private static string GetProfileSyncText(bool isAuthenticated)
     {
         string lastSync = PlayerPrefs.GetString("ProfileLastSync", string.Empty);
-        return string.IsNullOrEmpty(lastSync) ? "资料来源  当前登录缓存" : $"最近同步  {lastSync}";
+        return string.IsNullOrEmpty(lastSync) ? string.Empty : $"最近更新  {lastSync}";
     }
 
     private string BuildAccountProfileFallbackText()
@@ -1403,7 +1077,7 @@ public partial class HomePageUI
             $"昵称：{PlayerPrefs.GetString("PlayerNickname", "玩家")}\n" +
             $"账号：{PlayerPrefs.GetString("LoginUsername", string.Empty)}\n" +
             "状态：账号登录\n" +
-            $"等级：{PlayerPrefs.GetInt("PlayerLv", 1)}\n\n" +
+            $"等级：Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}\n\n" +
             $"金币：{PlayerPrefs.GetInt("Gold", 1000)}\n" +
             $"木材：{PlayerPrefs.GetInt("Wood", 500)}\n" +
             $"石材：{PlayerPrefs.GetInt("Stone", 500)}\n" +
@@ -1417,12 +1091,12 @@ public partial class HomePageUI
             return;
         }
 
-        Text[] labels = mainPageTransform.GetComponentsInChildren<Text>(true);
+        LegacyText[] labels = mainPageTransform.GetComponentsInChildren<LegacyText>(true);
         for (int i = 0; i < labels.Length; i++)
         {
             if (labels[i].name == "AvatarName" || labels[i].name == "BookAvatarName")
             {
-                labels[i].text = FrontendTextLocalization.Normalize(nickname);
+                labels[i].text = nickname;
             }
         }
 
@@ -1431,7 +1105,7 @@ public partial class HomePageUI
         {
             if (tmpLabels[i].name == "AvatarName" || tmpLabels[i].name == "BookAvatarName")
             {
-                tmpLabels[i].text = FrontendTextLocalization.Normalize(nickname);
+                tmpLabels[i].text = nickname;
             }
         }
 
@@ -1483,9 +1157,33 @@ public partial class HomePageUI
         }
     }
 
+    private void BeginEditProfileNickname(Transform root)
+    {
+        if (root == null || profileNicknameEditing || profileNicknameSaving
+            || profileNicknamePolicyLoading || profileRefreshRunning || !HasAuthSession())
+        {
+            return;
+        }
+
+        InputField nicknameInput = FindSceneComponent<InputField>(root, "ProfileNicknameInput");
+        if (nicknameInput == null)
+        {
+            Debug.LogWarning("[Profile] ProfileNicknameInput is missing.", this);
+            return;
+        }
+
+        profileNicknameEditing = true;
+        nicknameInput.SetTextWithoutNotify(string.Empty);
+        profileNicknamePolicy = null;
+        profileNicknamePolicyStatus = string.Empty;
+        // Always fetch the current cooldown and concurrency version when entering edit mode.
+        StartCoroutine(RefreshProfileNicknamePolicy(root));
+    }
+
     private void TrySaveProfileNickname(Transform root)
     {
-        if (profileNicknameSaving || profileNicknamePolicyLoading || !HasAuthSession())
+        if (!profileNicknameEditing || profileNicknameSaving || profileNicknamePolicyLoading
+            || profileRefreshRunning || !HasAuthSession())
         {
             return;
         }
@@ -1513,6 +1211,7 @@ public partial class HomePageUI
         string currentNickname = PlayerPrefs.GetString("PlayerNickname", string.Empty);
         if (string.Equals(requestedNickname, currentNickname, StringComparison.Ordinal))
         {
+            profileNicknameEditing = false;
             RefreshAccountProfileScenePanel(root, "昵称未变化");
             return;
         }
@@ -1557,9 +1256,10 @@ public partial class HomePageUI
             {
                 ApplyProfileNicknameUpdate(response.data);
                 profileNicknameSaving = false;
+                profileNicknameEditing = false;
                 profileNicknamePolicy = null;
                 yield return RefreshProfileNicknamePolicy(root);
-                RefreshAccountProfileScenePanel(root, "昵称已修改并同步到服务器");
+                RefreshAccountProfileScenePanel(root, "昵称已修改");
                 SetStatus("昵称已更新");
                 yield break;
             }
@@ -1587,7 +1287,7 @@ public partial class HomePageUI
     {
         if (profileNicknamePolicyLoading)
         {
-            return "正在读取服务器昵称规则...";
+            return "正在查询昵称修改条件...";
         }
 
         if (profileNicknamePolicy == null)
@@ -1599,7 +1299,7 @@ public partial class HomePageUI
 
         if (!profileNicknamePolicy.enabled)
         {
-            return "服务器暂未开放昵称修改";
+            return "昵称修改暂未开放";
         }
 
         if (!profileNicknamePolicy.canChangeNow)
@@ -1646,6 +1346,7 @@ public partial class HomePageUI
         }
 
         accountProfilePanelObject = null;
+        profileNicknameEditing = false;
         profileSwitchLoginConfirmation = false;
     }
 
@@ -1657,7 +1358,7 @@ public partial class HomePageUI
         HomePageScenePanel panel = OpenRegisteredScenePanel(HomePageScenePanelType.Friends);
         if (panel == null)
         {
-            SetLeftContent("好友列表", "好友面板场景组件未找到。", "无法打开好友列表");
+            SetLeftContent("好友列表", "好友列表暂不可用，请稍后重试。", "无法打开好友列表");
             return;
         }
 
@@ -1670,8 +1371,11 @@ public partial class HomePageUI
         }
 
         ResetServerFriendRequestPanel();
-        RefreshFriendsScenePanel(panel.PanelRoot, "正在同步服务器好友和申请摘要...");
-        StartCoroutine(RefreshServerFriendRequestState(panel.PanelRoot, true, "服务器好友同步完成"));
+        EnsureFriendRequestsEntry(panel.PanelRoot);
+        EnsureFriendSearchDialog(panel.PanelRoot);
+        EnsureFriendRequestsDialog(panel.PanelRoot);
+        RefreshFriendsScenePanel(panel.PanelRoot, "正在加载好友与申请...");
+        StartCoroutine(RefreshServerFriendRequestState(panel.PanelRoot, true, "好友已刷新"));
         SetStatus("已打开好友列表");
     }
 
@@ -1727,7 +1431,7 @@ public partial class HomePageUI
     [Serializable]
     private class UserProfileData
     {
-        public long id;
+        public int id;
         public string username;
         public string nickname;
         public long nicknameVersion;
@@ -1736,17 +1440,17 @@ public partial class HomePageUI
         public bool nicknameChangeRequired;
         public int level;
         public long totalExperience;
-        public long levelCurveRevision;
-        public long currentLevelExperience;
-        public long requiredExperienceForNextLevel;
+        public int levelCurveRevision;
+        public int currentLevelExperience;
+        public int requiredExperienceForNextLevel;
         public int experienceProgressBps;
         public bool maxLevel;
         public bool economyFrozen;
-        public long gold;
-        public long wood;
-        public long stone;
-        public long iron;
-        public long diamond;
+        public int gold;
+        public int wood;
+        public int stone;
+        public int iron;
+        public int diamond;
         public string avatarUrl;
         public string avatarSource;
         public string avatarCode;
@@ -1868,8 +1572,6 @@ public partial class HomePageUI
         public string avatarUrl;
         public string avatarCode;
         public long avatarVersion;
-        public bool dailyGiftSent;
-        public bool dailyGiftReceived;
         public bool dailyStaminaGiftSent;
         public bool dailyStaminaGiftReceived;
         public string onlineStatus;
@@ -1890,17 +1592,11 @@ public partial class HomePageUI
     {
         public bool enabled;
         public string periodKey;
-        public long itemId;
-        public string itemKey;
-        public long quantity;
-        public int dailySendLimit;
-        public long remainingSendCount;
-        public int dailyReceiveLimit;
-        public long remainingReceiveCount;
+        public int quantity;
         public int perFriendDailyLimit;
-        public long sentCount;
-        public long receivedCount;
-        public long configVersion;
+        public int sentCount;
+        public int receivedCount;
+        public int configVersion;
     }
 
     [Serializable]
@@ -1919,17 +1615,17 @@ public partial class HomePageUI
     private class ServerDailyGiftSendResponse
     {
         public long recordId;
-        public long senderPlayerId;
-        public long receiverPlayerId;
+        public int senderPlayerId;
+        public int receiverPlayerId;
         public string periodKey;
-        public long quantity;
-        public long receiverStaminaBefore;
-        public long receiverStaminaAfter;
+        public int quantity;
+        public int receiverStaminaBefore;
+        public int receiverStaminaAfter;
         public int maxStamina;
         public bool overCap;
-        public long policyModeConfigId;
+        public int policyModeConfigId;
         public int policyVersion;
-        public long configVersion;
+        public int configVersion;
         public string sentTime;
         public bool replayed;
     }

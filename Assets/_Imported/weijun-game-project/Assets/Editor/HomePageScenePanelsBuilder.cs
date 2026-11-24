@@ -5,35 +5,343 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using TMPro;
 using UnityEngine.UI;
+using Text = TMPro.TMP_Text;
+using Font = TMPro.TMP_FontAsset;
+using InputField = TMPro.TMP_InputField;
+using LegacyText = UnityEngine.UI.Text;
 
 public static class HomePageScenePanelsBuilder
 {
     private const string HomeScenePath = "Assets/_Project/Scenes/HomeScene.unity";
     private const string CanvasName = "HomePanelsCanvas";
     private const string InventoryPrefabPath = "Assets/Resources/UI/InventoryPanel.prefab";
-    private const string HomeBackgroundPath = "Assets/_Imported/weijun-game-project/Assets/UI/背景/748fb3f0714f48099ad24b48fb5e533f.png";
-    private const string LeftButtonArtFolder = "Assets/Resources/UI/Home/LeftButtons/";
-    private const string RightButtonArtFolder = "Assets/Resources/UI/Home/RightButtons/";
+    private const string HomeBackgroundPath = "Assets/_Imported/weijun-game-project/Assets/UI/背景.png";
     private const string TestNodeName = "测试节点";
     private const int MinimumComponentizedBookSchemaVersion = 8;
     private const int ScenePanelsSchemaVersion = 12;
-    private const int EquipmentRows = 6;
     private const string RoleFontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
     private const string ProfileFontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
-    private const int RoleListRows = 20;
-    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal.otf";
+    private const int RoleListRows = 1;
+    private const string FontPath = "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset";
     private const string TaskPanelBackgroundPath = "Assets/_Project/Art/UI/二级界面/二级界面背景.png";
     private const string TaskArtDirectory = "Assets/_Project/Art/UI/二级界面/任务二级界面/";
     private const string TaskCloseSpritePath = "Assets/_Project/Art/UI/三级界面/关闭按钮.png";
     private const string TaskActionSpritePath = "Assets/_Project/Art/UI/二级界面/仓库二级界面/按钮.png";
     private const string TaskActionDisabledSpritePath = "Assets/_Project/Art/UI/二级界面/仓库二级界面/灰阶按钮.png";
+    private const string SecondaryPanelBackgroundPath = "Assets/_Project/Art/UI/二级界面/二级界面背景.png";
+    private const string SecondaryHeaderPath = "Assets/_Project/Art/UI/二级界面/任务二级界面/顶部信息栏.png";
+    private const string SecondaryCloseSpritePath = "Assets/_Project/Art/UI/三级界面/关闭按钮.png";
+    private const string SecondaryActionSpritePath = "Assets/_Project/Art/UI/二级界面/任务二级界面/左侧信息栏.png";
+    private const string SecondaryActionDisabledSpritePath = "Assets/_Project/Art/UI/二级界面/任务二级界面/左侧信息栏（无点击）.png";
+    private static readonly string[] EquipmentIconBindingKeys =
+    {
+        "COMMON:weapon", "COMMON:helmet", "COMMON:armor", "COMMON:boots", "COMMON:gloves",
+        "FINE:weapon", "FINE:helmet", "FINE:armor", "FINE:boots", "FINE:gloves",
+        "EXCELLENT:weapon", "EXCELLENT:helmet", "EXCELLENT:armor", "EXCELLENT:boots", "EXCELLENT:gloves",
+        "EPIC:weapon", "EPIC:helmet", "EPIC:armor", "EPIC:boots", "EPIC:gloves",
+        "LEGENDARY:weapon", "LEGENDARY:helmet", "LEGENDARY:armor", "LEGENDARY:boots", "LEGENDARY:gloves",
+        "short_sword", "starter_sword", "\u77ed\u5251", "\u65b0\u624b\u77ed\u5251",
+        "helmet", "starter_helmet", "\u5934\u76d4", "\u65b0\u624b\u5934\u76d4",
+        "armor", "starter_armor", "\u94e0\u7532", "\u65b0\u624b\u94e0\u7532"
+    };
+    private static readonly string[] EquipmentIconBindingPaths =
+    {
+        "Assets/_Project/Art/UI/装备图标/普通级/武器.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/头盔.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/胸甲.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/鞋子.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/手套.png",
+        "Assets/_Project/Art/UI/装备图标/优秀级/武器1.png",
+        "Assets/_Project/Art/UI/装备图标/优秀级/头盔.png",
+        "Assets/_Project/Art/UI/装备图标/优秀级/护甲.png",
+        "Assets/_Project/Art/UI/装备图标/优秀级/鞋子.png",
+        "Assets/_Project/Art/UI/装备图标/优秀级/手套.png",
+        "Assets/_Project/Art/UI/装备图标/稀有级/武器.png",
+        "Assets/_Project/Art/UI/装备图标/稀有级/头盔.png",
+        "Assets/_Project/Art/UI/装备图标/稀有级/护甲.png",
+        "Assets/_Project/Art/UI/装备图标/稀有级/鞋子.png",
+        "Assets/_Project/Art/UI/装备图标/稀有级/手套.png",
+        "Assets/_Project/Art/UI/装备图标/史诗级/武器.png",
+        "Assets/_Project/Art/UI/装备图标/史诗级/头盔.png",
+        "Assets/_Project/Art/UI/装备图标/史诗级/护甲.png",
+        "Assets/_Project/Art/UI/装备图标/史诗级/鞋子.png",
+        "Assets/_Project/Art/UI/装备图标/史诗级/手套.png",
+        "Assets/_Project/Art/UI/装备图标/传说级/橙金/武器1.png",
+        "Assets/_Project/Art/UI/装备图标/传说级/橙金/头盔.png",
+        "Assets/_Project/Art/UI/装备图标/传说级/橙金/胸甲.png",
+        "Assets/_Project/Art/UI/装备图标/传说级/橙金/鞋子.png",
+        "Assets/_Project/Art/UI/装备图标/传说级/橙金/手套.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/武器.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/武器.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/武器.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/武器.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/头盔.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/头盔.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/头盔.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/头盔.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/胸甲.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/胸甲.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/胸甲.png",
+        "Assets/_Project/Art/UI/装备图标/普通级/胸甲.png"
+    };
 
     private static Font defaultFont;
     private static Font fallbackFont;
     private static TMP_FontAsset roleFontAsset;
+    private const string ResourceIconDirectory = "Assets/_Project/Art/UI/\u8D44\u6E90\u56FE\u6807/";
 
     [InitializeOnLoadMethod]
-    private static void UpdateTaskPanelStyleAfterReload()
+    private static void RegisterEquipmentIconBindingSync()
+    {
+        EditorApplication.delayCall += SyncLoadedEquipmentIconBindings;
+        EditorSceneManager.sceneOpened -= SyncEquipmentIconBindingsOnSceneOpened;
+        EditorSceneManager.sceneOpened += SyncEquipmentIconBindingsOnSceneOpened;
+        EditorApplication.playModeStateChanged -= SyncEquipmentIconBindingsOnPlayModeChanged;
+        EditorApplication.playModeStateChanged += SyncEquipmentIconBindingsOnPlayModeChanged;
+    }
+
+    private static void SyncEquipmentIconBindingsOnSceneOpened(Scene scene, OpenSceneMode mode)
+    {
+        SyncEquipmentIconBindings(scene);
+    }
+
+    private static void SyncEquipmentIconBindingsOnPlayModeChanged(PlayModeStateChange state)
+    {
+        if (state == PlayModeStateChange.EnteredEditMode)
+        {
+            EditorApplication.delayCall += SyncLoadedEquipmentIconBindings;
+        }
+    }
+
+    [MenuItem("Tools/WeiJun UI/Sync Equipment Icon Bindings")]
+    private static void SyncLoadedEquipmentIconBindings()
+    {
+        if (EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode) return;
+        Scene scene = SceneManager.GetSceneByPath(HomeScenePath);
+        if (!scene.IsValid() || !scene.isLoaded) return;
+        SyncEquipmentIconBindings(scene);
+    }
+
+    private static void SyncEquipmentIconBindings(Scene scene)
+    {
+        bool changed = false;
+        GameObject[] roots = scene.GetRootGameObjects();
+        for (int rootIndex = 0; rootIndex < roots.Length; rootIndex++)
+        {
+            HomePageUI[] controllers = roots[rootIndex].GetComponentsInChildren<HomePageUI>(true);
+            for (int controllerIndex = 0; controllerIndex < controllers.Length; controllerIndex++)
+            {
+                changed |= SyncEquipmentIconBindings(controllers[controllerIndex]);
+            }
+        }
+
+        if (changed) EditorSceneManager.MarkSceneDirty(scene);
+    }
+
+    private static bool SyncEquipmentIconBindings(HomePageUI controller)
+    {
+        if (controller == null) return false;
+        SerializedObject serializedController = new SerializedObject(controller);
+        SerializedProperty bindings = serializedController.FindProperty("equipmentIconBindings");
+        if (bindings == null || !bindings.isArray) return false;
+
+        bool changed = false;
+        for (int mappingIndex = 0; mappingIndex < EquipmentIconBindingKeys.Length; mappingIndex++)
+        {
+            Sprite sprite = AssetDatabase.LoadAssetAtPath<Sprite>(EquipmentIconBindingPaths[mappingIndex]);
+            if (sprite == null) continue;
+
+            SerializedProperty binding = null;
+            for (int bindingIndex = 0; bindingIndex < bindings.arraySize; bindingIndex++)
+            {
+                SerializedProperty candidate = bindings.GetArrayElementAtIndex(bindingIndex);
+                SerializedProperty candidateKey = candidate.FindPropertyRelative("iconKey");
+                if (candidateKey != null && candidateKey.stringValue == EquipmentIconBindingKeys[mappingIndex])
+                {
+                    binding = candidate;
+                    break;
+                }
+            }
+
+            bool addedBinding = binding == null;
+            if (addedBinding)
+            {
+                bindings.arraySize++;
+                binding = bindings.GetArrayElementAtIndex(bindings.arraySize - 1);
+                binding.FindPropertyRelative("iconKey").stringValue = EquipmentIconBindingKeys[mappingIndex];
+                changed = true;
+            }
+
+            SerializedProperty spriteProperty = binding.FindPropertyRelative("sprite");
+            bool preserveAssignedAlias = EquipmentIconBindingKeys[mappingIndex].IndexOf(':') < 0
+                && !addedBinding && spriteProperty != null && spriteProperty.objectReferenceValue != null;
+            if (preserveAssignedAlias) continue;
+            if (spriteProperty != null && spriteProperty.objectReferenceValue != sprite)
+            {
+                spriteProperty.objectReferenceValue = sprite;
+                changed = true;
+            }
+        }
+
+        if (!changed) return false;
+        serializedController.ApplyModifiedPropertiesWithoutUndo();
+        EditorUtility.SetDirty(controller);
+        return true;
+    }
+
+    [InitializeOnLoadMethod]
+    private static void RegisterSignMakeupDialogSync()
+    {
+        EditorApplication.delayCall += SyncLoadedSignMakeupDialogs;
+        EditorSceneManager.sceneOpened -= SyncSignMakeupDialogsOnSceneOpened;
+        EditorSceneManager.sceneOpened += SyncSignMakeupDialogsOnSceneOpened;
+    }
+
+    private static void SyncSignMakeupDialogsOnSceneOpened(Scene scene, OpenSceneMode mode)
+    {
+        SyncLoadedSignMakeupDialogs();
+    }
+
+    [MenuItem("Tools/WeiJun UI/Sync Sign Makeup Dialogs")]
+    private static void SyncLoadedSignMakeupDialogs()
+    {
+        if (EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode) return;
+        Scene scene = SceneManager.GetSceneByPath(HomeScenePath);
+        if (!scene.IsValid() || !scene.isLoaded) return;
+        GameObject canvasObject = FindRoot(scene, CanvasName);
+        if (canvasObject != null && EnsureSignMakeupDialogs(canvasObject.transform))
+        {
+            EditorSceneManager.MarkSceneDirty(scene);
+        }
+    }
+
+    private static bool EnsureSignMakeupDialogs(Transform parent)
+    {
+        bool changed = false;
+        HomePageScenePanel daily = FindExistingScenePanel(parent, HomePageScenePanelType.DailySign);
+        HomePageScenePanel newbie = FindExistingScenePanel(parent, HomePageScenePanelType.NewbieSign);
+        if (daily != null) changed |= BuildSignMakeupDialog(daily.transform);
+        if (newbie != null) changed |= BuildSignMakeupDialog(newbie.transform);
+        return changed;
+    }
+
+    [InitializeOnLoadMethod]
+    private static void RegisterNewbieSignIconMigration()
+    {
+        EditorApplication.delayCall += SyncLoadedNewbieSignRewardIcons;
+        EditorSceneManager.sceneOpened -= SyncNewbieSignRewardIconsOnSceneOpened;
+        EditorSceneManager.sceneOpened += SyncNewbieSignRewardIconsOnSceneOpened;
+    }
+
+    private static void SyncNewbieSignRewardIconsOnSceneOpened(Scene scene, OpenSceneMode mode)
+    {
+        SyncLoadedNewbieSignRewardIcons();
+    }
+
+    private static void SyncLoadedNewbieSignRewardIcons()
+    {
+        if (EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            return;
+        }
+
+        Scene scene = SceneManager.GetSceneByPath(HomeScenePath);
+        if (!scene.IsValid() || !scene.isLoaded)
+        {
+            return;
+        }
+
+        GameObject canvasObject = FindRoot(scene, CanvasName);
+        if (canvasObject != null && SyncNewbieSignRewardIcons(canvasObject.transform))
+        {
+            // Do not save other unsaved scene edits during automatic migration.
+            EditorSceneManager.MarkSceneDirty(scene);
+        }
+    }
+
+    [InitializeOnLoadMethod]
+    private static void RegisterFriendCopyButtonSync()
+    {
+        EditorApplication.delayCall += SyncLoadedFriendCopyButtons;
+        EditorSceneManager.sceneOpened -= SyncFriendCopyButtonOnSceneOpened;
+        EditorSceneManager.sceneOpened += SyncFriendCopyButtonOnSceneOpened;
+        EditorApplication.playModeStateChanged -= SyncFriendCopyButtonOnPlayModeChanged;
+        EditorApplication.playModeStateChanged += SyncFriendCopyButtonOnPlayModeChanged;
+    }
+
+    private static void SyncFriendCopyButtonOnPlayModeChanged(PlayModeStateChange state)
+    {
+        if (state == PlayModeStateChange.EnteredEditMode)
+        {
+            EditorApplication.delayCall += SyncLoadedFriendCopyButtons;
+        }
+    }
+
+    private static void SyncFriendCopyButtonOnSceneOpened(Scene scene, OpenSceneMode mode)
+    {
+        SyncLoadedFriendCopyButtons();
+    }
+
+    [MenuItem("Tools/WeiJun UI/Sync Friend Copy ID Button")]
+    [MenuItem("Tools/WeiJun UI/Sync Friend Dialogs")]
+    private static void SyncLoadedFriendCopyButtons()
+    {
+        if (EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode) return;
+        Scene scene = SceneManager.GetSceneByPath(HomeScenePath);
+        if (!scene.IsValid() || !scene.isLoaded) return;
+
+        foreach (GameObject sceneRoot in scene.GetRootGameObjects())
+        {
+            foreach (HomePageScenePanel panel in sceneRoot.GetComponentsInChildren<HomePageScenePanel>(true))
+            {
+                if (panel.PanelType != HomePageScenePanelType.Friends) continue;
+                if (HomePageUI.EnsureFriendRequestsEntry(panel.PanelRoot)) EditorSceneManager.MarkSceneDirty(scene);
+                if (HomePageUI.EnsureFriendSearchDialog(panel.PanelRoot)) EditorSceneManager.MarkSceneDirty(scene);
+                if (HomePageUI.EnsureFriendRequestsDialog(panel.PanelRoot)) EditorSceneManager.MarkSceneDirty(scene);
+                foreach (string oldButtonName in new[] { "FriendsRequestPrimaryButton", "FriendsRequestSecondaryButton", "FriendsFilterOutgoing" })
+                {
+                    Transform oldButton = FindTransformByName(panel.transform, oldButtonName);
+                    if (oldButton == null) continue;
+                    Undo.DestroyObjectImmediate(oldButton.gameObject);
+                    EditorSceneManager.MarkSceneDirty(scene);
+                }
+                Transform content = FindTransformByName(panel.transform, "FriendDetailContent");
+                if (content == null || FindTransformByName(content, "FriendCopyIdButton") != null) continue;
+                Transform idNode = FindTransformByName(content, "FriendDetailId");
+                RectTransform idRect = idNode as RectTransform;
+                if (idRect == null) continue;
+
+                Button copyButton = CreateTMPButton("FriendCopyIdButton", content, "复制", Color.white, Color.white, 16);
+                Undo.RegisterCreatedObjectUndo(copyButton.gameObject, "Add friend ID copy button");
+                Image image = copyButton.GetComponent<Image>();
+                Transform giftNode = FindTransformByName(content, "FriendsGiftButton");
+                Image giftImage = giftNode != null ? giftNode.GetComponent<Image>() : null;
+                if (image != null && giftImage != null)
+                {
+                    image.sprite = giftImage.sprite;
+                    image.type = giftImage.type;
+                    image.color = giftImage.color;
+                    image.preserveAspect = false;
+                }
+
+                RectTransform copyRect = copyButton.GetComponent<RectTransform>();
+                Text idLabel = idNode.GetComponent<Text>();
+                float labelWidth = idLabel != null ? Mathf.Min(idRect.rect.width, idLabel.preferredWidth) : idRect.rect.width;
+                copyRect.anchorMin = idRect.anchorMin;
+                copyRect.anchorMax = idRect.anchorMin;
+                copyRect.pivot = new Vector2(0f, 0.5f);
+                copyRect.sizeDelta = new Vector2(76f, 36f);
+                copyRect.anchoredPosition = idRect.anchoredPosition + new Vector2(
+                    -idRect.pivot.x * idRect.rect.width + labelWidth + 12f,
+                    (0.5f - idRect.pivot.y) * idRect.rect.height);
+                EditorSceneManager.MarkSceneDirty(scene);
+                Debug.Log("Added FriendDetailContent/FriendCopyIdButton to the open HomeScene. Save the scene to keep it.");
+            }
+        }
+    }
+
+    [InitializeOnLoadMethod]
+    private static void UpdateSecondaryPanelStyleAfterReload()
     {
         EditorApplication.delayCall += () =>
         {
@@ -42,14 +350,14 @@ public static class HomePageScenePanelsBuilder
                 return;
             }
 
-            const string taskStyleKey = "WeiJun.HomeScenePanels.TaskStyleCheck.2";
-            if (SessionState.GetBool(taskStyleKey, false))
+            const string secondaryPanelStyleKey = "WeiJun.HomeScenePanels.SecondaryPanelStyleCheck.1";
+            if (SessionState.GetBool(secondaryPanelStyleKey, false))
             {
                 return;
             }
 
-            UpdateTaskPanelStyle();
-            SessionState.SetBool(taskStyleKey, true);
+            UpdateSecondaryPanelStyles();
+            SessionState.SetBool(secondaryPanelStyleKey, true);
         };
     }
 
@@ -79,7 +387,6 @@ public static class HomePageScenePanelsBuilder
             try
             {
                 bool addedTestNode = EnsureTestNode(scene);
-                bool addedAccountProfileDetails = false;
                 GameObject canvasObject = FindRoot(scene, CanvasName);
                 HomePageScenePanels registry = canvasObject != null
                     ? canvasObject.GetComponent<HomePageScenePanels>()
@@ -95,7 +402,7 @@ public static class HomePageScenePanelsBuilder
                 {
                     if (registry.Get(HomePageScenePanelType.Role) == null)
                     {
-                        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+                        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ProfileFontPath);
                         HomePageScenePanel rolePanel = BuildRolePanel(canvasObject.transform);
                         rolePanel.SetVisible(false);
                         registry.EditorAppendPanel(rolePanel, ScenePanelsSchemaVersion);
@@ -108,9 +415,16 @@ public static class HomePageScenePanelsBuilder
                     EditorSceneManager.MarkSceneDirty(scene);
                     EditorSceneManager.SaveScene(scene);
                 }
-                else if (registry == null || registry.SchemaVersion != ScenePanelsSchemaVersion)
+                else if (registry == null)
                 {
                     BuildScenePanels(scene, true);
+                }
+                else if (registry.SchemaVersion != ScenePanelsSchemaVersion)
+                {
+                    registry.EditorSetSchemaVersion(ScenePanelsSchemaVersion);
+                    EditorUtility.SetDirty(registry);
+                    EditorSceneManager.MarkSceneDirty(scene);
+                    EditorSceneManager.SaveScene(scene);
                 }
                 else if (addedTestNode)
                 {
@@ -118,18 +432,18 @@ public static class HomePageScenePanelsBuilder
                     EditorSceneManager.SaveScene(scene);
                 }
 
-                if (registry != null && registry.SchemaVersion == ScenePanelsSchemaVersion)
+                string secondaryPanelStyleKey = "WeiJun.HomeScenePanels.SecondaryPanelStyleCheck.1";
+                if (registry != null
+                    && registry.SchemaVersion == ScenePanelsSchemaVersion
+                    && !SessionState.GetBool(secondaryPanelStyleKey, false))
                 {
-                    Transform profileRoot = canvasObject == null
-                        ? null
-                        : FindTransformByName(canvasObject.transform, "AccountProfileScenePanel");
-                    addedAccountProfileDetails = EnsureAccountProfileDetails(profileRoot);
-                }
-
-                if (addedAccountProfileDetails)
-                {
-                    EditorSceneManager.MarkSceneDirty(scene);
-                    EditorSceneManager.SaveScene(scene);
+                    if (ApplySecondaryPanelStyles(registry))
+                    {
+                        EditorUtility.SetDirty(registry);
+                        EditorSceneManager.MarkSceneDirty(scene);
+                        EditorSceneManager.SaveScene(scene);
+                    }
+                    SessionState.SetBool(secondaryPanelStyleKey, true);
                 }
 
                 string lotteryLayoutKey = "WeiJun.HomeScenePanels.LotteryLayoutCheck.1";
@@ -165,6 +479,49 @@ public static class HomePageScenePanelsBuilder
         }
 
         BuildScenePanels(scene, true);
+    }
+
+    [MenuItem("Tools/WeiJun UI/Sync Newbie Sign Reward Icons")]
+    public static void SyncNewbieSignRewardIconsInHomeScene()
+    {
+        if (EditorApplication.isCompiling || EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            return;
+        }
+
+        Scene scene = SceneManager.GetSceneByPath(HomeScenePath);
+        bool openedForUpdate = !scene.IsValid() || !scene.isLoaded;
+        if (openedForUpdate)
+        {
+            scene = EditorSceneManager.OpenScene(HomeScenePath, OpenSceneMode.Additive);
+        }
+
+        try
+        {
+            GameObject canvasObject = FindRoot(scene, CanvasName);
+            if (canvasObject == null)
+            {
+                Debug.LogWarning("HomePanelsCanvas was not found in HomeScene.");
+                return;
+            }
+
+            if (!SyncNewbieSignRewardIcons(canvasObject.transform))
+            {
+                Debug.Log("Newbie sign reward icons are already synchronized.");
+                return;
+            }
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            Debug.Log("Newbie sign reward icons synchronized without changing layout.");
+        }
+        finally
+        {
+            if (openedForUpdate && scene.IsValid() && scene.isLoaded)
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
+        }
     }
 
     [MenuItem("Tools/WeiJun UI/Update Task Panel Style")]
@@ -208,6 +565,115 @@ public static class HomePageScenePanelsBuilder
         }
     }
 
+    [MenuItem("Tools/WeiJun UI/Update Role Panel Style")]
+    public static void UpdateRolePanelStyle()
+    {
+        Scene scene = SceneManager.GetSceneByPath(HomeScenePath);
+        bool openedForUpdate = !scene.IsValid() || !scene.isLoaded;
+        if (openedForUpdate)
+        {
+            scene = EditorSceneManager.OpenScene(HomeScenePath, OpenSceneMode.Additive);
+        }
+
+        try
+        {
+            GameObject canvasObject = FindRoot(scene, CanvasName);
+            HomePageScenePanels registry = canvasObject != null
+                ? canvasObject.GetComponent<HomePageScenePanels>()
+                : null;
+            HomePageScenePanel rolePanel = registry != null
+                ? registry.Get(HomePageScenePanelType.Role)
+                : null;
+            if (rolePanel == null)
+            {
+                Debug.LogWarning("RoleScenePanel was not found in HomeScene.");
+                return;
+            }
+
+            Selection.activeGameObject = rolePanel.gameObject;
+            Debug.Log("RoleScenePanel style is controlled by the Unity scene and was left unchanged.");
+        }
+        finally
+        {
+            if (openedForUpdate && scene.IsValid() && scene.isLoaded)
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
+        }
+    }
+
+    [MenuItem("Tools/WeiJun UI/Update Equipment Lottery Friends Shop Styles")]
+    public static void UpdateSecondaryPanelStyles()
+    {
+        Scene scene = SceneManager.GetSceneByPath(HomeScenePath);
+        bool openedForUpdate = !scene.IsValid() || !scene.isLoaded;
+        if (openedForUpdate)
+        {
+            scene = EditorSceneManager.OpenScene(HomeScenePath, OpenSceneMode.Additive);
+        }
+
+        try
+        {
+            GameObject canvasObject = FindRoot(scene, CanvasName);
+            HomePageScenePanels registry = canvasObject != null
+                ? canvasObject.GetComponent<HomePageScenePanels>()
+                : null;
+            if (registry == null)
+            {
+                Debug.LogWarning("HomePanelsCanvas or HomePageScenePanels was not found in HomeScene.");
+                return;
+            }
+
+            bool changed = ApplySecondaryPanelStyles(registry);
+
+            if (changed)
+            {
+                EditorUtility.SetDirty(registry);
+                EditorSceneManager.MarkSceneDirty(scene);
+                EditorSceneManager.SaveScene(scene);
+            }
+
+            Debug.Log("Updated Friends panel styles. LotteryScenePanel and ShopScenePanel keep their Unity scene appearance.");
+        }
+        finally
+        {
+            if (openedForUpdate && scene.IsValid() && scene.isLoaded)
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
+        }
+    }
+
+    private static bool ApplySecondaryPanelStyles(HomePageScenePanels registry)
+    {
+        if (registry == null)
+        {
+            return false;
+        }
+
+        HomePageScenePanelType[] panelTypes =
+        {
+            HomePageScenePanelType.Friends
+        };
+
+        bool changed = false;
+        for (int i = 0; i < panelTypes.Length; i++)
+        {
+            HomePageScenePanel panel = registry.Get(panelTypes[i]);
+            if (panel == null)
+            {
+                Debug.LogWarning(panelTypes[i] + " panel was not found in HomeScene.");
+                continue;
+            }
+
+            ApplySecondaryPanelStyle(panel.transform, panelTypes[i].ToString());
+            EditorUtility.SetDirty(panel);
+            changed = true;
+        }
+
+        return changed;
+    }
+
     [MenuItem("Tools/WeiJun UI/Rebuild Lottery Panel")]
     public static void RebuildLotteryPanel()
     {
@@ -237,7 +703,7 @@ public static class HomePageScenePanelsBuilder
             Object.DestroyImmediate(existing.gameObject);
         }
 
-        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ProfileFontPath);
         HomePageScenePanel panel = BuildLotteryPanel(canvasObject.transform);
         panel.SetVisible(false);
         registry.EditorReplacePanel(panel, registry.SchemaVersion);
@@ -268,7 +734,7 @@ public static class HomePageScenePanelsBuilder
             Object.DestroyImmediate(existing.gameObject);
         }
 
-        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ProfileFontPath);
         HomePageScenePanel panel = BuildLotteryPanel(canvasObject.transform);
         panel.SetVisible(false);
         registry.EditorReplacePanel(panel, registry.SchemaVersion);
@@ -299,7 +765,7 @@ public static class HomePageScenePanelsBuilder
 
         if (registry.Get(HomePageScenePanelType.Role) == null)
         {
-            roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+            roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ProfileFontPath);
             HomePageScenePanel rolePanel = BuildRolePanel(canvasObject.transform);
             rolePanel.SetVisible(false);
             registry.EditorAppendPanel(rolePanel, ScenePanelsSchemaVersion);
@@ -315,6 +781,87 @@ public static class HomePageScenePanelsBuilder
         EditorSceneManager.SaveScene(scene);
         Selection.activeGameObject = canvasObject;
         Debug.Log("Added editable RoleScenePanel to HomeScene.");
+    }
+
+    [MenuItem("Tools/WeiJun UI/Apply RoleListRow1 Template")]
+    public static void ApplyRoleListRow1Template()
+    {
+        Scene scene = SceneManager.GetSceneByPath(HomeScenePath);
+        bool openedForUpdate = !scene.IsValid() || !scene.isLoaded;
+        if (openedForUpdate)
+        {
+            scene = EditorSceneManager.OpenScene(HomeScenePath, OpenSceneMode.Additive);
+        }
+
+        try
+        {
+            GameObject canvasObject = FindRoot(scene, CanvasName);
+            HomePageScenePanels registry = canvasObject != null
+                ? canvasObject.GetComponent<HomePageScenePanels>()
+                : null;
+            HomePageScenePanel rolePanel = registry != null
+                ? registry.Get(HomePageScenePanelType.Role)
+                : null;
+            Transform content = rolePanel == null
+                ? null
+                : FindTransformByName(rolePanel.transform, "RoleListContent");
+            Transform template = content == null ? null : FindTransformByName(content, "RoleListRow1");
+            if (content == null || template == null)
+            {
+                Debug.LogWarning("RoleListContent or RoleListRow1 was not found in HomeScene.");
+                return;
+            }
+
+            int rowIndex = 1;
+            bool changed = false;
+            while (true)
+            {
+                Transform row = content.Find("RoleListRow" + rowIndex);
+                if (row == null)
+                {
+                    break;
+                }
+
+                rowIndex++;
+            }
+
+            if (changed)
+            {
+                EditorUtility.SetDirty(rolePanel);
+                EditorSceneManager.MarkSceneDirty(scene);
+                EditorSceneManager.SaveScene(scene);
+            }
+
+            Selection.activeGameObject = rolePanel.gameObject;
+            Debug.Log(changed
+                ? "Applied RoleListRow1 components and HeadImage to the role list rows."
+                : "RoleListRow1 remains the runtime template; existing scene rows were left unchanged.");
+        }
+        finally
+        {
+            if (openedForUpdate && scene.IsValid() && scene.isLoaded)
+            {
+                EditorSceneManager.CloseScene(scene, true);
+            }
+        }
+    }
+
+    private static void RenameRoleRowTemplateChildren(Transform row, int rowIndex)
+    {
+        Transform[] children = row.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < children.Length; i++)
+        {
+            if (children[i] == row)
+            {
+                continue;
+            }
+
+            string childName = children[i].name;
+            if (childName.EndsWith("0", System.StringComparison.Ordinal))
+            {
+                children[i].name = childName.Substring(0, childName.Length - 1) + rowIndex;
+            }
+        }
     }
 
     public static void BuildHomeScene()
@@ -347,13 +894,10 @@ public static class HomePageScenePanelsBuilder
 
             string[] removedObjects =
             {
-                "ProfileDisplayName",
-                "ProfileResourceTitle",
                 "ProfileGoldCard",
                 "ProfileWoodCard",
                 "ProfileStoneCard",
-                "ProfileIronCard",
-                "ProfileExploreStatCard"
+                "ProfileIronCard"
             };
             for (int i = 0; i < removedObjects.Length; i++)
             {
@@ -374,37 +918,25 @@ public static class HomePageScenePanelsBuilder
                 }
                 else
                 {
-                    Text legacyIdentifier = identifier.GetComponent<Text>();
+                    LegacyText legacyIdentifier = identifier.GetComponent<LegacyText>();
                     if (legacyIdentifier != null)
                     {
                         legacyIdentifier.text = "玩家ID  WJ-00000000";
                     }
                 }
 
-                RectTransform identifierRect = identifier.GetComponent<RectTransform>();
-                if (identifierRect != null)
-                {
-                    identifierRect.sizeDelta = new Vector2(170f, identifierRect.sizeDelta.y);
-                }
             }
 
             Transform copyButton = FindTransformByName(profileRoot, "ProfileCopyIdButton");
             if (copyButton != null)
             {
                 SetProfileButtonText(copyButton, "复制玩家ID");
-                RectTransform copyRect = copyButton.GetComponent<RectTransform>();
-                if (copyRect != null)
-                {
-                    copyRect.anchoredPosition = new Vector2(204f, -386f);
-                    copyRect.sizeDelta = new Vector2(156f, 38f);
-                }
             }
 
             Transform nicknameInput = FindTransformByName(profileRoot, "ProfileNicknameInput");
             TMP_FontAsset profileFont = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(
                 "Assets/_Imported/weijun-game-project/Assets/Sprites/font/SourceHanSansSC-Normal SDF.asset");
             ConvertProfileTextComponents(profileRoot, nicknameInput, profileFont);
-            EnsureAccountProfileDetails(profileRoot);
 
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
@@ -476,10 +1008,10 @@ public static class HomePageScenePanelsBuilder
 
     private static void ConvertProfileTextComponents(Transform profileRoot, Transform excludedRoot, TMP_FontAsset fontAsset)
     {
-        Text[] legacyTexts = profileRoot.GetComponentsInChildren<Text>(true);
+        LegacyText[] legacyTexts = profileRoot.GetComponentsInChildren<LegacyText>(true);
         for (int i = 0; i < legacyTexts.Length; i++)
         {
-            Text legacy = legacyTexts[i];
+            LegacyText legacy = legacyTexts[i];
             if (legacy == null || (excludedRoot != null && (legacy.transform == excludedRoot || legacy.transform.IsChildOf(excludedRoot))))
             {
                 continue;
@@ -531,7 +1063,7 @@ public static class HomePageScenePanelsBuilder
             return;
         }
 
-        Text legacy = buttonRoot.GetComponentInChildren<Text>(true);
+        LegacyText legacy = buttonRoot.GetComponentInChildren<LegacyText>(true);
         if (legacy != null)
         {
             legacy.text = value;
@@ -582,15 +1114,79 @@ public static class HomePageScenePanelsBuilder
 
     private static void BuildScenePanels(Scene scene, bool saveScene)
     {
-        fallbackFont = AssetDatabase.LoadAssetAtPath<Font>(FontPath);
-        defaultFont = fallbackFont;
-        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+        fallbackFont = AssetDatabase.LoadAssetAtPath<Font>(ProfileFontPath) ?? RuntimeFontAssetProvider.Resolve();
+        defaultFont = AssetDatabase.LoadAssetAtPath<Font>(ProfileFontPath) ?? fallbackFont;
+        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ProfileFontPath);
         EnsureTestNode(scene);
 
         GameObject existing = FindRoot(scene, CanvasName);
         if (existing != null)
         {
-            Object.DestroyImmediate(existing);
+            HomePageScenePanels existingRegistry = existing.GetComponent<HomePageScenePanels>();
+            if (existingRegistry == null)
+            {
+                existingRegistry = existing.AddComponent<HomePageScenePanels>();
+            }
+
+            SyncNewbieSignRewardIcons(existing.transform);
+            EnsureSignMakeupDialogs(existing.transform);
+            EnsureDailySignScrollView(existing.transform);
+            EnsureActivityRewardPagingButtons(existing.transform);
+
+            HomePageScenePanelType[] panelTypes =
+            {
+                HomePageScenePanelType.Task,
+                HomePageScenePanelType.Inventory,
+                HomePageScenePanelType.Recharge,
+                HomePageScenePanelType.Lottery,
+                HomePageScenePanelType.DailySign,
+                HomePageScenePanelType.NewbieSign,
+                HomePageScenePanelType.Mail,
+                HomePageScenePanelType.Settings,
+                HomePageScenePanelType.AccountProfile,
+                HomePageScenePanelType.Friends,
+                HomePageScenePanelType.Equipment,
+                HomePageScenePanelType.Shop,
+                HomePageScenePanelType.Role
+            };
+
+            for (int i = 0; i < panelTypes.Length; i++)
+            {
+                if (existingRegistry.Get(panelTypes[i]) != null)
+                {
+                    continue;
+                }
+
+                HomePageScenePanel existingPanel = FindExistingScenePanel(existing.transform, panelTypes[i]);
+                if (existingPanel != null)
+                {
+                    existingRegistry.EditorAppendPanel(existingPanel, ScenePanelsSchemaVersion);
+                    EditorUtility.SetDirty(existingRegistry);
+                    continue;
+                }
+
+                HomePageScenePanel missingPanel = BuildMissingScenePanel(existing.transform, panelTypes[i]);
+                if (missingPanel == null)
+                {
+                    continue;
+                }
+
+                missingPanel.SetVisible(false);
+                existingRegistry.EditorAppendPanel(missingPanel, ScenePanelsSchemaVersion);
+                EditorUtility.SetDirty(missingPanel);
+            }
+
+            existingRegistry.EditorSetSchemaVersion(ScenePanelsSchemaVersion);
+            EditorUtility.SetDirty(existingRegistry);
+            EditorSceneManager.MarkSceneDirty(scene);
+            if (saveScene)
+            {
+                EditorSceneManager.SaveScene(scene);
+            }
+
+            Selection.activeGameObject = existing;
+            Debug.Log("Home scene panels updated without replacing existing Unity scene nodes.");
+            return;
         }
 
         GameObject canvasObject = new GameObject(
@@ -654,9 +1250,117 @@ public static class HomePageScenePanelsBuilder
         Debug.Log("Home scene panels rebuilt as editable Unity UI components.");
     }
 
+    private static HomePageScenePanel FindExistingScenePanel(Transform parent, HomePageScenePanelType panelType)
+    {
+        if (parent == null)
+        {
+            return null;
+        }
+
+        HomePageScenePanel[] scenePanels = parent.GetComponentsInChildren<HomePageScenePanel>(true);
+        for (int i = 0; i < scenePanels.Length; i++)
+        {
+            HomePageScenePanel scenePanel = scenePanels[i];
+            if (scenePanel != null && scenePanel.PanelType == panelType)
+            {
+                return scenePanel;
+            }
+        }
+
+        return null;
+    }
+
+    private static bool SyncNewbieSignRewardIcons(Transform parent)
+    {
+        HomePageScenePanel panel = FindExistingScenePanel(parent, HomePageScenePanelType.NewbieSign);
+        if (panel == null)
+        {
+            return false;
+        }
+
+        bool changed = false;
+        string[] iconNames = { "金币", "木材", "宝箱（未打开）" };
+        for (int i = 0; i < iconNames.Length; i++)
+        {
+            Transform card = FindTransformByName(panel.transform, "NewbieSignCard" + (i + 1));
+            Transform placeholder = card == null ? null : FindTransformByName(card, "RewardIconText");
+            if (placeholder == null || placeholder.GetComponent<Image>() != null)
+            {
+                continue;
+            }
+
+            TMP_Text tmp = placeholder.GetComponent<TMP_Text>();
+            LegacyText legacy = placeholder.GetComponent<LegacyText>();
+            if (tmp == null && legacy == null)
+            {
+                continue;
+            }
+
+            Sprite sprite = AssetDatabase.LoadAssetAtPath<Sprite>(ResourceIconDirectory + iconNames[i] + ".png");
+            if (sprite == null)
+            {
+                Debug.LogWarning("Newbie sign reward sprite not found: " + iconNames[i]);
+                continue;
+            }
+
+            // Convert only legacy placeholders. Never recreate deleted nodes or overwrite an edited Image.
+            if (tmp != null) Undo.DestroyObjectImmediate(tmp);
+            if (legacy != null) Undo.DestroyObjectImmediate(legacy);
+            Undo.RecordObject(placeholder.gameObject, "Convert newbie sign reward icon");
+            placeholder.name = "RewardResourceImage";
+            Image image = Undo.AddComponent<Image>(placeholder.gameObject);
+            image.sprite = sprite;
+            image.color = Color.white;
+            image.preserveAspect = true;
+            image.raycastTarget = false;
+            EditorUtility.SetDirty(image);
+            changed = true;
+        }
+
+        return changed;
+    }
+
+    private static HomePageScenePanel BuildMissingScenePanel(Transform parent, HomePageScenePanelType panelType)
+    {
+        switch (panelType)
+        {
+            case HomePageScenePanelType.Task:
+                return BuildTaskPanel(parent);
+            case HomePageScenePanelType.Inventory:
+                return BuildInventoryPanel(parent);
+            case HomePageScenePanelType.Recharge:
+                return BuildRechargePanel(parent);
+            case HomePageScenePanelType.Lottery:
+                return BuildLotteryPanel(parent);
+            case HomePageScenePanelType.DailySign:
+                return BuildDailySignPanel(parent);
+            case HomePageScenePanelType.NewbieSign:
+                return BuildNewbieSignPanel(parent);
+            case HomePageScenePanelType.Mail:
+                return BuildMailPanel(parent);
+            case HomePageScenePanelType.Settings:
+                return BuildSettingsPanel(parent);
+            case HomePageScenePanelType.AccountProfile:
+                return BuildAccountProfilePanel(parent);
+            case HomePageScenePanelType.Friends:
+                return BuildFriendsPanel(parent);
+            case HomePageScenePanelType.Equipment:
+                return BuildEquipmentPanel(parent);
+            case HomePageScenePanelType.Shop:
+                return BuildShopPanel(parent);
+            case HomePageScenePanelType.Role:
+                return BuildRolePanel(parent);
+            default:
+                return null;
+        }
+    }
+
     private static RectTransform BuildBookHomeCanvas(Transform parent)
     {
         Transform existing = parent.Find("BookHomeCanvas");
+        bool hasExistingBookLayout = existing != null
+            && existing.Find("MainBookPage") != null
+            && existing.GetComponent<HomePageBookView>() != null;
         GameObject bookObject = existing != null
             ? existing.gameObject
             : CreateRectObject("BookHomeCanvas", parent);
@@ -686,60 +1390,13 @@ public static class HomePageScenePanelsBuilder
         Sprite background = AssetDatabase.LoadAssetAtPath<Sprite>(HomeBackgroundPath);
         style.EditorSetDefaultSprites(background);
         homePage.EditorSetFont(defaultFont);
-        homePage.EditorSetLeftPageButtonSprites(
-            LoadLeftButtonSprite("角色.png"),
-            LoadLeftButtonSprite("装备.png"),
-            LoadLeftButtonSprite("仓库.png"),
-            LoadLeftButtonSprite("商城.png"),
-            LoadLeftButtonSprite("好友.png"),
-            LoadLeftButtonSprite("召唤.png"),
-            LoadLeftButtonSprite("任务.png"));
-        homePage.EditorSetRightPageButtonSprites(
-            LoadRightButtonSprite("战斗.png"),
-            LoadRightButtonSprite("建造.png"));
-        homePage.EditorRebuildBookPreview();
+        if (!hasExistingBookLayout)
+        {
+            homePage.EditorRebuildBookPreview();
+        }
         EditorUtility.SetDirty(style);
         EditorUtility.SetDirty(homePage);
         return rect;
-    }
-
-    private static Sprite LoadLeftButtonSprite(string fileName)
-    {
-        return LoadPageButtonSprite(LeftButtonArtFolder + fileName, "Left");
-    }
-
-    private static Sprite LoadRightButtonSprite(string fileName)
-    {
-        return LoadPageButtonSprite(RightButtonArtFolder + fileName, "Right");
-    }
-
-    private static Sprite LoadPageButtonSprite(string assetPath, string pageName)
-    {
-        TextureImporter importer = AssetImporter.GetAtPath(assetPath) as TextureImporter;
-        if (importer == null)
-        {
-            Debug.LogError(pageName + " page button texture was not found: " + assetPath);
-            return null;
-        }
-
-        bool requiresReimport = importer.textureType != TextureImporterType.Sprite
-            || importer.spriteImportMode != SpriteImportMode.Single
-            || !importer.isReadable
-            || !importer.alphaIsTransparency
-            || importer.mipmapEnabled
-            || importer.wrapMode != TextureWrapMode.Clamp;
-        if (requiresReimport)
-        {
-            importer.textureType = TextureImporterType.Sprite;
-            importer.spriteImportMode = SpriteImportMode.Single;
-            importer.isReadable = true;
-            importer.alphaIsTransparency = true;
-            importer.mipmapEnabled = false;
-            importer.wrapMode = TextureWrapMode.Clamp;
-            importer.SaveAndReimport();
-        }
-
-        return AssetDatabase.LoadAssetAtPath<Sprite>(assetPath);
     }
 
     private static void RemoveLegacyHomePageController(Scene scene, HomePageUI retainedController)
@@ -780,28 +1437,41 @@ public static class HomePageScenePanelsBuilder
         shadow.raycastTarget = false;
 
         Image panel = CreateImage("TaskPanel", root, new Color(0.42f, 0.22f, 0.10f, 1f));
-        SetTopLeft(panel.rectTransform, new Vector2(240f, -94f), new Vector2(1410f, 800f));
+        SetTopLeft(panel.rectTransform, new Vector2(32f, -26f), new Vector2(1856f, 1050f));
+        panel.sprite = LoadTaskSprite(TaskPanelBackgroundPath);
+        panel.color = Color.white;
+        panel.type = Image.Type.Simple;
 
         Image paper = CreateImage("TaskPaper", panel.transform, new Color(1f, 0.88f, 0.66f, 1f));
         SetTopLeft(paper.rectTransform, new Vector2(14f, -14f), new Vector2(1382f, 772f));
         paper.raycastTarget = false;
+        paper.gameObject.SetActive(false);
 
         Image header = CreateImage("TaskHeader", panel.transform, new Color(0.48f, 0.17f, 0.10f, 1f));
-        SetTopLeft(header.rectTransform, new Vector2(22f, -22f), new Vector2(1366f, 68f));
+        SetTopLeft(header.rectTransform, new Vector2(525f, -44f), new Vector2(810f, 116f));
+        header.sprite = LoadTaskSprite(TaskArtDirectory + "顶部信息栏.png");
+        header.color = Color.white;
+        header.type = Image.Type.Simple;
         header.raycastTarget = false;
 
-        Text title = CreateText("TaskTitle", panel.transform, "任务列表", 36, FontStyle.Bold, new Color(1f, 0.86f, 0.46f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(title.rectTransform, new Vector2(58f, -30f), new Vector2(230f, 48f));
-        Text subtitle = CreateText("TaskSubtitle", panel.transform, "完成委托，领取领地成长物资", 18, FontStyle.Bold, new Color(1f, 0.90f, 0.70f, 0.88f), TextAnchor.MiddleLeft);
-        SetTopLeft(subtitle.rectTransform, new Vector2(286f, -38f), new Vector2(390f, 34f));
-        Text total = CreateText("TaskTotalProgress", panel.transform, "本页进度  0/4", 20, FontStyle.Bold, new Color(1f, 0.88f, 0.58f, 1f), TextAnchor.MiddleRight);
-        SetTopLeft(total.rectTransform, new Vector2(970f, -38f), new Vector2(300f, 34f));
+        Text title = CreateText("TaskTitle", panel.transform, "任务", 44, FontStyle.Bold, new Color(0.10f, 0.05f, 0.02f, 1f), TextAnchor.MiddleCenter);
+        SetTopLeft(title.rectTransform, new Vector2(545f, -48f), new Vector2(770f, 78f));
+        Text subtitle = CreateText("TaskSubtitle", panel.transform, "完成委托，领取领地成长物资", 18, FontStyle.Normal, new Color(0.30f, 0.15f, 0.07f, 0.88f), TextAnchor.MiddleLeft);
+        SetTopLeft(subtitle.rectTransform, new Vector2(465f, -174f), new Vector2(430f, 34f));
+        Text total = CreateText("TaskTotalProgress", panel.transform, "本页进度  0/4", 20, FontStyle.Bold, new Color(0.30f, 0.15f, 0.07f, 1f), TextAnchor.MiddleRight);
+        SetTopLeft(total.rectTransform, new Vector2(1340f, -174f), new Vector2(300f, 34f));
 
-        Button close = CreateButton("TaskCloseButton", panel.transform, "X", new Color(0.78f, 0.27f, 0.16f, 1f), Color.white, 24);
-        SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(1322f, -30f), new Vector2(50f, 50f));
+        Button close = CreateButton("TaskCloseButton", panel.transform, string.Empty, Color.white, Color.white, 24);
+        Image closeImage = close.GetComponent<Image>();
+        closeImage.sprite = LoadTaskSprite(TaskCloseSpritePath);
+        closeImage.color = Color.white;
+        closeImage.type = Image.Type.Simple;
+        closeImage.preserveAspect = true;
+        SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(76f, -58f), new Vector2(108f, 108f));
 
-        Image sidebar = CreateImage("TaskSidebar", panel.transform, new Color(0.72f, 0.43f, 0.20f, 0.92f));
-        SetTopLeft(sidebar.rectTransform, new Vector2(28f, -106f), new Vector2(210f, 604f));
+        Image sidebar = CreateImage("TaskSidebar", panel.transform, Color.clear);
+        SetTopLeft(sidebar.rectTransform, new Vector2(104f, -202f), new Vector2(278f, 780f));
+        sidebar.raycastTarget = false;
         string[] ids = { "daily", "main", "growth", "activity" };
         string[] labels = { "每日任务", "主线任务", "成长任务", "活动任务" };
         for (int i = 0; i < ids.Length; i++)
@@ -810,21 +1480,35 @@ public static class HomePageScenePanelsBuilder
                 "TaskCategory_" + ids[i],
                 sidebar.transform,
                 labels[i],
-                i == 0 ? new Color(0.88f, 0.35f, 0.18f, 1f) : new Color(0.98f, 0.77f, 0.43f, 1f),
-                i == 0 ? Color.white : new Color(0.38f, 0.18f, 0.08f, 1f),
-                22);
-            SetTopLeft(category.GetComponent<RectTransform>(), new Vector2(16f, -24f - i * 104f), new Vector2(178f, 84f));
+                Color.white,
+                new Color(0.16f, 0.08f, 0.03f, 1f),
+                24);
+            Image categoryImage = category.GetComponent<Image>();
+            categoryImage.sprite = LoadTaskSprite(TaskArtDirectory + (i == 0 ? "左侧信息栏.png" : "左侧信息栏（无点击）.png"));
+            categoryImage.color = Color.white;
+            categoryImage.type = Image.Type.Simple;
+            SetTopLeft(category.GetComponent<RectTransform>(), new Vector2(0f, -i * 190f), new Vector2(278f, 158f));
         }
 
-        for (int i = 0; i < 4; i++)
-        {
-            BuildTaskRow(panel.transform, i, new Vector2(258f, -184f - i * 131f));
-        }
+        Image scrollBar = CreateImage("TaskScrollBar", panel.transform, Color.white);
+        SetTopLeft(scrollBar.rectTransform, new Vector2(414f, -216f), new Vector2(32f, 720f));
+        scrollBar.sprite = LoadTaskSprite(TaskArtDirectory + "滑动条.png");
+        scrollBar.type = Image.Type.Simple;
+        scrollBar.preserveAspect = true;
+        scrollBar.raycastTarget = false;
+        Image scrollHandle = CreateImage("TaskScrollHandle", scrollBar.transform, Color.white);
+        SetTopLeft(scrollHandle.rectTransform, new Vector2(5f, -5f), new Vector2(22f, 112f));
+        scrollHandle.sprite = LoadTaskSprite(TaskArtDirectory + "滑动条（内）.png");
+        scrollHandle.type = Image.Type.Simple;
+        scrollHandle.preserveAspect = true;
+        scrollHandle.raycastTarget = false;
 
-        Image footer = CreateImage("TaskFooter", panel.transform, new Color(0.54f, 0.28f, 0.12f, 0.90f));
-        SetTopLeft(footer.rectTransform, new Vector2(258f, -718f), new Vector2(1092f, 42f));
-        Text footerText = CreateText("TaskFooterText", footer.transform, "每日任务会在次日刷新", 17, FontStyle.Bold, new Color(1f, 0.88f, 0.64f, 1f), TextAnchor.MiddleCenter);
-        SetTopLeft(footerText.rectTransform, new Vector2(18f, -4f), new Vector2(1056f, 32f));
+        BuildTaskRow(panel.transform, 0, new Vector2(465f, -435f));
+
+        Image footer = CreateImage("TaskFooter", panel.transform, Color.clear);
+        SetTopLeft(footer.rectTransform, new Vector2(465f, -1014f), new Vector2(1260f, 38f));
+        Text footerText = CreateText("TaskFooterText", footer.transform, "每日任务会在次日刷新", 17, FontStyle.Normal, new Color(0.34f, 0.22f, 0.12f, 0.82f), TextAnchor.MiddleCenter);
+        Stretch(footerText.rectTransform);
         ApplyTaskPanelStyle(scenePanel.transform);
         return scenePanel;
     }
@@ -834,6 +1518,7 @@ public static class HomePageScenePanelsBuilder
         Transform panelTransform = FindTransformByName(scenePanelRoot, "TaskPanel");
         if (panelTransform == null)
         {
+            Debug.LogWarning("TaskPanel was not found under TaskScenePanel.");
             return;
         }
 
@@ -847,17 +1532,20 @@ public static class HomePageScenePanelsBuilder
         }
 
         Transform shadowTransform = FindTransformByName(scenePanelRoot, "TaskPanelShadow");
-        Image shadow = shadowTransform != null ? shadowTransform.GetComponent<Image>() : null;
-        if (shadow != null)
+        if (shadowTransform != null)
         {
-            SetTopLeft(shadow.rectTransform, new Vector2(42f, -36f), new Vector2(1836f, 1048f));
-            shadow.color = new Color(0.10f, 0.05f, 0.02f, 0.20f);
+            Image shadow = shadowTransform.GetComponent<Image>();
+            if (shadow != null)
+            {
+                SetTopLeft(shadow.rectTransform, new Vector2(42f, -36f), new Vector2(1836f, 1048f));
+                shadow.color = new Color(0.10f, 0.05f, 0.02f, 0.20f);
+            }
         }
 
-        Transform paper = FindTransformByName(panelTransform, "TaskPaper");
-        if (paper != null)
+        Transform paperTransform = FindTransformByName(panelTransform, "TaskPaper");
+        if (paperTransform != null)
         {
-            paper.gameObject.SetActive(false);
+            paperTransform.gameObject.SetActive(false);
         }
 
         Image header = FindImage(panelTransform, "TaskHeader");
@@ -874,14 +1562,14 @@ public static class HomePageScenePanelsBuilder
         SetTaskTextStyle(panelTransform, "TaskSubtitle", new Vector2(465f, -174f), new Vector2(430f, 34f), 18, TextAnchor.MiddleLeft, new Color(0.30f, 0.15f, 0.07f, 0.88f));
         SetTaskTextStyle(panelTransform, "TaskTotalProgress", new Vector2(1340f, -174f), new Vector2(300f, 34f), 20, TextAnchor.MiddleRight, new Color(0.30f, 0.15f, 0.07f, 1f));
 
-        Image close = FindImage(panelTransform, "TaskCloseButton");
-        if (close != null)
+        Image closeImage = FindImage(panelTransform, "TaskCloseButton");
+        if (closeImage != null)
         {
-            SetTopLeft(close.rectTransform, new Vector2(76f, -58f), new Vector2(108f, 108f));
-            close.sprite = LoadTaskSprite(TaskCloseSpritePath);
-            close.color = Color.white;
-            close.type = Image.Type.Simple;
-            close.preserveAspect = true;
+            SetTopLeft(closeImage.rectTransform, new Vector2(76f, -58f), new Vector2(108f, 108f));
+            closeImage.sprite = LoadTaskSprite(TaskCloseSpritePath);
+            closeImage.color = Color.white;
+            closeImage.type = Image.Type.Simple;
+            closeImage.preserveAspect = true;
         }
 
         Transform sidebarTransform = FindTransformByName(panelTransform, "TaskSidebar");
@@ -898,13 +1586,13 @@ public static class HomePageScenePanelsBuilder
             string[] categoryIds = { "daily", "main", "growth", "activity" };
             for (int i = 0; i < categoryIds.Length; i++)
             {
-                Transform category = FindTransformByName(sidebarTransform, "TaskCategory_" + categoryIds[i]);
-                if (category == null)
+                Transform categoryTransform = FindTransformByName(sidebarTransform, "TaskCategory_" + categoryIds[i]);
+                if (categoryTransform == null)
                 {
                     continue;
                 }
 
-                Image categoryImage = category.GetComponent<Image>();
+                Image categoryImage = categoryTransform.GetComponent<Image>();
                 if (categoryImage != null)
                 {
                     SetTopLeft(categoryImage.rectTransform, new Vector2(0f, -i * 190f), new Vector2(278f, 158f));
@@ -913,12 +1601,13 @@ public static class HomePageScenePanelsBuilder
                     categoryImage.type = Image.Type.Simple;
                 }
 
-                Image selectedImage = FindImage(category, "TaskCategorySelectedImage");
+                Image selectedImage = FindImage(categoryTransform, "TaskCategorySelectedImage");
                 if (selectedImage == null)
                 {
-                    selectedImage = CreateImage("TaskCategorySelectedImage", category, Color.white);
+                    selectedImage = CreateImage("TaskCategorySelectedImage", categoryTransform, Color.white);
                     selectedImage.transform.SetAsFirstSibling();
                 }
+
                 Stretch(selectedImage.rectTransform);
                 selectedImage.sprite = LoadTaskSprite(TaskArtDirectory + "左侧信息栏.png");
                 selectedImage.color = Color.white;
@@ -926,26 +1615,6 @@ public static class HomePageScenePanelsBuilder
                 selectedImage.raycastTarget = false;
                 selectedImage.gameObject.SetActive(i == 0);
 
-                Transform marker = FindTransformByName(category, "SelectedMarker");
-                if (marker != null)
-                {
-                    Object.DestroyImmediate(marker.gameObject);
-                }
-            }
-        }
-
-        Transform listHeader = FindTransformByName(panelTransform, "TaskListHeader");
-        if (listHeader != null)
-        {
-            Object.DestroyImmediate(listHeader.gameObject);
-        }
-        string[] obsolete = { "TaskCategoryTitle", "TaskCategoryNote", "TaskSidebarBadge" };
-        for (int i = 0; i < obsolete.Length; i++)
-        {
-            Transform target = FindTransformByName(panelTransform, obsolete[i]);
-            if (target != null)
-            {
-                Object.DestroyImmediate(target.gameObject);
             }
         }
 
@@ -972,28 +1641,29 @@ public static class HomePageScenePanelsBuilder
         scrollHandle.type = Image.Type.Simple;
         scrollHandle.preserveAspect = true;
         scrollHandle.raycastTarget = false;
+
         EnsureTaskScrollLayout(panelTransform, scrollBar, scrollHandle);
 
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 1; i++)
         {
-            Transform row = FindTransformByName(panelTransform, "TaskRow" + i);
-            if (row != null)
+            Transform rowTransform = FindTransformByName(panelTransform, "TaskRow" + i);
+            if (rowTransform != null)
             {
-                ApplyTaskRowStyle(panelTransform, row, i);
+                ApplyTaskRowStyle(panelTransform, rowTransform, i);
             }
         }
 
-        Transform footer = FindTransformByName(panelTransform, "TaskFooter");
-        if (footer != null)
+        Transform footerTransform = FindTransformByName(panelTransform, "TaskFooter");
+        if (footerTransform != null)
         {
-            Image footerImage = footer.GetComponent<Image>();
-            if (footerImage != null)
+            Image footer = footerTransform.GetComponent<Image>();
+            if (footer != null)
             {
-                SetTopLeft(footerImage.rectTransform, new Vector2(465f, -1014f), new Vector2(1260f, 38f));
-                footerImage.color = Color.clear;
-                footerImage.raycastTarget = false;
+                SetTopLeft(footer.rectTransform, new Vector2(465f, -1014f), new Vector2(1260f, 38f));
+                footer.color = Color.clear;
+                footer.raycastTarget = false;
             }
-            TMP_Text footerText = FindTaskText(panelTransform, "TaskFooterText");
+            TMP_Text footerText = FindText(panelTransform, "TaskFooterText");
             if (footerText != null)
             {
                 Stretch(footerText.rectTransform);
@@ -1003,48 +1673,455 @@ public static class HomePageScenePanelsBuilder
         }
     }
 
-    private static void EnsureTaskScrollLayout(Transform panelTransform, Image scrollBarImage, Image scrollHandleImage)
+    private static void ApplyRolePanelStyle(Transform scenePanelRoot)
     {
-        Transform viewport = FindTransformByName(panelTransform, "TaskRowsViewport");
-        if (viewport == null)
+        Transform panelTransform = FindTransformByName(scenePanelRoot, "RolePanel");
+        if (panelTransform == null)
         {
-            viewport = CreateRectObject("TaskRowsViewport", panelTransform).transform;
-        }
-        RectTransform viewportRect = viewport.GetComponent<RectTransform>();
-        SetTopLeft(viewportRect, new Vector2(465f, -435f), new Vector2(1260f, 550f));
-        if (viewport.GetComponent<RectMask2D>() == null)
-        {
-            viewport.gameObject.AddComponent<RectMask2D>();
+            Debug.LogWarning("RolePanel was not found under RoleScenePanel.");
+            return;
         }
 
-        Transform content = FindTransformByName(viewport, "TaskRowsContent");
-        if (content == null)
+        Image panel = panelTransform.GetComponent<Image>();
+        if (panel != null)
         {
-            content = CreateRectObject("TaskRowsContent", viewport).transform;
+            SetTopLeft(panel.rectTransform, new Vector2(32f, -26f), new Vector2(1856f, 1050f));
+            panel.sprite = LoadTaskSprite(TaskPanelBackgroundPath);
+            panel.color = Color.white;
+            panel.type = Image.Type.Simple;
         }
-        RectTransform contentRect = content.GetComponent<RectTransform>();
-        SetTopLeft(contentRect, Vector2.zero, new Vector2(1260f, 620f));
 
-        for (int i = 0; i < 4; i++)
+        Transform shadowTransform = FindTransformByName(scenePanelRoot, "RolePanelShadow");
+        if (shadowTransform != null)
         {
-            Transform row = FindTransformByName(panelTransform, "TaskRow" + i);
-            if (row == null)
+            Image shadow = shadowTransform.GetComponent<Image>();
+            if (shadow != null)
+            {
+                SetTopLeft(shadow.rectTransform, new Vector2(42f, -36f), new Vector2(1836f, 1048f));
+                shadow.color = new Color(0.10f, 0.05f, 0.02f, 0.20f);
+            }
+        }
+
+        Transform paperTransform = FindTransformByName(panelTransform, "RolePaper");
+        if (paperTransform != null)
+        {
+            paperTransform.gameObject.SetActive(false);
+        }
+
+        Image header = FindImage(panelTransform, "RoleHeader");
+        if (header != null)
+        {
+            SetTopLeft(header.rectTransform, new Vector2(525f, -44f), new Vector2(810f, 116f));
+            header.sprite = LoadTaskSprite(TaskArtDirectory + "顶部信息栏.png");
+            header.color = Color.white;
+            header.type = Image.Type.Simple;
+            header.raycastTarget = false;
+        }
+
+        SetTaskTextStyle(panelTransform, "RoleTitle", new Vector2(545f, -48f), new Vector2(770f, 78f), 44, TextAnchor.MiddleCenter, new Color(0.10f, 0.05f, 0.02f, 1f));
+        SetTaskTextStyle(panelTransform, "RoleSubtitle", new Vector2(465f, -174f), new Vector2(430f, 34f), 18, TextAnchor.MiddleLeft, new Color(0.30f, 0.15f, 0.07f, 0.88f));
+        SetTaskTextStyle(panelTransform, "RoleListTitle", new Vector2(64f, -202f), new Vector2(360f, 36f), 26, TextAnchor.MiddleLeft, new Color(0.30f, 0.15f, 0.07f, 1f));
+
+        Image closeImage = FindImage(panelTransform, "RoleCloseButton");
+        if (closeImage != null)
+        {
+            SetTopLeft(closeImage.rectTransform, new Vector2(76f, -58f), new Vector2(108f, 108f));
+            closeImage.sprite = LoadTaskSprite(TaskCloseSpritePath);
+            closeImage.color = Color.white;
+            closeImage.type = Image.Type.Simple;
+            closeImage.preserveAspect = true;
+        }
+
+        ApplyRoleTabStyle(panelTransform, "RoleOwnedTab");
+        ApplyRoleTabStyle(panelTransform, "RoleCatalogTab");
+
+        ApplyRoleCardStyle(panelTransform, "RoleListCard");
+        ApplyRoleCardStyle(panelTransform, "RoleDetailCard");
+
+        Transform listCardTransform = FindTransformByName(panelTransform, "RoleListCard");
+        if (listCardTransform != null)
+        {
+            SetTopLeft(listCardTransform.GetComponent<RectTransform>(), new Vector2(42f, -188f), new Vector2(470f, 780f));
+        }
+
+        Transform detailCardTransform = FindTransformByName(panelTransform, "RoleDetailCard");
+        if (detailCardTransform != null)
+        {
+            SetTopLeft(detailCardTransform.GetComponent<RectTransform>(), new Vector2(532f, -188f), new Vector2(1290f, 780f));
+        }
+
+        Image viewport = FindImage(panelTransform, "RoleListViewport");
+        if (viewport != null)
+        {
+            SetTopLeft(viewport.rectTransform, new Vector2(56f, -244f), new Vector2(424f, 700f));
+            viewport.color = Color.clear;
+            viewport.raycastTarget = true;
+        }
+
+        Transform contentTransform = FindTransformByName(panelTransform, "RoleListContent");
+        if (contentTransform != null)
+        {
+            RectTransform contentRect = contentTransform.GetComponent<RectTransform>();
+            if (contentRect != null)
+            {
+                contentRect.sizeDelta = new Vector2(0f, RoleListRows * 108f);
+            }
+        }
+
+        for (int i = 1; i <= RoleListRows; i++)
+        {
+            Transform rowTransform = FindTransformByName(panelTransform, "RoleListRow" + i);
+            if (rowTransform == null)
             {
                 continue;
             }
-            row.SetParent(content, false);
-            SetTopLeft(row.GetComponent<RectTransform>(), new Vector2(0f, -i * 155f), new Vector2(1260f, 140f));
-            Image rowImage = row.GetComponent<Image>();
+
+            Image row = rowTransform.GetComponent<Image>();
+            if (row != null)
+            {
+                SetTopLeft(row.rectTransform, new Vector2(6f, -6f - i * 108f), new Vector2(412f, 98f));
+                row.sprite = LoadTaskSprite(TaskArtDirectory + "内容栏.png");
+                row.color = Color.white;
+                row.type = Image.Type.Simple;
+            }
+        }
+
+        Transform detailTransform = FindTransformByName(panelTransform, "RoleDetailCard");
+        if (detailTransform != null)
+        {
+            SetTaskTextStyle(detailTransform, "RoleDetailTitle", new Vector2(28f, -18f), new Vector2(300f, 38f), 28, TextAnchor.MiddleLeft, new Color(0.30f, 0.15f, 0.07f, 1f));
+
+            Image detailIcon = FindImage(detailTransform, "RoleDetailIcon");
+            if (detailIcon != null)
+            {
+                SetTopLeft(detailIcon.rectTransform, new Vector2(34f, -76f), new Vector2(156f, 156f));
+                detailIcon.type = Image.Type.Simple;
+            }
+
+            SetTaskTextStyle(detailTransform, "RoleDetailName", new Vector2(190f, -78f), new Vector2(420f, 42f), 30, TextAnchor.MiddleLeft, new Color(0.26f, 0.12f, 0.05f, 1f));
+            SetTaskTextStyle(detailTransform, "RoleDetailQuality", new Vector2(190f, -124f), new Vector2(300f, 30f), 19, TextAnchor.MiddleLeft, new Color(0.60f, 0.25f, 0.12f, 1f));
+            SetTaskTextStyle(detailTransform, "RoleDetailStatus", new Vector2(190f, -158f), new Vector2(420f, 30f), 19, TextAnchor.MiddleLeft, new Color(0.22f, 0.46f, 0.25f, 1f));
+            SetTaskTextStyle(detailTransform, "RoleDetailLevel", new Vector2(190f, -192f), new Vector2(300f, 32f), 20, TextAnchor.MiddleLeft, new Color(0.38f, 0.18f, 0.08f, 1f));
+
+            Image divider = FindImage(detailTransform, "RoleDetailDivider");
+            if (divider != null)
+            {
+                SetTopLeft(divider.rectTransform, new Vector2(28f, -220f), new Vector2(868f, 3f));
+                divider.color = new Color(0.47f, 0.27f, 0.13f, 0.48f);
+            }
+
+            SetTaskTextStyle(detailTransform, "RoleDetailAttribute", new Vector2(34f, -240f), new Vector2(420f, 28f), 18, TextAnchor.MiddleLeft, new Color(0.34f, 0.25f, 0.16f, 1f));
+            SetTaskTextStyle(detailTransform, "RoleDetailProduction", new Vector2(670f, -240f), new Vector2(590f, 28f), 18, TextAnchor.MiddleLeft, new Color(0.34f, 0.25f, 0.16f, 1f));
+
+            TMP_Text battleStats = FindText(detailTransform, "RoleDetailBattleStats");
+            if (battleStats == null)
+            {
+                battleStats = CreateTMPText("RoleDetailBattleStats", detailTransform, "战斗属性  暂无服务器数据", 17, new Color(0.34f, 0.25f, 0.16f, 1f), TextAlignmentOptions.MidlineLeft);
+            }
+            SetTopLeft(battleStats.rectTransform, new Vector2(34f, -275f), new Vector2(1230f, 30f));
+            battleStats.fontSize = 17f;
+            battleStats.fontStyle = FontStyles.Normal;
+
+            TMP_Text equipment = FindText(detailTransform, "RoleDetailEquipment");
+            if (equipment == null)
+            {
+                equipment = CreateTMPText("RoleDetailEquipment", detailTransform, "\u5df2\u7a7f\u6234\u88c5\u5907  \u6682\u65e0\u670d\u52a1\u5668\u6570\u636e", 17, new Color(0.34f, 0.25f, 0.16f, 1f), TextAlignmentOptions.MidlineLeft);
+            }
+            SetTopLeft(equipment.rectTransform, new Vector2(34f, -310f), new Vector2(1230f, 30f));
+            equipment.fontSize = 17f;
+            equipment.fontStyle = FontStyles.Normal;
+
+            SetTaskTextStyle(detailTransform, "RoleDetailDescription", new Vector2(34f, -350f), new Vector2(1230f, 60f), 17, TextAnchor.UpperLeft, new Color(0.34f, 0.25f, 0.16f, 1f));
+            SetTaskTextStyle(detailTransform, "RoleDetailAcquisition", new Vector2(34f, -420f), new Vector2(1230f, 48f), 17, TextAnchor.UpperLeft, new Color(0.38f, 0.30f, 0.22f, 1f));
+
+            TMP_Text upgradePreview = FindText(detailTransform, "RoleDetailUpgradePreview");
+            if (upgradePreview == null)
+            {
+                upgradePreview = CreateTMPText("RoleDetailUpgradePreview", detailTransform, "所需资源", 16, new Color(0.38f, 0.30f, 0.22f, 1f), TextAlignmentOptions.TopLeft);
+            }
+            upgradePreview.text = "所需资源";
+            SetTopLeft(upgradePreview.rectTransform, new Vector2(34f, -475f), new Vector2(1230f, 48f));
+            upgradePreview.fontSize = 16f;
+            upgradePreview.fontStyle = FontStyles.Normal;
+
+            ApplyRoleActionStyle(detailTransform, "RoleDetailUpgradeButton", new Vector2(60f, -540f));
+            ApplyRoleActionStyle(detailTransform, "RoleDetailAcquireButton", new Vector2(240f, -540f));
+        }
+
+        Image footerDivider = FindImage(panelTransform, "RoleFooterDivider");
+        if (footerDivider != null)
+        {
+            SetTopLeft(footerDivider.rectTransform, new Vector2(42f, -1014f), new Vector2(1416f, 4f));
+            footerDivider.color = new Color(0.47f, 0.27f, 0.13f, 0.48f);
+            footerDivider.raycastTarget = false;
+        }
+
+        SetTaskTextStyle(panelTransform, "RoleStatus", new Vector2(50f, -1030f), new Vector2(1300f, 30f), 17, TextAnchor.MiddleLeft, new Color(0.34f, 0.22f, 0.12f, 0.82f));
+        ApplyRoleTextFont(panelTransform);
+    }
+
+    private static void ApplySecondaryPanelStyle(Transform scenePanelRoot, string panelPrefix)
+    {
+        Transform panelTransform = FindTransformByName(scenePanelRoot, panelPrefix + "Panel");
+        if (panelTransform == null)
+        {
+            Debug.LogWarning(panelPrefix + "Panel was not found under " + panelPrefix + "ScenePanel.");
+            return;
+        }
+
+        Sprite panelBackground = LoadTaskSprite(SecondaryPanelBackgroundPath);
+        Image panel = panelTransform.GetComponent<Image>();
+        if (panel != null)
+        {
+            if (panelBackground != null)
+            {
+                panel.sprite = panelBackground;
+            }
+            else
+            {
+                Debug.LogWarning("Secondary panel background sprite was not found: " + SecondaryPanelBackgroundPath);
+            }
+
+            panel.color = Color.white;
+            panel.type = Image.Type.Simple;
+        }
+
+        Transform paper = FindTransformByName(panelTransform, panelPrefix + "Paper");
+        if (paper != null)
+        {
+            paper.gameObject.SetActive(false);
+        }
+
+        Image header = FindImage(panelTransform, panelPrefix + "Header");
+        if (header != null)
+        {
+            Sprite headerSprite = LoadTaskSprite(SecondaryHeaderPath);
+            if (headerSprite != null)
+            {
+                header.sprite = headerSprite;
+            }
+            else
+            {
+                Debug.LogWarning("Secondary panel header sprite was not found: " + SecondaryHeaderPath);
+            }
+
+            header.color = Color.white;
+            header.type = Image.Type.Simple;
+            header.raycastTarget = false;
+        }
+
+        // Friend buttons (including rows and close) keep their authored Image and Button states.
+        if (panelPrefix == nameof(HomePageScenePanelType.Friends))
+        {
+            return;
+        }
+
+        Button[] buttons = panelTransform.GetComponentsInChildren<Button>(true);
+        for (int i = 0; i < buttons.Length; i++)
+        {
+            ApplySecondaryButtonStyle(buttons[i]);
+        }
+
+        Image closeImage = FindImage(panelTransform, panelPrefix + "CloseButton");
+        if (closeImage != null)
+        {
+            Sprite closeSprite = LoadTaskSprite(SecondaryCloseSpritePath);
+            if (closeSprite != null)
+            {
+                closeImage.sprite = closeSprite;
+            }
+            else
+            {
+                Debug.LogWarning("Secondary panel close sprite was not found: " + SecondaryCloseSpritePath);
+            }
+
+            closeImage.color = Color.white;
+            closeImage.type = Image.Type.Simple;
+            closeImage.preserveAspect = true;
+        }
+    }
+
+    private static void ApplySecondaryButtonStyle(Button button)
+    {
+        if (button == null)
+        {
+            return;
+        }
+
+        Image image = button.GetComponent<Image>();
+        if (image == null)
+        {
+            return;
+        }
+
+        string buttonName = button.name;
+        bool isCloseButton = buttonName.IndexOf("CloseButton", System.StringComparison.Ordinal) >= 0;
+        string spritePath = isCloseButton ? SecondaryCloseSpritePath : SecondaryActionSpritePath;
+        Sprite sprite = LoadTaskSprite(spritePath);
+        if (sprite != null)
+        {
+            image.sprite = sprite;
+        }
+        else
+        {
+            Debug.LogWarning("Secondary panel button sprite was not found: " + spritePath);
+        }
+
+        image.color = Color.white;
+        image.type = Image.Type.Simple;
+        image.preserveAspect = true;
+
+        button.transition = Selectable.Transition.SpriteSwap;
+        SpriteState spriteState = button.spriteState;
+        spriteState.disabledSprite = LoadTaskSprite(SecondaryActionDisabledSpritePath);
+        button.spriteState = spriteState;
+    }
+
+    private static void ApplyRoleTabStyle(Transform panelTransform, string name)
+    {
+        Image image = FindImage(panelTransform, name);
+        if (image == null)
+        {
+            return;
+        }
+
+        bool selectedByDefault = name == "RoleOwnedTab";
+        image.sprite = LoadTaskSprite(selectedByDefault
+            ? SecondaryActionSpritePath
+            : SecondaryActionDisabledSpritePath);
+        image.color = Color.white;
+        image.type = Image.Type.Simple;
+        image.preserveAspect = true;
+        Button button = image.GetComponent<Button>();
+        if (button != null)
+        {
+            button.transition = Selectable.Transition.None;
+            SpriteState spriteState = button.spriteState;
+            spriteState.selectedSprite = LoadTaskSprite(SecondaryActionSpritePath);
+            spriteState.disabledSprite = LoadTaskSprite(SecondaryActionDisabledSpritePath);
+            button.spriteState = spriteState;
+        }
+        TMP_Text label = FindText(image.transform, "Text");
+        if (label != null)
+        {
+            label.font = roleFontAsset;
+            label.fontStyle = FontStyles.Normal;
+            label.fontSize = 20f;
+        }
+    }
+
+    private static void ApplyRoleCardStyle(Transform panelTransform, string name)
+    {
+        Image image = FindImage(panelTransform, name);
+        if (image == null)
+        {
+            return;
+        }
+
+        image.sprite = LoadTaskSprite(TaskArtDirectory + "内容栏.png");
+        image.color = Color.white;
+        image.type = Image.Type.Simple;
+    }
+
+    private static void ApplyRoleActionStyle(Transform parent, string name, Vector2 position)
+    {
+        Image image = FindImage(parent, name);
+        if (image == null)
+        {
+            return;
+        }
+
+        SetTopLeft(image.rectTransform, position, new Vector2(150f, 78f));
+        image.sprite = LoadTaskSprite(TaskActionSpritePath);
+        image.color = Color.white;
+        image.type = Image.Type.Simple;
+        image.preserveAspect = true;
+
+        Button button = image.GetComponent<Button>();
+        if (button != null)
+        {
+            button.transition = Selectable.Transition.SpriteSwap;
+            SpriteState spriteState = button.spriteState;
+            spriteState.disabledSprite = LoadTaskSprite(TaskActionDisabledSpritePath);
+            button.spriteState = spriteState;
+        }
+
+        TMP_Text label = FindText(image.transform, "Text");
+        if (label != null)
+        {
+            label.font = roleFontAsset;
+            label.fontStyle = FontStyles.Normal;
+            label.fontSize = 25f;
+            label.fontSizeMin = 25f;
+            label.fontSizeMax = 25f;
+            label.enableAutoSizing = false;
+        }
+    }
+
+    private static void ApplyRoleTextFont(Transform root)
+    {
+        if (root == null || roleFontAsset == null)
+        {
+            return;
+        }
+
+        TMP_Text[] labels = root.GetComponentsInChildren<TMP_Text>(true);
+        for (int i = 0; i < labels.Length; i++)
+        {
+            if (labels[i] != null)
+            {
+                labels[i].font = roleFontAsset;
+            }
+        }
+    }
+
+    private static void EnsureTaskScrollLayout(Transform panelTransform, Image scrollBarImage, Image scrollHandleImage)
+    {
+        Transform viewportTransform = FindTransformByName(panelTransform, "TaskRowsViewport");
+        if (viewportTransform == null)
+        {
+            viewportTransform = CreateRectObject("TaskRowsViewport", panelTransform).transform;
+        }
+
+        RectTransform viewportRect = viewportTransform.GetComponent<RectTransform>();
+        SetTopLeft(viewportRect, new Vector2(465f, -216f), new Vector2(1260f, 769f));
+        RectMask2D mask = viewportTransform.GetComponent<RectMask2D>();
+        if (mask == null)
+        {
+            mask = viewportTransform.gameObject.AddComponent<RectMask2D>();
+        }
+
+        Transform contentTransform = FindTransformByName(viewportTransform, "TaskRowsContent");
+        if (contentTransform == null)
+        {
+            contentTransform = CreateRectObject("TaskRowsContent", viewportTransform).transform;
+        }
+
+        RectTransform contentRect = contentTransform.GetComponent<RectTransform>();
+        SetTopLeft(contentRect, Vector2.zero, new Vector2(1260f, 620f));
+
+        for (int i = 0; i < 1; i++)
+        {
+            Transform rowTransform = FindTransformByName(panelTransform, "TaskRow" + i);
+            if (rowTransform == null)
+            {
+                continue;
+            }
+
+            rowTransform.SetParent(contentTransform, false);
+            Image rowImage = rowTransform.GetComponent<Image>();
+            RectTransform rowRect = rowTransform.GetComponent<RectTransform>();
+            SetTopLeft(rowRect, new Vector2(0f, -i * 155f), new Vector2(1260f, 140f));
             if (rowImage != null)
             {
                 rowImage.raycastTarget = false;
             }
         }
 
-        ScrollRect scroll = viewport.GetComponent<ScrollRect>();
+        ScrollRect scroll = viewportTransform.GetComponent<ScrollRect>();
         if (scroll == null)
         {
-            scroll = viewport.gameObject.AddComponent<ScrollRect>();
+            scroll = viewportTransform.gameObject.AddComponent<ScrollRect>();
         }
         scroll.content = contentRect;
         scroll.viewport = viewportRect;
@@ -1084,21 +2161,19 @@ public static class HomePageScenePanelsBuilder
             row.color = Color.white;
             row.type = Image.Type.Simple;
         }
-        Transform rowShadow = FindTransformByName(panelTransform, "TaskRowShadow" + index);
-        if (rowShadow != null)
+
+        Transform shadowTransform = FindTransformByName(panelTransform, "TaskRowShadow" + index);
+        if (shadowTransform != null)
         {
-            rowShadow.gameObject.SetActive(false);
+            shadowTransform.gameObject.SetActive(false);
         }
-        Transform accent = FindTransformByName(rowTransform, "TaskRowAccent");
-        if (accent != null)
+
+        Transform accentTransform = FindTransformByName(rowTransform, "TaskRowAccent");
+        if (accentTransform != null)
         {
-            accent.gameObject.SetActive(false);
+            accentTransform.gameObject.SetActive(false);
         }
-        Transform numberBadge = FindTransformByName(rowTransform, "TaskNumberBadge");
-        if (numberBadge != null)
-        {
-            Object.DestroyImmediate(numberBadge.gameObject);
-        }
+
         SetTaskTextStyle(rowTransform, "TaskItemTitle", new Vector2(32f, -20f), new Vector2(585f, 34f), 23, TextAnchor.MiddleLeft, new Color(0.22f, 0.12f, 0.07f, 1f));
         SetTaskTextStyle(rowTransform, "TaskItemDescription", new Vector2(32f, -58f), new Vector2(585f, 34f), 16, TextAnchor.UpperLeft, new Color(0.38f, 0.28f, 0.19f, 0.95f));
         SetTaskTextStyle(rowTransform, "TaskProgressTitle", new Vector2(650f, -25f), new Vector2(260f, 28f), 16, TextAnchor.MiddleCenter, new Color(0.32f, 0.20f, 0.12f, 1f));
@@ -1113,6 +2188,7 @@ public static class HomePageScenePanelsBuilder
             progressBackground.type = Image.Type.Simple;
             progressBackground.preserveAspect = false;
         }
+
         Image progressFill = FindImage(rowTransform, "TaskProgressFill");
         if (progressFill != null)
         {
@@ -1126,21 +2202,21 @@ public static class HomePageScenePanelsBuilder
             progressFill.preserveAspect = false;
         }
 
-        Transform reward = FindTransformByName(rowTransform, "TaskReward");
-        if (reward != null)
+        Transform rewardTransform = FindTransformByName(rowTransform, "TaskReward");
+        if (rewardTransform != null)
         {
-            Image rewardImage = reward.GetComponent<Image>();
-            if (rewardImage != null)
+            Image reward = rewardTransform.GetComponent<Image>();
+            if (reward != null)
             {
-                SetTopLeft(rewardImage.rectTransform, new Vector2(32f, -101f), new Vector2(590f, 30f));
-                rewardImage.color = Color.clear;
+                SetTopLeft(reward.rectTransform, new Vector2(32f, -101f), new Vector2(590f, 30f));
+                reward.color = Color.clear;
             }
-            Transform rewardIcon = FindTransformByName(reward, "TaskRewardIcon");
-            if (rewardIcon != null)
+            Transform rewardIconTransform = FindTransformByName(rewardTransform, "TaskRewardIcon");
+            if (rewardIconTransform != null)
             {
-                SetTopLeft(rewardIcon.GetComponent<RectTransform>(), new Vector2(0f, -1f), new Vector2(30f, 30f));
+                SetTopLeft(rewardIconTransform.GetComponent<RectTransform>(), new Vector2(0f, -1f), new Vector2(30f, 30f));
             }
-            SetTaskTextStyle(reward, "TaskRewardText", new Vector2(40f, -1f), new Vector2(540f, 30f), 15, TextAnchor.MiddleLeft, new Color(0.34f, 0.20f, 0.11f, 1f));
+            SetTaskTextStyle(rewardTransform, "TaskRewardText", new Vector2(40f, -1f), new Vector2(540f, 30f), 15, TextAnchor.MiddleLeft, new Color(0.34f, 0.20f, 0.11f, 1f));
         }
 
         Image action = FindImage(rowTransform, "TaskActionButton");
@@ -1151,15 +2227,17 @@ public static class HomePageScenePanelsBuilder
             action.color = Color.white;
             action.type = Image.Type.Simple;
             action.preserveAspect = true;
+
             Button actionButton = action.GetComponent<Button>();
             if (actionButton != null)
             {
                 actionButton.transition = Selectable.Transition.SpriteSwap;
-                SpriteState state = actionButton.spriteState;
-                state.disabledSprite = LoadTaskSprite(TaskActionDisabledSpritePath);
-                actionButton.spriteState = state;
+                SpriteState spriteState = actionButton.spriteState;
+                spriteState.disabledSprite = LoadTaskSprite(TaskActionDisabledSpritePath);
+                actionButton.spriteState = spriteState;
             }
-            TMP_Text actionText = FindTaskText(action.transform, "Text");
+
+            TMP_Text actionText = FindText(action.transform, "Text");
             if (actionText != null)
             {
                 actionText.fontSize = 25f;
@@ -1172,23 +2250,25 @@ public static class HomePageScenePanelsBuilder
 
     private static void SetTaskTextStyle(Transform parent, string name, Vector2 position, Vector2 size, int fontSize, TextAnchor alignment, Color color)
     {
-        TMP_Text text = FindTaskText(parent, name);
+        TMP_Text text = FindText(parent, name);
         if (text == null)
         {
             return;
         }
+
         SetTopLeft(text.rectTransform, position, size);
         text.fontSize = fontSize;
         text.alignment = ConvertTextAlignment(alignment);
         text.color = color;
     }
 
-    private static TMP_Text FindTaskText(Transform root, string name)
+    private static TMP_Text FindText(Transform root, string name)
     {
         if (root == null)
         {
             return null;
         }
+
         TMP_Text[] texts = root.GetComponentsInChildren<TMP_Text>(true);
         for (int i = 0; i < texts.Length; i++)
         {
@@ -1197,6 +2277,7 @@ public static class HomePageScenePanelsBuilder
                 return texts[i];
             }
         }
+
         return null;
     }
 
@@ -1223,9 +2304,9 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(accent.rectTransform, Vector2.zero, new Vector2(9f, 118f));
 
         Text title = CreateText("TaskItemTitle", row.transform, "任务名称", 22, FontStyle.Bold, new Color(0.30f, 0.13f, 0.06f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(title.rectTransform, new Vector2(92f, -13f), new Vector2(390f, 32f));
+        SetTopLeft(title.rectTransform, new Vector2(32f, -20f), new Vector2(585f, 34f));
         Text description = CreateText("TaskItemDescription", row.transform, "任务描述", 16, FontStyle.Normal, new Color(0.43f, 0.31f, 0.21f, 1f), TextAnchor.UpperLeft);
-        SetTopLeft(description.rectTransform, new Vector2(92f, -49f), new Vector2(390f, 52f));
+        SetTopLeft(description.rectTransform, new Vector2(32f, -58f), new Vector2(585f, 34f));
 
         Text progressTitle = CreateText("TaskProgressTitle", row.transform, "任务进度", 16, FontStyle.Bold, new Color(0.40f, 0.22f, 0.10f, 1f), TextAnchor.MiddleCenter);
         SetTopLeft(progressTitle.rectTransform, new Vector2(494f, -15f), new Vector2(190f, 24f));
@@ -1237,16 +2318,16 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(progressValue.rectTransform, new Vector2(494f, -72f), new Vector2(190f, 24f));
 
         Image reward = CreateImage("TaskReward", row.transform, new Color(0.99f, 0.79f, 0.37f, 0.88f));
-        SetTopLeft(reward.rectTransform, new Vector2(704f, -18f), new Vector2(188f, 82f));
+        SetTopLeft(reward.rectTransform, new Vector2(32f, -101f), new Vector2(590f, 30f));
         Image rewardIcon = CreateImage("TaskRewardIcon", reward.transform, new Color(1f, 0.71f, 0.12f, 1f));
-        SetTopLeft(rewardIcon.rectTransform, new Vector2(12f, -20f), new Vector2(40f, 40f));
+        SetTopLeft(rewardIcon.rectTransform, new Vector2(0f, -1f), new Vector2(30f, 30f));
         Text rewardIconText = CreateText("TaskRewardIconText", rewardIcon.transform, "奖", 18, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
         Stretch(rewardIconText.rectTransform);
-        Text rewardText = CreateText("TaskRewardText", reward.transform, "金币\nx100", 16, FontStyle.Bold, new Color(0.38f, 0.17f, 0.06f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(rewardText.rectTransform, new Vector2(62f, -10f), new Vector2(116f, 62f));
+        Text rewardText = CreateText("TaskRewardText", reward.transform, "金币 x100", 16, FontStyle.Bold, new Color(0.38f, 0.17f, 0.06f, 1f), TextAnchor.MiddleLeft);
+        SetTopLeft(rewardText.rectTransform, new Vector2(40f, -1f), new Vector2(540f, 28f));
 
-        Button action = CreateButton("TaskActionButton", row.transform, "前往", new Color(0.83f, 0.34f, 0.16f, 1f), Color.white, 20);
-        SetTopLeft(action.GetComponent<RectTransform>(), new Vector2(922f, -34f), new Vector2(142f, 50f));
+        Button action = CreateButton("TaskActionButton", row.transform, "前往", new Color(0.83f, 0.34f, 0.16f, 1f), Color.white, 25);
+        SetTopLeft(action.GetComponent<RectTransform>(), new Vector2(922f, -20f), new Vector2(150f, 78f));
     }
 
     private static HomePageScenePanel BuildInventoryPanel(Transform parent)
@@ -1279,6 +2360,12 @@ public static class HomePageScenePanelsBuilder
 
     private static HomePageScenePanel BuildRechargePanel(Transform parent)
     {
+        HomePageScenePanel existing = FindExistingScenePanel(parent, HomePageScenePanelType.Recharge);
+        if (existing != null)
+        {
+            return existing;
+        }
+
         HomePageScenePanel scenePanel = CreateScenePanel(parent, "RechargeScenePanel", HomePageScenePanelType.Recharge);
         Transform root = scenePanel.transform;
         CreateDimmer(root);
@@ -1290,7 +2377,7 @@ public static class HomePageScenePanelsBuilder
 
         Button close = CreateButton("RechargeCloseButton", panel.transform, "<", new Color(0.30f, 0.17f, 0.09f, 1f), new Color(1f, 0.86f, 0.58f, 1f), 28);
         SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(24f, -24f), new Vector2(48f, 48f));
-        Text title = CreateText("RechargeTitle", panel.transform, "钻石充值", 34, FontStyle.Bold, new Color(0.39f, 0.17f, 0.06f, 1f), TextAnchor.MiddleLeft);
+        Text title = CreateText("RechargeTitle", panel.transform, "充值", 34, FontStyle.Bold, new Color(0.39f, 0.17f, 0.06f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(title.rectTransform, new Vector2(92f, -24f), new Vector2(220f, 48f));
 
         BuildRechargeResource(panel.transform, "RechargeGoldText", "金币  1000", new Vector2(330f, -22f), new Color(1f, 0.72f, 0.18f, 1f));
@@ -1317,17 +2404,18 @@ public static class HomePageScenePanelsBuilder
 
     private static HomePageScenePanel BuildShopPanel(Transform parent)
     {
+        HomePageScenePanel existing = FindExistingScenePanel(parent, HomePageScenePanelType.Shop);
+        if (existing != null)
+        {
+            return existing;
+        }
+
         HomePageScenePanel scenePanel = CreateScenePanel(parent, "ShopScenePanel", HomePageScenePanelType.Shop);
         Transform root = scenePanel.transform;
         CreateDimmer(root);
 
-        Image shadow = CreateImage("ShopPanelShadow", root, new Color(0.08f, 0.05f, 0.03f, 0.50f));
-        SetTopLeft(shadow.rectTransform, new Vector2(236f, -116f), new Vector2(1484f, 844f));
-        shadow.raycastTarget = false;
-
         Image panel = CreateImage("ShopPanel", root, new Color(0.36f, 0.20f, 0.10f, 1f));
         SetTopLeft(panel.rectTransform, new Vector2(220f, -100f), new Vector2(1480f, 830f));
-        AddSimpleFrame(panel.transform, new Vector2(1480f, 830f), new Color(0.20f, 0.11f, 0.06f, 1f));
 
         Image header = CreateImage("ShopHeader", panel.transform, new Color(0.16f, 0.39f, 0.34f, 1f));
         SetTopLeft(header.rectTransform, new Vector2(22f, -22f), new Vector2(1436f, 76f));
@@ -1339,16 +2427,8 @@ public static class HomePageScenePanelsBuilder
         Text subtitle = CreateText("ShopSubtitle", header.transform, "选择金币或钻石购买服务器商品", 17, FontStyle.Bold, new Color(0.86f, 0.96f, 0.90f, 0.90f), TextAnchor.MiddleLeft);
         SetTopLeft(subtitle.rectTransform, new Vector2(242f, -20f), new Vector2(320f, 34f));
 
-        BuildShopResourceBadge(header.transform, "ShopGoldText", new Vector2(650f, -16f), "金币  1000", new Color(1f, 0.72f, 0.18f, 1f));
-        BuildShopResourceBadge(header.transform, "ShopCrystalText", new Vector2(850f, -16f), "钻石  0", new Color(0.30f, 0.78f, 0.95f, 1f));
-
-        Button refresh = CreateButton("ShopRefreshButton", header.transform, "刷新", new Color(0.94f, 0.72f, 0.30f, 1f), new Color(0.25f, 0.15f, 0.07f, 1f), 17);
-        SetTopLeft(refresh.GetComponent<RectTransform>(), new Vector2(1090f, -14f), new Vector2(112f, 44f));
         Button close = CreateButton("ShopCloseButton", header.transform, "X", new Color(0.88f, 0.28f, 0.22f, 1f), Color.white, 22);
         SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(1356f, -13f), new Vector2(48f, 48f));
-
-        Image paper = CreateImage("ShopPaper", panel.transform, new Color(1f, 0.91f, 0.70f, 1f));
-        SetTopLeft(paper.rectTransform, new Vector2(22f, -108f), new Vector2(1436f, 650f));
 
         Image sidebar = CreateImage("ShopSidebar", panel.transform, new Color(0.80f, 0.55f, 0.26f, 1f));
         SetTopLeft(sidebar.rectTransform, new Vector2(34f, -120f), new Vector2(182f, 626f));
@@ -1365,7 +2445,7 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(note.rectTransform, new Vector2(12f, -48f), new Vector2(134f, 112f));
 
         Image catalog = CreateImage("ShopCatalog", panel.transform, new Color(0.98f, 0.86f, 0.62f, 1f));
-        SetTopLeft(catalog.rectTransform, new Vector2(228f, -120f), new Vector2(790f, 626f));
+        SetTopLeft(catalog.rectTransform, new Vector2(228f, -120f), new Vector2(1083f, 626f));
         Text resultCount = CreateText("ShopResultCount", catalog.transform, "金币  0 件商品", 20, FontStyle.Bold, new Color(0.33f, 0.18f, 0.08f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(resultCount.rectTransform, new Vector2(18f, -12f), new Vector2(300f, 34f));
         Button previous = CreateButton("ShopPreviousButton", catalog.transform, "<", new Color(0.36f, 0.58f, 0.54f, 1f), Color.white, 20);
@@ -1375,10 +2455,10 @@ public static class HomePageScenePanelsBuilder
         Button next = CreateButton("ShopNextButton", catalog.transform, ">", new Color(0.36f, 0.58f, 0.54f, 1f), Color.white, 20);
         SetTopLeft(next.GetComponent<RectTransform>(), new Vector2(730f, -10f), new Vector2(42f, 36f));
 
-        for (int i = 0; i < 6; i++)
+        for (int i = 0; i < 8; i++)
         {
-            int row = i / 3;
-            int column = i % 3;
+            int row = i / 4;
+            int column = i % 4;
             BuildShopProductCard(catalog.transform, i, new Vector2(18f + column * 254f, -62f - row * 250f));
         }
 
@@ -1720,41 +2800,145 @@ public static class HomePageScenePanelsBuilder
 
     private static HomePageScenePanel BuildDailySignPanel(Transform parent)
     {
+        HomePageScenePanel existing = FindExistingScenePanel(parent, HomePageScenePanelType.DailySign);
+        if (existing != null)
+        {
+            EnsureDailySignScrollView(existing.transform);
+            EnsureActivityRewardPagingButtons(existing.transform);
+            BuildSignMakeupDialog(existing.transform);
+            return existing;
+        }
+
         HomePageScenePanel scenePanel = CreateScenePanel(parent, "DailySignScenePanel", HomePageScenePanelType.DailySign);
         Transform root = scenePanel.transform;
         CreateDimmer(root);
         Image panel = CreateImage("DailySignPanel", root, new Color(0.86f, 0.70f, 0.42f, 1f));
         SetTopLeft(panel.rectTransform, new Vector2(340f, -100f), new Vector2(1210f, 815f));
-        AddSimpleFrame(panel.transform, new Vector2(1210f, 815f), new Color(0.24f, 0.43f, 0.74f, 1f));
         Text title = CreateText("DailySignTitle", panel.transform, "每日签到", 52, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
         SetTopLeft(title.rectTransform, new Vector2(410f, -22f), new Vector2(390f, 74f));
-        Text subtitle = CreateText("DailySignSubtitle", panel.transform, "两周签到奖励", 22, FontStyle.Bold, new Color(0.38f, 0.24f, 0.11f, 1f), TextAnchor.MiddleCenter);
-        SetTopLeft(subtitle.rectTransform, new Vector2(486f, -92f), new Vector2(240f, 34f));
         Button close = CreateButton("DailySignCloseButton", panel.transform, "X", new Color(0.91f, 0.39f, 0.16f, 1f), Color.white, 27);
         SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(1128f, -28f), new Vector2(58f, 58f));
 
-        string[] names =
-        {
-            "金币", "木材", "石材", "英雄箱", "铁矿", "金币", "抽奖券",
-            "木材", "石材", "铁矿", "金币", "加速道具", "抽奖券", "高级英雄箱"
-        };
-        string[] amounts = { "x100", "x120", "x120", "x1", "x80", "x200", "x1", "x180", "x180", "x120", "x260", "x1", "x2", "x1" };
-        for (int i = 0; i < 14; i++)
-        {
-            int row = i / 7;
-            int column = i % 7;
-            BuildSignCard(panel.transform, "DailySignCard" + (i + 1), i + 1, names[i], amounts[i], new Vector2(50f + column * 162f, -142f - row * 244f), new Vector2(142f, 216f), false);
-        }
+        GameObject cardParent = CreateRectObject("DailySignCardP", panel.transform);
+        SetTopLeft(cardParent.GetComponent<RectTransform>(), new Vector2(96f, -142f), new Vector2(1018f, 490f));
+        BuildSignCard(cardParent.transform, "DailySignCard1", 1, "金币", "x100", Vector2.zero, new Vector2(176.054f, 194.659f), false);
+        EnsureDailySignScrollView(root);
 
         Image footer = CreateImage("DailySignFooter", panel.transform, new Color(1f, 0.94f, 0.74f, 0.94f));
         SetTopLeft(footer.rectTransform, new Vector2(62f, -662f), new Vector2(1086f, 92f));
-        Text status = CreateText("DailySignStatus", footer.transform, "进度 0/14", 24, FontStyle.Bold, new Color(0.36f, 0.18f, 0.08f, 1f), TextAnchor.MiddleCenter);
+        Text status = CreateText("DailySignStatus", footer.transform, string.Empty, 24, FontStyle.Bold, new Color(0.36f, 0.18f, 0.08f, 1f), TextAnchor.MiddleCenter);
         Stretch(status.rectTransform);
+        footer.gameObject.SetActive(false);
+        BuildSignMakeupDialog(root);
         return scenePanel;
+    }
+
+    private static void EnsureDailySignScrollView(Transform root)
+    {
+        RectTransform viewport = FindTransformByName(root, "DailySignCardP") as RectTransform;
+        if (viewport == null) return;
+
+        ScrollRect existingScroll = viewport.GetComponent<ScrollRect>();
+        if (existingScroll != null)
+        {
+            existingScroll.horizontal = false;
+            existingScroll.movementType = ScrollRect.MovementType.Clamped;
+            return;
+        }
+
+        RectTransform content = viewport.Find("DailySignCardsContent") as RectTransform;
+        if (content == null)
+        {
+            content = CreateRectObject("DailySignCardsContent", viewport).GetComponent<RectTransform>();
+            content.anchorMin = new Vector2(0f, 1f);
+            content.anchorMax = Vector2.one;
+            content.pivot = new Vector2(0.5f, 1f);
+            content.anchoredPosition = Vector2.zero;
+            content.sizeDelta = new Vector2(0f, viewport.rect.height);
+            List<Transform> cards = new List<Transform>();
+            for (int index = 0; index < viewport.childCount; index++)
+            {
+                Transform child = viewport.GetChild(index);
+                const string prefix = "DailySignCard";
+                if (child.name.StartsWith(prefix, System.StringComparison.Ordinal)
+                    && int.TryParse(child.name.Substring(prefix.Length), out int cardNumber)
+                    && cardNumber > 0)
+                {
+                    cards.Add(child);
+                }
+            }
+            for (int index = 0; index < cards.Count; index++) cards[index].SetParent(content, false);
+        }
+
+        if (viewport.GetComponent<Image>() == null)
+        {
+            Image surface = viewport.gameObject.AddComponent<Image>();
+            surface.color = Color.clear;
+            surface.raycastTarget = true;
+        }
+        if (viewport.GetComponent<RectMask2D>() == null) viewport.gameObject.AddComponent<RectMask2D>();
+        ScrollRect scroll = viewport.gameObject.AddComponent<ScrollRect>();
+        scroll.viewport = viewport;
+        scroll.content = content;
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.scrollSensitivity = 35f;
+
+        Image track = CreateImage("DailySignScrollbar", viewport.parent, Color.white);
+        RectTransform trackRect = track.rectTransform;
+        trackRect.anchorMin = viewport.anchorMin;
+        trackRect.anchorMax = viewport.anchorMax;
+        trackRect.pivot = new Vector2(0f, 0.5f);
+        trackRect.anchoredPosition = viewport.anchoredPosition + new Vector2(
+            (1f - viewport.pivot.x) * viewport.rect.width + 8f,
+            (0.5f - viewport.pivot.y) * viewport.rect.height);
+        trackRect.sizeDelta = new Vector2(18f, viewport.rect.height);
+        track.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(TaskArtDirectory + "滑动条 1.png");
+        Image handle = CreateImage("Handle", track.transform, Color.white);
+        Stretch(handle.rectTransform);
+        handle.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/Art/UI/三级界面/滑动节点.png");
+        Scrollbar scrollbar = track.gameObject.AddComponent<Scrollbar>();
+        scrollbar.direction = Scrollbar.Direction.BottomToTop;
+        scrollbar.handleRect = handle.rectTransform;
+        scrollbar.targetGraphic = handle;
+        scrollbar.value = 1f;
+        scroll.verticalScrollbar = scrollbar;
+        scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
+    }
+
+    private static void EnsureActivityRewardPagingButtons(Transform root)
+    {
+        Transform parent = FindTransformByName(root, "SignCardP");
+        if (parent == null)
+        {
+            return;
+        }
+
+        EnsureActivityRewardPagingButton(parent, "ActivityRewardPreviousButton", "<", new Vector2(-45f, -145f));
+        EnsureActivityRewardPagingButton(parent, "ActivityRewardNextButton", ">", new Vector2(1053f, -145f));
+    }
+
+    private static void EnsureActivityRewardPagingButton(Transform parent, string name, string label, Vector2 position)
+    {
+        if (FindTransformByName(parent, name) != null)
+        {
+            return;
+        }
+
+        Button button = CreateTMPButton(name, parent, label, Color.white, Color.white, 34);
+        SetTopLeft(button.GetComponent<RectTransform>(), position, new Vector2(64f, 64f));
     }
 
     private static HomePageScenePanel BuildNewbieSignPanel(Transform parent)
     {
+        HomePageScenePanel existing = FindExistingScenePanel(parent, HomePageScenePanelType.NewbieSign);
+        if (existing != null)
+        {
+            BuildSignMakeupDialog(existing.transform);
+            return existing;
+        }
+
         HomePageScenePanel scenePanel = CreateScenePanel(parent, "NewbieSignScenePanel", HomePageScenePanelType.NewbieSign);
         Transform root = scenePanel.transform;
         CreateDimmer(root);
@@ -1779,10 +2963,79 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(bannerTitle.rectTransform, new Vector2(34f, -18f), new Vector2(280f, 38f));
         Text status = CreateText("NewbieSignStatus", banner.transform, "进度 0/3", 22, FontStyle.Bold, new Color(0.36f, 0.18f, 0.08f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(status.rectTransform, new Vector2(34f, -62f), new Vector2(720f, 34f));
+        BuildSignMakeupDialog(root);
         return scenePanel;
     }
 
-    private static void BuildSignCard(Transform parent, string rootName, int day, string rewardName, string rewardAmount, Vector2 position, Vector2 size, bool large)
+    private static bool BuildSignMakeupDialog(Transform parent)
+    {
+        if (parent == null || FindTransformByName(parent, "SignMakeupConfirmation") != null) return false;
+
+        Image blocker = CreateImage("SignMakeupConfirmation", parent, new Color(0f, 0f, 0f, 0.65f));
+        Stretch(blocker.rectTransform);
+        blocker.raycastTarget = true;
+        Image content = CreateImage("SignMakeupContent", blocker.transform, Color.white);
+        content.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Imported/weijun-game-project/Assets/UI/三级界面/背景.png");
+        RectTransform contentRect = content.rectTransform;
+        contentRect.anchorMin = contentRect.anchorMax = contentRect.pivot = new Vector2(0.5f, 0.5f);
+        contentRect.anchoredPosition = new Vector2(0f, 22f);
+        contentRect.sizeDelta = new Vector2(596.6365f, 376.9764f);
+
+        Color inkColor = new Color(0.11f, 0.12f, 0.14f, 1f);
+        Text title = CreateText("SignMakeupTitle", content.transform, "补签确认", 30, FontStyle.Normal, inkColor, TextAnchor.MiddleCenter);
+        SetTopLeft(title.rectTransform, new Vector2(4.636505f, -44f), new Vector2(592f, 46f));
+
+        Image viewport = CreateImage("SignMakeupDetailsViewport", content.transform, Color.clear);
+        SetTopLeft(viewport.rectTransform, new Vector2(33.969727f, -90.000015f), new Vector2(530.7576f, 174.9848f));
+        viewport.raycastTarget = true;
+        viewport.gameObject.AddComponent<RectMask2D>();
+        Image iconFrame = CreateImage("Icon", viewport.transform, Color.white);
+        iconFrame.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/Art/UI/二级界面/仓库二级界面/格子（无点击）.png");
+        RectTransform iconFrameRect = iconFrame.rectTransform;
+        iconFrameRect.anchorMin = iconFrameRect.anchorMax = iconFrameRect.pivot = new Vector2(0.5f, 0.5f);
+        iconFrameRect.anchoredPosition = Vector2.zero;
+        iconFrameRect.sizeDelta = new Vector2(100f, 100f);
+        Image icon = CreateImage("Image", iconFrame.transform, Color.white);
+        icon.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/Art/UI/资源图标/金币.png");
+        RectTransform iconRect = icon.rectTransform;
+        iconRect.anchorMin = iconRect.anchorMax = iconRect.pivot = new Vector2(0.5f, 0.5f);
+        iconRect.anchoredPosition = Vector2.zero;
+        iconRect.sizeDelta = new Vector2(74.6209f, 74.6209f);
+
+        Text details = CreateText("SignMakeupDetails", viewport.transform, "金币*100", 19, FontStyle.Normal, inkColor, TextAnchor.UpperCenter);
+        RectTransform detailsRect = details.rectTransform;
+        detailsRect.anchorMin = new Vector2(0f, 1f);
+        detailsRect.anchorMax = Vector2.one;
+        detailsRect.pivot = new Vector2(0.5f, 1f);
+        detailsRect.anchoredPosition = new Vector2(0f, -143.12f);
+        detailsRect.sizeDelta = Vector2.zero;
+        details.enableAutoSizing = false;
+        details.fontSize = 18.52f;
+        details.enableWordWrapping = true;
+        details.overflowMode = TextOverflowModes.Overflow;
+        details.richText = false;
+        ContentSizeFitter fitter = details.gameObject.AddComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+        Button cancel = CreateButton("SignMakeupCancelButton", content.transform, "取消", Color.white, Color.white, 18);
+        cancel.GetComponent<Image>().sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/Art/UI/二级界面/仓库二级界面/按钮(蓝).png");
+        SetTopLeft(cancel.GetComponent<RectTransform>(), new Vector2(154f, -284f), new Vector2(119.7493f, 62.9571f));
+        RectTransform cancelLabel = cancel.GetComponentInChildren<TMP_Text>().rectTransform;
+        cancelLabel.anchoredPosition = new Vector2(0f, 4.6143f);
+        cancelLabel.sizeDelta = new Vector2(0f, -9.2286f);
+        Button confirm = CreateButton("SignMakeupConfirmButton", content.transform, "确认", Color.white, Color.white, 18);
+        confirm.GetComponent<Image>().sprite = AssetDatabase.LoadAssetAtPath<Sprite>(TaskActionSpritePath);
+        SetTopLeft(confirm.GetComponent<RectTransform>(), new Vector2(338f, -284f), new Vector2(119.7493f, 62.2098f));
+        RectTransform confirmLabel = confirm.GetComponentInChildren<TMP_Text>().rectTransform;
+        confirmLabel.anchoredPosition = new Vector2(0f, 4.5596f);
+        confirmLabel.sizeDelta = new Vector2(0f, -9.1191f);
+        blocker.gameObject.SetActive(false);
+        Undo.RegisterCreatedObjectUndo(blocker.gameObject, "Add sign makeup dialog");
+        return true;
+    }
+
+    private static Image BuildSignCard(Transform parent, string rootName, int day, string rewardName, string rewardAmount, Vector2 position, Vector2 size, bool large)
     {
         Image card = CreateImage(rootName, parent, new Color(1f, 0.92f, 0.74f, 1f));
         SetTopLeft(card.rectTransform, position, size);
@@ -1794,8 +3047,20 @@ public static class HomePageScenePanelsBuilder
         Vector2 iconSize = large ? new Vector2(88f, 74f) : new Vector2(62f, 54f);
         Image rewardIcon = CreateImage("RewardIcon", card.transform, rewardName.Contains("箱") ? new Color(0.78f, 0.42f, 0.16f, 1f) : new Color(0.20f, 0.58f, 0.95f, 1f));
         SetTopLeft(rewardIcon.rectTransform, new Vector2((size.x - iconSize.x) * 0.5f, large ? -92f : -66f), iconSize);
-        Text iconText = CreateText("RewardIconText", rewardIcon.transform, rewardName.Substring(0, 1), large ? 34 : 24, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-        Stretch(iconText.rectTransform);
+        if (rootName.StartsWith("NewbieSignCard", System.StringComparison.Ordinal))
+        {
+            Image resource = CreateImage("RewardResourceImage", rewardIcon.transform, Color.white);
+            string iconName = day == 1 ? "金币" : day == 2 ? "木材" : "宝箱（未打开）";
+            resource.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(ResourceIconDirectory + iconName + ".png");
+            resource.preserveAspect = true;
+            resource.raycastTarget = false;
+            Stretch(resource.rectTransform);
+        }
+        else
+        {
+            Text iconText = CreateText("RewardIconText", rewardIcon.transform, rewardName.Substring(0, 1), large ? 34 : 24, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            Stretch(iconText.rectTransform);
+        }
 
         Text reward = CreateText("RewardText", card.transform, $"{rewardName}\n{rewardAmount}", large ? 24 : 17, FontStyle.Bold, new Color(0.40f, 0.22f, 0.10f, 1f), TextAnchor.MiddleCenter);
         SetTopLeft(reward.rectTransform, new Vector2(12f, large ? -200f : -144f), new Vector2(size.x - 24f, large ? 62f : 50f));
@@ -1809,24 +3074,23 @@ public static class HomePageScenePanelsBuilder
         check.gameObject.SetActive(false);
         chip.gameObject.SetActive(false);
         claimed.gameObject.SetActive(false);
+        return card;
     }
 
     private static HomePageScenePanel BuildSettingsPanel(Transform parent)
     {
+        HomePageScenePanel existing = FindExistingScenePanel(parent, HomePageScenePanelType.Settings);
+        if (existing != null)
+        {
+            return existing;
+        }
+
         HomePageScenePanel scenePanel = CreateScenePanel(parent, "SettingsScenePanel", HomePageScenePanelType.Settings);
         Transform root = scenePanel.transform;
         CreateDimmer(root);
 
-        Image shadow = CreateImage("SettingsPanelShadow", root, new Color(0.09f, 0.05f, 0.03f, 0.48f));
-        SetTopLeft(shadow.rectTransform, new Vector2(414f, -142f), new Vector2(1120f, 820f));
-        shadow.raycastTarget = false;
-
         Image panel = CreateImage("SettingsPanel", root, new Color(0.43f, 0.24f, 0.12f, 1f));
         SetTopLeft(panel.rectTransform, new Vector2(400f, -128f), new Vector2(1120f, 820f));
-
-        Image paper = CreateImage("SettingsPaper", panel.transform, new Color(1f, 0.94f, 0.77f, 1f));
-        SetTopLeft(paper.rectTransform, new Vector2(14f, -14f), new Vector2(1092f, 792f));
-        paper.raycastTarget = false;
 
         Image header = CreateImage("SettingsHeader", panel.transform, new Color(0.18f, 0.50f, 0.50f, 1f));
         SetTopLeft(header.rectTransform, new Vector2(24f, -24f), new Vector2(1072f, 76f));
@@ -1836,25 +3100,6 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(subtitle.rectTransform, new Vector2(276f, -44f), new Vector2(220f, 34f));
         Button close = CreateButton("SettingsCloseButton", panel.transform, "X", new Color(0.88f, 0.28f, 0.24f, 1f), Color.white, 24);
         SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(1026f, -36f), new Vector2(52f, 52f));
-
-        BuildSettingsSectionHeader(
-            panel.transform,
-            "SettingsAudioHeader",
-            "声音设置",
-            new Vector2(52f, -130f),
-            new Vector2(470f, 52f),
-            new Color(0.38f, 0.64f, 0.30f, 1f));
-        BuildSettingsSectionHeader(
-            panel.transform,
-            "SettingsDisplayHeader",
-            "显示设置",
-            new Vector2(600f, -130f),
-            new Vector2(470f, 52f),
-            new Color(0.30f, 0.54f, 0.76f, 1f));
-
-        Image centerDivider = CreateImage("SettingsCenterDivider", panel.transform, new Color(0.53f, 0.34f, 0.18f, 0.42f));
-        SetTopLeft(centerDivider.rectTransform, new Vector2(560f, -132f), new Vector2(4f, 464f));
-        centerDivider.raycastTarget = false;
 
         Text musicLabel = CreateText("SettingsMusicLabel", panel.transform, "背景音乐", 24, FontStyle.Bold, new Color(0.31f, 0.18f, 0.09f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(musicLabel.rectTransform, new Vector2(70f, -210f), new Vector2(170f, 42f));
@@ -1874,73 +3119,7 @@ public static class HomePageScenePanelsBuilder
         Text soundValue = CreateText("SettingsSoundValue", panel.transform, "100%", 20, FontStyle.Bold, new Color(0.18f, 0.42f, 0.50f, 1f), TextAnchor.MiddleRight);
         SetTopLeft(soundValue.rectTransform, new Vector2(438f, -427f), new Vector2(64f, 34f));
 
-        Text qualityLabel = CreateText("SettingsQualityLabel", panel.transform, "画质", 24, FontStyle.Bold, new Color(0.31f, 0.18f, 0.09f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(qualityLabel.rectTransform, new Vector2(620f, -210f), new Vector2(120f, 42f));
-        Text qualityValue = CreateText("SettingsQualityValue", panel.transform, "标准", 20, FontStyle.Bold, new Color(0.17f, 0.43f, 0.58f, 1f), TextAnchor.MiddleRight);
-        SetTopLeft(qualityValue.rectTransform, new Vector2(946f, -214f), new Vector2(104f, 36f));
-        string[] qualityNames = { "流畅", "标准", "精细" };
-        for (int i = 0; i < qualityNames.Length; i++)
-        {
-            Button quality = CreateButton(
-                "SettingsQuality" + i,
-                panel.transform,
-                qualityNames[i],
-                i == 1 ? new Color(0.20f, 0.56f, 0.66f, 1f) : new Color(0.90f, 0.80f, 0.62f, 1f),
-                i == 1 ? Color.white : new Color(0.34f, 0.20f, 0.10f, 1f),
-                19);
-            SetTopLeft(quality.GetComponent<RectTransform>(), new Vector2(620f + i * 146f, -266f), new Vector2(128f, 48f));
-        }
-
-        Image displayDividerA = CreateImage("SettingsDisplayDividerA", panel.transform, new Color(0.53f, 0.34f, 0.18f, 0.28f));
-        SetTopLeft(displayDividerA.rectTransform, new Vector2(620f, -336f), new Vector2(430f, 3f));
-        displayDividerA.raycastTarget = false;
-
-        Text fullScreenLabel = CreateText("SettingsFullScreenLabel", panel.transform, "全屏显示", 24, FontStyle.Bold, new Color(0.31f, 0.18f, 0.09f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(fullScreenLabel.rectTransform, new Vector2(620f, -370f), new Vector2(180f, 42f));
-        CreateSettingToggle("SettingsFullScreenToggle", panel.transform, new Vector2(934f, -368f), true);
-
-        Image displayDividerB = CreateImage("SettingsDisplayDividerB", panel.transform, new Color(0.53f, 0.34f, 0.18f, 0.28f));
-        SetTopLeft(displayDividerB.rectTransform, new Vector2(620f, -432f), new Vector2(430f, 3f));
-        displayDividerB.raycastTarget = false;
-
-        Text frameRateLabel = CreateText("SettingsFrameRateLabel", panel.transform, "帧率上限", 24, FontStyle.Bold, new Color(0.31f, 0.18f, 0.09f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(frameRateLabel.rectTransform, new Vector2(620f, -468f), new Vector2(180f, 42f));
-        Button frame30 = CreateButton("SettingsFrameRate30", panel.transform, "30 FPS", new Color(0.90f, 0.80f, 0.62f, 1f), new Color(0.34f, 0.20f, 0.10f, 1f), 19);
-        SetTopLeft(frame30.GetComponent<RectTransform>(), new Vector2(800f, -464f), new Vector2(116f, 48f));
-        Button frame60 = CreateButton("SettingsFrameRate60", panel.transform, "60 FPS", new Color(0.20f, 0.56f, 0.66f, 1f), Color.white, 19);
-        SetTopLeft(frame60.GetComponent<RectTransform>(), new Vector2(934f, -464f), new Vector2(116f, 48f));
-
-        Image footerDivider = CreateImage("SettingsFooterDivider", panel.transform, new Color(0.43f, 0.24f, 0.12f, 0.48f));
-        SetTopLeft(footerDivider.rectTransform, new Vector2(52f, -620f), new Vector2(1018f, 4f));
-        footerDivider.raycastTarget = false;
-
-        Text status = CreateText("SettingsStatus", panel.transform, "设置修改后会即时生效", 18, FontStyle.Bold, new Color(0.32f, 0.42f, 0.28f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(status.rectTransform, new Vector2(58f, -642f), new Vector2(650f, 34f));
-        Text account = CreateText("SettingsAccount", panel.transform, "当前账号：", 17, FontStyle.Normal, new Color(0.42f, 0.36f, 0.29f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(account.rectTransform, new Vector2(58f, -682f), new Vector2(480f, 32f));
-
-        Button reset = CreateButton("SettingsResetButton", panel.transform, "恢复默认", new Color(0.88f, 0.75f, 0.50f, 1f), new Color(0.34f, 0.20f, 0.10f, 1f), 20);
-        SetTopLeft(reset.GetComponent<RectTransform>(), new Vector2(548f, -724f), new Vector2(150f, 52f));
-        Button logout = CreateButton("SettingsLogoutButton", panel.transform, "返回登录", new Color(0.84f, 0.43f, 0.34f, 1f), Color.white, 20);
-        SetTopLeft(logout.GetComponent<RectTransform>(), new Vector2(718f, -724f), new Vector2(164f, 52f));
-        Button save = CreateButton("SettingsSaveButton", panel.transform, "保存并关闭", new Color(0.26f, 0.60f, 0.40f, 1f), Color.white, 20);
-        SetTopLeft(save.GetComponent<RectTransform>(), new Vector2(902f, -724f), new Vector2(168f, 52f));
-
         return scenePanel;
-    }
-
-    private static void BuildSettingsSectionHeader(
-        Transform parent,
-        string name,
-        string label,
-        Vector2 position,
-        Vector2 size,
-        Color color)
-    {
-        Image header = CreateImage(name, parent, color);
-        SetTopLeft(header.rectTransform, position, size);
-        Text text = CreateText("Text", header.transform, label, 25, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-        Stretch(text.rectTransform);
     }
 
     private static Toggle CreateSettingToggle(string name, Transform parent, Vector2 position, bool isOn)
@@ -1997,6 +3176,12 @@ public static class HomePageScenePanelsBuilder
 
     private static HomePageScenePanel BuildAccountProfilePanel(Transform parent)
     {
+        HomePageScenePanel existing = FindExistingScenePanel(parent, HomePageScenePanelType.AccountProfile);
+        if (existing != null)
+        {
+            return existing;
+        }
+
         HomePageScenePanel scenePanel = CreateScenePanel(parent, "AccountProfileScenePanel", HomePageScenePanelType.AccountProfile);
         Transform root = scenePanel.transform;
         CreateDimmer(root);
@@ -2074,8 +3259,6 @@ public static class HomePageScenePanelsBuilder
         footerDivider.raycastTarget = false;
         TMP_Text profileStatus = CreateTMPText("ProfileStatus", panel.transform, "账号资料等待同步", 17, new Color(0.36f, 0.42f, 0.24f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(profileStatus.rectTransform, new Vector2(50f, -716f), new Vector2(650f, 48f));
-        Button refresh = CreateTMPButton("ProfileRefreshButton", panel.transform, "本地存档", new Color(0.28f, 0.57f, 0.73f, 1f), Color.white, 19);
-        SetTopLeft(refresh.GetComponent<RectTransform>(), new Vector2(730f, -724f), new Vector2(150f, 52f));
         Button cancelAccount = CreateTMPButton("ProfileCancelAccountButton", panel.transform, "注销账号", new Color(0.70f, 0.25f, 0.20f, 1f), Color.white, 18);
         SetTopLeft(cancelAccount.GetComponent<RectTransform>(), new Vector2(900f, -724f), new Vector2(150f, 52f));
         Button switchLogin = CreateTMPButton("ProfileSwitchLoginButton", panel.transform, "切换账号", new Color(0.85f, 0.43f, 0.31f, 1f), Color.white, 19);
@@ -2158,10 +3341,8 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(clearSearch.GetComponent<RectTransform>(), new Vector2(322f, -122f), new Vector2(46f, 50f));
         Button filterAll = CreateButton("FriendsFilterAll", panel.transform, "好友", new Color(0.20f, 0.56f, 0.66f, 1f), Color.white, 18);
         SetTopLeft(filterAll.GetComponent<RectTransform>(), new Vector2(382f, -122f), new Vector2(90f, 50f));
-        Button filterOnline = CreateButton("FriendsFilterOnline", panel.transform, "收到", new Color(0.90f, 0.79f, 0.59f, 1f), new Color(0.36f, 0.20f, 0.10f, 1f), 18);
-        SetTopLeft(filterOnline.GetComponent<RectTransform>(), new Vector2(482f, -122f), new Vector2(100f, 50f));
-        Button filterOutgoing = CreateButton("FriendsFilterOutgoing", panel.transform, "发出", new Color(0.90f, 0.79f, 0.59f, 1f), new Color(0.36f, 0.20f, 0.10f, 1f), 18);
-        SetTopLeft(filterOutgoing.GetComponent<RectTransform>(), new Vector2(592f, -122f), new Vector2(90f, 50f));
+        Button requestsButton = CreateButton("FriendsRequestsButton", panel.transform, "申请", new Color(0.90f, 0.79f, 0.59f, 1f), new Color(0.36f, 0.20f, 0.10f, 1f), 18);
+        SetTopLeft(requestsButton.GetComponent<RectTransform>(), new Vector2(482f, -122f), new Vector2(100f, 50f));
         InputField addInput = CreateSceneInputField("FriendsAddInput", panel.transform, "输入玩家 ID", 18);
         SetTopLeft(addInput.GetComponent<RectTransform>(), new Vector2(880f, -122f), new Vector2(246f, 50f));
         Button addButton = CreateButton("FriendsAddButton", panel.transform, "搜索玩家", new Color(0.33f, 0.66f, 0.36f, 1f), Color.white, 19);
@@ -2169,10 +3350,29 @@ public static class HomePageScenePanelsBuilder
 
         Image listArea = CreateImage("FriendsListArea", panel.transform, new Color(1f, 0.84f, 0.58f, 1f));
         SetTopLeft(listArea.rectTransform, new Vector2(42f, -196f), new Vector2(870f, 498f));
-        for (int i = 0; i < 5; i++)
-        {
-            BuildFriendRow(listArea.transform, i, new Vector2(14f, -14f - i * 94f));
-        }
+        Image listViewport = CreateImage("FriendsListViewport", listArea.transform, Color.clear);
+        SetTopLeft(listViewport.rectTransform, new Vector2(14f, -14f), new Vector2(842f, 470f));
+        listViewport.gameObject.AddComponent<RectMask2D>();
+        GameObject rowParent = new GameObject("RowParent", typeof(RectTransform));
+        rowParent.layer = listArea.gameObject.layer;
+        rowParent.transform.SetParent(listViewport.transform, false);
+        RectTransform rowContent = rowParent.GetComponent<RectTransform>();
+        SetTopLeft(rowContent, Vector2.zero, new Vector2(842f, 470f));
+        VerticalLayoutGroup rowLayout = rowParent.AddComponent<VerticalLayoutGroup>();
+        rowLayout.childAlignment = TextAnchor.UpperLeft;
+        rowLayout.spacing = 12f;
+        rowLayout.childControlWidth = rowLayout.childControlHeight = false;
+        rowLayout.childForceExpandWidth = rowLayout.childForceExpandHeight = false;
+        ContentSizeFitter rowFitter = rowParent.AddComponent<ContentSizeFitter>();
+        rowFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        ScrollRect listScroll = listViewport.gameObject.AddComponent<ScrollRect>();
+        listScroll.viewport = listViewport.rectTransform;
+        listScroll.content = rowContent;
+        listScroll.horizontal = false;
+        listScroll.vertical = true;
+        listScroll.movementType = ScrollRect.MovementType.Clamped;
+        listScroll.scrollSensitivity = 30f;
+        BuildFriendRow(rowParent.transform, 0, Vector2.zero);
 
         Image detailArea = CreateImage("FriendDetailArea", panel.transform, new Color(1f, 0.89f, 0.67f, 1f));
         SetTopLeft(detailArea.rectTransform, new Vector2(936f, -196f), new Vector2(522f, 498f));
@@ -2183,12 +3383,6 @@ public static class HomePageScenePanelsBuilder
         footerDivider.raycastTarget = false;
         Text status = CreateText("FriendsStatus", panel.transform, "好友名册已打开", 17, FontStyle.Bold, new Color(0.36f, 0.42f, 0.24f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(status.rectTransform, new Vector2(50f, -734f), new Vector2(850f, 52f));
-        Button previous = CreateButton("FriendsPreviousButton", panel.transform, "<", new Color(0.83f, 0.66f, 0.39f, 1f), Color.white, 24);
-        SetTopLeft(previous.GetComponent<RectTransform>(), new Vector2(1092f, -740f), new Vector2(58f, 50f));
-        Text pageText = CreateText("FriendsPageText", panel.transform, "1 / 1", 20, FontStyle.Bold, new Color(0.39f, 0.21f, 0.11f, 1f), TextAnchor.MiddleCenter);
-        SetTopLeft(pageText.rectTransform, new Vector2(1164f, -740f), new Vector2(128f, 50f));
-        Button next = CreateButton("FriendsNextButton", panel.transform, ">", new Color(0.83f, 0.66f, 0.39f, 1f), Color.white, 24);
-        SetTopLeft(next.GetComponent<RectTransform>(), new Vector2(1306f, -740f), new Vector2(58f, 50f));
         return scenePanel;
     }
 
@@ -2204,7 +3398,7 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(onlineMark.rectTransform, new Vector2(62f, -55f), new Vector2(14f, 14f));
         Text name = CreateText("FriendRowName" + index, row.transform, "好友昵称", 21, FontStyle.Bold, new Color(0.34f, 0.17f, 0.08f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(name.rectTransform, new Vector2(94f, -10f), new Vector2(320f, 32f));
-        Text meta = CreateText("FriendRowMeta" + index, row.transform, "Lv.1    亲密度 0", 16, FontStyle.Normal, new Color(0.48f, 0.38f, 0.27f, 1f), TextAnchor.MiddleLeft);
+        Text meta = CreateText("FriendRowMeta" + index, row.transform, "Lv.1    ID --", 16, FontStyle.Normal, new Color(0.48f, 0.38f, 0.27f, 1f), TextAnchor.MiddleLeft);
         SetTopLeft(meta.rectTransform, new Vector2(94f, -44f), new Vector2(360f, 26f));
         Text state = CreateText("FriendRowState" + index, row.transform, "在线", 17, FontStyle.Bold, new Color(0.25f, 0.52f, 0.30f, 1f), TextAnchor.MiddleRight);
         SetTopLeft(state.rectTransform, new Vector2(618f, -24f), new Vector2(190f, 34f));
@@ -2212,7 +3406,13 @@ public static class HomePageScenePanelsBuilder
 
     private static HomePageScenePanel BuildRolePanel(Transform parent)
     {
-        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(RoleFontPath);
+        HomePageScenePanel existing = FindExistingScenePanel(parent, HomePageScenePanelType.Role);
+        if (existing != null)
+        {
+            return existing;
+        }
+
+        roleFontAsset = AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(ProfileFontPath);
         HomePageScenePanel scenePanel = CreateScenePanel(parent, "RoleScenePanel", HomePageScenePanelType.Role);
         Transform root = scenePanel.transform;
         CreateDimmer(root);
@@ -2250,8 +3450,7 @@ public static class HomePageScenePanelsBuilder
         Image viewportImage = viewportObject.AddComponent<Image>();
         viewportImage.color = new Color(1f, 0.91f, 0.70f, 0.72f);
         viewportImage.raycastTarget = true;
-        Mask viewportMask = viewportObject.AddComponent<Mask>();
-        viewportMask.showMaskGraphic = false;
+        viewportObject.AddComponent<RectMask2D>();
 
         GameObject contentObject = CreateRectObject("RoleListContent", viewportObject.transform);
         RectTransform contentRect = contentObject.GetComponent<RectTransform>();
@@ -2269,19 +3468,7 @@ public static class HomePageScenePanelsBuilder
         scrollRect.movementType = ScrollRect.MovementType.Elastic;
         scrollRect.scrollSensitivity = 30f;
 
-        Image scrollbarBackground = CreateImage("RoleListScrollbarBackground", panel.transform, new Color(0.45f, 0.27f, 0.13f, 0.62f));
-        SetTopLeft(scrollbarBackground.rectTransform, new Vector2(486f, -244f), new Vector2(16f, 490f));
-        Image scrollbarHandle = CreateImage("RoleListScrollbarHandle", scrollbarBackground.transform, new Color(0.22f, 0.48f, 0.55f, 1f));
-        SetTopLeft(scrollbarHandle.rectTransform, new Vector2(2f, -2f), new Vector2(12f, 120f));
-        Scrollbar scrollbar = scrollbarBackground.gameObject.AddComponent<Scrollbar>();
-        scrollbar.direction = Scrollbar.Direction.BottomToTop;
-        scrollbar.handleRect = scrollbarHandle.rectTransform;
-        scrollbar.targetGraphic = scrollbarHandle;
-        scrollRect.verticalScrollbar = scrollbar;
-        scrollRect.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.Permanent;
-        scrollRect.verticalScrollbarSpacing = 4f;
-
-        for (int i = 0; i < RoleListRows; i++)
+        for (int i = 1; i <= RoleListRows; i++)
         {
             BuildRoleListRow(contentObject.transform, i);
         }
@@ -2315,6 +3502,8 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(description.rectTransform, new Vector2(34f, -330f), new Vector2(846f, 76f));
         TMP_Text acquisition = CreateTMPText("RoleDetailAcquisition", detailCard.transform, "\u83b7\u53d6\u65b9\u5f0f  -", 17, new Color(0.48f, 0.39f, 0.29f, 1f), TextAlignmentOptions.TopLeft);
         SetTopLeft(acquisition.rectTransform, new Vector2(34f, -418f), new Vector2(846f, 50f));
+        TMP_Text equipment = CreateTMPText("RoleDetailEquipment", detailCard.transform, "\u5df2\u7a7f\u6234\u88c5\u5907  \u6682\u65e0\u670d\u52a1\u5668\u6570\u636e", 17, new Color(0.42f, 0.33f, 0.24f, 1f), TextAlignmentOptions.TopLeft);
+        SetTopLeft(equipment.rectTransform, new Vector2(34f, -310f), new Vector2(846f, 30f));
 
         Button upgrade = CreateTMPButton("RoleDetailUpgradeButton", detailCard.transform, "\u5347\u7ea7", new Color(0.28f, 0.64f, 0.38f, 1f), Color.white, 20);
         SetTopLeft(upgrade.GetComponent<RectTransform>(), new Vector2(34f, -492f), new Vector2(230f, 52f));
@@ -2330,6 +3519,7 @@ public static class HomePageScenePanelsBuilder
         footerDivider.raycastTarget = false;
         TMP_Text status = CreateTMPText("RoleStatus", panel.transform, "\u6b63\u5728\u7b49\u5f85\u89d2\u8272\u6570\u636e", 17, new Color(0.36f, 0.42f, 0.24f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(status.rectTransform, new Vector2(50f, -792f), new Vector2(1300f, 30f));
+        ApplyRolePanelStyle(scenePanel.transform);
         return scenePanel;
     }
 
@@ -2339,12 +3529,14 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(row.GetComponent<RectTransform>(), new Vector2(6f, -6f - index * 108f), new Vector2(412f, 98f));
         Image icon = CreateImage("RoleListRowIcon" + index, row.transform, new Color(0.28f, 0.62f, 0.76f, 1f));
         SetTopLeft(icon.rectTransform, new Vector2(12f, -10f), new Vector2(78f, 78f));
-        TMP_Text iconLabel = CreateTMPText("RoleListRowIconText" + index, icon.transform, "NPC", 14, Color.white, TextAlignmentOptions.Center);
-        Stretch(iconLabel.rectTransform);
+        Image headImage = CreateImage("HeadImage", icon.transform, Color.white);
+        SetTopLeft(headImage.rectTransform, new Vector2(4f, -4f), new Vector2(70f, 70f));
+        headImage.raycastTarget = false;
         TMP_Text name = CreateTMPText("RoleListRowName" + index, row.transform, "\u89d2\u8272\u540d\u79f0", 18, new Color(0.34f, 0.17f, 0.08f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(name.rectTransform, new Vector2(104f, -12f), new Vector2(180f, 28f));
-        TMP_Text quality = CreateTMPText("RoleListRowQuality" + index, row.transform, "\u54c1\u8d28  -", 14, new Color(0.72f, 0.31f, 0.18f, 1f), TextAlignmentOptions.MidlineLeft);
-        SetTopLeft(quality.rectTransform, new Vector2(104f, -43f), new Vector2(180f, 24f));
+        Image quality = CreateImage("RoleListRowQuality" + index, icon.transform, Color.white);
+        SetTopLeft(quality.rectTransform, new Vector2(42f, -8f), new Vector2(20f, 20f));
+        quality.raycastTarget = false;
         TMP_Text level = CreateTMPText("RoleListRowLevel" + index, row.transform, "Lv.1", 15, new Color(0.46f, 0.23f, 0.10f, 1f), TextAlignmentOptions.MidlineLeft);
         SetTopLeft(level.rectTransform, new Vector2(104f, -70f), new Vector2(100f, 22f));
         TMP_Text state = CreateTMPText("RoleListRowStatus" + index, row.transform, "\u5f85\u83b7\u5f97", 14, new Color(0.28f, 0.52f, 0.30f, 1f), TextAlignmentOptions.MidlineRight);
@@ -2395,6 +3587,8 @@ public static class HomePageScenePanelsBuilder
 
     private static HomePageScenePanel BuildEquipmentPanel(Transform parent)
     {
+        HomePageScenePanel existing = FindExistingScenePanel(parent, HomePageScenePanelType.Equipment);
+        if (existing != null) return existing;
         HomePageScenePanel scenePanel = CreateScenePanel(parent, "EquipmentScenePanel", HomePageScenePanelType.Equipment);
         Transform root = scenePanel.transform;
         CreateDimmer(root);
@@ -2414,42 +3608,39 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(title.rectTransform, new Vector2(58f, -34f), new Vector2(250f, 54f));
         Text mode = CreateText("EquipmentModeText", panel.transform, "账号库存 · 可穿戴", 18, FontStyle.Bold, new Color(0.94f, 0.90f, 1f, 0.90f), TextAnchor.MiddleLeft);
         SetTopLeft(mode.rectTransform, new Vector2(330f, -45f), new Vector2(280f, 32f));
-        Text power = CreateText("EquipmentPowerText", panel.transform, "总战力  10", 22, FontStyle.Bold, new Color(1f, 0.87f, 0.45f, 1f), TextAnchor.MiddleRight);
-        SetTopLeft(power.rectTransform, new Vector2(970f, -39f), new Vector2(240f, 40f));
-        Text count = CreateText("EquipmentCount", panel.transform, "装备 0 件", 17, FontStyle.Bold, Color.white, TextAnchor.MiddleRight);
-        SetTopLeft(count.rectTransform, new Vector2(770f, -45f), new Vector2(180f, 32f));
-        Button refresh = CreateButton("EquipmentRefreshButton", panel.transform, "刷新背包", new Color(0.27f, 0.64f, 0.43f, 1f), Color.white, 17);
-        SetTopLeft(refresh.GetComponent<RectTransform>(), new Vector2(1222f, -38f), new Vector2(160f, 48f));
         Button close = CreateButton("EquipmentCloseButton", panel.transform, "X", new Color(0.90f, 0.30f, 0.25f, 1f), Color.white, 24);
         SetTopLeft(close.GetComponent<RectTransform>(), new Vector2(1408f, -36f), new Vector2(50f, 50f));
 
         Image slotsCard = CreateImage("EquipmentSlotsCard", panel.transform, new Color(1f, 0.84f, 0.58f, 1f));
-        SetTopLeft(slotsCard.rectTransform, new Vector2(42f, -160f), new Vector2(470f, 540f));
-        Text slotsTitle = CreateText("EquipmentSlotsTitle", panel.transform, "装备栏", 27, FontStyle.Bold, new Color(0.38f, 0.18f, 0.08f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(slotsTitle.rectTransform, new Vector2(64f, -178f), new Vector2(180f, 36f));
-        BuildEquipmentSlot(panel.transform, "weapon", "武器", new Vector2(62f, -222f), new Color(0.83f, 0.38f, 0.24f, 1f));
-        BuildEquipmentSlot(panel.transform, "armor", "防具", new Vector2(287f, -222f), new Color(0.28f, 0.55f, 0.76f, 1f));
-        BuildEquipmentSlot(panel.transform, "accessory", "饰品", new Vector2(62f, -430f), new Color(0.38f, 0.65f, 0.40f, 1f));
-        BuildEquipmentSlot(panel.transform, "pet", "灵宠", new Vector2(287f, -430f), new Color(0.68f, 0.38f, 0.72f, 1f));
+        SetTopLeft(slotsCard.rectTransform, new Vector2(532f, -160f), new Vector2(430f, 540f));
+        Image npcAvatar = CreateImage("EquipmentNpcAvatar", slotsCard.transform, new Color(0.38f, 0.65f, 0.40f, 1f));
+        SetTopLeft(npcAvatar.rectTransform, new Vector2(174f, -48f), new Vector2(82f, 82f));
+        Text npcName = CreateText("EquipmentNpcName", slotsCard.transform, "未选择角色", 22, FontStyle.Bold, new Color(0.38f, 0.18f, 0.08f, 1f), TextAnchor.MiddleLeft);
+        SetTopLeft(npcName.rectTransform, new Vector2(16f, -48f), new Vector2(146f, 32f));
+        Text npcDescription = CreateText("EquipmentNpcDescription", slotsCard.transform, "请选择角色查看穿戴装备", 13, FontStyle.Normal, new Color(0.38f, 0.18f, 0.08f, 1f), TextAnchor.MiddleLeft);
+        SetTopLeft(npcDescription.rectTransform, new Vector2(16f, -140f), new Vector2(398f, 24f));
+        Button previousNpc = CreateButton("EquipmentNpcPreviousButton", slotsCard.transform, "<", Color.white, Color.black, 18);
+        SetTopLeft(previousNpc.GetComponent<RectTransform>(), new Vector2(16f, -100f), new Vector2(40f, 42f));
+        Button nextNpc = CreateButton("EquipmentNpcNextButton", slotsCard.transform, ">", Color.white, Color.black, 18);
+        SetTopLeft(nextNpc.GetComponent<RectTransform>(), new Vector2(374f, -100f), new Vector2(40f, 42f));
+        BuildEquipmentSlot(slotsCard.transform, "weapon", "武器", new Vector2(13f, -174f), new Color(0.83f, 0.38f, 0.24f, 1f));
+        BuildEquipmentSlot(slotsCard.transform, "helmet", "头盔", new Vector2(153f, -174f), new Color(0.68f, 0.38f, 0.72f, 1f));
+        BuildEquipmentSlot(slotsCard.transform, "armor", "护甲", new Vector2(293f, -174f), new Color(0.28f, 0.55f, 0.76f, 1f));
+        BuildEquipmentSlot(slotsCard.transform, "boots", "靴子", new Vector2(83f, -296f), new Color(0.38f, 0.65f, 0.40f, 1f));
+        BuildEquipmentSlot(slotsCard.transform, "gloves", "手套", new Vector2(223f, -296f), new Color(0.60f, 0.45f, 0.30f, 1f));
 
         Image listCard = CreateImage("EquipmentListCard", panel.transform, new Color(1f, 0.89f, 0.67f, 1f));
-        SetTopLeft(listCard.rectTransform, new Vector2(532f, -160f), new Vector2(430f, 540f));
-        Text listTitle = CreateText("EquipmentListTitle", panel.transform, "装备物品", 27, FontStyle.Bold, new Color(0.38f, 0.18f, 0.08f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(listTitle.rectTransform, new Vector2(554f, -178f), new Vector2(180f, 36f));
-        string[] categoryIds = { "all", "weapon", "armor", "accessory", "pet" };
-        string[] categoryLabels = { "全部", "武器", "防具", "饰品", "灵宠" };
-        for (int i = 0; i < categoryIds.Length; i++)
+        SetTopLeft(listCard.rectTransform, new Vector2(42f, -160f), new Vector2(470f, 540f));
+        GameObject categoryRoot = CreateRectObject("EquipmentCategory", listCard.transform);
+        Stretch(categoryRoot.GetComponent<RectTransform>());
+        BuildEquipmentCategoryButton(categoryRoot.transform, "all", "全部", new Vector2(6f, -16f));
+        for (int index = 0; index < 5; index++)
         {
-            BuildEquipmentCategoryButton(
-                panel.transform,
-                categoryIds[i],
-                categoryLabels[i],
-                new Vector2(548f + i * 82f, -216f));
+            BuildEquipmentCategoryButton(categoryRoot.transform, "placeholder" + index,
+                "分类", new Vector2(6f, -74f - index * 58f));
         }
-        for (int i = 0; i < EquipmentRows; i++)
-        {
-            BuildEquipmentRow(panel.transform, i, new Vector2(546f, -266f - i * 70f));
-        }
+        RectTransform itemParent = BuildEquipmentItemScroll(listCard.transform);
+        BuildEquipmentRow(itemParent, 0, new Vector2(4f, -8f));
 
         Image detailCard = CreateImage("EquipmentDetailCard", panel.transform, new Color(1f, 0.84f, 0.58f, 1f));
         SetTopLeft(detailCard.rectTransform, new Vector2(984f, -160f), new Vector2(474f, 540f));
@@ -2464,42 +3655,52 @@ public static class HomePageScenePanelsBuilder
         GameObject detailContent = CreateRectObject("EquipmentDetailContent", detailCard.transform);
         Stretch(detailContent.GetComponent<RectTransform>());
         Image detailIconBackground = CreateImage("EquipmentDetailIconBackground", detailContent.transform, new Color(0.38f, 0.65f, 0.40f, 1f));
-        SetTopLeft(detailIconBackground.rectTransform, new Vector2(182f, -26f), new Vector2(110f, 110f));
+        SetTopLeft(detailIconBackground.rectTransform, new Vector2(197f, -16f), new Vector2(80f, 80f));
         Text detailIcon = CreateText("EquipmentDetailIcon", detailIconBackground.transform, "装", 48, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
         Stretch(detailIcon.rectTransform);
         Text detailName = CreateText("EquipmentDetailName", detailContent.transform, "装备名称", 28, FontStyle.Bold, new Color(0.34f, 0.16f, 0.08f, 1f), TextAnchor.MiddleCenter);
-        SetTopLeft(detailName.rectTransform, new Vector2(40f, -150f), new Vector2(394f, 40f));
+        SetTopLeft(detailName.rectTransform, new Vector2(40f, -104f), new Vector2(394f, 34f));
         Text detailType = CreateText("EquipmentDetailType", detailContent.transform, "武器 · 数量 x1", 17, FontStyle.Normal, new Color(0.48f, 0.39f, 0.29f, 1f), TextAnchor.MiddleCenter);
-        SetTopLeft(detailType.rectTransform, new Vector2(40f, -194f), new Vector2(394f, 28f));
+        SetTopLeft(detailType.rectTransform, new Vector2(40f, -140f), new Vector2(394f, 28f));
         Image descriptionCard = CreateImage("EquipmentDescriptionCard", detailContent.transform, new Color(1f, 0.93f, 0.76f, 1f));
-        SetTopLeft(descriptionCard.rectTransform, new Vector2(28f, -232f), new Vector2(418f, 64f));
+        SetTopLeft(descriptionCard.rectTransform, new Vector2(28f, -174f), new Vector2(418f, 72f));
         Text description = CreateText("EquipmentDetailDescription", descriptionCard.transform, "装备描述", 16, FontStyle.Normal, new Color(0.42f, 0.33f, 0.24f, 1f), TextAnchor.MiddleCenter);
         Stretch(description.rectTransform);
 
-        BuildEquipmentStatChip(detailContent.transform, "EquipmentDetailAttack", "攻击  +0", new Vector2(28f, -312f), new Color(0.85f, 0.39f, 0.27f, 1f));
-        BuildEquipmentStatChip(detailContent.transform, "EquipmentDetailDefense", "防御  +0", new Vector2(244f, -312f), new Color(0.28f, 0.55f, 0.76f, 1f));
-        BuildEquipmentStatChip(detailContent.transform, "EquipmentDetailHealth", "生命  +0", new Vector2(28f, -376f), new Color(0.35f, 0.66f, 0.38f, 1f));
-        BuildEquipmentStatChip(detailContent.transform, "EquipmentDetailPower", "战力  +0", new Vector2(244f, -376f), new Color(0.65f, 0.42f, 0.72f, 1f));
+        BuildEquipmentStatChip(detailContent.transform, "EquipmentDetailAttack", "攻击  +0", new Vector2(28f, -258f), new Color(0.85f, 0.39f, 0.27f, 1f));
+        BuildEquipmentStatChip(detailContent.transform, "EquipmentDetailDefense", "防御  +0", new Vector2(244f, -258f), new Color(0.28f, 0.55f, 0.76f, 1f));
+        BuildEquipmentStatChip(detailContent.transform, "EquipmentDetailHealth", "生命  +0", new Vector2(28f, -308f), new Color(0.35f, 0.66f, 0.38f, 1f));
+        Image previewViewport = CreateImage("EquipmentUpgradePreviewViewport", detailContent.transform, Color.clear);
+        SetTopLeft(previewViewport.rectTransform, new Vector2(28f, -408f), new Vector2(418f, 58f));
+        previewViewport.gameObject.AddComponent<RectMask2D>();
+        ScrollRect previewScroll = previewViewport.gameObject.AddComponent<ScrollRect>();
+        previewScroll.horizontal = false;
+        previewScroll.movementType = ScrollRect.MovementType.Clamped;
+        previewScroll.scrollSensitivity = 20f;
+        previewScroll.viewport = previewViewport.rectTransform;
+        Text upgradePreview = CreateText("EquipmentDetailUpgradePreview", previewViewport.transform, "一键升级预览：等待服务器返回...", 12, FontStyle.Normal, new Color(0.38f, 0.25f, 0.14f, 1f), TextAnchor.UpperLeft);
+        SetTopLeft(upgradePreview.rectTransform, Vector2.zero, new Vector2(418f, 58f));
+        upgradePreview.enableWordWrapping = true;
+        upgradePreview.overflowMode = TextOverflowModes.Overflow;
+        upgradePreview.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        previewScroll.content = upgradePreview.rectTransform;
         Button action = CreateButton("EquipmentActionButton", detailContent.transform, "穿戴装备", new Color(0.28f, 0.64f, 0.38f, 1f), Color.white, 20);
-        SetTopLeft(action.GetComponent<RectTransform>(), new Vector2(136f, -454f), new Vector2(202f, 50f));
-        Text detailStatus = CreateText("EquipmentDetailStatus", detailContent.transform, "选择穿戴后会替换同一栏位的装备", 15, FontStyle.Normal, new Color(0.45f, 0.36f, 0.27f, 1f), TextAnchor.MiddleCenter);
-        SetTopLeft(detailStatus.rectTransform, new Vector2(28f, -510f), new Vector2(418f, 28f));
+        SetTopLeft(action.GetComponent<RectTransform>(), new Vector2(28f, -478f), new Vector2(128f, 40f));
+        Button upgrade = CreateButton("EquipmentUpgradeButton", detailContent.transform, "升级", Color.white, Color.black, 18);
+        SetTopLeft(upgrade.GetComponent<RectTransform>(), new Vector2(173f, -478f), new Vector2(128f, 40f));
+        Button autoUpgrade = CreateButton("EquipmentAutoUpgradeButton", detailContent.transform, "一键升级", Color.white, Color.black, 18);
+        SetTopLeft(autoUpgrade.GetComponent<RectTransform>(), new Vector2(173f, -532f), new Vector2(128f, 40f));
+        Button lockButton = CreateButton("EquipmentLockButton", detailContent.transform, "锁定", Color.white, Color.black, 18);
+        SetTopLeft(lockButton.GetComponent<RectTransform>(), new Vector2(318f, -478f), new Vector2(128f, 40f));
+        Text detailStatus = CreateText("EquipmentDetailStatus", detailContent.transform, "同部位已穿戴时请先卸下", 15, FontStyle.Normal, new Color(0.45f, 0.36f, 0.27f, 1f), TextAnchor.MiddleCenter);
+        SetTopLeft(detailStatus.rectTransform, new Vector2(28f, -520f), new Vector2(418f, 20f));
 
-        Image footerDivider = CreateImage("EquipmentFooterDivider", panel.transform, new Color(0.47f, 0.27f, 0.13f, 0.48f));
-        SetTopLeft(footerDivider.rectTransform, new Vector2(42f, -714f), new Vector2(1416f, 4f));
-        footerDivider.raycastTarget = false;
-        Text status = CreateText("EquipmentStatus", panel.transform, "账号装备等待同步", 17, FontStyle.Bold, new Color(0.36f, 0.42f, 0.24f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(status.rectTransform, new Vector2(50f, -728f), new Vector2(850f, 30f));
-        Text hint = CreateText("EquipmentHint", panel.transform, "点击装备栏可卸下，选择物品后可穿戴", 15, FontStyle.Normal, new Color(0.48f, 0.39f, 0.29f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(hint.rectTransform, new Vector2(50f, -758f), new Vector2(1060f, 28f));
         Text attack = CreateText("EquipmentAttackText", panel.transform, "攻击  10", 16, FontStyle.Bold, new Color(0.85f, 0.39f, 0.27f, 1f), TextAnchor.MiddleRight);
         SetTopLeft(attack.rectTransform, new Vector2(1120f, -728f), new Vector2(110f, 28f));
         Text defense = CreateText("EquipmentDefenseText", panel.transform, "防御  8", 16, FontStyle.Bold, new Color(0.28f, 0.55f, 0.76f, 1f), TextAnchor.MiddleRight);
         SetTopLeft(defense.rectTransform, new Vector2(1235f, -728f), new Vector2(100f, 28f));
         Text health = CreateText("EquipmentHealthText", panel.transform, "生命  100", 16, FontStyle.Bold, new Color(0.35f, 0.66f, 0.38f, 1f), TextAnchor.MiddleRight);
         SetTopLeft(health.rectTransform, new Vector2(1340f, -728f), new Vector2(120f, 28f));
-        Text powerDetail = CreateText("EquipmentPowerDetailText", panel.transform, "战力  28", 16, FontStyle.Bold, new Color(0.65f, 0.42f, 0.72f, 1f), TextAnchor.MiddleRight);
-        SetTopLeft(powerDetail.rectTransform, new Vector2(1260f, -758f), new Vector2(200f, 28f));
         return scenePanel;
     }
 
@@ -2507,18 +3708,18 @@ public static class HomePageScenePanelsBuilder
     {
         string suffix = EquipmentPascalCase(slotId);
         Button slot = CreateButton("EquipmentSlot" + suffix, parent, string.Empty, new Color(0.86f, 0.72f, 0.48f, 1f), Color.white, 16);
-        SetTopLeft(slot.GetComponent<RectTransform>(), position, new Vector2(205f, 190f));
+        SetTopLeft(slot.GetComponent<RectTransform>(), position, new Vector2(124f, 114f));
         Image iconBackground = CreateImage("EquipmentSlotIconBackground" + suffix, slot.transform, color);
-        SetTopLeft(iconBackground.rectTransform, new Vector2(64f, -16f), new Vector2(76f, 76f));
+        SetTopLeft(iconBackground.rectTransform, new Vector2(38f, -8f), new Vector2(48f, 48f));
         Text icon = CreateText("EquipmentSlotIcon" + suffix, iconBackground.transform, slotId == "weapon" ? "剑" : slotId == "armor" ? "甲" : slotId == "pet" ? "宠" : "饰", 34, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
         Stretch(icon.rectTransform);
         Text name = CreateText("EquipmentSlotName" + suffix, slot.transform, "空装备位", 18, FontStyle.Bold, new Color(0.34f, 0.17f, 0.08f, 1f), TextAnchor.MiddleCenter);
-        SetTopLeft(name.rectTransform, new Vector2(12f, -104f), new Vector2(181f, 30f));
+        SetTopLeft(name.rectTransform, new Vector2(6f, -58f), new Vector2(112f, 26f));
         Text state = CreateText("EquipmentSlotState" + suffix, slot.transform, label, 15, FontStyle.Normal, new Color(0.48f, 0.38f, 0.27f, 1f), TextAnchor.MiddleCenter);
-        SetTopLeft(state.rectTransform, new Vector2(12f, -140f), new Vector2(181f, 26f));
+        SetTopLeft(state.rectTransform, new Vector2(6f, -86f), new Vector2(112f, 22f));
         GameObject empty = CreateRectObject("EquipmentSlotEmpty" + suffix, slot.transform);
         SetTopLeft(empty.GetComponent<RectTransform>(), new Vector2(12f, -164f), new Vector2(181f, 22f));
-        Text emptyText = CreateText("Text", empty.transform, "点击栏位可卸下", 12, FontStyle.Normal, new Color(0.56f, 0.44f, 0.30f, 0.82f), TextAnchor.MiddleCenter);
+        Text emptyText = CreateText("Text", empty.transform, "未穿戴", 12, FontStyle.Normal, new Color(0.56f, 0.44f, 0.30f, 0.82f), TextAnchor.MiddleCenter);
         Stretch(emptyText.rectTransform);
         empty.SetActive(false);
     }
@@ -2532,29 +3733,74 @@ public static class HomePageScenePanelsBuilder
             new Color(0.90f, 0.79f, 0.59f, 1f),
             new Color(0.36f, 0.20f, 0.10f, 1f),
             15);
-        SetTopLeft(button.GetComponent<RectTransform>(), position, new Vector2(76f, 38f));
+        SetTopLeft(button.GetComponent<RectTransform>(), position, new Vector2(64f, 38f));
+    }
+
+    private static RectTransform BuildEquipmentItemScroll(Transform parent)
+    {
+        Image viewport = CreateImage("EquipmentItemsViewport", parent, Color.clear);
+        SetTopLeft(viewport.rectTransform, new Vector2(90f, -8f), new Vector2(332f, 520f));
+        viewport.gameObject.AddComponent<RectMask2D>();
+        RectTransform content = CreateRectObject("EquipmentItemP", viewport.transform).GetComponent<RectTransform>();
+        SetTopLeft(content, Vector2.zero, new Vector2(332f, 520f));
+        ScrollRect scroll = viewport.gameObject.AddComponent<ScrollRect>();
+        scroll.content = content;
+        scroll.viewport = viewport.rectTransform;
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.scrollSensitivity = 35f;
+        Image track = CreateImage("EquipmentScrollbar", parent, Color.white);
+        SetTopLeft(track.rectTransform, new Vector2(434f, -8f), new Vector2(14f, 520f));
+        track.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(TaskArtDirectory + "滑动条 1.png");
+        Image handle = CreateImage("Handle", track.transform, Color.white);
+        Stretch(handle.rectTransform);
+        handle.sprite = AssetDatabase.LoadAssetAtPath<Sprite>("Assets/_Project/Art/UI/三级界面/滑动节点.png");
+        Scrollbar scrollbar = track.gameObject.AddComponent<Scrollbar>();
+        scrollbar.handleRect = handle.rectTransform;
+        scrollbar.targetGraphic = handle;
+        scrollbar.direction = Scrollbar.Direction.BottomToTop;
+        scroll.verticalScrollbar = scrollbar;
+        scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
+        return content;
     }
 
     private static void BuildEquipmentRow(Transform parent, int index, Vector2 position)
     {
-        Button row = CreateButton("EquipmentItemRow" + index, parent, string.Empty, new Color(1f, 0.94f, 0.74f, 1f), Color.white, 16);
-        SetTopLeft(row.GetComponent<RectTransform>(), position, new Vector2(402f, 66f));
-        Image iconBackground = CreateImage("EquipmentRowIconBackground" + index, row.transform, new Color(0.38f, 0.65f, 0.40f, 1f));
-        SetTopLeft(iconBackground.rectTransform, new Vector2(10f, -8f), new Vector2(50f, 50f));
-        Text icon = CreateText("EquipmentRowIcon" + index, iconBackground.transform, "装", 23, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-        Stretch(icon.rectTransform);
-        Text name = CreateText("EquipmentRowName" + index, row.transform, "装备名称", 17, FontStyle.Bold, new Color(0.34f, 0.17f, 0.08f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(name.rectTransform, new Vector2(72f, -8f), new Vector2(180f, 26f));
-        Text meta = CreateText("EquipmentRowMeta" + index, row.transform, "武器  x1", 13, FontStyle.Normal, new Color(0.48f, 0.38f, 0.27f, 1f), TextAnchor.MiddleLeft);
-        SetTopLeft(meta.rectTransform, new Vector2(72f, -36f), new Vector2(180f, 22f));
-        Text equipped = CreateText("EquipmentRowEquipped" + index, row.transform, "可穿戴", 13, FontStyle.Bold, new Color(0.25f, 0.55f, 0.30f, 1f), TextAnchor.MiddleRight);
-        SetTopLeft(equipped.rectTransform, new Vector2(274f, -22f), new Vector2(112f, 26f));
+        Button row = CreateButton("EquipmentItemRow" + index, parent, string.Empty, Color.white, Color.white, 16);
+        SetTopLeft(row.GetComponent<RectTransform>(), position, new Vector2(89.268f, 91.791f));
+        row.GetComponent<Image>().sprite = AssetDatabase.LoadAssetAtPath<Sprite>(
+            "Assets/_Project/Art/UI/二级界面/仓库二级界面/格子（白）.png");
+        Image icon = CreateImage("EquipmentRowIconBackground" + index, row.transform, Color.white);
+        SetTopLeft(icon.rectTransform, new Vector2(13.978f, -15.545f), new Vector2(60.701f, 60.701f));
+        icon.preserveAspect = true;
+        Image selection = CreateImage("Select", row.transform, Color.white);
+        selection.rectTransform.anchorMin = new Vector2(0.5f, 0.5f);
+        selection.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+        selection.rectTransform.pivot = new Vector2(0.5f, 0.5f);
+        selection.rectTransform.anchoredPosition = Vector2.zero;
+        selection.rectTransform.sizeDelta = new Vector2(100f, 100f);
+        selection.sprite = AssetDatabase.LoadAssetAtPath<Sprite>(
+            "Assets/_Project/Art/UI/二级界面/仓库二级界面/格子选择（点击）.png");
+        selection.raycastTarget = false;
+        selection.gameObject.SetActive(false);
+        Text name = CreateText("EquipmentRowName" + index, row.transform, "装备名称", 13,
+            FontStyle.Normal, new Color(0.34f, 0.17f, 0.08f, 1f), TextAnchor.MiddleCenter);
+        SetTopLeft(name.rectTransform, new Vector2(0.657f, -93f), new Vector2(88.611f, 20.054f));
+        Text level = CreateText("EquipmentRowMeta" + index, row.transform, "Lv.1", 11,
+            FontStyle.Normal, Color.white, TextAnchor.MiddleCenter);
+        SetTopLeft(level.rectTransform, new Vector2(1.314f, -69.791f), new Vector2(85.105f, 14.514f));
+        Image badge = CreateImage("EquipmentRowNPC", row.transform, Color.white);
+        SetTopLeft(badge.rectTransform, new Vector2(74.68f, 5f), new Vector2(24.182f, 24.182f));
+        Text wearer = CreateText("Text", badge.transform, "", 14, FontStyle.Normal, Color.black, TextAnchor.MiddleCenter);
+        Stretch(wearer.rectTransform);
+        badge.gameObject.SetActive(false);
     }
 
     private static void BuildEquipmentStatChip(Transform parent, string name, string value, Vector2 position, Color color)
     {
         Image chip = CreateImage(name + "Chip", parent, new Color(1f, 0.93f, 0.74f, 1f));
-        SetTopLeft(chip.rectTransform, position, new Vector2(202f, 52f));
+        SetTopLeft(chip.rectTransform, position, new Vector2(202f, 40f));
         Image mark = CreateImage(name + "Mark", chip.transform, color);
         SetTopLeft(mark.rectTransform, new Vector2(12f, -12f), new Vector2(28f, 28f));
         Text text = CreateText(name, chip.transform, value, 16, FontStyle.Bold, new Color(0.38f, 0.19f, 0.09f, 1f), TextAnchor.MiddleLeft);
@@ -2586,12 +3832,12 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(name.rectTransform, new Vector2(52f, -156f), new Vector2(418f, 40f));
         Text id = CreateText("FriendDetailId", content.transform, "好友编号  WJ-1001", 16, FontStyle.Normal, new Color(0.48f, 0.39f, 0.29f, 1f), TextAnchor.MiddleCenter);
         SetTopLeft(id.rectTransform, new Vector2(52f, -200f), new Vector2(418f, 28f));
+        Button copyId = CreateTMPButton("FriendCopyIdButton", content.transform, "复制", new Color(0.28f, 0.55f, 0.76f, 1f), Color.white, 16);
+        SetTopLeft(copyId.GetComponent<RectTransform>(), new Vector2(374f, -200f), new Vector2(76f, 32f));
         Text level = CreateText("FriendDetailLevel", content.transform, "领主等级  Lv.1", 18, FontStyle.Bold, new Color(0.46f, 0.23f, 0.10f, 1f), TextAnchor.MiddleCenter);
         SetTopLeft(level.rectTransform, new Vector2(52f, -234f), new Vector2(418f, 30f));
         Text online = CreateText("FriendDetailOnline", content.transform, "当前在线", 17, FontStyle.Bold, new Color(0.23f, 0.55f, 0.30f, 1f), TextAnchor.MiddleCenter);
         SetTopLeft(online.rectTransform, new Vector2(52f, -270f), new Vector2(418f, 30f));
-        Text intimacy = CreateText("FriendDetailIntimacy", content.transform, "亲密度  0", 18, FontStyle.Bold, new Color(0.70f, 0.31f, 0.24f, 1f), TextAnchor.MiddleCenter);
-        SetTopLeft(intimacy.rectTransform, new Vector2(52f, -306f), new Vector2(418f, 30f));
         Image divider = CreateImage("FriendDetailDivider", content.transform, new Color(0.55f, 0.34f, 0.17f, 0.42f));
         SetTopLeft(divider.rectTransform, new Vector2(34f, -350f), new Vector2(454f, 3f));
         divider.raycastTarget = false;
@@ -2599,14 +3845,8 @@ public static class HomePageScenePanelsBuilder
         SetTopLeft(giftHint.rectTransform, new Vector2(52f, -370f), new Vector2(418f, 30f));
         Button gift = CreateButton("FriendsGiftButton", content.transform, "赠送体力", new Color(0.32f, 0.66f, 0.38f, 1f), Color.white, 19);
         SetTopLeft(gift.GetComponent<RectTransform>(), new Vector2(72f, -416f), new Vector2(174f, 50f));
-        Button dailyGift = CreateButton("FriendsDailyGiftButton", content.transform, "赠送物品", new Color(0.30f, 0.52f, 0.76f, 1f), Color.white, 17);
-        SetTopLeft(dailyGift.GetComponent<RectTransform>(), new Vector2(72f, -468f), new Vector2(174f, 46f));
         Button delete = CreateButton("FriendsDeleteButton", content.transform, "删除好友", new Color(0.84f, 0.38f, 0.30f, 1f), Color.white, 19);
         SetTopLeft(delete.GetComponent<RectTransform>(), new Vector2(276f, -416f), new Vector2(174f, 50f));
-        Button requestPrimary = CreateButton("FriendsRequestPrimaryButton", content.transform, "同意", new Color(0.32f, 0.66f, 0.38f, 1f), Color.white, 19);
-        SetTopLeft(requestPrimary.GetComponent<RectTransform>(), new Vector2(72f, -416f), new Vector2(174f, 50f));
-        Button requestSecondary = CreateButton("FriendsRequestSecondaryButton", content.transform, "拒绝", new Color(0.84f, 0.38f, 0.30f, 1f), Color.white, 19);
-        SetTopLeft(requestSecondary.GetComponent<RectTransform>(), new Vector2(276f, -416f), new Vector2(174f, 50f));
     }
 
     private static InputField CreateSceneInputField(string name, Transform parent, string placeholder, int fontSize)
@@ -2626,9 +3866,9 @@ public static class HomePageScenePanelsBuilder
         input.lineType = InputField.LineType.SingleLine;
 
         Text value = CreateText("Text", frame.transform, string.Empty, fontSize, FontStyle.Normal, new Color(0.24f, 0.16f, 0.09f, 1f), TextAnchor.MiddleLeft);
-        value.resizeTextForBestFit = false;
-        value.horizontalOverflow = HorizontalWrapMode.Wrap;
-        value.verticalOverflow = VerticalWrapMode.Truncate;
+        value.enableAutoSizing = false;
+        value.enableWordWrapping = true;
+        value.overflowMode = TextOverflowModes.Truncate;
         value.rectTransform.anchorMin = Vector2.zero;
         value.rectTransform.anchorMax = Vector2.one;
         value.rectTransform.offsetMin = new Vector2(14f, 4f);
@@ -2636,7 +3876,7 @@ public static class HomePageScenePanelsBuilder
         input.textComponent = value;
 
         Text hint = CreateText("Placeholder", frame.transform, placeholder, Mathf.Max(14, fontSize - 2), FontStyle.Normal, new Color(0.52f, 0.47f, 0.40f, 0.82f), TextAnchor.MiddleLeft);
-        hint.resizeTextForBestFit = false;
+        hint.enableAutoSizing = false;
         hint.rectTransform.anchorMin = Vector2.zero;
         hint.rectTransform.anchorMax = Vector2.one;
         hint.rectTransform.offsetMin = new Vector2(14f, 4f);
@@ -2719,7 +3959,7 @@ public static class HomePageScenePanelsBuilder
     {
         Image slot = CreateImage("MailRewardSlot", parent, new Color(1f, 0.88f, 0.55f, 1f));
         SetTopLeft(slot.rectTransform, position, new Vector2(98f, 82f));
-        Text text = CreateText("MailRewardText", slot.transform, $"{label}\n{amount}", 15, FontStyle.Bold, new Color(0.36f, 0.16f, 0.07f, 1f), TextAnchor.MiddleCenter);
+        Text text = CreateText("MailRewardText", slot.transform, amount, 15, FontStyle.Bold, new Color(0.36f, 0.16f, 0.07f, 1f), TextAnchor.MiddleCenter);
         Stretch(text.rectTransform);
     }
 
@@ -2879,7 +4119,7 @@ public static class HomePageScenePanelsBuilder
 
     private static Text CreateText(string name, Transform parent, string value, int fontSize, FontStyle style, Color color, TextAnchor alignment)
     {
-        GameObject target = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
+        GameObject target = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
         target.layer = LayerMask.NameToLayer("UI");
         target.transform.SetParent(parent, false);
         Text label = target.GetComponent<Text>();
@@ -2887,34 +4127,21 @@ public static class HomePageScenePanelsBuilder
         label.font = resolvedFont;
         label.text = value;
         label.fontSize = fontSize;
-        label.fontStyle = resolvedFont == defaultFont ? FontStyle.Normal : style;
+        label.fontStyle = style == FontStyle.Bold ? FontStyles.Bold : style == FontStyle.Italic ? FontStyles.Italic : style == FontStyle.BoldAndItalic ? FontStyles.Bold | FontStyles.Italic : FontStyles.Normal;
         label.color = color;
-        label.alignment = alignment;
-        label.resizeTextForBestFit = true;
-        label.resizeTextMinSize = Mathf.Min(12, fontSize);
-        label.resizeTextMaxSize = fontSize;
-        label.horizontalOverflow = HorizontalWrapMode.Wrap;
-        label.verticalOverflow = VerticalWrapMode.Truncate;
+        label.alignment = ConvertTextAlignment(alignment);
+        label.enableAutoSizing = true;
+        label.fontSizeMin = Mathf.Min(12, fontSize);
+        label.fontSizeMax = fontSize;
+        label.enableWordWrapping = true;
+        label.overflowMode = TextOverflowModes.Truncate;
         label.raycastTarget = false;
         return label;
     }
 
     private static Font ResolveFont(string value)
     {
-        if (defaultFont == null || string.IsNullOrEmpty(value))
-        {
-            return defaultFont ?? fallbackFont;
-        }
-
-        foreach (char character in value)
-        {
-            if (!char.IsControl(character) && !char.IsSurrogate(character) && !defaultFont.HasCharacter(character))
-            {
-                return fallbackFont ?? defaultFont;
-            }
-        }
-
-        return defaultFont;
+        return defaultFont ?? fallbackFont ?? RuntimeFontAssetProvider.Resolve();
     }
 
     private static GameObject CreateRectObject(string name, Transform parent)

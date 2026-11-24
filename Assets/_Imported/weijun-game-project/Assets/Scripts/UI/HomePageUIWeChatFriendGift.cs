@@ -21,48 +21,8 @@ public partial class HomePageUI
 
     private void ConfigureWeChatFriendGiftButton(Transform root)
     {
-        Transform panel = FindSceneTransform(root, "FriendsPanel");
-        if (panel == null)
-        {
-            return;
-        }
-
-        Button button = FindSceneComponent<Button>(panel, "FriendsWeChatGiftButton");
-        if (button == null)
-        {
-            button = CreateButton(
-                panel,
-                "FriendsWeChatGiftButton",
-                "微信好友赠礼",
-                new Color(0.16f, 0.61f, 0.35f, 1f),
-                Color.white);
-            SetRect(
-                button.GetComponent<RectTransform>(),
-                TopLeftAnchor(),
-                TopLeftAnchor(),
-                TopLeftAnchor(),
-                new Vector2(718f, -122f),
-                new Vector2(208f, 50f));
-            ConfigureClearButtonLabel(button, 18);
-        }
-
-        bool authenticated = HasAuthSession();
-        bool unavailable = weChatFriendGiftCatalogLoaded && currentWeChatFriendGiftPackage == null;
-        button.gameObject.SetActive(authenticated && !unavailable);
-        if (!button.gameObject.activeSelf)
-        {
-            return;
-        }
-
-        button.interactable = !weChatFriendGiftCatalogRunning;
-        SetSceneButtonText(
-            button,
-            weChatFriendGiftCatalogRunning
-                ? "读取赠礼配置..."
-                : currentWeChatFriendGiftPackage != null
-                    ? currentWeChatFriendGiftPackage.giftName
-                    : "微信好友赠礼");
-        BindSceneButton(button, BeginWeChatFriendGift);
+        // The project only exposes game-friend stamina gifts.
+        SetSceneObjectActive(root, "FriendsWeChatGiftButton", false);
     }
 
     private void BeginWeChatFriendGift()
@@ -86,7 +46,7 @@ public partial class HomePageUI
     {
         weChatFriendGiftCatalogRunning = true;
         ConfigureWeChatFriendGiftButton(root);
-        SetSceneText(root, "FriendsStatus", "正在读取微信官方好友赠礼配置...");
+        SetSceneText(root, "FriendsStatus", "正在打开微信好友赠礼...");
 
         UnityWebRequest request = CreateAuthorizedGet("/wechat/friend-gifts/catalog");
         if (request == null)
@@ -114,7 +74,7 @@ public partial class HomePageUI
                 SetSceneText(
                     root,
                     "FriendsStatus",
-                    "微信好友赠礼配置读取失败：" + (response == null
+                    "微信好友赠礼暂不可用：" + (response == null
                         ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
                         : GetApiError(response)));
                 yield break;
@@ -146,7 +106,7 @@ public partial class HomePageUI
             || currentWeChatFriendGiftPackage == null
             || string.IsNullOrEmpty(currentWeChatFriendGiftCatalog.pageManagerOpenlink))
         {
-            SetSceneText(root, "FriendsStatus", "服务器未返回可用的微信好友赠礼页面");
+            SetSceneText(root, "FriendsStatus", "微信好友赠礼页面暂不可用，请稍后重试");
             return;
         }
 

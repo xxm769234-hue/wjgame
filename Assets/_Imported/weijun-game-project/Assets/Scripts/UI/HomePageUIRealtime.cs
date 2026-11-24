@@ -26,7 +26,7 @@ public partial class HomePageUI
     private static readonly Queue<RareBroadcastQueueItem> rareBroadcastQueue = new Queue<RareBroadcastQueueItem>();
     private static int rareBroadcastPlayerId;
     private Coroutine rareBroadcastPlaybackCoroutine;
-    private Text rareBroadcastText;
+    private TMP_Text rareBroadcastText;
     private bool realtimeConnected;
     private bool realtimeTransportOpen;
     private bool realtimeClosing;
@@ -127,8 +127,13 @@ public partial class HomePageUI
             return;
         }
 
-        bool isPublicBroadcast = realtimeEvent.type == "CARD_DRAW_RARE_BROADCAST";
-        if (!realtimeConnected || (!isPublicBroadcast && !IsCurrentPlayerRealtimeEvent(realtimeEvent)))
+        bool isPublicBroadcast = realtimeEvent.type == "CARD_DRAW_RARE_BROADCAST"
+            || realtimeEvent.type == "AVATAR_CATALOG_CHANGED";
+        bool isAvatarChange = realtimeEvent.type == "AVATAR_CHANGED";
+        if (!realtimeConnected
+            || (!isPublicBroadcast
+                && !IsCurrentPlayerRealtimeEvent(realtimeEvent)
+                && (!isAvatarChange || !IsKnownAvatarPlayerEvent(realtimeEvent, json))))
         {
             return;
         }
@@ -165,6 +170,26 @@ public partial class HomePageUI
         {
             FriendPresenceRealtimeEvent presenceEvent = ParseJson<FriendPresenceRealtimeEvent>(json);
             ApplyV38FriendPresence(presenceEvent == null ? null : presenceEvent.data);
+            return;
+        }
+
+        if (realtimeEvent.type == "AVATAR_CHANGED")
+        {
+            AvatarChangedRealtimeEvent avatarEvent = ParseJson<AvatarChangedRealtimeEvent>(json);
+            ApplyAvatarChangedRealtime(avatarEvent == null ? null : avatarEvent.data);
+            return;
+        }
+
+        if (realtimeEvent.type == "AVATAR_CATALOG_CHANGED")
+        {
+            AvatarCatalogChangedRealtimeEvent catalogEvent = ParseJson<AvatarCatalogChangedRealtimeEvent>(json);
+            if (catalogEvent == null || catalogEvent.data == null)
+            {
+                Debug.LogWarning("Avatar catalog change event did not contain data.");
+                return;
+            }
+
+            RefreshAvatarCatalogFromRealtime();
             return;
         }
 
@@ -208,17 +233,27 @@ public partial class HomePageUI
 
         if (realtimeEvent.type == "PLAYER_ONBOARDING_UPDATED")
         {
-            PlayerOnboardingManager.EnsureInstance().RefreshCurrent();
-            SetStatus("新手引导状态已更新，请按当前提示继续");
+            PlayerOnboardingManager.EnsureInstance().HandleRealtimeHint(json);
             return;
         }
 
         if (realtimeEvent.type == "PLAYER_NPC_ACQUISITION_RESOLVED")
         {
             PlayerNpcAcquisitionResolvedRealtimeEvent npcEvent = ParseJson<PlayerNpcAcquisitionResolvedRealtimeEvent>(json);
-            RefreshRolePanelFromRealtime(npcEvent == null || npcEvent.data == null
-                ? string.Empty
-                : npcEvent.data.acquisitionId);
+            if (npcEvent == null || npcEvent.data == null)
+            {
+                return;
+            }
+
+            int currentPlayerId = GameSession.PlayerId;
+            if (currentPlayerId <= 0
+                || (npcEvent.playerId > 0 && npcEvent.playerId != currentPlayerId)
+                || (npcEvent.data.playerId > 0 && npcEvent.data.playerId != currentPlayerId))
+            {
+                return;
+            }
+
+            RefreshRolePanelFromRealtime(npcEvent.data.acquisitionId);
             return;
         }
 
@@ -264,7 +299,7 @@ public partial class HomePageUI
         Transform existing = mainPageTransform.Find("Rare Reward Broadcast");
         if (existing != null)
         {
-            rareBroadcastText = existing.GetComponent<Text>();
+            rareBroadcastText = existing.GetComponent<TMP_Text>();
         }
 
         if (rareBroadcastText == null)
@@ -285,9 +320,21 @@ public partial class HomePageUI
         rect.pivot = new Vector2(0.5f, 1f);
         rect.anchoredPosition = new Vector2(0f, -76f);
         rect.sizeDelta = new Vector2(920f, 42f);
-        rareBroadcastText.horizontalOverflow = HorizontalWrapMode.Wrap;
-        rareBroadcastText.verticalOverflow = VerticalWrapMode.Truncate;
+        rareBroadcastText.enableWordWrapping = true;
+        rareBroadcastText.overflowMode = TextOverflowModes.Truncate;
         rareBroadcastText.gameObject.SetActive(false);
+    }
+
+    private void RefreshAvatarCatalogFromRealtime()
+    {
+        avatarPresetCatalogLoaded = false;
+        if (avatarPresetCatalogLoading || !HasAuthSession() || !isActiveAndEnabled)
+        {
+            return;
+        }
+
+        StartCoroutine(RefreshPresetAvatarCatalog(
+            avatarPresetPickerObject != null && avatarPresetPickerObject.activeInHierarchy));
     }
 
     private void RouteRareCardDrawBroadcast(RealtimeEvent realtimeEvent, string json)
@@ -398,7 +445,7 @@ public partial class HomePageUI
                 continue;
             }
 
-            rareBroadcastText.text = FrontendTextLocalization.Normalize(item.content);
+            rareBroadcastText.text = item.content;
             rareBroadcastText.gameObject.SetActive(true);
             float displaySeconds = RareBroadcastDisplaySeconds;
             if (item.expiresAt - now < TimeSpan.FromSeconds(displaySeconds))
@@ -558,6 +605,121 @@ public partial class HomePageUI
         return realtimeEvent != null && realtimeEvent.playerId == GameSession.PlayerId;
     }
 
+    private bool IsKnownAvatarPlayerEvent(RealtimeEvent realtimeEvent, string json)
+    {
+        if (realtimeEvent == null)
+        {
+            return false;
+        }
+
+        AvatarChangedRealtimeEvent avatarEvent = ParseJson<AvatarChangedRealtimeEvent>(json);
+        long playerId = avatarEvent != null && avatarEvent.data != null && avatarEvent.data.playerId > 0
+            ? avatarEvent.data.playerId
+            : realtimeEvent.playerId;
+        if (playerId == GameSession.PlayerId)
+        {
+            return true;
+        }
+        if (playerId > int.MaxValue)
+        {
+            return false;
+        }
+
+        return FindV37Friend((int)playerId) != null;
+    }
+
+    private void ApplyAvatarChangedRealtime(AvatarChangedRealtimeData message)
+    {
+        if (message == null || message.playerId <= 0 || message.avatarVersion <= 0)
+        {
+            Debug.LogWarning("Avatar change event did not contain a valid player or version.", this);
+            return;
+        }
+
+        bool applied = false;
+        if (message.playerId == GameSession.PlayerId)
+        {
+            if (message.avatarVersion < GetCurrentAvatarVersion())
+            {
+                return;
+            }
+
+            SaveCurrentAvatarState(
+                message.avatarUrl,
+                message.avatarSource,
+                message.avatarCode,
+                message.avatarVersion,
+                message.avatarUpdatedTime);
+            applied = true;
+            RefreshCurrentAvatarVisuals();
+        }
+
+        if (message.playerId <= int.MaxValue)
+        {
+            ServerFriendResponse friend = FindV37Friend((int)message.playerId);
+            if (friend != null && message.avatarVersion > friend.avatarVersion)
+            {
+                friend.avatarUrl = message.avatarUrl;
+                friend.avatarCode = message.avatarCode;
+                friend.avatarVersion = message.avatarVersion;
+                applied = true;
+            }
+        }
+
+        if (v37FriendSearchResult != null && v37FriendSearchResult.playerId == message.playerId
+            && message.avatarVersion > v37FriendSearchResult.avatarVersion)
+        {
+            v37FriendSearchResult.avatarUrl = message.avatarUrl;
+            v37FriendSearchResult.avatarCode = message.avatarCode;
+            v37FriendSearchResult.avatarVersion = message.avatarVersion;
+            applied = true;
+        }
+
+        UpdateAvatarInFriendRequests(message);
+
+        HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.Friends);
+        if (applied && panel != null && panel.PanelRoot != null && panel.gameObject.activeInHierarchy)
+        {
+            RefreshServerFriendRequestPanel(panel.PanelRoot, "好友头像已更新");
+        }
+    }
+
+    private void UpdateAvatarInFriendRequests(AvatarChangedRealtimeData message)
+    {
+        for (int i = 0; i < v37IncomingRequests.Count; i++)
+        {
+            UpdateAvatarInFriendRequest(v37IncomingRequests[i], message);
+        }
+        for (int i = 0; i < v37OutgoingRequests.Count; i++)
+        {
+            UpdateAvatarInFriendRequest(v37OutgoingRequests[i], message);
+        }
+    }
+
+    private static void UpdateAvatarInFriendRequest(ServerFriendRequestResponse request, AvatarChangedRealtimeData message)
+    {
+        if (request == null || message == null)
+        {
+            return;
+        }
+
+        if (request.requesterPlayerId == message.playerId
+            && message.avatarVersion > request.requesterAvatarVersion)
+        {
+            request.requesterAvatarUrl = message.avatarUrl;
+            request.requesterAvatarCode = message.avatarCode;
+            request.requesterAvatarVersion = message.avatarVersion;
+        }
+
+        if (request.recipientPlayerId == message.playerId
+            && message.avatarVersion > request.recipientAvatarVersion)
+        {
+            request.recipientAvatarUrl = message.avatarUrl;
+            request.recipientAvatarCode = message.avatarCode;
+            request.recipientAvatarVersion = message.avatarVersion;
+        }
+    }
+
     private void EnqueueRareCardDrawBroadcast(string content, string expiresAt)
     {
         if (string.IsNullOrWhiteSpace(content) || IsRareCardDrawBroadcastExpired(expiresAt))
@@ -614,7 +776,7 @@ public partial class HomePageUI
             }
 
             rareCardDrawBroadcastObject.SetActive(true);
-            rareCardDrawBroadcastText.text = FrontendTextLocalization.Normalize(message.content);
+            rareCardDrawBroadcastText.text = message.content;
             rareCardDrawBroadcastText.ForceMeshUpdate();
 
             float viewportWidth = Mathf.Max(1f, rareCardDrawBroadcastViewport.rect.width);
@@ -703,6 +865,7 @@ public partial class HomePageUI
         }
 
         Transform textTransform = FindSceneTransform(viewportTransform, "LotteryRareBroadcastText");
+        bool createText = textTransform == null;
         if (textTransform == null)
         {
             GameObject textObject = new GameObject(
@@ -721,14 +884,21 @@ public partial class HomePageUI
             return;
         }
 
-        rareCardDrawBroadcastText.font = RuntimeFontAssetProvider.Resolve();
-        rareCardDrawBroadcastText.fontStyle = FontStyles.Normal;
-        rareCardDrawBroadcastText.fontSize = 16f;
-        rareCardDrawBroadcastText.alignment = TextAlignmentOptions.MidlineLeft;
-        rareCardDrawBroadcastText.enableWordWrapping = false;
-        rareCardDrawBroadcastText.overflowMode = TextOverflowModes.Overflow;
+        if (createText)
+        {
+            rareCardDrawBroadcastText.font = RuntimeFontAssetProvider.Resolve();
+            rareCardDrawBroadcastText.fontStyle = FontStyles.Normal;
+            rareCardDrawBroadcastText.fontSize = 16f;
+            rareCardDrawBroadcastText.alignment = TextAlignmentOptions.MidlineLeft;
+            rareCardDrawBroadcastText.enableWordWrapping = false;
+            rareCardDrawBroadcastText.overflowMode = TextOverflowModes.Overflow;
+            rareCardDrawBroadcastText.color = new Color(1f, 0.91f, 0.63f, 1f);
+        }
+        else if (rareCardDrawBroadcastText.font == null)
+        {
+            rareCardDrawBroadcastText.font = RuntimeFontAssetProvider.Resolve();
+        }
         rareCardDrawBroadcastText.raycastTarget = false;
-        rareCardDrawBroadcastText.color = new Color(1f, 0.91f, 0.63f, 1f);
 
         RectTransform textRect = rareCardDrawBroadcastText.rectTransform;
         textRect.anchorMin = new Vector2(0.5f, 0.5f);
@@ -1145,7 +1315,7 @@ public partial class HomePageUI
             resumeRealtimeAfterPause = false;
             StartCoroutine(RefreshServerStamina());
             LoadPendingPaymentState();
-            StartCoroutine(RecoverPendingPaymentOrder("应用恢复前台，正在补查支付订单..."));
+            StartCoroutine(RecoverPendingPaymentOrder("正在查询支付结果..."));
             BeginRealtimeConnection();
         }
     }
@@ -1200,6 +1370,43 @@ public partial class HomePageUI
         public long presenceVersion;
         public string lastActiveTime;
         public string lastOfflineTime;
+    }
+
+    [Serializable]
+    private class AvatarChangedRealtimeEvent
+    {
+        public string type;
+        public string eventId;
+        public long playerId;
+        public AvatarChangedRealtimeData data;
+        public string serverTime;
+    }
+
+    [Serializable]
+    private class AvatarChangedRealtimeData
+    {
+        public long playerId;
+        public string avatarUrl;
+        public string avatarSource;
+        public string avatarCode;
+        public long avatarVersion;
+        public string avatarUpdatedTime;
+    }
+
+    [Serializable]
+    private class AvatarCatalogChangedRealtimeEvent
+    {
+        public string type;
+        public string eventId;
+        public long playerId;
+        public AvatarCatalogChangedData data;
+        public string serverTime;
+    }
+
+    [Serializable]
+    private class AvatarCatalogChangedData
+    {
+        public long catalogVersion;
     }
 
     [Serializable]

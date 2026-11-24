@@ -13,6 +13,12 @@ public partial class HomePageUI
     private long serverStaminaCurrent;
     private long serverStaminaMaximum;
     private int serverStaminaSecondsToNextRecovery;
+    private bool serverStaminaRecoveryEnabled;
+    private double serverStaminaReceivedAt;
+    private double nextStaminaMetricUpdateAt;
+    private double nextStaminaQueryAt;
+    private int staminaSessionPlayerId;
+    private string staminaSessionToken;
     private bool backendSnapshotRefreshQueued;
     private bool backendSnapshotRefreshUserQueued;
     private bool backendSnapshotRefreshInventoryQueued;
@@ -107,7 +113,10 @@ public partial class HomePageUI
     {
         if (serverStaminaRequestRunning || !HasAuthSession()) yield break;
 
+        int requestPlayerId = GameSession.PlayerId;
+        string requestToken = GameSession.Token;
         serverStaminaRequestRunning = true;
+        nextStaminaQueryAt = Time.realtimeSinceStartupAsDouble + 5d;
         UnityWebRequest request = CreateAuthorizedGet($"/idle-adventure/players/{GameSession.PlayerId}/stamina");
         if (request == null)
         {
@@ -118,6 +127,11 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
+            if (!HasAuthSession() || requestPlayerId != GameSession.PlayerId || requestToken != GameSession.Token)
+            {
+                serverStaminaRequestRunning = false;
+                yield break;
+            }
             if (HandleUnauthorizedResponse(request))
             {
                 serverStaminaRequestRunning = false;
@@ -133,6 +147,12 @@ public partial class HomePageUI
                 serverStaminaCurrent = Math.Max(0L, response.data.ResolvedCurrentStamina);
                 serverStaminaMaximum = Math.Max(0L, response.data.ResolvedMaxStamina);
                 serverStaminaSecondsToNextRecovery = ClampLongToInt(response.data.ResolvedSecondsToNextRecovery);
+                serverStaminaRecoveryEnabled = response.data.enabled;
+                serverStaminaReceivedAt = Time.realtimeSinceStartupAsDouble;
+                staminaSessionPlayerId = requestPlayerId;
+                staminaSessionToken = requestToken;
+                nextStaminaQueryAt = serverStaminaReceivedAt + (CanShowHomeStaminaCountdown()
+                    ? Math.Max(1, serverStaminaSecondsToNextRecovery) : 60d);
                 serverStaminaLoaded = true;
                 PlayerPrefs.SetInt("PlayerStamina", ClampLongToInt(serverStaminaCurrent));
                 PlayerPrefs.Save();
@@ -141,11 +161,55 @@ public partial class HomePageUI
             }
             else
             {
-                Debug.LogWarning("服务器体力刷新失败：" + ApiRequestUtility.GetErrorMessage(request, "请求失败"), this);
+                Debug.LogWarning("Authoritative stamina refresh failed: " + ApiRequestUtility.GetErrorMessage(request, "request failed"), this);
             }
         }
 
         serverStaminaRequestRunning = false;
+    }
+
+    private bool CanShowHomeStaminaCountdown()
+    {
+        return serverStaminaRecoveryEnabled && serverStaminaMaximum > 0L
+            && serverStaminaCurrent < serverStaminaMaximum;
+    }
+
+    private string GetHomeStaminaDisplay()
+    {
+        string value = GetHomeStamina().ToString();
+        if (!serverStaminaLoaded || !CanShowHomeStaminaCountdown()) return value;
+        double elapsed = Math.Max(0d, Time.realtimeSinceStartupAsDouble - serverStaminaReceivedAt);
+        int remaining = (int)Math.Max(0d, Math.Ceiling(serverStaminaSecondsToNextRecovery - elapsed));
+        return value + "(" + FormatHomeStaminaCountdown(remaining) + ")";
+    }
+
+    private static string FormatHomeStaminaCountdown(int seconds)
+    {
+        TimeSpan remaining = TimeSpan.FromSeconds(Math.Max(0, seconds));
+        return seconds >= 3600
+            ? ((int)remaining.TotalHours).ToString("00") + ":" + remaining.Minutes.ToString("00") + ":" + remaining.Seconds.ToString("00")
+            : remaining.Minutes.ToString("00") + ":" + remaining.Seconds.ToString("00");
+    }
+
+    private void UpdateHomeStaminaCountdown()
+    {
+        if (staminaSessionPlayerId != GameSession.PlayerId || staminaSessionToken != GameSession.Token || !HasAuthSession())
+        {
+            serverStaminaLoaded = false;
+            staminaSessionPlayerId = GameSession.PlayerId;
+            staminaSessionToken = GameSession.Token;
+            nextStaminaQueryAt = 0d;
+        }
+
+        double now = Time.realtimeSinceStartupAsDouble;
+        if (now >= nextStaminaMetricUpdateAt)
+        {
+            nextStaminaMetricUpdateAt = now + 0.2d;
+            if (boundBookView != null)
+                SetBookMetricValue(boundBookView.MetricTexts, 1, GetHomeStaminaDisplay());
+        }
+        if (HasAuthSession() && !serverStaminaRequestRunning && now >= nextStaminaQueryAt)
+            StartCoroutine(RefreshServerStamina());
     }
 
     private int GetAuthoritativeHomeStamina()

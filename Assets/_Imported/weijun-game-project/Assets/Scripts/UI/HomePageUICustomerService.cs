@@ -46,11 +46,11 @@ public partial class HomePageUI
         SetSceneButtonText(
             customerServiceButton,
             customerServiceRequestRunning
-                ? "读取客服配置..."
+                ? "正在连接客服..."
                 : !HasAuthSession()
                     ? "登录后联系客服"
                     : !WeChatPlatformBridge.IsAvailable
-                        ? "微信环境可用"
+                        ? "请在微信内联系客服"
                         : entryClosed
                             ? "客服暂未开放"
                         : IsCustomerServiceEntryFresh()
@@ -78,7 +78,7 @@ public partial class HomePageUI
         }
         if (!IsCustomerServiceEntryFresh())
         {
-            SetCustomerServiceStatus("客服入口配置已过期，请稍后再试");
+            SetCustomerServiceStatus("客服连接已过期，正在重新连接");
             if (!customerServiceRequestRunning) StartCoroutine(LoadCustomerServiceEntry(true));
             return;
         }
@@ -215,11 +215,11 @@ public partial class HomePageUI
         SetSceneButtonText(
             customerServiceButton,
             customerServiceRequestRunning
-                ? "读取客服配置..."
+                ? "正在连接客服..."
                 : !HasAuthSession()
                     ? "登录后联系客服"
                     : !WeChatPlatformBridge.IsAvailable
-                        ? "微信环境可用"
+                        ? "请在微信内联系客服"
                         : entryClosed
                             ? "客服暂未开放"
                         : fresh ? "联系客服" : "刷新客服入口");

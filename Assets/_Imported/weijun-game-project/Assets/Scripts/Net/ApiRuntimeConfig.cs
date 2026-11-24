@@ -8,7 +8,7 @@ public static class ApiRuntimeConfig
     private const string EnvironmentVariableName = "WEIJUN_API_BASE_URL";
     private const string DefaultDevelopmentUrl = "http://localhost:8080/api";
     private const string DefaultClientChannel = "DEFAULT";
-    private const long DefaultClientVersionCode = 10001L;
+    private const long DefaultClientVersionCode = 10005L;
 
     private static ApiConfigData cachedConfig;
     private static bool configLoaded;
@@ -42,9 +42,9 @@ public static class ApiRuntimeConfig
         }
 
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
-        error = "开发接口地址无效，请检查接口配置。";
+        error = "开发接口地址无效，请检查 Resources/ApiConfig.json。";
 #else
-        error = "尚未配置生产接口地址，请设置生产环境接口配置。";
+        error = "尚未配置生产接口地址，请设置 ApiConfig.json 的 productionBaseUrl。";
 #endif
         return false;
     }

@@ -5,20 +5,24 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using TMPro;
+using Text = TMPro.TMP_Text;
 
 public partial class HomePageUI
 {
-    private const int ShopPageSize = 6;
-    private const int CoinShopHistoryPageSize = 10;
+    private const int ShopPageSize = 8;
+    private const int CoinShopHistoryPageSize = 4;
     private const string GoldShopCategory = "gold";
     private const string DiamondShopCategory = "diamond";
 
     private GameObject shopPanelObject;
+    private readonly Dictionary<int, Sprite> shopCategoryNormalSprites = new Dictionary<int, Sprite>();
     private CoinShopCatalogData coinShopCatalog;
     private CoinShopProductResponse[] coinShopProducts = new CoinShopProductResponse[0];
     private string activeShopCategory = GoldShopCategory;
     private long selectedCoinShopProductId;
     private long selectedCoinShopLotCount;
+    private bool shopDetailVisible;
     private string shopStatusMessage = string.Empty;
     private string shopPurchaseSummary = string.Empty;
     private int shopPageIndex;
@@ -26,6 +30,7 @@ public partial class HomePageUI
     private bool coinShopPurchaseRunning;
 
     private GameObject coinShopHistoryPanelObject;
+    private GameObject coinShopHistoryBlockerObject;
     private CoinShopPurchaseHistoryItem[] coinShopHistoryItems = new CoinShopPurchaseHistoryItem[0];
     private readonly List<long> coinShopHistoryCursors = new List<long>();
     private int coinShopHistoryPageIndex;
@@ -53,7 +58,7 @@ public partial class HomePageUI
         HomePageScenePanel panel = OpenRegisteredScenePanel(HomePageScenePanelType.Shop);
         if (panel == null)
         {
-            SetLeftContent("商城", "商城场景组件尚未生成，请重新生成首页面板。", "商城场景组件未找到");
+            SetLeftContent("商城", "商城暂时无法打开，请稍后重试。", "商城暂不可用");
             return;
         }
 
@@ -62,18 +67,19 @@ public partial class HomePageUI
         shopPageIndex = 0;
         selectedCoinShopProductId = 0;
         selectedCoinShopLotCount = 0;
+        shopDetailVisible = false;
 
         if (!HasAuthSession())
         {
             coinShopCatalog = null;
             coinShopProducts = new CoinShopProductResponse[0];
             shopPurchaseSummary = "商城仅对已登录玩家开放";
-            shopStatusMessage = "请登录账号后读取服务器商城";
+            shopStatusMessage = "请登录后查看商城";
             RenderShopScenePanel();
             return;
         }
 
-        shopPurchaseSummary = "正在读取服务器商品目录";
+        shopPurchaseSummary = "正在加载商品...";
         shopStatusMessage = "正在读取金币商城...";
         RenderShopScenePanel();
         StartCoroutine(GetCoinShopCatalog("金币商城目录已同步"));
@@ -88,13 +94,10 @@ public partial class HomePageUI
         }
 
         Transform root = panel.PanelRoot;
-        EnsureShopCurrencyCategoryControls(root);
-        EnsureShopCurrencyBalanceBadges(root);
-        EnsureCoinShopLotControls(root);
         string currencyLabel = GetActiveShopCurrencyLabel();
-        SetSceneText(root, "ShopSubtitle", "使用" + currencyLabel + "购买服务器商品");
+        SetSceneText(root, "ShopSubtitle", "使用" + currencyLabel + "兑换补给");
         SetSceneText(root, "ShopSidebarNoteTitle", "商城规则");
-        SetSceneText(root, "ShopSidebarNoteText", "商品、价格和限额\n均由服务器结算\n\n金币与钻石独立结算");
+        SetSceneText(root, "ShopSidebarNoteText", string.Empty);
         long goldBalance = IsDiamondShopActive()
             ? PlayerPrefs.GetInt("Gold", 0)
             : (coinShopCatalog == null ? PlayerPrefs.GetInt("Gold", 0) : coinShopCatalog.goldBalance);
@@ -106,10 +109,22 @@ public partial class HomePageUI
         SetSceneText(root, "ShopStatusText", shopStatusMessage);
 
         BindSceneButton(FindSceneComponent<Button>(root, "ShopCloseButton"), HideShopPanel);
+        BindSceneButton(FindSceneComponent<Button>(root, "ShopWarehouseButton"), OpenServerInventoryFromShop);
         Button refreshButton = FindSceneComponent<Button>(root, "ShopRefreshButton");
-        refreshButton.interactable = HasAuthSession() && !coinShopCatalogLoading && !coinShopPurchaseRunning;
-        SetSceneButtonText(refreshButton, coinShopCatalogLoading ? "读取中..." : "刷新");
-        BindSceneButton(refreshButton, RefreshShopData);
+        if (refreshButton != null)
+        {
+            refreshButton.interactable = HasAuthSession() && !coinShopCatalogLoading && !coinShopPurchaseRunning;
+            SetSceneButtonText(refreshButton, coinShopCatalogLoading ? "读取中..." : "刷新");
+            BindSceneButton(refreshButton, RefreshShopData);
+        }
+        ConfigureCoinShopHistoryButton(FindSceneComponent<Button>(root, "ShopBuyCrystalButton"));
+        EnsureCoinShopHistoryPanel(root);
+        if (coinShopHistoryPanelObject != null)
+        {
+            BindSceneButton(
+                FindSceneComponent<Button>(coinShopHistoryPanelObject.transform, "CoinShopHistoryCloseButton"),
+                HideCoinShopHistory);
+        }
 
         ConfigureShopCategory(root, GoldShopCategory, "金币");
         ConfigureShopCategory(root, DiamondShopCategory, "钻石");
@@ -124,6 +139,9 @@ public partial class HomePageUI
 
         Button previousButton = FindSceneComponent<Button>(root, "ShopPreviousButton");
         Button nextButton = FindSceneComponent<Button>(root, "ShopNextButton");
+        SetSceneObjectActive(root, "ShopPreviousButton", true);
+        SetSceneObjectActive(root, "ShopNextButton", true);
+        SetSceneObjectActive(root, "ShopPageText", true);
         if (previousButton != null)
         {
             previousButton.interactable = shopPageIndex > 0;
@@ -136,15 +154,11 @@ public partial class HomePageUI
         BindSceneButton(nextButton, () => ChangeShopPage(1));
 
         int pageStart = shopPageIndex * ShopPageSize;
-        for (int i = 0; i < ShopPageSize; i++)
+        List<Transform> cards = GetShopPageCards(root);
+        for (int index = 0; index < cards.Count; index++)
         {
-            Transform card = FindSceneTransform(root, "ShopProductCard" + i);
-            if (card == null)
-            {
-                continue;
-            }
-
-            int productIndex = pageStart + i;
+            Transform card = cards[index];
+            int productIndex = pageStart + index;
             bool visible = productIndex < visibleProducts.Count;
             card.gameObject.SetActive(visible);
             if (visible)
@@ -153,8 +167,19 @@ public partial class HomePageUI
             }
         }
 
+        CoinShopProductResponse selectedProduct = FindSelectedCoinShopProduct(visibleProducts);
         SetSceneObjectActive(root, "ShopEmptyState", !coinShopCatalogLoading && visibleProducts.Count == 0);
-        ConfigureCoinShopDetails(root, FindSelectedCoinShopProduct(visibleProducts));
+        SetSceneObjectActive(root, "ShopDetailBlocker", (shopDetailVisible && selectedProduct != null) || IsCoinShopHistoryVisible());
+        SetSceneObjectActive(root, "ShopDetail", shopDetailVisible && selectedProduct != null);
+        if (shopDetailVisible && selectedProduct != null)
+        {
+            Transform detail = FindSceneTransform(root, "ShopDetail");
+            if (detail != null)
+            {
+                detail.SetAsLastSibling();
+            }
+            ConfigureCoinShopDetails(root, selectedProduct);
+        }
         SetStatus(shopStatusMessage);
     }
 
@@ -167,139 +192,79 @@ public partial class HomePageUI
         }
 
         bool selected = activeShopCategory == category;
-        Image background = button.GetComponent<Image>();
-        if (background != null)
-        {
-            background.color = selected
-                ? new Color(0.22f, 0.58f, 0.48f, 1f)
-                : new Color(0.95f, 0.78f, 0.48f, 1f);
-        }
-
         Text text = button.GetComponentInChildren<Text>(true);
         if (text != null)
         {
-            text.text = FrontendTextLocalization.Normalize(label);
-            text.color = selected ? Color.white : new Color(0.34f, 0.18f, 0.08f, 1f);
+            text.text = label;
+        }
+
+        Image categoryImage = button.targetGraphic as Image;
+        Sprite selectedSprite = button.spriteState.selectedSprite;
+        if (categoryImage != null)
+        {
+            int buttonId = button.GetInstanceID();
+            if (!shopCategoryNormalSprites.ContainsKey(buttonId))
+            {
+                shopCategoryNormalSprites.Add(buttonId, categoryImage.sprite);
+            }
+
+            Sprite normalSprite = shopCategoryNormalSprites[buttonId];
+            categoryImage.sprite = selected && selectedSprite != null ? selectedSprite : normalSprite;
         }
 
         button.interactable = !coinShopCatalogLoading && !coinShopPurchaseRunning;
-        SetSceneObjectActive(button.transform, "SelectedMarker", selected);
         BindSceneButton(button, button.interactable ? () => SelectShopCategory(category) : null);
     }
 
-    private void EnsureShopCurrencyCategoryControls(Transform root)
+    private List<Transform> GetShopPageCards(Transform root)
     {
-        Transform sidebar = FindSceneTransform(root, "ShopSidebar");
-        if (sidebar == null)
+        List<Transform> cards = new List<Transform>(ShopPageSize);
+        for (int index = 0; index < ShopPageSize; index++)
         {
-            return;
-        }
-
-        EnsureShopCurrencyCategoryButton(sidebar, GoldShopCategory, "featured", new Vector2(12f, -76f));
-        EnsureShopCurrencyCategoryButton(sidebar, DiamondShopCategory, "resource", new Vector2(12f, -148f));
-        SetSceneObjectActive(sidebar, "ShopCategory_item", false);
-        SetSceneObjectActive(sidebar, "ShopCategory_growth", false);
-        Transform note = FindSceneTransform(sidebar, "ShopSidebarNote");
-        if (note != null)
-        {
-            SetRect(note.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(12f, -250f), new Vector2(158f, 176f));
-        }
-    }
-
-    private void EnsureShopCurrencyCategoryButton(Transform sidebar, string category, string legacyCategory, Vector2 position)
-    {
-        string objectName = "ShopCategory_" + category;
-        Button button = FindSceneComponent<Button>(sidebar, objectName);
-        if (button == null)
-        {
-            button = FindSceneComponent<Button>(sidebar, "ShopCategory_" + legacyCategory);
-            if (button != null)
+            Transform card = FindSceneTransform(root, "ShopProductCard" + index);
+            if (card != null)
             {
-                button.gameObject.name = objectName;
+                cards.Add(card);
             }
         }
-        if (button == null)
-        {
-            button = CreateButton(sidebar, objectName, GetShopCategoryLabel(category), new Color(0.95f, 0.78f, 0.48f, 1f), new Color(0.34f, 0.18f, 0.08f, 1f));
-        }
 
-        button.gameObject.SetActive(true);
-        SetRect(button.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, new Vector2(158f, 58f));
-        if (FindSceneTransform(button.transform, "SelectedMarker") == null)
+        cards.Sort((left, right) =>
         {
-            Image selected = CreateImage("SelectedMarker", button.transform, new Color(1f, 0.87f, 0.48f, 1f));
-            SetRect(selected.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), Vector2.zero, new Vector2(7f, 58f));
-        }
-    }
-
-    private void EnsureShopCurrencyBalanceBadges(Transform root)
-    {
-        Transform header = FindSceneTransform(root, "ShopHeader");
-        if (header == null)
-        {
-            return;
-        }
-
-        Text gold = FindSceneComponent<Text>(header, "ShopGoldText");
-        if (gold != null && gold.transform.parent != null)
-        {
-            gold.transform.parent.gameObject.SetActive(true);
-            SetRect(gold.transform.parent.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(650f, -16f), new Vector2(188f, 44f));
-        }
-
-        Text diamond = FindSceneComponent<Text>(header, "ShopCrystalText");
-        if (diamond == null)
-        {
-            Image badge = CreateImage("ShopCrystalTextBadge", header, new Color(0.08f, 0.22f, 0.19f, 0.92f));
-            SetRect(badge.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(850f, -16f), new Vector2(188f, 44f));
-            Image mark = CreateImage("ShopCrystalTextMark", badge.transform, new Color(0.30f, 0.78f, 0.95f, 1f));
-            SetRect(mark.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(10f, -12f), new Vector2(20f, 20f));
-            diamond = CreateText("ShopCrystalText", badge.transform, "钻石  --", 17, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
-            SetRect(diamond.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(40f, -5f), new Vector2(138f, 34f));
-        }
-        else if (diamond.transform.parent != null)
-        {
-            diamond.transform.parent.gameObject.SetActive(true);
-            SetRect(diamond.transform.parent.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(850f, -16f), new Vector2(188f, 44f));
-        }
+            Vector3 leftPosition = root.InverseTransformPoint(left.position);
+            Vector3 rightPosition = root.InverseTransformPoint(right.position);
+            return Mathf.Abs(leftPosition.y - rightPosition.y) < 1f
+                ? leftPosition.x.CompareTo(rightPosition.x)
+                : rightPosition.y.CompareTo(leftPosition.y);
+        });
+        return cards;
     }
 
     private void ConfigureCoinShopProductCard(Transform card, CoinShopProductResponse product)
     {
         bool selected = product.productId == selectedCoinShopProductId;
+        ConfigureShopProductIcon(card, product, "ShopProductIcon", "ShopProductIconText");
         SetSceneText(card, "ShopProductTag", GetShopProductTag(product));
-        SetSceneText(card, "ShopProductIconText", GetCoinShopIconText(product));
         SetSceneText(card, "ShopProductName", GetCoinShopProductName(product));
-        SetSceneText(card, "ShopProductReward", GetCoinShopRewardName(product) + " ×" + product.rewardQuantityPerLot + "/批");
+        SetSceneText(card, "ShopProductReward", GetCoinShopRewardName(product) + " x" + product.rewardQuantityPerLot + "/批");
         SetSceneText(card, "ShopProductPrice", GetActiveShopCurrencyLabel() + " " + GetActiveShopPricePerLot(product) + "/批");
         SetSceneObjectActive(card, "ShopSelectionMark", selected);
 
-        Image background = card.GetComponent<Image>();
-        if (background != null)
-        {
-            background.color = selected
-                ? new Color(1f, 0.88f, 0.55f, 1f)
-                : new Color(1f, 0.96f, 0.82f, 1f);
-        }
-
-        Image icon = FindSceneComponent<Image>(card, "ShopProductIcon");
-        if (icon != null)
-        {
-            icon.color = GetCoinShopIconColor(product);
-        }
-
         Button button = card.GetComponent<Button>();
         long productId = product.productId;
+        if (button != null)
+        {
+            button.interactable = !coinShopCatalogLoading && !coinShopPurchaseRunning;
+        }
         BindSceneButton(button, () => SelectCoinShopProduct(productId));
     }
 
     private void ConfigureCoinShopDetails(Transform root, CoinShopProductResponse product)
     {
         Button buyButton = FindSceneComponent<Button>(root, "ShopBuyGoldButton");
-        Button historyButton = FindSceneComponent<Button>(root, "ShopBuyCrystalButton");
         Button openBagButton = FindSceneComponent<Button>(root, "ShopOpenBagButton");
-        ConfigureCoinShopHistoryButton(historyButton);
+        Button closeButton = FindSceneComponent<Button>(root, "ShopDetailCloseButton");
         BindSceneButton(openBagButton, OpenServerInventoryFromShop);
+        BindSceneButton(closeButton, HideCoinShopDetail);
         SetSceneButtonText(openBagButton, "打开背包");
         if (openBagButton != null)
         {
@@ -310,14 +275,14 @@ public partial class HomePageUI
         {
             SetSceneText(root, "ShopDetailIconText", "商");
             SetSceneText(root, "ShopDetailName", coinShopCatalogLoading ? "正在读取商品" : "暂无商品");
-            SetSceneText(root, "ShopDetailDescription", coinShopCatalogLoading ? "请稍候..." : "当前分类没有可购买的服务器商品");
+            SetSceneText(root, "ShopDetailDescription", coinShopCatalogLoading ? "请稍候..." : "当前分类暂无商品");
             SetSceneText(root, "ShopDetailReward", "购买内容  --");
             SetSceneText(root, "ShopDetailPrice", GetActiveShopCurrencyLabel() + "价格  --");
             SetSceneText(root, "ShopPurchaseSummary", shopPurchaseSummary);
             SetSceneText(root, "ShopOwnedCount", "背包数量  --");
-            SetSceneText(root, "ShopStorageModeText", HasAuthSession() ? "商品和限购以服务器为准" : "登录后可购买");
+            SetSceneText(root, "ShopStorageModeText", HasAuthSession() ? string.Empty : "登录后可购买");
             ConfigureCoinShopLotControls(root, null);
-            ConfigureCoinShopBuyButton(buyButton, GetActiveShopCurrencyLabel() + "购买", false);
+            ConfigureCoinShopBuyButton(buyButton, false);
             return;
         }
 
@@ -335,25 +300,20 @@ public partial class HomePageUI
             && !coinShopCatalogLoading;
 
         SetSceneText(root, "ShopDetailIconText", GetCoinShopIconText(product));
+        ConfigureShopProductIcon(root, product, "ShopDetailIcon", "ShopDetailIconText");
         SetSceneText(root, "ShopDetailName", productName);
-        SetSceneText(root, "ShopDetailDescription", string.IsNullOrEmpty(product.description) ? "服务器正式发布商品" : product.description);
-        SetSceneText(root, "ShopDetailReward", "购买内容  " + GetCoinShopRewardName(product) + " ×" + totalReward);
+        SetSceneText(root, "ShopDetailDescription", product.description ?? string.Empty);
+        SetSceneText(root, "ShopDetailReward", "购买内容  " + GetCoinShopRewardName(product) + " x" + totalReward);
         SetSceneText(root, "ShopDetailPrice", GetActiveShopCurrencyLabel() + " " + totalCost + "  (" + pricePerLot + "/批)");
         SetSceneText(root, "ShopPurchaseSummary", shopPurchaseSummary);
         SetSceneText(root, "ShopOwnedCount", GetCoinShopOwnedText(product));
         SetSceneText(root, "ShopStorageModeText", BuildCoinShopLimitText(product));
 
-        Image detailIcon = FindSceneComponent<Image>(root, "ShopDetailIcon");
-        if (detailIcon != null)
-        {
-            detailIcon.color = GetCoinShopIconColor(product);
-        }
-
         ConfigureCoinShopLotControls(root, product);
-        ConfigureCoinShopBuyButton(buyButton, coinShopPurchaseRunning ? "购买中..." : GetActiveShopCurrencyLabel() + " " + totalCost + " 购买", canPurchase);
+        ConfigureCoinShopBuyButton(buyButton, canPurchase);
     }
 
-    private void ConfigureCoinShopBuyButton(Button button, string label, bool interactable)
+    private void ConfigureCoinShopBuyButton(Button button, bool interactable)
     {
         if (button == null)
         {
@@ -361,14 +321,7 @@ public partial class HomePageUI
         }
 
         button.interactable = interactable;
-        SetSceneButtonText(button, label);
-        Image background = button.GetComponent<Image>();
-        if (background != null)
-        {
-            background.color = IsDiamondShopActive()
-                ? new Color(0.28f, 0.66f, 0.82f, 1f)
-                : new Color(0.88f, 0.57f, 0.16f, 1f);
-        }
+        SetSceneButtonText(button, "购买");
         BindSceneButton(button, interactable ? BeginCoinShopPurchase : null);
     }
 
@@ -382,45 +335,7 @@ public partial class HomePageUI
         button.gameObject.SetActive(true);
         button.interactable = HasAuthSession() && !coinShopHistoryLoading;
         SetSceneButtonText(button, "购买记录");
-        Image background = button.GetComponent<Image>();
-        if (background != null)
-        {
-            background.color = new Color(0.30f, 0.57f, 0.52f, 1f);
-        }
         BindSceneButton(button, ShowCoinShopHistory);
-    }
-
-    private void EnsureCoinShopLotControls(Transform root)
-    {
-        Transform purchase = FindSceneTransform(root, "ShopPurchaseBox");
-        if (purchase == null)
-        {
-            return;
-        }
-
-        Text storageText = FindSceneComponent<Text>(purchase, "ShopStorageModeText");
-        if (storageText != null)
-        {
-            SetRect(storageText.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(14f, -104f), new Vector2(132f, 30f));
-        }
-
-        Button openBagButton = FindSceneComponent<Button>(purchase, "ShopOpenBagButton");
-        if (openBagButton != null)
-        {
-            SetRect(openBagButton.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(214f, -142f), new Vector2(144f, 34f));
-        }
-
-        if (FindSceneComponent<Button>(purchase, "ShopLotDecreaseButton") != null)
-        {
-            return;
-        }
-
-        Button decrease = CreateButton(purchase, "ShopLotDecreaseButton", "-", new Color(0.67f, 0.46f, 0.22f, 1f), Color.white);
-        SetRect(decrease.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(152f, -101f), new Vector2(38f, 34f));
-        Text count = CreateText("ShopLotCountText", purchase, "批次 --", 14, FontStyle.Bold, new Color(0.27f, 0.16f, 0.08f, 1f), TextAnchor.MiddleCenter);
-        SetRect(count.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(192f, -101f), new Vector2(74f, 34f));
-        Button increase = CreateButton(purchase, "ShopLotIncreaseButton", "+", new Color(0.31f, 0.62f, 0.45f, 1f), Color.white);
-        SetRect(increase.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(268f, -101f), new Vector2(38f, 34f));
     }
 
     private void ConfigureCoinShopLotControls(Transform root, CoinShopProductResponse product)
@@ -439,7 +354,7 @@ public partial class HomePageUI
 
         if (count != null)
         {
-            count.text = product == null ? "批次 --" : "批次 " + selectedCoinShopLotCount;
+            count.text = product == null ? "数量 --" : "数量 " + selectedCoinShopLotCount;
         }
         if (decrease != null)
         {
@@ -488,6 +403,7 @@ public partial class HomePageUI
         shopPageIndex = 0;
         selectedCoinShopProductId = 0;
         selectedCoinShopLotCount = 0;
+        shopDetailVisible = false;
         coinShopCatalog = null;
         coinShopProducts = new CoinShopProductResponse[0];
         shopPurchaseSummary = "正在读取" + GetActiveShopCurrencyLabel() + "商城商品";
@@ -504,6 +420,7 @@ public partial class HomePageUI
         selectedCoinShopProductId = productId;
         CoinShopProductResponse product = FindCoinShopProduct(productId);
         selectedCoinShopLotCount = product == null ? 0 : ClampCoinShopLots(product, product.minLotsPerOrder);
+        shopDetailVisible = product != null;
         shopPurchaseSummary = product == null
             ? "请选择商品"
             : "可购买 " + GetCoinShopRewardName(product) + "，每批 " + product.rewardQuantityPerLot + " 个";
@@ -518,7 +435,8 @@ public partial class HomePageUI
         shopPageIndex = Mathf.Clamp(shopPageIndex + offset, 0, pageCount - 1);
         selectedCoinShopProductId = 0;
         selectedCoinShopLotCount = 0;
-        shopPurchaseSummary = "选择商品后可按服务器规则调整购买批次";
+        shopDetailVisible = false;
+        shopPurchaseSummary = "选择商品和购买数量";
         RenderShopScenePanel();
     }
 
@@ -532,7 +450,7 @@ public partial class HomePageUI
 
         selectedCoinShopLotCount = ClampCoinShopLots(product, selectedCoinShopLotCount + offset);
         long totalCost = GetCoinShopTotal(GetActiveShopPricePerLot(product), selectedCoinShopLotCount);
-        shopPurchaseSummary = "本次获得 " + GetCoinShopRewardName(product) + " ×"
+        shopPurchaseSummary = "本次获得 " + GetCoinShopRewardName(product) + " x"
             + GetCoinShopTotal(product.rewardQuantityPerLot, selectedCoinShopLotCount) + "，消耗" + GetActiveShopCurrencyLabel() + " " + totalCost;
         RenderShopScenePanel();
     }
@@ -541,7 +459,7 @@ public partial class HomePageUI
     {
         if (!HasAuthSession())
         {
-            shopStatusMessage = "请登录账号后读取服务器商城";
+            shopStatusMessage = "请登录后查看商城";
             shopPurchaseSummary = "商城仅对已登录玩家开放";
             RenderShopScenePanel();
             return;
@@ -592,7 +510,7 @@ public partial class HomePageUI
                     : GetApiError(response);
                 if (apiPrefix == "/diamond-shop" && request.responseCode == 404)
                 {
-                    catalogError = "钻石商城 V41 后端接口尚未部署";
+                    catalogError = "钻石商城暂未开放";
                 }
                 shopStatusMessage = "商城目录读取失败：" + catalogError;
                 RenderShopScenePanel();
@@ -618,10 +536,10 @@ public partial class HomePageUI
         }
 
         shopPurchaseSummary = coinShopCatalog.enabled
-            ? "商品价格、每日额度和可购买批次均以服务器目录为准"
+            ? string.Empty
             : currencyLabel + "商城当前未开放";
         shopStatusMessage = string.IsNullOrEmpty(completionMessage)
-            ? (coinShopCatalog.enabled ? currencyLabel + "商城目录已同步" : currencyLabel + "商城当前未开放")
+            ? (coinShopCatalog.enabled ? string.Empty : currencyLabel + "商城当前未开放")
             : completionMessage;
         RenderShopScenePanel();
     }
@@ -644,7 +562,7 @@ public partial class HomePageUI
         long lotCount = ClampCoinShopLots(product, selectedCoinShopLotCount);
         if (lotCount < product.minLotsPerOrder || lotCount > product.maxPurchasableLots)
         {
-            shopStatusMessage = "购买批次数量不符合当前规则";
+            shopStatusMessage = "购买数量已失效，请刷新商品后重试";
             RenderShopScenePanel();
             return;
         }
@@ -652,7 +570,7 @@ public partial class HomePageUI
         CoinShopPendingPurchase pending = LoadPendingCoinShopPurchase();
         if (pending != null && !IsSameCoinShopPurchase(pending, product.productId, lotCount, coinShopCatalog.configRevision))
         {
-            shopPurchaseSummary = "上次购买结果未知，请先对同一商品和批次重试，不能覆盖幂等请求";
+            shopPurchaseSummary = "上次购买结果尚未确认，请保持原商品和数量，点击重试查询本次结果";
             shopStatusMessage = "存在待确认的购买请求";
             RenderShopScenePanel();
             return;
@@ -692,7 +610,7 @@ public partial class HomePageUI
         {
             coinShopPurchaseRunning = false;
             shopStatusMessage = "无法提交购买：" + error;
-            shopPurchaseSummary = "请求尚未发送，可使用同一商品和批次重试";
+            shopPurchaseSummary = "购买尚未提交，请保持原商品和数量重试";
             RenderShopScenePanel();
             yield break;
         }
@@ -731,9 +649,9 @@ public partial class HomePageUI
                 string failure = response == null
                     ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
                     : GetApiError(response);
-                shopStatusMessage = "购买失败：" + failure;
+                shopStatusMessage = outcomeUncertain ? "购买结果尚未确认" : "购买失败：" + failure;
                 shopPurchaseSummary = outcomeUncertain
-                    ? "网络结果未知，请使用同一商品和批次重试；系统会复用原幂等键"
+                    ? "购买结果尚未确认，请保持原商品和数量，点击重试查询本次结果"
                     : "请根据最新商城规则重新确认购买";
                 RenderShopScenePanel();
                 if (refreshRequired)
@@ -981,14 +899,6 @@ public partial class HomePageUI
         {
             return "体力";
         }
-        if (!string.IsNullOrEmpty(product.rewardKey))
-        {
-            return product.rewardKey;
-        }
-        if (string.Equals(product.rewardType, "STAMINA", StringComparison.OrdinalIgnoreCase))
-        {
-            return "体力";
-        }
         return string.Equals(product.rewardType, "EQUIPMENT", StringComparison.OrdinalIgnoreCase) ? "装备" : "物品";
     }
 
@@ -998,12 +908,143 @@ public partial class HomePageUI
         return string.IsNullOrEmpty(label) ? "商" : label.Substring(0, 1);
     }
 
-    private static Color GetCoinShopIconColor(CoinShopProductResponse product)
+    private void ConfigureShopProductIcon(
+        Transform root,
+        CoinShopProductResponse product,
+        string imageObjectName,
+        string fallbackTextObjectName)
     {
-        string category = GetCoinShopCategory(product);
-        if (category == "resource") return new Color(0.34f, 0.68f, 0.31f, 1f);
-        if (category == "growth") return new Color(0.58f, 0.47f, 0.77f, 1f);
-        return new Color(0.28f, 0.62f, 0.76f, 1f);
+        Image image = null;
+        if (imageObjectName == "ShopProductIcon")
+        {
+            Transform iconFrame = FindSceneTransform(root, "ShopProductIcon");
+            image = FindSceneComponent<Image>(iconFrame, "Image");
+        }
+        else
+        {
+            image = FindSceneComponent<Image>(root, imageObjectName);
+        }
+
+        if (image == null)
+        {
+            if (imageObjectName != "ShopProductIcon")
+            {
+                image = FindSceneComponent<Image>(root, "ShopDetailIcon");
+            }
+        }
+
+        TMP_Text fallback = FindSceneComponent<TMP_Text>(root, fallbackTextObjectName);
+        if (fallback == null)
+        {
+            fallback = FindSceneComponent<TMP_Text>(root, fallbackTextObjectName == "ProductIconText" ? "ShopProductIconText" : "ShopDetailIconText");
+        }
+        Sprite sprite = ResolveShopProductSprite(product);
+
+        if (image != null)
+        {
+            image.sprite = sprite;
+            image.enabled = sprite != null;
+        }
+
+        if (fallback != null)
+        {
+            fallback.gameObject.SetActive(sprite == null);
+            fallback.text = GetCoinShopIconText(product);
+        }
+    }
+
+    private Sprite ResolveShopProductSprite(CoinShopProductResponse product)
+    {
+        if (product == null)
+        {
+            return null;
+        }
+
+        if (string.Equals(product.rewardType, "EQUIPMENT", StringComparison.OrdinalIgnoreCase))
+        {
+            string[] equipmentIconKeys =
+            {
+                product.productIcon,
+                product.rewardIcon,
+                product.rewardKey,
+                product.rewardName,
+                product.displayName,
+                product.productCode
+            };
+            for (int candidateIndex = 0; candidateIndex < equipmentIconKeys.Length; candidateIndex++)
+            {
+                Sprite equipmentSprite = ResolveEquipmentSprite(equipmentIconKeys[candidateIndex]);
+                if (equipmentSprite != null)
+                {
+                    return equipmentSprite;
+                }
+            }
+            return null;
+        }
+
+        string[] candidates =
+        {
+            product.rewardKey,
+            product.rewardName,
+            product.productIcon,
+            product.productCode,
+            product.rewardIcon
+        };
+        for (int i = 0; i < candidates.Length; i++)
+        {
+            string assetPath = GetShopIconAssetPath(candidates[i]);
+            if (string.IsNullOrEmpty(assetPath))
+            {
+                continue;
+            }
+
+            Sprite sprite = LoadSpriteFromAsset(assetPath);
+            if (sprite != null)
+            {
+                return sprite;
+            }
+        }
+
+        return null;
+    }
+
+    private static string GetShopIconAssetPath(string value)
+    {
+        string key = (value ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(key))
+        {
+            return string.Empty;
+        }
+
+        if (key.IndexOf("/") >= 0)
+        {
+            string normalizedPath = key.Replace("\\", "/");
+            if (!normalizedPath.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
+                && !normalizedPath.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
+                && !normalizedPath.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedPath += ".png";
+            }
+            return normalizedPath;
+        }
+
+        string normalized = key.ToLowerInvariant();
+        if (normalized.Contains("gold") || key.Contains("金币")) return "UI/资源图标/金币.png";
+        if (normalized.Contains("diamond") || normalized.Contains("crystal") || key.Contains("钻石")) return "UI/资源图标/万能彩墨.png";
+        if (normalized.Contains("wood") || key.Contains("木材")) return "UI/资源图标/木材.png";
+        if (normalized.Contains("stone") || key.Contains("石材")) return "UI/资源图标/石材.png";
+        if (normalized.Contains("iron") || normalized.Contains("ore") || key.Contains("矿")) return "UI/资源图标/矿石.png";
+        if (normalized.Contains("wheat") || key.Contains("小麦")) return "UI/资源图标/小麦.png";
+        if (normalized.Contains("fish") || key.Contains("鱼")) return "UI/资源图标/鱼.png";
+        if (normalized.Contains("meat") || key.Contains("肉")) return "UI/资源图标/肉.png";
+        if (normalized.Contains("bread") || normalized.Contains("food") || key.Contains("面包") || key.Contains("食物")) return "UI/资源图标/面包.png";
+        if (normalized.Contains("metal") || key.Contains("金属")) return "UI/资源图标/金属.png";
+        if (normalized.Contains("purification") || key.Contains("净化剂")) return "UI/资源图标/净化剂.png";
+        if (normalized.Contains("stamina") || key.Contains("体力")) return "UI/资源图标/体力.png";
+        if (normalized.Contains("chest") || key.Contains("宝箱")) return "UI/资源图标/宝箱（未打开）.png";
+        if (normalized.Contains("sword") || normalized.Contains("weapon") || normalized.Contains("equipment")
+            || key.Contains("短剑") || key.Contains("装备")) return "UI/图标/主图标/装备.png";
+        return string.Empty;
     }
 
     private string GetCoinShopOwnedText(CoinShopProductResponse product)
@@ -1076,9 +1117,9 @@ public partial class HomePageUI
         }
         string name = !string.IsNullOrEmpty(result.rewardName)
             ? result.rewardName
-            : (!string.IsNullOrEmpty(result.rewardKey) ? result.rewardKey : "奖励");
+            : "奖励";
         if (string.Equals(result.rewardType, "STAMINA", StringComparison.OrdinalIgnoreCase)) name = "体力";
-        return name + " ×" + result.grantedQuantity;
+        return name + " x" + result.grantedQuantity;
     }
 
     private string GetPendingCoinShopPurchaseKey()
@@ -1123,8 +1164,14 @@ public partial class HomePageUI
         }
 
         EnsureCoinShopHistoryPanel(GetRegisteredScenePanel(HomePageScenePanelType.Shop).PanelRoot);
+        if (coinShopHistoryPanelObject == null || coinShopHistoryBlockerObject == null)
+        {
+            Debug.LogWarning("CoinShopHistoryPanel or ShopDetailBlocker is missing from the ShopPanel scene hierarchy.", this);
+            return;
+        }
+        PlaceCoinShopHistoryBlockerBehindPanel();
+        coinShopHistoryBlockerObject.SetActive(true);
         coinShopHistoryPanelObject.SetActive(true);
-        coinShopHistoryPanelObject.transform.SetAsLastSibling();
         coinShopHistoryCursors.Clear();
         coinShopHistoryCursors.Add(0);
         coinShopHistoryItems = new CoinShopPurchaseHistoryItem[0];
@@ -1137,34 +1184,28 @@ public partial class HomePageUI
 
     private void EnsureCoinShopHistoryPanel(Transform root)
     {
-        if (coinShopHistoryPanelObject != null || root == null)
+        if (root == null)
         {
             return;
         }
 
-        Image panel = CreateImage("CoinShopHistoryPanel", root, new Color(0.98f, 0.90f, 0.68f, 1f));
-        coinShopHistoryPanelObject = panel.gameObject;
-        SetRect(panel.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(316f, -152f), new Vector2(800f, 500f));
+        if (coinShopHistoryPanelObject == null)
+        {
+            Transform historyPanel = FindSceneTransform(root, "CoinShopHistoryPanel");
+            if (historyPanel != null)
+            {
+                coinShopHistoryPanelObject = historyPanel.gameObject;
+            }
+        }
 
-        Image header = CreateImage("CoinShopHistoryHeader", panel.transform, new Color(0.17f, 0.42f, 0.36f, 1f));
-        SetRect(header.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), Vector2.zero, new Vector2(800f, 58f));
-        Text title = CreateText("CoinShopHistoryTitle", header.transform, "商城购买记录", 24, FontStyle.Bold, Color.white, TextAnchor.MiddleLeft);
-        SetRect(title.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(22f, -8f), new Vector2(400f, 38f));
-        Button close = CreateButton(header.transform, "CoinShopHistoryCloseButton", "关闭", new Color(0.84f, 0.30f, 0.24f, 1f), Color.white);
-        SetRect(close.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(740f, -8f), new Vector2(42f, 42f));
-
-        Text status = CreateText("CoinShopHistoryStatus", panel.transform, string.Empty, 15, FontStyle.Normal, new Color(0.36f, 0.22f, 0.11f, 1f), TextAnchor.MiddleLeft);
-        SetRect(status.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(22f, -72f), new Vector2(740f, 28f));
-        Text list = CreateText("CoinShopHistoryList", panel.transform, string.Empty, 16, FontStyle.Normal, new Color(0.31f, 0.18f, 0.09f, 1f), TextAnchor.UpperLeft);
-        SetRect(list.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(24f, -108f), new Vector2(752f, 288f));
-        Button previous = CreateButton(panel.transform, "CoinShopHistoryPreviousButton", "<", new Color(0.38f, 0.60f, 0.54f, 1f), Color.white);
-        SetRect(previous.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(490f, -436f), new Vector2(46f, 40f));
-        Text page = CreateText("CoinShopHistoryPageText", panel.transform, "1", 16, FontStyle.Bold, new Color(0.30f, 0.17f, 0.08f, 1f), TextAnchor.MiddleCenter);
-        SetRect(page.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(542f, -438f), new Vector2(100f, 36f));
-        Button next = CreateButton(panel.transform, "CoinShopHistoryNextButton", ">", new Color(0.38f, 0.60f, 0.54f, 1f), Color.white);
-        SetRect(next.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(648f, -436f), new Vector2(46f, 40f));
-        Button refresh = CreateButton(panel.transform, "CoinShopHistoryRefreshButton", "刷新", new Color(0.84f, 0.59f, 0.22f, 1f), new Color(0.28f, 0.16f, 0.06f, 1f));
-        SetRect(refresh.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(704f, -436f), new Vector2(72f, 40f));
+        if (coinShopHistoryBlockerObject == null)
+        {
+            Transform historyBlocker = FindSceneTransform(root, "ShopDetailBlocker");
+            if (historyBlocker != null)
+            {
+                coinShopHistoryBlockerObject = historyBlocker.gameObject;
+            }
+        }
     }
 
     private void RenderCoinShopHistory(string status)
@@ -1175,6 +1216,7 @@ public partial class HomePageUI
         }
 
         Transform root = coinShopHistoryPanelObject.transform;
+        ConfigureCoinShopHistoryPresentation(root);
         string currencyLabel = GetActiveShopCurrencyLabel();
         SetSceneText(root, "CoinShopHistoryTitle", currencyLabel + "商城购买记录");
         SetSceneText(root, "CoinShopHistoryStatus", status);
@@ -1214,20 +1256,61 @@ public partial class HomePageUI
                 {
                     continue;
                 }
-                string rewardName = string.IsNullOrEmpty(item.rewardName) ? item.rewardKey : item.rewardName;
-                historyText.Append('#').Append(item.orderId).Append("  ")
-                    .Append(string.IsNullOrEmpty(item.productName) ? item.productCode : item.productName)
-                    .Append("  批次 ").Append(item.lotCount).Append('\n')
-        .Append("获得 ").Append(rewardName).Append(" ×").Append(item.grantedQuantity)
+                string rewardName = string.IsNullOrEmpty(item.rewardName) ? "商品奖励" : item.rewardName;
+                historyText.Append(string.IsNullOrEmpty(item.productName) ? "商品" : item.productName)
+                    .Append(" ×").Append(item.lotCount).Append('\n')
+                    .Append("获得 ").Append(rewardName).Append(" ×").Append(item.grantedQuantity)
                     .Append("，消耗").Append(currencyLabel).Append(' ').Append(IsDiamondShopActive() ? item.chargedDiamond : item.chargedGold)
-                    .Append("，余额 ").Append(IsDiamondShopActive() ? item.diamondBalanceAfter : item.goldBalanceAfter).Append('\n');
+                    .Append('\n');
                 if (i + 1 < coinShopHistoryItems.Length)
                 {
                     historyText.Append('\n');
                 }
             }
         }
-        SetSceneText(root, "CoinShopHistoryList", historyText.ToString());
+        SetSceneText(root, "CoinShopHistoryList", historyText.ToString().TrimEnd());
+        TMP_Text historyBody = FindSceneComponent<TMP_Text>(root, "CoinShopHistoryList");
+        if (historyBody != null) EnsureReadableBodyScroll(historyBody, 17f);
+    }
+
+    private static void ConfigureCoinShopHistoryPresentation(Transform root)
+    {
+        Image paper = root.GetComponent<Image>();
+        Sprite approved = Resources.Load<Sprite>("UI/ApprovedUi/Panels/PaperPanel");
+        if (paper != null && approved != null)
+        {
+            paper.overrideSprite = null;
+            paper.sprite = approved;
+            paper.color = Color.white;
+            paper.preserveAspect = false;
+        }
+        PlaceReadableRect(root, "CoinShopHistoryTitle", 64f, 44f, 650f, 46f);
+        PlaceReadableRect(root, "CoinShopHistoryStatus", 88f, 108f, 646f, 24f);
+        PlaceReadableRect(root, "CoinShopHistoryList", 88f, 134f, 646f, 286f);
+        TMP_Text title = FindSceneComponent<TMP_Text>(root, "CoinShopHistoryTitle");
+        TMP_Text status = FindSceneComponent<TMP_Text>(root, "CoinShopHistoryStatus");
+        TMP_Text body = FindSceneComponent<TMP_Text>(root, "CoinShopHistoryList");
+        if (title != null)
+        {
+            title.fontSize = 30f;
+            title.enableAutoSizing = false;
+            title.enableWordWrapping = false;
+            title.color = new Color(.30f, .21f, .16f, 1f);
+        }
+        if (status != null)
+        {
+            status.fontSize = 16f;
+            status.enableAutoSizing = false;
+            status.color = new Color(.44f, .35f, .25f, 1f);
+        }
+        if (body != null)
+        {
+            body.color = new Color(.30f, .21f, .16f, 1f);
+            body.richText = false;
+        }
+        ConfigureReadableButtonLabel(root, "CoinShopHistoryPreviousButton", 18f);
+        ConfigureReadableButtonLabel(root, "CoinShopHistoryNextButton", 18f);
+        ConfigureReadableButtonLabel(root, "CoinShopHistoryRefreshButton", 18f);
     }
 
     private void HideCoinShopHistory()
@@ -1236,6 +1319,35 @@ public partial class HomePageUI
         {
             coinShopHistoryPanelObject.SetActive(false);
         }
+        if (coinShopHistoryBlockerObject != null)
+        {
+            coinShopHistoryBlockerObject.SetActive(shopDetailVisible);
+        }
+    }
+
+    private bool IsCoinShopHistoryVisible()
+    {
+        return coinShopHistoryPanelObject != null && coinShopHistoryPanelObject.activeSelf;
+    }
+
+    private void PlaceCoinShopHistoryBlockerBehindPanel()
+    {
+        if (coinShopHistoryPanelObject == null || coinShopHistoryBlockerObject == null)
+        {
+            return;
+        }
+
+        Transform panelTransform = coinShopHistoryPanelObject.transform;
+        Transform blockerTransform = coinShopHistoryBlockerObject.transform;
+        if (panelTransform.parent == null || blockerTransform.parent != panelTransform.parent)
+        {
+            return;
+        }
+
+        int panelIndex = panelTransform.GetSiblingIndex();
+        int blockerIndex = blockerTransform.GetSiblingIndex();
+        int targetIndex = blockerIndex < panelIndex ? panelIndex - 1 : panelIndex;
+        blockerTransform.SetSiblingIndex(Mathf.Max(0, targetIndex));
     }
 
     private void RefreshCoinShopHistory()
@@ -1326,7 +1438,7 @@ public partial class HomePageUI
         }
 
         coinShopHistoryLoading = false;
-        RenderCoinShopHistory("已读取 " + coinShopHistoryItems.Length + " 条购买记录");
+        RenderCoinShopHistory(string.Empty);
     }
 
     private void HandleCoinShopPurchaseRealtime(CoinShopPurchaseResult result, string eventId)
@@ -1369,12 +1481,24 @@ public partial class HomePageUI
     private void HideShopPanel()
     {
         HideCoinShopHistory();
+        HideCoinShopDetail();
         HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.Shop);
         if (panel != null)
         {
             panel.SetVisible(false);
         }
         shopPanelObject = null;
+    }
+
+    private void HideCoinShopDetail()
+    {
+        shopDetailVisible = false;
+        HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.Shop);
+        if (panel != null)
+        {
+            SetSceneObjectActive(panel.PanelRoot, "ShopDetailBlocker", IsCoinShopHistoryVisible());
+            SetSceneObjectActive(panel.PanelRoot, "ShopDetail", false);
+        }
     }
 
 #pragma warning disable 0649

@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using TMPro;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -13,11 +14,29 @@ public partial class HomePageUI
     private string pendingServerTaskCode = string.Empty;
 
     private SignInOverviewData serverSignInOverview;
+    private const int SupportedSignInContractVersion = 2;
+    private const int DailySignColumns = 5;
+    private const int DailySignVisibleRows = 2;
     private string serverSignPlanCode = "MONTHLY";
     private string serverSignStatus = string.Empty;
-    private int serverSignPage;
+    private readonly List<Transform> _dailySignCards = new List<Transform>();
+    private RectTransform _dailySignContent;
+    private RectTransform _dailySignCardTemplate;
+    private int _dailySignFocusDay;
+    private bool _dailySignResetScroll;
+    private readonly List<Transform> _activitySignCards = new List<Transform>();
+    private readonly List<Vector2> _activitySignCardPositions = new List<Vector2>();
+    private RectTransform _activitySignCardParent;
+    private RectTransform _activitySignCardTemplate;
+    private int _activitySignPage;
+    private readonly List<Button> _activityTypeButtons = new List<Button>();
+    private Transform _activityTypeRoot;
     private bool serverSignOverviewRunning;
     private bool serverSignMutationRunning;
+    private bool serverSignOverviewReady;
+    private bool serverSignFocusCurrentDay;
+    private GameObject signMakeupConfirmObject;
+    private int signConfirmationVersion;
 
     private CardDrawPoolData serverCardDrawPool;
     private bool serverCardDrawPoolRunning;
@@ -41,7 +60,7 @@ public partial class HomePageUI
         if (boundBookView != null)
         {
             SetBookMetricValue(boundBookView.MetricTexts, 0, GetHomePurificationAgent().ToString());
-            SetBookMetricValue(boundBookView.MetricTexts, 1, GetHomeStamina().ToString());
+            SetBookMetricValue(boundBookView.MetricTexts, 1, GetHomeStaminaDisplay());
             SetBookMetricValue(boundBookView.MetricTexts, 2, PlayerPrefs.GetInt("Gold", 1000).ToString());
             SetBookMetricValue(boundBookView.MetricTexts, 3, PlayerPrefs.GetInt("Crystal", 0).ToString());
         }
@@ -52,17 +71,17 @@ public partial class HomePageUI
 
         if (popupLevelText != null)
         {
-            popupLevelText.text = FrontendTextLocalization.Normalize($"等级：{PlayerPrefs.GetInt("PlayerLv", 1)}");
+            popupLevelText.text = $"等级：Lv.{PlayerPrefs.GetInt("PlayerLv", 1)}";
         }
 
         if (popupResourceText != null)
         {
-            popupResourceText.text = FrontendTextLocalization.Normalize(
+            popupResourceText.text =
                 $"金币：{PlayerPrefs.GetInt("Gold", 1000)}\n" +
                 $"钻石：{PlayerPrefs.GetInt("Crystal", 0)}\n" +
                 $"木材：{PlayerPrefs.GetInt("Wood", 500)}\n" +
                 $"石材：{PlayerPrefs.GetInt("Stone", 500)}\n" +
-                $"铁矿：{PlayerPrefs.GetInt("Iron", 300)}");
+                $"铁矿：{PlayerPrefs.GetInt("Iron", 300)}";
         }
     }
 
@@ -75,10 +94,6 @@ public partial class HomePageUI
         }
 
         Transform root = profilePanel.PanelRoot;
-        SetSceneText(root, "ProfileGold", PlayerPrefs.GetInt("Gold", 1000).ToString());
-        SetSceneText(root, "ProfileWood", PlayerPrefs.GetInt("Wood", 500).ToString());
-        SetSceneText(root, "ProfileStone", PlayerPrefs.GetInt("Stone", 500).ToString());
-        SetSceneText(root, "ProfileIron", PlayerPrefs.GetInt("Iron", 300).ToString());
         SetSceneText(root, "ProfileVital", $"生命  {PlayerPrefs.GetInt("PlayerHp", 1000)}    体力  {GetHomeStamina()}");
     }
 
@@ -91,7 +106,7 @@ public partial class HomePageUI
     {
         activeTaskCategory = NormalizeServerTaskCategory(category);
         pendingServerTaskCode = (taskCode ?? string.Empty).Trim();
-        string message = serverTaskListRunning ? "正在同步服务器任务..." : "正在读取服务器任务...";
+        string message = serverTaskListRunning ? "正在刷新任务..." : "正在加载任务...";
         ShowTaskPanel(activeTaskCategory, message);
         if (!serverTaskListRunning)
         {
@@ -144,11 +159,10 @@ public partial class HomePageUI
                 }
             }
             serverTaskListRunning = false;
-            string period = activeTaskCategory == "main" ? response.data.weeklyPeriodKey : response.data.dailyPeriodKey;
             ShowTaskPanel(activeTaskCategory, BuildTaskRefreshStatus(
                 claimFailureMessage,
                 true,
-                $"服务器周期 {period} · {response.data.businessTime}"));
+                string.Empty));
         }
     }
 
@@ -229,7 +243,7 @@ public partial class HomePageUI
 
             result.Add(new TaskDisplayItem(
                 string.IsNullOrEmpty(task.taskCode) ? task.id.ToString() : task.taskCode,
-                string.IsNullOrEmpty(task.taskName) ? "服务器任务" : task.taskName,
+                string.IsNullOrEmpty(task.taskName) ? "任务" : task.taskName,
                 description,
                 ClampLongToInt(task.progressAmount, 0),
                 ClampLongToInt(task.targetAmount, 1),
@@ -306,6 +320,7 @@ public partial class HomePageUI
             serverTaskClaimRunning = false;
             long granted = response.data.experienceGrant != null ? response.data.experienceGrant.grantedExperience : 0L;
             ShowTaskPanel(activeTaskCategory, granted > 0 ? $"领取成功：经验 +{granted}" : "任务奖励已领取");
+            PlayerOnboardingManager.NotifyBusinessSucceeded();
         }
     }
 
@@ -387,7 +402,7 @@ public partial class HomePageUI
                 TaskRewardSnapshot reward = task.fixedRewards[i];
                 if (reward == null) continue;
                 string name = string.IsNullOrEmpty(reward.assetName) ? reward.assetKey : reward.assetName;
-            if (!string.IsNullOrEmpty(name)) rewards.Add(name + " ×" + Math.Max(0, reward.quantity));
+                if (!string.IsNullOrEmpty(name)) rewards.Add(name + " x" + Math.Max(0, reward.quantity));
             }
         }
 
@@ -403,11 +418,11 @@ public partial class HomePageUI
             else if (!string.IsNullOrEmpty(task.randomNpcPoolName))
             {
                 rewards.Add(task.randomNpcPoolName
-                + (task.randomNpcDrawCount > 0 ? $" ×{task.randomNpcDrawCount}" : string.Empty));
+                    + (task.randomNpcDrawCount > 0 ? $" x{task.randomNpcDrawCount}" : string.Empty));
             }
         }
 
-        if (task != null && task.experienceReward > 0) rewards.Add("经验 ×" + task.experienceReward);
+        if (task != null && task.experienceReward > 0) rewards.Add("经验 x" + task.experienceReward);
         return rewards.Count == 0 ? "无固定奖励" : string.Join("、", rewards.ToArray());
     }
 
@@ -440,7 +455,7 @@ public partial class HomePageUI
                 break;
             }
 
-            string description = name + " ×" + Math.Max(0, candidate.quantity);
+            string description = name + " x" + Math.Max(0, candidate.quantity);
             if (!string.IsNullOrEmpty(candidate.assetQuality))
             {
                 description += " [" + candidate.assetQuality + "]";
@@ -463,7 +478,7 @@ public partial class HomePageUI
                     : compensation.itemName;
                 if (!string.IsNullOrEmpty(compensationName))
                 {
-                    description += " [重复→" + compensationName + " ×"
+                    description += " [重复→" + compensationName + " x"
                         + Math.Max(0, compensation.quantity) + "]";
                 }
             }
@@ -478,10 +493,10 @@ public partial class HomePageUI
         }
 
         string poolName = string.IsNullOrEmpty(task.randomNpcPoolName)
-            ? "随机居民"
+            ? "随机NPC"
             : task.randomNpcPoolName;
         string drawCount = task.randomNpcDrawCount > 0
-            ? " ×" + task.randomNpcDrawCount
+            ? " x" + task.randomNpcDrawCount
             : string.Empty;
         string suffix = task.randomNpcCandidates.Length > shown ? " 等" : string.Empty;
         return poolName + drawCount + "：" + string.Join(" / ", candidates.ToArray()) + suffix;
@@ -511,7 +526,7 @@ public partial class HomePageUI
                     : (!string.IsNullOrEmpty(grant.selectedNpcName)
                         ? grant.selectedNpcName
                         : grant.grantedAssetKey);
-            if (!string.IsNullOrEmpty(name)) names.Add(name + " ×" + Math.Max(0L, grant.grantedQuantity));
+                if (!string.IsNullOrEmpty(name)) names.Add(name + " x" + Math.Max(0L, grant.grantedQuantity));
             }
         }
 
@@ -567,20 +582,25 @@ public partial class HomePageUI
 
     private void OpenServerSignIn(string planCode)
     {
-        string normalizedPlanCode = (planCode ?? string.Empty).Trim().ToUpperInvariant();
+        string normalizedPlanCode = (planCode ?? string.Empty).Trim();
         serverSignPlanCode = string.IsNullOrEmpty(normalizedPlanCode) ? "MONTHLY" : normalizedPlanCode;
-        serverSignPage = 0;
-        serverSignStatus = "正在读取服务器签到配置...";
+        _dailySignResetScroll = true;
+        _dailySignFocusDay = 0;
+        _activitySignPage = 0;
+        serverSignInOverview = null;
+        serverSignOverviewReady = false;
+        serverSignFocusCurrentDay = true;
+        serverSignStatus = "正在加载签到奖励...";
         ShowCurrentServerSignPanel();
         if (!serverSignOverviewRunning)
         {
-            StartCoroutine(GetServerSignInOverview());
+            StartCoroutine(GetServerSignInOverview(null, true));
         }
     }
 
     private void ShowCurrentServerSignPanel()
     {
-        if (serverSignPlanCode == "NEWBIE")
+        if (!string.Equals(serverSignPlanCode, "MONTHLY", StringComparison.OrdinalIgnoreCase))
         {
             ShowNewbieSignPanel(0, serverSignStatus);
         }
@@ -590,48 +610,153 @@ public partial class HomePageUI
         }
     }
 
-    private IEnumerator GetServerSignInOverview()
+    private void RefreshVisibleServerSignPanel()
     {
-        serverSignOverviewRunning = true;
-        UnityWebRequest request = CreateAuthorizedGet("/sign-in/overview");
-        if (request == null)
+        if (signPanelObject == null || !signPanelObject.activeInHierarchy)
         {
-            serverSignOverviewRunning = false;
-            serverSignStatus = requestCreationError;
-            ShowCurrentServerSignPanel();
+            return;
+        }
+
+        HomePageScenePanel panel = signPanelObject.GetComponent<HomePageScenePanel>();
+        if (panel != null)
+        {
+            if (panel.PanelType == HomePageScenePanelType.NewbieSign)
+            {
+                ConfigureActivitySignPanel(panel.PanelRoot, serverSignStatus);
+            }
+            else
+            {
+                ConfigureServerSignScenePanel(panel.PanelRoot, serverSignPlanCode, serverSignStatus);
+            }
+        }
+    }
+
+    private void RefreshServerSignInStatus()
+    {
+        if (HasAuthSession() && isActiveAndEnabled && !serverSignOverviewRunning && !serverSignMutationRunning)
+        {
+            HideSignMakeupConfirmation();
+            StartCoroutine(GetServerSignInOverview());
+        }
+    }
+
+    private IEnumerator GetServerSignInOverview(string resultStatus = null, bool focusCurrentDay = false)
+    {
+        while (serverSignOverviewRunning)
+        {
+            yield return null;
+        }
+        if (!HasAuthSession())
+        {
             yield break;
         }
 
-        using (request)
+        serverSignOverviewRunning = true;
+        serverSignOverviewReady = false;
+        RefreshVisibleServerSignPanel();
+        string requestToken = GameSession.Token;
+        try
         {
-            yield return request.SendWebRequest();
-            if (HandleUnauthorizedResponse(request))
+            UnityWebRequest request = CreateAuthorizedGet("/sign-in/overview");
+            if (request == null)
             {
                 serverSignOverviewRunning = false;
+                serverSignStatus = string.IsNullOrEmpty(resultStatus) ? requestCreationError : resultStatus + "；概览刷新失败：" + requestCreationError;
+                RefreshVisibleServerSignPanel();
                 yield break;
             }
 
-            SignInOverviewApiResponse response = ParseJson<SignInOverviewApiResponse>(request.downloadHandler.text);
-            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+            using (request)
             {
-                serverSignOverviewRunning = false;
-                serverSignStatus = "签到同步失败：" + (response == null
-                    ? ApiRequestUtility.GetErrorMessage(request, "返回数据格式错误")
-                    : GetApiError(response));
-                ShowCurrentServerSignPanel();
-                yield break;
-            }
+                yield return request.SendWebRequest();
+                if (!string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal))
+                {
+                    yield break;
+                }
+                if (HandleUnauthorizedResponse(request))
+                {
+                    serverSignOverviewRunning = false;
+                    yield break;
+                }
 
-            serverSignInOverview = response.data;
+                SignInOverviewApiResponse response = ParseJson<SignInOverviewApiResponse>(request.downloadHandler.text);
+                if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+                {
+                    serverSignOverviewRunning = false;
+                    bool versionRejected = request.responseCode == 426 || response != null && response.code == 6009;
+                    serverSignStatus = versionRejected
+                        ? "请更新游戏版本后领取签到奖励"
+                        : "签到同步失败：" + (response == null
+                            ? ApiRequestUtility.GetErrorMessage(request, "返回数据格式错误")
+                            : GetApiError(response));
+                    if (versionRejected)
+                    {
+                        Debug.LogWarning(
+                            "签到接口拒绝当前客户端版本：HTTP=" + request.responseCode
+                            + ", code=" + (response == null ? 0 : response.code)
+                            + ", clientVersion=" + ApiRuntimeConfig.GetClientVersionCode(),
+                            this);
+                    }
+                    if (!string.IsNullOrEmpty(resultStatus)) serverSignStatus = resultStatus + "；" + serverSignStatus;
+                    RefreshVisibleServerSignPanel();
+                    yield break;
+                }
+
+                serverSignInOverview = response.data;
+                serverSignOverviewReady = true;
+                serverSignOverviewRunning = false;
+                SignInPlanResponse plan = FindServerSignPlan(serverSignPlanCode);
+                if (plan == null)
+                {
+                    serverSignStatus = !string.IsNullOrEmpty(resultStatus)
+                        ? resultStatus + "；当前签到计划未开放"
+                        : "当前签到计划未开放：" + serverSignPlanCode;
+                    Debug.LogWarning(
+                        "签到接口未返回请求的计划：requested=" + serverSignPlanCode
+                        + ", plans=" + FormatSignInPlanCodes(serverSignInOverview.plans),
+                        this);
+                }
+                else if (plan.days == null || plan.days.Length == 0)
+                {
+                    serverSignStatus = !string.IsNullOrEmpty(resultStatus)
+                        ? resultStatus + "；当前签到计划没有 days 数据"
+                        : "当前签到计划没有可展示的签到数据";
+                    Debug.LogWarning(
+                        "签到接口返回空 days：plan=" + plan.planCode
+                        + ", rewardMode=" + plan.rewardMode
+                        + ", rewardWindowDays=" + plan.rewardWindowDays,
+                        this);
+                }
+                else if (!IsSignInPlanVersionSupported(plan))
+                {
+                    serverSignStatus = !string.IsNullOrEmpty(resultStatus)
+                        ? resultStatus + "；请更新游戏版本后查看签到奖励"
+                        : "请更新游戏版本后查看签到奖励";
+                    Debug.LogWarning(
+                        "签到计划版本高于客户端：plan=" + plan.planCode
+                        + ", contractVersion=" + plan.contractVersion
+                        + ", minimumClientVersionCode=" + plan.minimumClientVersionCode
+                        + ", clientVersion=" + ApiRuntimeConfig.GetClientVersionCode(),
+                        this);
+                }
+                else
+                {
+                    serverSignStatus = !string.IsNullOrEmpty(resultStatus) ? resultStatus : string.Empty;
+                }
+                if ((focusCurrentDay || serverSignFocusCurrentDay) && plan != null && IsMonthlySignPlan(serverSignPlanCode) && plan.currentDay > 0)
+                {
+                    _dailySignFocusDay = plan.currentDay;
+                }
+                serverSignFocusCurrentDay = false;
+                RefreshVisibleServerSignPanel();
+                RefreshSignInEntryBadges();
+            }
+        }
+        finally
+        {
             serverSignOverviewRunning = false;
-            SignInPlanResponse plan = FindServerSignPlan(serverSignPlanCode);
-            serverSignStatus = plan == null ? "当前签到计划未开放" : "签到配置已同步";
-            if (plan != null && serverSignPlanCode == "MONTHLY" && plan.currentDay > 0)
-            {
-                serverSignPage = Mathf.Max(0, (plan.currentDay - 1) / 14);
-            }
-            ClampServerSignPage(plan);
-            ShowCurrentServerSignPanel();
+            RefreshVisibleServerSignPanel();
+            RefreshSignInEntryBadges();
         }
     }
 
@@ -639,32 +764,75 @@ public partial class HomePageUI
     {
         serverSignPlanCode = planCode;
         SignInPlanResponse plan = FindServerSignPlan(planCode);
-        int cardCount = planCode == "NEWBIE" ? 3 : 14;
-        string prefix = planCode == "NEWBIE" ? "NewbieSignCard" : "DailySignCard";
-        string statusName = planCode == "NEWBIE" ? "NewbieSignStatus" : "DailySignStatus";
-        int pageSize = planCode == "NEWBIE" ? 3 : 14;
-        ClampServerSignPage(plan);
+        SignInDayResponse[] days = plan == null || plan.days == null ? new SignInDayResponse[0] : plan.days;
+        if (plan != null && !IsSignInPlanVersionSupported(plan))
+        {
+            days = new SignInDayResponse[0];
+        }
+        if (days.Length > 0)
+        {
+            List<SignInDayResponse> availableDays = new List<SignInDayResponse>();
+            for (int index = 0; index < days.Length; index++)
+            {
+                if (days[index] != null) availableDays.Add(days[index]);
+            }
+            days = availableDays.ToArray();
+        }
+        int cardCount = days.Length;
+        bool activityPlan = FindSceneTransform(root, "ActivityType") != null;
+        string prefix = activityPlan ? "NewbieSignCard" : "DailySignCard";
+        string statusName = activityPlan ? "NewbieSignStatus" : "DailySignStatus";
+        List<Transform> activityCards = activityPlan ? PrepareActivitySignSceneCards(root, cardCount) : null;
+        List<Transform> dailyCards = IsMonthlySignPlan(planCode) ? PrepareDailySignSceneCards(root, cardCount) : null;
+
+        ConfigureServerSignRefreshButton(root, planCode);
+        if (activityPlan)
+        {
+            ConfigureActivityTypeButtons(root);
+            ConfigureActivityDetails(root, plan);
+        }
 
         if (plan == null)
         {
-            for (int i = 0; i < cardCount; i++)
+            int missingCardCount = activityCards != null ? activityCards.Count : dailyCards != null ? dailyCards.Count : cardCount;
+            for (int i = 0; i < missingCardCount; i++)
             {
-                Transform missingCard = FindSceneTransform(root, prefix + (i + 1));
+                Transform missingCard = activityCards != null ? activityCards[i]
+                    : dailyCards != null ? dailyCards[i] : FindSceneTransform(root, prefix + (i + 1));
                 if (missingCard != null)
                 {
                     missingCard.gameObject.SetActive(false);
                 }
             }
             SetSceneText(root, statusName, string.IsNullOrEmpty(status) ? "当前签到计划未开放" : status);
-            ConfigureServerSignPaging(root, 1);
+            if (activityCards != null) ConfigureActivityPaging(root, 1);
             return;
         }
 
-        int firstDayIndex = serverSignPage * pageSize;
-        SignInDayResponse[] days = plan.days ?? new SignInDayResponse[0];
-        for (int i = 0; i < cardCount; i++)
+        if (dailyCards != null)
         {
-            Transform card = FindSceneTransform(root, prefix + (i + 1));
+            for (int index = cardCount; index < dailyCards.Count; index++)
+            {
+                dailyCards[index].gameObject.SetActive(false);
+            }
+        }
+
+        int pageSize = activityCards != null ? Mathf.Max(1, _activitySignCardPositions.Count) : cardCount;
+        int pageCount = activityCards == null ? 1 : Mathf.Max(1, Mathf.CeilToInt(days.Length / (float)pageSize));
+        if (activityCards != null)
+        {
+            _activitySignPage = Mathf.Clamp(_activitySignPage, 0, pageCount - 1);
+            ConfigureActivityPaging(root, pageCount);
+        }
+
+        int firstDayIndex = activityCards == null ? 0 : _activitySignPage * pageSize;
+        int displayCount = activityCards == null ? cardCount : pageSize;
+        for (int i = 0; i < displayCount; i++)
+        {
+            Transform card = activityCards != null
+                ? (firstDayIndex + i < activityCards.Count ? activityCards[firstDayIndex + i] : null)
+                : dailyCards != null ? (i < dailyCards.Count ? dailyCards[i] : null)
+                : FindSceneTransform(root, prefix + (i + 1));
             if (card == null)
             {
                 continue;
@@ -678,22 +846,40 @@ public partial class HomePageUI
                 continue;
             }
 
+            if (activityCards != null && card is RectTransform activityCardRect)
+            {
+                activityCardRect.anchoredPosition = _activitySignCardPositions[i];
+            }
+
             SignInDayResponse day = days[dayIndex];
             string rewardName;
             string rewardAmount;
             BuildSignRewardDisplay(day.rewards, out rewardName, out rewardAmount);
-            bool highlighted = day.canClaim || day.canMakeup;
-            ConfigureSignSceneCard(card, day.rewardDay, rewardName, rewardAmount, day.claimed, highlighted);
+            bool claimed = day.claimed || string.Equals(day.status, "CLAIMED", StringComparison.OrdinalIgnoreCase);
+            bool highlighted = !claimed && (day.canClaim || CanMakeupServerSignDay(plan, day));
+            ConfigureSignSceneCard(card, day.rewardDay, rewardName, rewardAmount, claimed, highlighted);
+            ApplySignRewardIcon(card, day.rewards);
+            if (IsMonthlySignPlan(planCode))
+            {
+                SetSceneObjectActive(card, "ClaimedChip", false);
+            }
+            else
+            {
+                SetSceneObjectActive(card, "ClaimedChip", true);
+            }
+            SetSceneObjectActive(card, "ClaimedText", true);
+            SetSceneText(card, "ClaimedText", GetServerSignDayStatus(plan, day));
 
             Button cardButton = card.GetComponent<Button>();
             if (cardButton == null)
             {
                 cardButton = card.gameObject.AddComponent<Button>();
                 cardButton.targetGraphic = card.GetComponent<Image>();
+                cardButton.transition = Selectable.Transition.None;
             }
 
             SignInDayResponse capturedDay = day;
-            cardButton.interactable = !serverSignMutationRunning && (capturedDay.canClaim || capturedDay.canMakeup);
+            cardButton.interactable = serverSignOverviewReady && !serverSignOverviewRunning && !serverSignMutationRunning && highlighted;
             BindSceneButton(cardButton, () => BeginServerSignClaim(plan.planCode, capturedDay));
         }
 
@@ -706,73 +892,416 @@ public partial class HomePageUI
             }
         }
 
-        int pageCount = Mathf.Max(1, Mathf.CeilToInt(days.Length / (float)pageSize));
-        ConfigureServerSignPaging(root, pageCount);
+        if (dailyCards != null) FocusDailySignDay(root, days);
         string mutation = serverSignMutationRunning ? "正在提交..." : status;
-        string cost = plan.makeupCost == null
-            ? string.Empty
-                : $" · 补签 {plan.makeupCost.itemName}×{plan.makeupCost.amount}";
+        string cost = !plan.allowMakeup ? " · 补签未开放" : plan.makeupCost == null
+            ? " · 补签暂不可用"
+            : " · 补签消耗 " + FormatSignInCost(plan.makeupCost);
         SetSceneText(
             root,
             statusName,
-            $"{plan.planName}  已领 {claimedCount}/{days.Length}  第{serverSignPage + 1}/{pageCount}页{cost}  {mutation}");
+            $"{plan.planName}  已领 {claimedCount}/{days.Length}{cost}  {mutation}");
     }
 
-    private void ConfigureServerSignPaging(Transform root, int pageCount)
+    private List<Transform> PrepareDailySignSceneCards(Transform root, int count)
     {
-        if (serverSignPlanCode != "MONTHLY")
+        ScrollRect scroll = FindSceneComponent<ScrollRect>(root, "DailySignCardP");
+        RectTransform content = scroll != null ? scroll.content : null;
+        RectTransform viewport = scroll != null ? scroll.viewport : null;
+        if (content == null || viewport == null)
         {
-            SetSceneObjectActive(root, "ServerSignPreviousButton", false);
-            SetSceneObjectActive(root, "ServerSignNextButton", false);
+            Debug.LogWarning("DailySignCardP requires its scene ScrollRect, viewport and content.", this);
+            return new List<Transform>();
+        }
+
+        if (_dailySignContent != content || _dailySignCardTemplate == null)
+        {
+            _dailySignContent = content;
+            _dailySignCards.Clear();
+            _dailySignCardTemplate = content.Find("DailySignCard1") as RectTransform;
+            _dailySignResetScroll = true;
+        }
+        if (_dailySignCardTemplate == null)
+        {
+            Debug.LogWarning("DailySignCard1 is missing; sign-in cards cannot be generated.", this);
+            return _dailySignCards;
+        }
+
+        for (int index = 0; index < content.childCount; index++)
+        {
+            Transform child = content.GetChild(index);
+            const string prefix = "DailySignCard";
+            if (child.name.StartsWith(prefix, StringComparison.Ordinal)
+                && int.TryParse(child.name.Substring(prefix.Length), out int cardNumber)
+                && cardNumber > 0)
+            {
+                child.gameObject.SetActive(false);
+            }
+        }
+
+        while (_dailySignCards.Count < count)
+        {
+            RectTransform card = Instantiate(_dailySignCardTemplate, content, false);
+            card.name = "DailySignRuntimeCard" + (_dailySignCards.Count + 1);
+            _dailySignCards.Add(card);
+        }
+
+        Vector2 origin = _dailySignCardTemplate.anchoredPosition;
+        GridLayoutGroup grid = content.GetComponent<GridLayoutGroup>();
+        bool useSceneGrid = grid != null && grid.enabled;
+        float columnStride = 0f;
+        float rowStride = 0f;
+        int rows = Mathf.CeilToInt(count / (float)DailySignColumns);
+        float height = 0f;
+        if (!useSceneGrid)
+        {
+            float cardWidth = _dailySignCardTemplate.rect.width * Mathf.Abs(_dailySignCardTemplate.localScale.x);
+            float cardHeight = _dailySignCardTemplate.rect.height * Mathf.Abs(_dailySignCardTemplate.localScale.y);
+            RectTransform secondCard = content.Find("DailySignCard2") as RectTransform;
+            float availableStride = (viewport.rect.width - Mathf.Max(0f, origin.x) * 2f - cardWidth) / (DailySignColumns - 1);
+            columnStride = secondCard != null
+                ? Mathf.Min(secondCard.anchoredPosition.x - origin.x, availableStride)
+                : availableStride;
+            columnStride = Mathf.Max(cardWidth, columnStride);
+            float topPadding = Mathf.Max(0f, -origin.y);
+            rowStride = Mathf.Max(cardHeight,
+                (viewport.rect.height - topPadding * 2f - cardHeight) / (DailySignVisibleRows - 1));
+            height = rows == 0 ? 0f : topPadding * 2f + cardHeight + (rows - 1) * rowStride;
+        }
+        float scrollOffset = _dailySignResetScroll ? 0f : content.anchoredPosition.y;
+
+        for (int index = 0; index < _dailySignCards.Count; index++)
+        {
+            RectTransform card = _dailySignCards[index] as RectTransform;
+            if (card == null) continue;
+            bool visible = index < count;
+            card.gameObject.SetActive(visible);
+            if (visible && !useSceneGrid)
+            {
+                card.anchoredPosition = origin + new Vector2(
+                    (index % DailySignColumns) * columnStride,
+                    -(index / DailySignColumns) * rowStride);
+            }
+        }
+
+        if (useSceneGrid)
+        {
+            LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+            height = LayoutUtility.GetPreferredHeight(content);
+        }
+        content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, Mathf.Max(viewport.rect.height, height));
+        LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+        float maximumOffset = Mathf.Max(0f, content.rect.height - viewport.rect.height);
+        scroll.StopMovement();
+        scroll.horizontal = false;
+        scroll.vertical = maximumOffset > 0.01f;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        content.anchoredPosition = new Vector2(content.anchoredPosition.x,
+            Mathf.Clamp(scrollOffset, 0f, maximumOffset));
+        _dailySignResetScroll = false;
+        return _dailySignCards;
+    }
+
+    private static bool IsSignInPlanVersionSupported(SignInPlanResponse plan)
+    {
+        if (plan == null)
+        {
+            return false;
+        }
+
+        return (plan.contractVersion <= 0 || plan.contractVersion <= SupportedSignInContractVersion)
+            && (plan.minimumClientVersionCode <= 0
+                || plan.minimumClientVersionCode <= ApiRuntimeConfig.GetClientVersionCode());
+    }
+
+    private static bool IsMonthlySignPlan(string planCode)
+    {
+        return string.Equals(planCode, "MONTHLY", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string FormatSignInPlanCodes(SignInPlanResponse[] plans)
+    {
+        if (plans == null || plans.Length == 0) return "<empty>";
+        List<string> codes = new List<string>();
+        for (int index = 0; index < plans.Length; index++)
+        {
+            if (plans[index] != null && !string.IsNullOrWhiteSpace(plans[index].planCode))
+            {
+                codes.Add(plans[index].planCode);
+            }
+        }
+        return codes.Count == 0 ? "<empty>" : string.Join(",", codes.ToArray());
+    }
+
+    private static bool IsLimitedActivitySignPlan(SignInPlanResponse plan)
+    {
+        return plan != null && !string.IsNullOrWhiteSpace(plan.planCode)
+            && !string.Equals(plan.planCode, "NEWBIE", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(plan.planCode, "MONTHLY", StringComparison.OrdinalIgnoreCase)
+            && (!string.IsNullOrWhiteSpace(plan.activityCode)
+                || string.Equals(plan.planType, "ACTIVITY_WINDOW", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(plan.planType, "ACTIVITY", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsActivitySignPlan(SignInPlanResponse plan)
+    {
+        return plan != null && (string.Equals(plan.planCode, "NEWBIE", StringComparison.OrdinalIgnoreCase)
+            || IsLimitedActivitySignPlan(plan));
+    }
+
+    private void ConfigureActivitySignPanel(Transform root, string status)
+    {
+        SignInPlanResponse selected = FindServerSignPlan(serverSignPlanCode);
+        if (serverSignOverviewReady && !IsActivitySignPlan(selected))
+        {
+            selected = GetActivityPlan(0);
+            serverSignPlanCode = selected == null ? string.Empty : selected.planCode;
+            _activitySignPage = 0;
+        }
+        ConfigureServerSignScenePanel(root, serverSignPlanCode, status);
+    }
+
+    private List<Transform> PrepareActivitySignSceneCards(Transform root, int count)
+    {
+        Transform parent = FindSceneTransform(root, "SignCardP");
+        if (parent == null)
+        {
+            Debug.LogWarning("SignCardP is missing; activity sign-in cards cannot be generated.", this);
+            return _activitySignCards;
+        }
+
+        RectTransform parentRect = parent as RectTransform;
+        RectTransform template = parent.Find("NewbieSignCard1") as RectTransform;
+        if (parentRect == null || template == null)
+        {
+            Debug.LogWarning("SignCardP/NewbieSignCard1 is missing; activity sign-in cards cannot be generated.", this);
+            return _activitySignCards;
+        }
+
+        if (_activitySignCardParent != parentRect || _activitySignCardTemplate == null)
+        {
+            _activitySignCardParent = parentRect;
+            _activitySignCardTemplate = template;
+            _activitySignCards.Clear();
+            _activitySignCardPositions.Clear();
+            for (int index = 0; index < parent.childCount; index++)
+            {
+                Transform child = parent.GetChild(index);
+                if (child.name.StartsWith("NewbieSignCard", StringComparison.Ordinal))
+                {
+                    _activitySignCards.Add(child);
+                    _activitySignCardPositions.Add((child as RectTransform)?.anchoredPosition ?? Vector2.zero);
+                }
+            }
+            if (_activitySignCardPositions.Count == 0)
+            {
+                _activitySignCardPositions.Add(template.anchoredPosition);
+            }
+        }
+
+        while (_activitySignCards.Count < count)
+        {
+            RectTransform card = Instantiate(_activitySignCardTemplate, _activitySignCardParent, false);
+            card.name = "ActivitySignRuntimeCard" + (_activitySignCards.Count + 1);
+            _activitySignCards.Add(card);
+        }
+
+        for (int index = 0; index < _activitySignCards.Count; index++)
+        {
+            Transform card = _activitySignCards[index];
+            card.gameObject.SetActive(false);
+            RectTransform cardRect = card as RectTransform;
+            if (cardRect != null)
+            {
+                int positionIndex = Mathf.Min(index, _activitySignCardPositions.Count - 1);
+                Vector2 position = _activitySignCardPositions[positionIndex];
+                if (index >= _activitySignCardPositions.Count && _activitySignCardPositions.Count > 1)
+                {
+                    Vector2 first = _activitySignCardPositions[0];
+                    Vector2 second = _activitySignCardPositions[1];
+                    position = first + (second - first) * index;
+                }
+                cardRect.anchoredPosition = position;
+            }
+        }
+
+        return _activitySignCards;
+    }
+
+    private void ConfigureActivityTypeButtons(Transform root)
+    {
+        Transform typeRoot = FindSceneTransform(root, "ActivityType");
+        if (typeRoot == null)
+        {
             return;
         }
 
-        Transform panel = FindSceneTransform(root, "DailySignPanel");
-        if (panel == null)
+        for (int index = 0; index < typeRoot.childCount; index++)
         {
+            Transform child = typeRoot.GetChild(index);
+            if (child.name.StartsWith("ActivityBtn", StringComparison.Ordinal))
+            {
+                child.gameObject.SetActive(false);
+            }
+        }
+
+        SignInPlanResponse[] plans = serverSignInOverview == null ? null : serverSignInOverview.plans;
+        int activityCount = 0;
+        if (plans != null)
+        {
+            for (int index = 0; index < plans.Length; index++)
+            {
+                if (plans[index] != null && (plans[index].planCode == "NEWBIE" || IsLimitedActivitySignPlan(plans[index]))) activityCount++;
+            }
+        }
+
+        Transform template = typeRoot.Find("ActivityBtn");
+        if (template == null)
+        {
+            Debug.LogWarning("ActivityType/ActivityBtn is missing; activity type buttons cannot be generated.", this);
             return;
         }
 
-        Button previous = FindSceneComponent<Button>(panel, "ServerSignPreviousButton");
-        if (previous == null)
+        for (int index = 0; index < activityCount; index++)
         {
-            previous = CreateButton(panel, "ServerSignPreviousButton", "<", new Color(0.24f, 0.43f, 0.74f, 1f), Color.white);
-            SetRect(previous.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(390f, -91f), new Vector2(52f, 42f));
-            ConfigureClearButtonLabel(previous, 24);
+            Transform buttonObject = index == 0 ? template : FindOrCreateActivityTypeButton(template, typeRoot, index + 1);
+            SignInPlanResponse plan = GetActivityPlan(index);
+            if (buttonObject == null || plan == null) continue;
+            buttonObject.gameObject.SetActive(true);
+            if (buttonObject is RectTransform buttonRect && index > 0 && template is RectTransform templateRect)
+            {
+                buttonRect.anchoredPosition = templateRect.anchoredPosition
+                    - new Vector2(0f, index * templateRect.rect.height);
+            }
+            SetSceneText(buttonObject, "ActivityName", GetActivityName(plan));
+            Button button = buttonObject.GetComponent<Button>();
+            BindSceneButton(button, () => OpenServerSignIn(plan.planCode));
         }
+    }
 
-        Button next = FindSceneComponent<Button>(panel, "ServerSignNextButton");
-        if (next == null)
+    private Transform FindOrCreateActivityTypeButton(Transform template, Transform parent, int number)
+    {
+        Transform existing = parent.Find("ActivityBtn" + number);
+        if (existing != null) return existing;
+        Transform created = Instantiate(template, parent, false);
+        created.name = "ActivityBtn" + number;
+        return created;
+    }
+
+    private SignInPlanResponse GetActivityPlan(int activityIndex)
+    {
+        if (serverSignInOverview == null || serverSignInOverview.plans == null) return null;
+        int currentIndex = 0;
+        for (int index = 0; index < serverSignInOverview.plans.Length; index++)
         {
-            next = CreateButton(panel, "ServerSignNextButton", ">", new Color(0.24f, 0.43f, 0.74f, 1f), Color.white);
-            SetRect(next.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(768f, -91f), new Vector2(52f, 42f));
-            ConfigureClearButtonLabel(next, 24);
+            SignInPlanResponse plan = serverSignInOverview.plans[index];
+            if (plan == null || !IsActivitySignPlan(plan)) continue;
+            if (currentIndex++ == activityIndex) return plan;
         }
+        return null;
+    }
 
+    private void ConfigureActivityDetails(Transform root, SignInPlanResponse plan)
+    {
+        if (plan == null) return;
+        Transform activityPanel = FindSceneTransform(root, "ActivityPanel");
+        Transform detailRoot = activityPanel == null ? root : FindSceneTransform(activityPanel, "NewbieSignPanel");
+        if (detailRoot == null) detailRoot = root;
+        SetSceneText(detailRoot, "ActivityName", GetActivityName(plan));
+        SetSceneText(detailRoot, "Data", FormatActivityDate(plan));
+        SetSceneText(detailRoot, "Explain", BuildActivityDescription(plan));
+    }
+
+    private static string GetActivityName(SignInPlanResponse plan)
+    {
+        if (plan == null) return string.Empty;
+        return string.IsNullOrWhiteSpace(plan.activityName) ? plan.planName : plan.activityName;
+    }
+
+    private static string FormatActivityDate(SignInPlanResponse plan)
+    {
+        if (plan == null) return string.Empty;
+        string start = string.IsNullOrWhiteSpace(plan.activityStartTime) ? plan.startTime : plan.activityStartTime;
+        string end = string.IsNullOrWhiteSpace(plan.activityEndTime) ? plan.endTime : plan.activityEndTime;
+        if (string.IsNullOrEmpty(start) && string.Equals(plan.planCode, "NEWBIE", StringComparison.OrdinalIgnoreCase)) start = "首次登录";
+        if (string.IsNullOrEmpty(end)) end = plan.expiresAt;
+        if (string.IsNullOrEmpty(start)) return end;
+        if (string.IsNullOrEmpty(end)) return start;
+        return start + " - " + end;
+    }
+
+    private static string BuildActivityDescription(SignInPlanResponse plan)
+    {
+        if (plan == null) return string.Empty;
+        if (!string.IsNullOrWhiteSpace(plan.activityDescription)) return plan.activityDescription;
+        if (!string.IsNullOrWhiteSpace(plan.description)) return plan.description;
+        if (string.Equals(plan.planCode, "NEWBIE", StringComparison.OrdinalIgnoreCase)) return "首次登录后连续签到领取新手奖励";
+        return "活动期间每日签到，即可领取对应奖励";
+    }
+
+    private void ConfigureActivityPaging(Transform root, int pageCount)
+    {
+        Transform cardParent = FindSceneTransform(root, "SignCardP");
+        if (cardParent == null) return;
+        Button previous = FindSceneComponent<Button>(cardParent, "ActivityRewardPreviousButton");
+        Button next = FindSceneComponent<Button>(cardParent, "ActivityRewardNextButton");
+        if (previous == null || next == null)
+        {
+            Debug.LogWarning("Activity reward page buttons are missing; add ActivityRewardPreviousButton and ActivityRewardNextButton under SignCardP.", this);
+            return;
+        }
         previous.gameObject.SetActive(pageCount > 1);
         next.gameObject.SetActive(pageCount > 1);
-        previous.interactable = serverSignPage > 0 && !serverSignMutationRunning;
-        next.interactable = serverSignPage + 1 < pageCount && !serverSignMutationRunning;
-        BindSceneButton(previous, () => ChangeServerSignPage(-1));
-        BindSceneButton(next, () => ChangeServerSignPage(1));
+        previous.interactable = _activitySignPage > 0 && !serverSignMutationRunning && !serverSignOverviewRunning;
+        next.interactable = _activitySignPage + 1 < pageCount && !serverSignMutationRunning && !serverSignOverviewRunning;
+        BindSceneButton(previous, () => ChangeActivitySignPage(-1));
+        BindSceneButton(next, () => ChangeActivitySignPage(1));
     }
 
-    private void ChangeServerSignPage(int offset)
+    private void ChangeActivitySignPage(int offset)
     {
+        if (serverSignMutationRunning || serverSignOverviewRunning) return;
         SignInPlanResponse plan = FindServerSignPlan(serverSignPlanCode);
-        int count = plan != null && plan.days != null ? plan.days.Length : 0;
-        int pageCount = Mathf.Max(1, Mathf.CeilToInt(count / 14f));
-        serverSignPage = Mathf.Clamp(serverSignPage + offset, 0, pageCount - 1);
-        ShowCurrentServerSignPanel();
+        int pageSize = Mathf.Max(1, _activitySignCardPositions.Count);
+        int count = plan == null || plan.days == null ? 0 : plan.days.Length;
+        int pageCount = Mathf.Max(1, Mathf.CeilToInt(count / (float)pageSize));
+        _activitySignPage = Mathf.Clamp(_activitySignPage + offset, 0, pageCount - 1);
+        RefreshVisibleServerSignPanel();
     }
 
-    private void ClampServerSignPage(SignInPlanResponse plan)
+    private void FocusDailySignDay(Transform root, SignInDayResponse[] days)
     {
-        int pageSize = serverSignPlanCode == "NEWBIE" ? 3 : 14;
-        int count = plan != null && plan.days != null ? plan.days.Length : 0;
-        int pageCount = Mathf.Max(1, Mathf.CeilToInt(count / (float)pageSize));
-        serverSignPage = Mathf.Clamp(serverSignPage, 0, pageCount - 1);
+        if (_dailySignFocusDay <= 0 || _dailySignCardTemplate == null) return;
+        ScrollRect scroll = FindSceneComponent<ScrollRect>(root, "DailySignCardP");
+        if (scroll == null || scroll.content == null || scroll.viewport == null) return;
+
+        for (int index = 0; index < days.Length && index < _dailySignCards.Count; index++)
+        {
+            if (days[index].rewardDay != _dailySignFocusDay) continue;
+            RectTransform card = _dailySignCards[index] as RectTransform;
+            if (card == null) break;
+            float offset = _dailySignCardTemplate.anchoredPosition.y - card.anchoredPosition.y;
+            scroll.StopMovement();
+            scroll.content.anchoredPosition = new Vector2(scroll.content.anchoredPosition.x,
+                Mathf.Clamp(offset, 0f, Mathf.Max(0f, scroll.content.rect.height - scroll.viewport.rect.height)));
+            break;
+        }
+        _dailySignFocusDay = 0;
     }
+
+    private void ConfigureServerSignRefreshButton(Transform root, string planCode)
+    {
+        Transform panel = FindSceneTransform(root, planCode == "NEWBIE" ? "NewbieSignPanel" : "DailySignPanel");
+        if (panel == null) return;
+        Button refresh = FindSceneComponent<Button>(panel, "ServerSignRefreshButton");
+        if (refresh == null)
+        {
+            return;
+        }
+        refresh.interactable = !serverSignMutationRunning && !serverSignOverviewRunning;
+        BindSceneButton(refresh, RefreshServerSignInStatus);
+    }
+
 
     private SignInPlanResponse FindServerSignPlan(string planCode)
     {
@@ -793,20 +1322,403 @@ public partial class HomePageUI
         return null;
     }
 
+    private static SignInDayResponse FindServerSignDay(SignInPlanResponse plan, int rewardDay)
+    {
+        if (plan == null || plan.days == null) return null;
+        for (int index = 0; index < plan.days.Length; index++)
+        {
+            SignInDayResponse day = plan.days[index];
+            if (day != null && day.rewardDay == rewardDay) return day;
+        }
+        return null;
+    }
+
+    private static bool CanMakeupServerSignDay(SignInPlanResponse plan, SignInDayResponse day)
+    {
+        return plan != null && day != null && !IsLimitedActivitySignPlan(plan) && plan.allowMakeup && plan.canMakeup
+            && day.canMakeup && !day.claimed
+            && string.Equals(day.status, "MISSED", StringComparison.OrdinalIgnoreCase)
+            && day.rewardDay > 0 && day.rewardDay < plan.currentDay
+            && plan.makeupCost != null && plan.makeupCost.amount > 0
+            && !string.IsNullOrWhiteSpace(plan.makeupCost.itemKey);
+    }
+
+    private static string GetServerSignDayStatus(SignInPlanResponse plan, SignInDayResponse day)
+    {
+        if (day == null) return "暂无奖励";
+        if (day.claimed || string.Equals(day.status, "CLAIMED", StringComparison.OrdinalIgnoreCase)) return "已领取";
+        if (day.canClaim) return "可领取";
+        if (CanMakeupServerSignDay(plan, day)) return "可补签";
+        switch ((day.status ?? string.Empty).ToUpperInvariant())
+        {
+            case "MISSED": return "已错过";
+            case "LOCKED": return "未到日期";
+            case "UNAVAILABLE": return "暂无奖励";
+            default: return "不可领取";
+        }
+    }
+
+    private static string FormatSignInCost(SignInCostResponse cost)
+    {
+        if (cost == null) return string.Empty;
+        string itemName = string.IsNullOrWhiteSpace(cost.itemName)
+            ? GetRewardDisplayName("ITEM", cost.itemKey) : cost.itemName;
+        return itemName + " x" + cost.amount;
+    }
+
+    private string GetServerSignError(SignInClaimApiResponse response, UnityWebRequest request)
+    {
+        if (response == null)
+        {
+            return "请求结果未确认，正在刷新签到状态。" + ApiRequestUtility.GetErrorMessage(request, "网络请求失败");
+        }
+        switch (response.code)
+        {
+            case 6001: return "本期签到暂未开放";
+            case 6002: return "该日期奖励已领取，不会重复扣费或发奖";
+            case 6003: return "签到活动已结束";
+            case 6004: return "该日期暂无可领取奖励";
+            case 6005: return "奖励暂时无法领取，请稍后再试";
+            case 6006: return "当前计划未开启补签";
+            case 6007: return "该日期当前不可补签，请按最新签到状态重新选择";
+            case 6008: return "补签所需资源不足，本次未扣费，请获取资源后重试";
+            default: return "签到操作失败：" + GetApiError(response);
+        }
+    }
+
+    private void ShowSignMakeupConfirmation(SignInPlanResponse plan, SignInDayResponse day)
+    {
+        ShowSignConfirmation(plan, day, true);
+    }
+
+    private void ShowSignClaimConfirmation(SignInPlanResponse plan, SignInDayResponse day)
+    {
+        ShowSignConfirmation(plan, day, false);
+    }
+
+    private void ShowSignConfirmation(SignInPlanResponse plan, SignInDayResponse day, bool isMakeup)
+    {
+        if (plan == null || day == null || signPanelObject == null || !signPanelObject.activeInHierarchy) return;
+        if (isMakeup ? !CanMakeupServerSignDay(plan, day) : !day.canClaim) return;
+        HideSignMakeupConfirmation();
+        Transform existing = FindSceneTransform(signPanelObject.transform, "SignMakeupConfirmation");
+        Button cancelButton = FindSceneComponent<Button>(existing, "SignMakeupCancelButton");
+        Button confirmButton = FindSceneComponent<Button>(existing, "SignMakeupConfirmButton");
+        TMPro.TMP_Text details = FindSceneComponent<TMPro.TMP_Text>(existing, "SignMakeupDetails");
+        if (existing == null || cancelButton == null || confirmButton == null || details == null)
+        {
+            serverSignStatus = "补签页面暂时无法打开，请稍后重试";
+            Debug.LogWarning(serverSignStatus, signPanelObject);
+            RefreshVisibleServerSignPanel();
+            return;
+        }
+
+        signMakeupConfirmObject = existing.gameObject;
+        existing.SetAsLastSibling();
+        signMakeupConfirmObject.SetActive(true);
+        if (isMakeup)
+        {
+            SignInCostResponse cost = plan.makeupCost;
+            string costName = cost == null || string.IsNullOrWhiteSpace(cost.itemName)
+                ? GetRewardDisplayName("ITEM", cost == null ? string.Empty : cost.itemKey)
+                : cost.itemName;
+            details.text = "消耗：" + costName + "*" + (cost == null ? 0 : cost.amount);
+            ApplySignMakeupCostIcon(existing, cost);
+        }
+        else
+        {
+            details.text = "奖励：" + FormatSignInRewardSummary(day.rewards);
+            ApplySignClaimRewardIcon(existing, day.rewards);
+        }
+        SetSceneText(existing, "SignMakeupTitle", isMakeup ? "补签确认" : "领取奖励");
+        confirmButton.interactable = !isMakeup;
+        SetSceneButtonText(confirmButton, isMakeup ? "正在查询..." : "确认领取");
+        ConfigureSignMakeupNavigation(cancelButton, confirmButton);
+        ConfigureSignMakeupNavigation(confirmButton, cancelButton);
+        BindSceneButton(cancelButton, HideSignMakeupConfirmation);
+        BindSceneButton(confirmButton, () =>
+        {
+            if (!confirmButton.interactable) return;
+            if (!serverSignMutationRunning && !serverSignOverviewRunning && HasAuthSession())
+            {
+                if (isMakeup)
+                {
+                    StartCoroutine(ConfirmServerSignMakeup(plan, day.rewardDay));
+                }
+                else
+                {
+                    HideSignMakeupConfirmation();
+                    StartCoroutine(ClaimServerSignIn(plan.planCode));
+                }
+            }
+        });
+        if (cancelButton != null && UnityEngine.EventSystems.EventSystem.current != null)
+        {
+            UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(cancelButton.gameObject);
+        }
+        if (isMakeup)
+        {
+            StartCoroutine(RefreshSignMakeupAffordability(plan.makeupCost, existing.gameObject, confirmButton, signConfirmationVersion));
+        }
+    }
+
+    private IEnumerator RefreshSignMakeupAffordability(SignInCostResponse cost, GameObject dialog, Button confirmButton, int version)
+    {
+        string requestToken = GameSession.Token;
+        int playerId = GameSession.PlayerId;
+        UnityWebRequest request = CreateAuthorizedGet($"/inventory/list/{playerId}");
+        if (request == null)
+        {
+            SetSceneButtonText(confirmButton, "查询失败");
+            serverSignStatus = "补签资源查询失败：" + requestCreationError;
+            RefreshVisibleServerSignPanel();
+            yield break;
+        }
+
+        using (request)
+        {
+            yield return request.SendWebRequest();
+            // A closed/reopened dialog or changed account must not receive an old balance result.
+            if (version != signConfirmationVersion || dialog == null || !dialog.activeInHierarchy || confirmButton == null
+                || playerId != GameSession.PlayerId || !string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal))
+            {
+                yield break;
+            }
+            if (HandleUnauthorizedResponse(request)) yield break;
+
+            InventoryListApiResponse response = ParseJson<InventoryListApiResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+            {
+                SetSceneButtonText(confirmButton, "查询失败");
+                serverSignStatus = "补签资源查询失败，请关闭后重试：" + (response == null
+                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败") : GetApiError(response));
+                RefreshVisibleServerSignPanel();
+                yield break;
+            }
+
+            bool enough = HasEnoughSignMakeupCost(cost, response.data);
+            confirmButton.interactable = enough;
+            SetSceneButtonText(confirmButton, enough ? "确认" : "资源不足");
+        }
+    }
+
+    private static bool HasEnoughSignMakeupCost(SignInCostResponse cost, InventoryItemResponse[] items)
+    {
+        if (cost == null || cost.amount <= 0 || string.IsNullOrWhiteSpace(cost.itemKey) || items == null) return false;
+
+        long remaining = cost.amount;
+        for (int index = 0; index < items.Length; index++)
+        {
+            InventoryItemResponse item = items[index];
+            if (item == null || item.quantity <= 0) continue;
+            // Match server identifiers, not display names or local currency aliases.
+            bool matches = cost.itemId > 0 && item.itemId > 0
+                ? cost.itemId == item.itemId
+                : string.Equals(cost.itemKey.Trim(), (item.itemKey ?? string.Empty).Trim(), StringComparison.OrdinalIgnoreCase);
+            if (!matches) continue;
+            remaining -= item.quantity;
+            if (remaining <= 0) return true;
+        }
+        return false;
+    }
+
+    private static string FormatSignInRewardSummary(SignInRewardPreview[] rewards)
+    {
+        if (rewards == null || rewards.Length == 0) return "暂无奖励";
+        List<string> entries = new List<string>();
+        for (int index = 0; index < rewards.Length; index++)
+        {
+            SignInRewardPreview reward = rewards[index];
+            if (reward == null) continue;
+            string name = string.IsNullOrWhiteSpace(reward.rewardName)
+                ? GetRewardDisplayName(reward.rewardType, reward.rewardKey)
+                : reward.rewardName;
+            entries.Add(name + "*" + Math.Max(0L, reward.rewardAmount));
+        }
+        return entries.Count == 0 ? "暂无奖励" : string.Join("、", entries.ToArray());
+    }
+
+    private void ApplySignMakeupCostIcon(Transform root, SignInCostResponse cost)
+    {
+        Transform viewport = FindSceneTransform(root, "SignMakeupDetailsViewport");
+        Transform iconFrame = viewport != null ? viewport.Find("Icon") : null;
+        Image icon = iconFrame != null ? FindSceneComponent<Image>(iconFrame, "Image") : null;
+        if (icon == null)
+        {
+            Debug.LogWarning("补签费用图标未配置，请检查 SignMakeupDetailsViewport/Icon/Image", root);
+            return;
+        }
+
+        Sprite sprite = null;
+        if (cost != null)
+        {
+            string[] candidates = { cost.icon, cost.itemKey, cost.itemName };
+            for (int index = 0; index < candidates.Length && sprite == null; index++)
+            {
+                sprite = LoadMailAttachmentResourceSprite(candidates[index]);
+                if (sprite != null) continue;
+                string assetPath = GetMailAttachmentAssetPath(candidates[index], "ITEM", cost.itemCategory);
+                sprite = LoadNewbieSignResourceSprite(assetPath);
+                if (sprite == null && !string.IsNullOrEmpty(assetPath)) sprite = LoadSpriteFromAsset(assetPath);
+            }
+        }
+
+        icon.sprite = sprite;
+        icon.enabled = sprite != null;
+        if (sprite == null && cost != null) Debug.LogWarning("未找到补签费用物品图标：" + cost.itemKey, icon);
+    }
+
+    private void ApplySignClaimRewardIcon(Transform root, SignInRewardPreview[] rewards)
+    {
+        Transform viewport = FindSceneTransform(root, "SignMakeupDetailsViewport");
+        Transform iconFrame = viewport != null ? viewport.Find("Icon") : null;
+        Image icon = iconFrame != null ? FindSceneComponent<Image>(iconFrame, "Image") : null;
+        if (icon == null)
+        {
+            Debug.LogWarning("签到奖励图标未配置，请检查 SignMakeupDetailsViewport/Icon/Image", root);
+            return;
+        }
+
+        SignInRewardPreview reward = null;
+        if (rewards != null)
+        {
+            for (int index = 0; index < rewards.Length; index++)
+            {
+                if (rewards[index] != null)
+                {
+                    reward = rewards[index];
+                    break;
+                }
+            }
+        }
+
+        Sprite sprite = null;
+        if (reward != null)
+        {
+            string[] candidates = { reward.rewardIcon, reward.rewardKey, reward.rewardName };
+            for (int index = 0; index < candidates.Length && sprite == null; index++)
+            {
+                sprite = LoadMailAttachmentResourceSprite(candidates[index]);
+                if (sprite != null) continue;
+                string assetPath = GetMailAttachmentAssetPath(candidates[index], reward.rewardType, reward.rewardCategory);
+                sprite = LoadNewbieSignResourceSprite(assetPath);
+                if (sprite == null && !string.IsNullOrEmpty(assetPath)) sprite = LoadSpriteFromAsset(assetPath);
+            }
+        }
+
+        icon.sprite = sprite;
+        icon.enabled = sprite != null;
+        if (sprite == null && reward != null) Debug.LogWarning("未找到签到奖励图标：" + reward.rewardKey, icon);
+    }
+
+    private static void ConfigureSignMakeupNavigation(Button button, Button other)
+    {
+        if (button == null) return;
+        Navigation navigation = button.navigation;
+        navigation.mode = Navigation.Mode.Explicit;
+        navigation.selectOnLeft = other;
+        navigation.selectOnRight = other;
+        navigation.selectOnUp = other;
+        navigation.selectOnDown = other;
+        button.navigation = navigation;
+    }
+
+    private void HideSignMakeupConfirmation()
+    {
+        signConfirmationVersion++;
+        if (signMakeupConfirmObject != null && UnityEngine.EventSystems.EventSystem.current != null)
+        {
+            GameObject selected = UnityEngine.EventSystems.EventSystem.current.currentSelectedGameObject;
+            if (selected != null && selected.transform.IsChildOf(signMakeupConfirmObject.transform))
+            {
+                UnityEngine.EventSystems.EventSystem.current.SetSelectedGameObject(null);
+            }
+        }
+        if (signMakeupConfirmObject != null) signMakeupConfirmObject.SetActive(false);
+        HideSceneSignMakeupConfirmation(HomePageScenePanelType.DailySign);
+        HideSceneSignMakeupConfirmation(HomePageScenePanelType.NewbieSign);
+    }
+
+    private void HideSceneSignMakeupConfirmation(HomePageScenePanelType panelType)
+    {
+        HomePageScenePanel panel = GetRegisteredScenePanel(panelType);
+        Transform confirmation = panel != null ? FindSceneTransform(panel.transform, "SignMakeupConfirmation") : null;
+        if (confirmation != null) confirmation.gameObject.SetActive(false);
+    }
+
+    private IEnumerator ConfirmServerSignMakeup(SignInPlanResponse preview, int rewardDay)
+    {
+        serverSignMutationRunning = true;
+        HideSignMakeupConfirmation();
+        string requestToken = GameSession.Token;
+        try
+        {
+            serverSignStatus = "正在核对补签日期和费用...";
+            yield return GetServerSignInOverview(serverSignStatus);
+            if (!serverSignOverviewReady || !string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal)) yield break;
+            SignInPlanResponse latest = FindServerSignPlan(preview.planCode);
+            SignInDayResponse day = FindServerSignDay(latest, rewardDay);
+            if (latest == null || !string.Equals(latest.periodKey, preview.periodKey, StringComparison.Ordinal)
+                || !CanMakeupServerSignDay(latest, day))
+            {
+                serverSignStatus = "签到周期或日期状态已变化，请重新选择可补签日期";
+                yield break;
+            }
+            if (latest.makeupCost.itemKey != preview.makeupCost.itemKey || latest.makeupCost.amount != preview.makeupCost.amount)
+            {
+                serverSignStatus = "补签费用已更新，请重新确认";
+                ShowSignMakeupConfirmation(latest, day);
+                yield break;
+            }
+            yield return MakeupServerSignIn(latest.planCode, rewardDay);
+        }
+        finally
+        {
+            serverSignMutationRunning = false;
+            RefreshVisibleServerSignPanel();
+        }
+    }
+
+    private void RefreshSignInEntryBadges()
+    {
+        if (boundBookView == null) return;
+        SetSignInEntryBadge(boundBookView.DailySignButton, FindServerSignPlan("MONTHLY"));
+        SetSignInEntryBadge(boundBookView.ActivityButton, FindServerSignPlan("NEWBIE"));
+    }
+
+    private void SetSignInEntryBadge(Button button, SignInPlanResponse plan)
+    {
+        if (button == null) return;
+        bool available = serverSignOverviewReady && plan != null && (plan.canClaim || plan.canMakeup);
+        Transform badge = button.transform.Find("SignAvailableBadge");
+        if (badge == null && available)
+        {
+            Image image = CreateImage("SignAvailableBadge", button.transform, new Color(0.85f, 0.12f, 0.12f, 1f));
+            image.raycastTarget = false;
+            SetRect(image.rectTransform, Vector2.one, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(-8f, -8f), new Vector2(14f, 14f));
+            badge = image.transform;
+        }
+        if (badge != null) badge.gameObject.SetActive(available);
+    }
+
     private void BeginServerSignClaim(string planCode, SignInDayResponse day)
     {
-        if (day == null || serverSignMutationRunning)
+        if (day == null || serverSignMutationRunning || serverSignOverviewRunning || !serverSignOverviewReady || !HasAuthSession())
         {
             return;
         }
 
+        SignInPlanResponse plan = FindServerSignPlan(planCode);
+        day = FindServerSignDay(plan, day.rewardDay);
+        if (day == null || day.claimed || string.Equals(day.status, "CLAIMED", StringComparison.OrdinalIgnoreCase)) return;
+
         if (day.canClaim)
         {
-            StartCoroutine(ClaimServerSignIn(planCode));
+            ShowSignClaimConfirmation(plan, day);
         }
-        else if (day.canMakeup)
+        else if (CanMakeupServerSignDay(plan, day))
         {
-            StartCoroutine(MakeupServerSignIn(planCode, day.rewardDay));
+            ShowSignMakeupConfirmation(plan, day);
         }
     }
 
@@ -814,7 +1726,7 @@ public partial class HomePageUI
     {
         serverSignMutationRunning = true;
         serverSignStatus = "正在领取签到奖励...";
-        ShowCurrentServerSignPanel();
+        RefreshVisibleServerSignPanel();
         SignInClaimRequest payload = new SignInClaimRequest { planCode = planCode };
         yield return SendServerSignMutation("/sign-in/claim", JsonUtility.ToJson(payload));
     }
@@ -823,64 +1735,87 @@ public partial class HomePageUI
     {
         serverSignMutationRunning = true;
         serverSignStatus = $"正在补签第 {rewardDay} 天...";
-        ShowCurrentServerSignPanel();
+        RefreshVisibleServerSignPanel();
         SignInMakeupRequest payload = new SignInMakeupRequest { planCode = planCode, rewardDay = rewardDay };
         yield return SendServerSignMutation("/sign-in/makeup", JsonUtility.ToJson(payload));
     }
 
     private IEnumerator SendServerSignMutation(string path, string json)
     {
-        if (!TryCreateAuthorizedPost(path, json, out UnityWebRequest request, out string error))
+        string requestToken = GameSession.Token;
+        try
         {
-            serverSignMutationRunning = false;
-            serverSignStatus = error;
-            ShowCurrentServerSignPanel();
-            yield break;
-        }
-
-        using (request)
-        {
-            yield return request.SendWebRequest();
-            if (HandleUnauthorizedResponse(request))
+            if (!TryCreateAuthorizedPost(path, json, out UnityWebRequest request, out string error))
             {
-                serverSignMutationRunning = false;
+                serverSignStatus = error;
                 yield break;
             }
 
-            SignInClaimApiResponse response = ParseJson<SignInClaimApiResponse>(request.downloadHandler.text);
-            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+            using (request)
             {
-                serverSignMutationRunning = false;
-                serverSignStatus = "签到操作失败：" + (response == null
-                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
-                    : GetApiError(response));
-                ShowCurrentServerSignPanel();
-                if (response != null && response.code == 6002)
+                yield return request.SendWebRequest();
+                if (!string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal))
                 {
-                    StartCoroutine(GetServerSignInOverview());
+                    yield break;
                 }
-                yield break;
-            }
+                if (HandleUnauthorizedResponse(request))
+                {
+                    yield break;
+                }
 
-            if (response.data.items != null)
-            {
-                currentInventoryItems = response.data.items;
-                SyncInventoryResourceValues(response.data.items);
-            }
+                SignInClaimApiResponse response = ParseJson<SignInClaimApiResponse>(request.downloadHandler.text);
+                if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
+                {
+                    serverSignStatus = GetServerSignError(response, request);
+                    if (response != null && response.code == 6005)
+                    {
+                        Debug.LogWarning("Sign-in reward configuration error (6005): " + response.message, this);
+                    }
+                    if (response == null || request.responseCode >= 500 || response.code == 6002 || response.code == 200)
+                    {
+                        yield return RefreshSignInRewardState(null);
+                        if (!string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal)) yield break;
+                        yield return RefreshSignInAccountSnapshot();
+                        if (!string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal)) yield break;
+                        RefreshHomeResourceMetrics();
+                    }
+                    yield return GetServerSignInOverview(serverSignStatus);
+                    yield break;
+                }
 
+                if (response.data.items != null)
+                {
+                    currentInventoryItems = response.data.items;
+                    SyncInventoryResourceValues(response.data.items);
+                }
+
+                serverSignStatus = BuildSignClaimResult(response.data);
+                PlayerOnboardingManager.NotifyBusinessSucceeded();
+                yield return RefreshSignInRewardState(response.data);
+                if (!string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal)) yield break;
+                yield return RefreshSignInAccountSnapshot();
+                if (!string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal)) yield break;
+                RefreshHomeResourceMetrics();
+                yield return GetServerSignInOverview(serverSignStatus);
+            }
+        }
+        finally
+        {
             serverSignMutationRunning = false;
-            serverSignStatus = BuildSignClaimResult(response.data);
-            yield return RefreshSignInRewardState(response.data);
-            StartCoroutine(RefreshAccountSnapshot(string.Empty));
-            yield return GetServerSignInOverview();
+            if (string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal))
+            {
+                RefreshVisibleServerSignPanel();
+                SetStatus(serverSignStatus);
+            }
         }
     }
 
     private IEnumerator RefreshSignInRewardState(SignInClaimData data)
     {
-        bool needsInventoryRefresh = false;
-        bool needsEquipmentRefresh = false;
-        bool needsNpcRefresh = false;
+        string requestToken = GameSession.Token;
+        bool needsInventoryRefresh = data == null || data.items != null || data.cost != null;
+        bool needsEquipmentRefresh = data == null;
+        bool needsNpcRefresh = data == null;
         if (data != null && data.rewards != null)
         {
             for (int i = 0; i < data.rewards.Length; i++)
@@ -921,12 +1856,21 @@ public partial class HomePageUI
         }
         if (needsEquipmentRefresh)
         {
+            if (!string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal)) yield break;
             yield return RefreshCardDrawEquipmentState(syncedCategories, failedCategories);
         }
         if (needsNpcRefresh)
         {
+            if (!string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal)) yield break;
             yield return RefreshCardDrawNpcState(syncedCategories, failedCategories);
         }
+
+        if (!string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal)) yield break;
+        if (needsNpcRefresh || needsEquipmentRefresh)
+        {
+            yield return RefreshVisibleRolePanelAfterSignIn(requestToken, failedCategories);
+        }
+        if (!string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal)) yield break;
 
         if (inventoryPanelObject != null && inventoryPanelObject.activeInHierarchy && needsInventoryRefresh)
         {
@@ -946,7 +1890,36 @@ public partial class HomePageUI
         }
     }
 
-    private string BuildSignClaimResult(SignInClaimData data)
+    private IEnumerator RefreshSignInAccountSnapshot()
+    {
+        yield return RefreshAccountSnapshot(string.Empty, false,
+            error => serverSignStatus += "；签到后资料同步失败：" + error);
+    }
+
+    private IEnumerator RefreshVisibleRolePanelAfterSignIn(string requestToken, List<string> failedCategories)
+    {
+        while (rolePanelObject != null && rolePanelObject.activeInHierarchy && (rolePanelLoading || roleUpgradeRunning))
+        {
+            if (!HasAuthSession() || !string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal)) yield break;
+            yield return null;
+        }
+        if (rolePanelObject == null || !rolePanelObject.activeInHierarchy || !HasAuthSession()
+            || !string.Equals(requestToken, GameSession.Token, StringComparison.Ordinal)) yield break;
+
+        int requestVersion = ++roleRequestVersion;
+        int playerId = GameSession.PlayerId;
+        rolePanelLoading = true;
+        roleStatusMessage = "正在同步签到后的角色数据...";
+        RenderRolePanel();
+        bool loaded = false;
+        yield return LoadRolePanelData(requestVersion, playerId, () => loaded = true);
+        if (IsRoleRequestCurrent(requestVersion, playerId) && !loaded)
+        {
+            failedCategories.Add("角色中心（" + roleStatusMessage + "）");
+        }
+    }
+
+    private static string BuildSignClaimResult(SignInClaimData data)
     {
         if (data == null)
         {
@@ -964,13 +1937,18 @@ public partial class HomePageUI
                     string rewardName = string.IsNullOrWhiteSpace(reward.grantedRewardName)
                         ? GetRewardDisplayName(reward.grantedRewardType, reward.grantedRewardKey)
                         : reward.grantedRewardName;
-            rewards.Add($"{rewardName}×{reward.grantedRewardAmount}");
+                    rewards.Add($"{rewardName}x{reward.grantedRewardAmount}");
                 }
             }
         }
 
         string prefix = data.claimType == "MAKEUP" ? $"第{data.rewardDay}天补签成功" : $"第{data.rewardDay}天签到成功";
-        return rewards.Count == 0 ? prefix : prefix + "：" + string.Join("、", rewards.ToArray());
+        string result = rewards.Count == 0 ? prefix : prefix + "：" + string.Join("、", rewards.ToArray());
+        if (data.cost != null)
+        {
+            result += "；实际消耗 " + FormatSignInCost(data.cost);
+        }
+        return result;
     }
 
     private void BuildSignRewardDisplay(SignInRewardPreview[] rewards, out string rewardName, out string rewardAmount)
@@ -982,8 +1960,7 @@ public partial class HomePageUI
             return;
         }
 
-        List<string> names = new List<string>();
-        int totalAmount = 0;
+        List<string> entries = new List<string>();
         for (int i = 0; i < rewards.Length; i++)
         {
             SignInRewardPreview reward = rewards[i];
@@ -992,14 +1969,185 @@ public partial class HomePageUI
                 continue;
             }
 
-            names.Add(string.IsNullOrWhiteSpace(reward.rewardName)
+            string name = string.IsNullOrWhiteSpace(reward.rewardName)
                 ? GetRewardDisplayName(reward.rewardType, reward.rewardKey)
-                : reward.rewardName);
-            totalAmount += Mathf.Max(0, reward.rewardAmount);
+                : reward.rewardName;
+            entries.Add(name + " x" + Math.Max(0L, reward.rewardAmount));
         }
 
-        rewardName = names.Count == 0 ? "暂无奖励" : string.Join("/", names.ToArray());
-        rewardAmount = rewards.Length == 1 ? "×" + totalAmount : rewards.Length + "项奖励";
+        rewardName = entries.Count == 0 ? "暂无奖励" : string.Join("\n", entries.ToArray());
+        rewardAmount = string.Empty;
+    }
+
+    private void ApplySignRewardIcon(Transform card, SignInRewardPreview[] rewards)
+    {
+        if (card != null && card.name.StartsWith("NewbieSignCard", StringComparison.Ordinal))
+        {
+            ApplyNewbieSignRewardIcon(card, rewards);
+            return;
+        }
+
+        if (card == null)
+        {
+            return;
+        }
+
+        Transform iconFrame = FindSceneTransform(card, "RewardIcon");
+        Image rewardIcon = iconFrame != null ? FindSceneComponent<Image>(iconFrame, "Icon") : null;
+        if (rewardIcon == null)
+        {
+            rewardIcon = FindSceneComponent<Image>(card, "RewardIcon");
+        }
+        if (rewardIcon == null)
+        {
+            return;
+        }
+
+        SignInRewardPreview reward = null;
+        if (rewards != null)
+        {
+            for (int index = 0; index < rewards.Length; index++)
+            {
+                if (rewards[index] != null)
+                {
+                    reward = rewards[index];
+                    break;
+                }
+            }
+        }
+
+        rewardIcon.sprite = null;
+        rewardIcon.enabled = false;
+        if (reward == null)
+        {
+            SetSceneObjectActive(card, "RewardIconText", false);
+            return;
+        }
+
+        ApplyRewardQualityBackground(iconFrame, reward.rewardQuality);
+
+        string[] candidates = { reward.rewardIcon, reward.rewardKey, reward.rewardName };
+        for (int candidateIndex = 0; candidateIndex < candidates.Length; candidateIndex++)
+        {
+            Sprite sprite = LoadMailAttachmentResourceSprite(candidates[candidateIndex]);
+            if (sprite == null)
+            {
+                string assetPath = GetMailAttachmentAssetPath(
+                    candidates[candidateIndex],
+                    reward.rewardType,
+                    reward.rewardCategory);
+                sprite = LoadNewbieSignResourceSprite(assetPath);
+                if (sprite == null && !string.IsNullOrEmpty(assetPath))
+                {
+                    sprite = LoadSpriteFromAsset(assetPath);
+                }
+            }
+
+            if (sprite == null)
+            {
+                continue;
+            }
+
+            rewardIcon.sprite = sprite;
+            rewardIcon.enabled = true;
+            SetSceneObjectActive(card, "RewardIconText", false);
+            return;
+        }
+
+        SetSceneObjectActive(card, "RewardIconText", true);
+    }
+
+    private static void ApplyRewardQualityBackground(Transform iconFrame, string quality)
+    {
+        if (iconFrame == null || string.IsNullOrWhiteSpace(quality))
+        {
+            return;
+        }
+
+        Image qualityBackground = iconFrame.GetComponent<Image>();
+        if (qualityBackground == null)
+        {
+            return;
+        }
+
+        InventoryPanelView inventoryView = Resources.Load<InventoryPanelView>("UI/InventoryPanel");
+        Sprite sprite = inventoryView == null ? null : inventoryView.ResolveQualityBackground(quality);
+        if (sprite == null)
+        {
+            return;
+        }
+
+        qualityBackground.sprite = sprite;
+        qualityBackground.color = Color.white;
+    }
+
+    private void ApplyNewbieSignRewardIcon(Transform card, SignInRewardPreview[] rewards)
+    {
+        Image image = FindSceneComponent<Image>(card, "RewardResourceImage");
+        if (image == null)
+        {
+            return;
+        }
+
+        Sprite sprite = null;
+        SignInRewardPreview reward = null;
+        if (rewards != null)
+        {
+            for (int i = 0; i < rewards.Length; i++)
+            {
+                if (rewards[i] != null)
+                {
+                    reward = rewards[i];
+                    break;
+                }
+            }
+        }
+
+        if (reward != null)
+        {
+            string[] candidates = { reward.rewardIcon, reward.rewardKey, reward.rewardName };
+            for (int i = 0; i < candidates.Length && sprite == null; i++)
+            {
+                sprite = LoadMailAttachmentResourceSprite(candidates[i]);
+                if (sprite == null)
+                {
+                    string path = GetMailAttachmentAssetPath(candidates[i], reward.rewardType, reward.rewardCategory);
+                    sprite = LoadNewbieSignResourceSprite(path);
+                    if (sprite == null && !string.IsNullOrEmpty(path))
+                    {
+                        sprite = LoadSpriteFromAsset(path);
+                    }
+                }
+            }
+        }
+
+        // Only reward data changes. The slot background and all authored layout/style stay untouched.
+        image.sprite = sprite;
+        image.enabled = sprite != null;
+    }
+
+    private Sprite LoadNewbieSignResourceSprite(string assetPath)
+    {
+        if (string.IsNullOrEmpty(assetPath)
+            || assetPath.IndexOf("UI/资源图标/", StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            return null;
+        }
+
+        // Reuse serialized resource references so icons also work without loose Assets files in builds.
+        string iconName = System.IO.Path.GetFileNameWithoutExtension(assetPath);
+        HomePageScenePanel inventoryPanel = GetRegisteredScenePanel(HomePageScenePanelType.Inventory);
+        InventoryPanelView icons = inventoryPanel != null
+            ? inventoryPanel.GetComponentInChildren<InventoryPanelView>(true)
+            : null;
+        Sprite sprite = icons != null ? icons.ResolveIcon(iconName, null, null) : null;
+        if (sprite != null)
+        {
+            return sprite;
+        }
+
+        InventoryPanelView prefab = Resources.Load<InventoryPanelView>("UI/InventoryPanel");
+        return prefab != null ? prefab.ResolveIcon(iconName, null, null) : null;
     }
 
     private static string GetRewardDisplayName(string rewardType, string rewardKey)
@@ -1011,14 +2159,8 @@ public partial class HomePageUI
         if (key == "stone") return "石材";
         if (key == "iron") return "铁矿";
         if (string.Equals(rewardType, "EQUIPMENT", StringComparison.OrdinalIgnoreCase)) return "装备";
-        if (string.Equals(rewardType, "NPC", StringComparison.OrdinalIgnoreCase)) return "居民";
-        if (string.IsNullOrEmpty(rewardKey)) return "奖励";
-        for (int i = 0; i < rewardKey.Length; i++)
-        {
-            char character = rewardKey[i];
-            if ((character >= 'A' && character <= 'Z') || (character >= 'a' && character <= 'z')) return "奖励";
-        }
-        return rewardKey;
+        if (string.Equals(rewardType, "NPC", StringComparison.OrdinalIgnoreCase)) return "NPC";
+        return string.IsNullOrEmpty(rewardKey) ? "奖励" : rewardKey;
     }
 
     private void OpenServerLottery()
@@ -1028,10 +2170,11 @@ public partial class HomePageUI
 
     private void OpenServerLottery(string poolCode, int highlightNpcId)
     {
+        RestoreCardDrawIntent();
         pendingCardDrawPoolCode = (poolCode ?? string.Empty).Trim();
         pendingCardDrawHighlightNpcId = Math.Max(0, highlightNpcId);
         cardDrawRoutePoolMismatch = false;
-        serverLotteryStatus = "正在读取服务器奖池...";
+        serverLotteryStatus = "正在加载奖池...";
         serverLotteryRewardName = string.Empty;
         serverLotteryRewardAmount = 0;
         serverLotteryHasResult = false;
@@ -1095,6 +2238,24 @@ public partial class HomePageUI
             return;
         }
 
+        RestoreCardDrawIntent();
+        if (cardDrawPersistenceBlocked)
+        {
+            ShowServerLotteryState();
+            return;
+        }
+        if (!string.IsNullOrEmpty(pendingCardDrawKey))
+        {
+            if (pendingCardDrawOption != optionCode)
+            {
+                serverLotteryStatus = "上次召唤结果尚未确认，请先重试原来的召唤档位";
+                ShowServerLotteryState();
+                return;
+            }
+            StartCoroutine(DrawServerCards(optionCode, pendingCardDrawKey));
+            return;
+        }
+
         if (cardDrawRoutePoolMismatch)
         {
             serverLotteryStatus = "当前奖池已变化，请重新打开获取指引";
@@ -1110,25 +2271,30 @@ public partial class HomePageUI
             return;
         }
 
-        if (string.IsNullOrEmpty(pendingCardDrawKey) || pendingCardDrawOption != optionCode)
+        if (PlayerPrefs.GetString("weijun.onboarding.stepCode", string.Empty) == "FIRST_CARD_DRAW"
+            && (option.optionCode != "SINGLE" || option.drawCount != 1 || option.costAmount <= 0 || option.costItemKey != "diamond"))
         {
-            pendingCardDrawKey = Guid.NewGuid().ToString();
-            pendingCardDrawOption = optionCode;
+            serverLotteryStatus = "当前普通池尚未提供可用的彩墨单抽，请稍后重试或跳过此教程";
+            ShowServerLotteryState();
+            return;
         }
+
+        if (!SaveCardDrawIntent(optionCode)) { ShowServerLotteryState(); return; }
 
         StartCoroutine(DrawServerCards(optionCode, pendingCardDrawKey));
     }
 
     private IEnumerator DrawServerCards(string optionCode, string idempotencyKey)
     {
+        int requestPlayerId = GameSession.PlayerId;
+        string requestToken = GameSession.Token;
         serverCardDrawRunning = true;
         serverLotteryStatus = optionCode == "TEN"
             ? "正在执行十连抽..."
             : optionCode == "FIVE" ? "正在执行五连抽..." : "正在执行单抽...";
         ShowServerLotteryState(true);
 
-        CardDrawRequest payload = new CardDrawRequest { optionCode = optionCode };
-        if (!TryCreateAuthorizedPost("/card-draw/draw", JsonUtility.ToJson(payload), out UnityWebRequest request, out string error))
+        if (!TryCreateAuthorizedPost("/card-draw/draw", pendingCardDrawJson, out UnityWebRequest request, out string error))
         {
             serverCardDrawRunning = false;
             serverLotteryStatus = error;
@@ -1140,6 +2306,11 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
+            if (requestPlayerId != GameSession.PlayerId || requestToken != GameSession.Token)
+            {
+                serverCardDrawRunning = false;
+                yield break;
+            }
             if (HandleUnauthorizedResponse(request))
             {
                 serverCardDrawRunning = false;
@@ -1149,11 +2320,11 @@ public partial class HomePageUI
             CardDrawApiResponse response = ParseJson<CardDrawApiResponse>(request.downloadHandler.text);
             if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
-                bool serverResponded = request.responseCode > 0 && request.result != UnityWebRequest.Result.ConnectionError;
+                bool serverResponded = request.responseCode >= 400 && request.responseCode < 500
+                    && request.responseCode != 408 && request.responseCode != 429 && response != null && response.code != 200;
                 if (serverResponded)
                 {
-                    pendingCardDrawKey = string.Empty;
-                    pendingCardDrawOption = string.Empty;
+                    ClearCardDrawIntent(requestPlayerId);
                 }
 
                 serverCardDrawRunning = false;
@@ -1162,13 +2333,12 @@ public partial class HomePageUI
                     : GetApiError(response);
                 serverLotteryStatus = serverResponded
                     ? "抽奖失败：" + failure
-                    : "网络状态未知，再次点击会使用同一请求号重试：" + failure;
+                    : "抽取结果尚未确认，再次点击将查询本次结果，请勿重复抽取";
                 ShowServerLotteryState();
                 yield break;
             }
 
-            pendingCardDrawKey = string.Empty;
-            pendingCardDrawOption = string.Empty;
+            ClearCardDrawIntent(requestPlayerId);
             serverCardDrawRunning = false;
             if (response.data.cards != null && response.data.cards.Length > 0)
             {
@@ -1197,6 +2367,7 @@ public partial class HomePageUI
             ShowServerLotteryState();
             ShowLotteryRewardConfirm(response.data);
             StartCoroutine(RefreshCardDrawRewardState(response.data));
+            PlayerOnboardingManager.NotifyBusinessSucceeded();
         }
     }
 
@@ -1432,8 +2603,8 @@ public partial class HomePageUI
         for (int i = 0; i < shown; i++)
         {
             CardDrawResultResponse result = data.results[i];
-            string suffix = result.duplicateNpcConverted ? "（重复居民转为碎片）" : string.Empty;
-            rewards.Add($"{GetCardDrawResultName(result)}×{result.grantedRewardAmount}{suffix}");
+            string suffix = result.duplicateNpcConverted ? "(重复NPC转碎片)" : string.Empty;
+            rewards.Add($"{GetCardDrawResultName(result)}x{result.grantedRewardAmount}{suffix}");
         }
 
         return "获得：" + string.Join("、", rewards.ToArray()) + $" · 剩余钻石 {data.remainingDiamond}";
@@ -1526,10 +2697,11 @@ public partial class HomePageUI
         SetSceneText(root, "LotteryDiamondText", $"钻石 {diamond}");
         SetSceneText(root, "LotteryPrizeHint", serverCardDrawPool == null
             ? "正在同步奖池"
-            : $"奖项 {cards.Length} 个 · 服务器配置");
+            : $"共 {cards.Length} 项奖励");
         SetSceneText(root, "LotteryStatus", string.IsNullOrEmpty(status) ? serverLotteryStatus : status);
 
         Transform poolPanel = FindSceneTransform(root, "LotteryPoolPanel");
+        SetSceneText(poolPanel, "LotteryPoolNote", "奖励内容与概率");
         Transform rewardPanel = FindSceneTransform(root, "LotteryRewardConfirmPanel");
         bool poolVisible = poolPanel != null && poolPanel.gameObject.activeSelf;
         bool rewardVisible = rewardPanel != null && rewardPanel.gameObject.activeSelf;
@@ -1544,21 +2716,30 @@ public partial class HomePageUI
         Button singleButton = FindSceneComponent<Button>(root, "LotterySingleButton");
         if (singleButton != null)
         {
-            singleButton.interactable = single != null && !serverCardDrawRunning && !serverCardDrawPoolRunning && !poolVisible && !rewardVisible;
+            singleButton.interactable = !cardDrawPersistenceBlocked && (single != null || pendingCardDrawOption == "SINGLE")
+                && (string.IsNullOrEmpty(pendingCardDrawKey) || pendingCardDrawOption == "SINGLE")
+                && !serverCardDrawRunning && !serverCardDrawPoolRunning && !poolVisible && !rewardVisible;
         }
-        SetSceneButtonText(singleButton, serverCardDrawRunning ? "抽取中..." : FormatDrawOption(single, "单抽"));
+        SetSceneButtonText(singleButton, serverCardDrawRunning ? "抽取中..."
+            : pendingCardDrawOption == "SINGLE" ? "重试上次单抽" : FormatDrawOption(single, "单抽"));
         BindSceneButton(singleButton, singleButton != null && singleButton.interactable ? (Action)(() => BeginServerCardDraw("SINGLE")) : null);
 
         Button multiButton = FindSceneComponent<Button>(root, "LotteryTenButton");
+        string retryMultiOption = !string.IsNullOrEmpty(pendingCardDrawKey) && pendingCardDrawOption != "SINGLE"
+            ? pendingCardDrawOption : null;
+        string selectedMultiOption = retryMultiOption ?? (multi != null ? multi.optionCode : null);
         if (multiButton != null)
         {
-            multiButton.interactable = multi != null && !serverCardDrawRunning && !serverCardDrawPoolRunning && !poolVisible && !rewardVisible;
+            multiButton.interactable = !cardDrawPersistenceBlocked && !string.IsNullOrEmpty(selectedMultiOption)
+                && (string.IsNullOrEmpty(pendingCardDrawKey) || pendingCardDrawOption == selectedMultiOption)
+                && !serverCardDrawRunning && !serverCardDrawPoolRunning && !poolVisible && !rewardVisible;
         }
-        SetSceneButtonText(multiButton, FormatDrawOption(multi, multiLabel));
+        SetSceneButtonText(multiButton, retryMultiOption == null ? FormatDrawOption(multi, multiLabel)
+            : retryMultiOption == "TEN" ? "重试上次十连抽" : "重试上次五连抽");
         BindSceneButton(
             multiButton,
-            multiButton != null && multiButton.interactable && multi != null
-                ? (Action)(() => BeginServerCardDraw(multi.optionCode))
+            multiButton != null && multiButton.interactable
+                ? (Action)(() => BeginServerCardDraw(selectedMultiOption))
                 : null);
 
         Button poolButton = FindSceneComponent<Button>(root, "LotteryPoolButton");
@@ -1577,7 +2758,7 @@ public partial class HomePageUI
             return fallback + "未开放";
         }
 
-        return $"{fallback} {option.costAmount}{option.costItemName}";
+        return $"{fallback}\n{option.costAmount}{option.costItemName}";
     }
 
     private void ConfigureLotteryPrizeRail(Transform root, CardDrawCardResponse[] cards)
@@ -1613,24 +2794,44 @@ public partial class HomePageUI
             cardObject.name = "RuntimeLotteryPrizeCard_" + cardData.slotNo;
             cardObject.SetActive(true);
             SetSceneText(cardObject.transform, "LotteryPrizeCardName", string.IsNullOrEmpty(cardData.rewardName) ? "奖励" : cardData.rewardName);
-            SetSceneText(cardObject.transform, "LotteryPrizeCardAmount", $"×{Mathf.Max(0, cardData.rewardAmount)}");
+            SetSceneText(cardObject.transform, "LotteryPrizeCardAmount", $"x{Mathf.Max(0, cardData.rewardAmount)}");
             SetSceneText(cardObject.transform, "LotteryPrizeCardProbability", $"概率 {cardData.probability:P1}");
             SetSceneText(cardObject.transform, "LotteryPrizeIconText", GetLotteryIconLabel(cardData.rewardName, cardData.rewardType));
-            Image icon = FindSceneComponent<Image>(cardObject.transform, "LotteryPrizeIcon");
+            Image icon = FindSceneComponent<Image>(cardObject.transform, "LotteryPrizeRewardImage");
             if (icon != null)
             {
-                bool highlighted = pendingCardDrawHighlightNpcId > 0
-                    && cardData.rewardAssetId == pendingCardDrawHighlightNpcId;
-                icon.color = highlighted
-                    ? new Color(0.98f, 0.76f, 0.18f, 1f)
-                    : GetLotteryRewardColor(cardData.rewardType);
-                SetSceneObjectActive(cardObject.transform, "LotteryPrizeHighlight", highlighted);
+                icon.sprite = ResolveLotteryPrizeSprite(cardData);
+                icon.enabled = icon.sprite != null;
+                SetSceneObjectActive(cardObject.transform, "LotteryPrizeIconText", icon.sprite == null);
             }
+            SetSceneObjectActive(cardObject.transform, "LotteryPrizeHighlight",
+                pendingCardDrawHighlightNpcId > 0 && cardData.rewardAssetId == pendingCardDrawHighlightNpcId);
             if (pendingCardDrawHighlightNpcId > 0 && cardData.rewardAssetId == pendingCardDrawHighlightNpcId)
             {
-                SetSceneText(cardObject.transform, "LotteryPrizeCardName", "★ " + (string.IsNullOrEmpty(cardData.rewardName) ? "目标角色" : cardData.rewardName));
+                SetSceneText(cardObject.transform, "LotteryPrizeCardName", "★ " + (string.IsNullOrEmpty(cardData.rewardName) ? "目标 NPC" : cardData.rewardName));
             }
         }
+    }
+
+    private Sprite ResolveLotteryPrizeSprite(CardDrawCardResponse card)
+    {
+        if (card == null) return null;
+
+        string[] keys = { card.icon, card.rewardKey, card.rewardName };
+        if (string.Equals(card.rewardType, "NPC", StringComparison.OrdinalIgnoreCase))
+        {
+            return ResolveRoleSprite(keys, false);
+        }
+
+        bool equipment = string.Equals(card.rewardType, "EQUIPMENT", StringComparison.OrdinalIgnoreCase);
+        foreach (string key in keys)
+        {
+            if (string.IsNullOrWhiteSpace(key)) continue;
+            Sprite sprite = equipment ? ResolveEquipmentSprite(key) : ResolveMailInventorySprite(key);
+            if (sprite != null) return sprite;
+        }
+
+        return null;
     }
 
     private void ShowLotteryPool()
@@ -1654,7 +2855,7 @@ public partial class HomePageUI
         Transform template = FindSceneTransform(root, "LotteryPoolRowTemplate");
         if (poolPanel == null || content == null || template == null)
         {
-            SetStatus("奖池面板节点不完整，请重新生成抽奖面板");
+            SetStatus("奖池页面暂时无法打开，请稍后重试");
             return;
         }
 
@@ -1682,7 +2883,7 @@ public partial class HomePageUI
             rowObject.SetActive(true);
             SetSceneText(rowObject.transform, "LotteryPoolRowSlot", "#" + cardData.slotNo);
             SetSceneText(rowObject.transform, "LotteryPoolRowName", string.IsNullOrEmpty(cardData.rewardName) ? "奖励" : cardData.rewardName);
-            SetSceneText(rowObject.transform, "LotteryPoolRowAmount", "数量 ×" + Mathf.Max(0, cardData.rewardAmount));
+            SetSceneText(rowObject.transform, "LotteryPoolRowAmount", "数量 x" + Mathf.Max(0, cardData.rewardAmount));
             SetSceneText(rowObject.transform, "LotteryPoolRowProbability", "概率 " + cardData.probability.ToString("P1"));
         }
 
@@ -1738,7 +2939,7 @@ public partial class HomePageUI
 
         CardDrawResultResponse[] results = OrderCardDrawResults(data.results);
         SetSceneText(rewardPanel, "LotteryRewardConfirmTitle", data.drawCount > 1 ? "连抽结果" : "抽奖结果");
-        SetSceneText(rewardPanel, "LotteryRewardConfirmSummary", "奖励已按服务器抽奖结果发放，确认后关闭此提示");
+        SetSceneText(rewardPanel, "LotteryRewardConfirmSummary", "奖励已发放");
         for (int i = 0; i < results.Length; i++)
         {
             CardDrawResultResponse result = results[i];
@@ -1752,8 +2953,9 @@ public partial class HomePageUI
             rowObject.SetActive(true);
             SetSceneText(rowObject.transform, "LotteryRewardRowSequence", result.drawSequence.ToString());
             SetSceneText(rowObject.transform, "LotteryRewardRowName", GetCardDrawResultName(result));
-            SetSceneText(rowObject.transform, "LotteryRewardRowAmount", "×" + Mathf.Max(0, result.grantedRewardAmount));
-            SetSceneText(rowObject.transform, "LotteryRewardRowNote", result.duplicateNpcConverted ? "重复居民已转为碎片" : GetRewardCategoryLabel(result.grantedRewardType));
+            SetSceneText(rowObject.transform, "LotteryRewardRowAmount", "x" + Mathf.Max(0, result.grantedRewardAmount));
+            SetSceneText(rowObject.transform, "LotteryRewardRowNote", result.duplicateNpcConverted ? "重复角色已转为碎片" : GetRewardCategoryLabel(result.grantedRewardType));
+            ConfigureLotteryResultPresentation(rowObject.transform, result);
         }
 
         rewardPanel.gameObject.SetActive(true);
@@ -1762,8 +2964,35 @@ public partial class HomePageUI
         if (confirm != null)
         {
             confirm.interactable = !serverCardDrawRunning;
+            SetSceneButtonText(confirm, "确定");
         }
         BindSceneButton(confirm, !serverCardDrawRunning ? (Action)ConfirmLotteryReward : null);
+    }
+
+    private void ConfigureLotteryResultPresentation(Transform row, CardDrawResultResponse result)
+    {
+        Image icon = FindSceneComponent<Image>(row, "LotteryRewardIcon");
+        if (icon == null)
+        {
+            icon = CreateImage("LotteryRewardIcon", row, Color.white);
+            icon.gameObject.layer = row.gameObject.layer;
+        }
+        icon.sprite = ResolveLotteryPrizeSprite(new CardDrawCardResponse
+        {
+            rewardType = result.grantedRewardType,
+            rewardKey = result.grantedRewardKey,
+            rewardName = GetCardDrawResultName(result),
+            icon = result.grantedRewardIcon
+        });
+        icon.type = Image.Type.Simple;
+        icon.preserveAspect = true;
+        icon.raycastTarget = false;
+        icon.gameObject.SetActive(icon.sprite != null);
+        SetRect(icon.rectTransform, new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(0f, 0.5f), new Vector2(18f, 0f), new Vector2(58f, 58f));
+        SetSceneObjectActive(row, "LotteryRewardRowSequence", icon.sprite == null);
+        ConfigurePresentationLabel(FindSceneComponent<TMP_Text>(row, "LotteryRewardRowName"), 22f, true);
+        ConfigurePresentationLabel(FindSceneComponent<TMP_Text>(row, "LotteryRewardRowAmount"), 22f, true);
+        ConfigurePresentationLabel(FindSceneComponent<TMP_Text>(row, "LotteryRewardRowNote"), 18f, false);
     }
 
     private void ConfirmLotteryReward()
@@ -1821,11 +3050,7 @@ public partial class HomePageUI
         {
             return rewardName.Substring(0, 1);
         }
-        string normalized = (rewardType ?? string.Empty).Trim().ToUpperInvariant();
-        if (normalized == "NPC") return "人";
-        if (normalized == "EQUIPMENT") return "装";
-        if (normalized == "ITEM") return "物";
-        return "奖";
+        return string.IsNullOrEmpty(rewardType) ? "奖" : rewardType.Substring(0, 1);
     }
 
     private static Color GetLotteryRewardColor(string rewardType)
@@ -1842,7 +3067,7 @@ public partial class HomePageUI
         if (normalized == "NPC") return "角色";
         if (normalized == "EQUIPMENT") return "装备";
         if (normalized == "ITEM") return "物品";
-        return "奖励";
+        return string.IsNullOrEmpty(rewardType) ? "奖励" : rewardType;
     }
 
     private void ShowServerLotteryState(bool rolling = false)
@@ -1889,7 +3114,7 @@ public partial class HomePageUI
                     yield break;
                 }
 
-                announcementPanelView.SetAnnouncement("游戏公告", "当前没有有效公告", string.Empty, "暂无公告内容");
+                announcementPanelView.SetAnnouncements(null);
                 announcementPanelView.BindClose(HideAnnouncementPanel);
                 SetStatus("当前没有有效公告");
                 yield break;
@@ -1900,14 +3125,9 @@ public partial class HomePageUI
                 yield break;
             }
 
-            AnnouncementResponse first = announcements[0];
-            announcementPanelView.SetAnnouncement(
-                first.title,
-                $"共 {announcements.Length} 条 · 未读 {response.data.unreadCount}",
-                string.IsNullOrEmpty(first.startTime) ? string.Empty : "发布时间 " + first.startTime,
-                BuildServerAnnouncementBody(announcements));
+            announcementPanelView.SetAnnouncements(BuildAnnouncementPanelItems(announcements));
             announcementPanelView.BindClose(HideAnnouncementPanel);
-            SetStatus($"已读取 {announcements.Length} 条服务器公告");
+            SetStatus(string.Empty);
 
             for (int i = 0; i < announcements.Length; i++)
             {
@@ -1958,30 +3178,80 @@ public partial class HomePageUI
         }
     }
 
-    private string BuildServerAnnouncementBody(AnnouncementResponse[] announcements)
+    private AnnouncementPanelView.AnnouncementItem[] BuildAnnouncementPanelItems(AnnouncementResponse[] announcements)
     {
-        List<string> blocks = new List<string>();
-        for (int i = 0; i < announcements.Length; i++)
+        List<AnnouncementPanelView.AnnouncementItem> items = new List<AnnouncementPanelView.AnnouncementItem>();
+        if (announcements == null)
         {
-            AnnouncementResponse item = announcements[i];
-            if (item == null)
+            return items.ToArray();
+        }
+
+        for (int index = 0; index < announcements.Length; index++)
+        {
+            AnnouncementResponse announcement = announcements[index];
+            if (announcement == null)
             {
                 continue;
             }
 
-            string pinned = item.pinned ? "[置顶] " : string.Empty;
-            string time = string.IsNullOrEmpty(item.startTime) ? string.Empty : "\n" + item.startTime;
-            blocks.Add($"{pinned}{item.title}{time}\n\n{item.content}");
+            string categoryKey = ResolveAnnouncementCategoryKey(announcement);
+            string categoryName = ResolveAnnouncementCategoryName(announcement, categoryKey);
+            items.Add(new AnnouncementPanelView.AnnouncementItem
+            {
+                categoryKey = categoryKey,
+                categoryName = categoryName,
+                title = announcement.title,
+                version = announcement.announcementCode,
+                publishDate = string.IsNullOrEmpty(announcement.startTime)
+                    ? string.Empty
+                    : "发布时间 " + announcement.startTime,
+                body = announcement.content
+            });
         }
 
-        return string.Join("\n\n------------------------------\n\n", blocks.ToArray());
+        return items.ToArray();
+    }
+
+    private string ResolveAnnouncementCategoryKey(AnnouncementResponse announcement)
+    {
+        if (announcement == null)
+        {
+            return "SYSTEM";
+        }
+
+        if (!string.IsNullOrWhiteSpace(announcement.announcementType)) return announcement.announcementType.Trim();
+        if (!string.IsNullOrWhiteSpace(announcement.type)) return announcement.type.Trim();
+        if (!string.IsNullOrWhiteSpace(announcement.category)) return announcement.category.Trim();
+        // V31 lists announcements, not categories. Keep separate entries even when their titles match.
+        if (announcement.id > 0) return "NOTICE:" + announcement.id;
+        if (!string.IsNullOrWhiteSpace(announcement.announcementCode)) return "NOTICE:" + announcement.announcementCode.Trim();
+        if (!string.IsNullOrWhiteSpace(announcement.title)) return announcement.title.Trim();
+        return "SYSTEM";
+    }
+
+    private string ResolveAnnouncementCategoryName(AnnouncementResponse announcement, string categoryKey)
+    {
+        if (announcement == null)
+        {
+            return "系统公告";
+        }
+
+        if (!string.IsNullOrWhiteSpace(announcement.announcementTypeName)) return announcement.announcementTypeName.Trim();
+        if (!string.IsNullOrWhiteSpace(announcement.typeName)) return announcement.typeName.Trim();
+        if (!string.IsNullOrWhiteSpace(announcement.categoryName)) return announcement.categoryName.Trim();
+        if (!string.IsNullOrWhiteSpace(announcement.announcementType)) return announcement.announcementType.Trim();
+        if (!string.IsNullOrWhiteSpace(announcement.type)) return announcement.type.Trim();
+        if (!string.IsNullOrWhiteSpace(announcement.category)) return announcement.category.Trim();
+        if (!string.IsNullOrWhiteSpace(announcement.title)) return announcement.title.Trim();
+        if (categoryKey != null && categoryKey.StartsWith("NOTICE:", StringComparison.Ordinal)) return "公告";
+        return string.IsNullOrEmpty(categoryKey) ? "系统公告" : categoryKey;
     }
 
     private void ShowAnnouncementFailure(string error)
     {
         if (announcementPanelView != null && announcementPanelView.gameObject.activeInHierarchy)
         {
-            announcementPanelView.SetAnnouncement("游戏公告", "同步失败", string.Empty, error);
+            announcementPanelView.SetStatus("同步失败", error);
             announcementPanelView.BindClose(HideAnnouncementPanel);
         }
         SetStatus("公告同步失败：" + error);
@@ -1991,7 +3261,7 @@ public partial class HomePageUI
     {
         if (!HasAuthSession())
         {
-            SetStatus("请先登录账号后领取服务器广告奖励。 ");
+            SetStatus("请登录后领取广告奖励。");
             return;
         }
 
@@ -2007,7 +3277,7 @@ public partial class HomePageUI
     private IEnumerator GetRewardAdConfigAndPrepare(string scene)
     {
         rewardAdRunning = true;
-        SetStatus("正在读取激励广告配置...");
+        SetStatus("正在加载奖励广告...");
         UnityWebRequest configRequest = CreateAuthorizedGet("/ad/reward/config");
         if (configRequest == null)
         {
@@ -2029,7 +3299,7 @@ public partial class HomePageUI
             if (configRequest.result != UnityWebRequest.Result.Success || response == null || response.code != 200)
             {
                 rewardAdRunning = false;
-                SetStatus("广告配置读取失败：" + (response == null
+                SetStatus("广告暂不可用：" + (response == null
                     ? ApiRequestUtility.GetErrorMessage(configRequest, "请求失败")
                     : GetApiError(response)));
                 yield break;
@@ -2051,7 +3321,7 @@ public partial class HomePageUI
             if (!configured)
             {
                 rewardAdRunning = false;
-                SetStatus("服务器未开放金币激励广告。 ");
+                SetStatus("金币奖励广告暂未开放。");
                 yield break;
             }
         }
@@ -2088,7 +3358,7 @@ public partial class HomePageUI
             }
 
             pendingRewardAdWatchId = response.data.watchId;
-            SetStatus($"观看完整广告可获得 {GetRewardDisplayName("ITEM", response.data.rewardItemKey)} ×{response.data.rewardAmount}");
+            SetStatus($"观看完整广告可获得 {GetRewardDisplayName("ITEM", response.data.rewardItemKey)} x{response.data.rewardAmount}");
             WeChatPlatformBridge.RequestRewardedVideo(this, response.data.watchId, response.data.adUnitId);
         }
     }
@@ -2201,7 +3471,7 @@ public partial class HomePageUI
             {
                 SyncInventoryResourceValues(response.data.items);
             }
-            SetStatus($"广告奖励已领取：{GetRewardDisplayName("ITEM", response.data.rewardItemKey)} ×{response.data.rewardAmount}");
+            SetStatus($"广告奖励已领取：{GetRewardDisplayName("ITEM", response.data.rewardItemKey)} x{response.data.rewardAmount}");
             StartCoroutine(RefreshAccountSnapshot(string.Empty));
         }
     }
@@ -2343,12 +3613,14 @@ public partial class HomePageUI
     [Serializable]
     private class SignInOverviewApiResponse : BasicApiResponse
     {
+        public int contractVersion;
         public SignInOverviewData data;
     }
 
     [Serializable]
     private class SignInOverviewData
     {
+        public int contractVersion;
         public string businessTime;
         public SignInPlanResponse[] plans;
     }
@@ -2357,9 +3629,22 @@ public partial class HomePageUI
     private class SignInPlanResponse
     {
         public string planCode;
+        public int contractVersion;
+        public int planVersion;
+        public long minimumClientVersionCode;
         public string planName;
         public string planType;
+        public string activityCode;
+        public string activityName;
+        public string activityDescription;
+        public string description;
+        public string startTime;
+        public string endTime;
+        public string activityStartTime;
+        public string activityEndTime;
         public string periodKey;
+        public string rewardMode;
+        public int rewardWindowDays;
         public int currentDay;
         public int windowDays;
         public string expiresAt;
@@ -2378,6 +3663,7 @@ public partial class HomePageUI
         public bool claimed;
         public bool canClaim;
         public bool canMakeup;
+        public string claimedAt;
         public SignInRewardPreview[] rewards;
     }
 
@@ -2387,19 +3673,21 @@ public partial class HomePageUI
         public int rewardSeq;
         public string rewardType;
         public string rewardKey;
+        public string rewardQuality;
         public long rewardAssetId;
         public string rewardName;
         public string rewardIcon;
         public string rewardCategory;
-        public int rewardAmount;
+        public long rewardAmount;
         public string fallbackCondition;
         public string fallbackRewardType;
         public string fallbackRewardKey;
+        public string fallbackRewardQuality;
         public long fallbackRewardAssetId;
         public string fallbackRewardName;
         public string fallbackRewardIcon;
         public string fallbackRewardCategory;
-        public int fallbackRewardAmount;
+        public long fallbackRewardAmount;
     }
 
     [Serializable]
@@ -2410,7 +3698,7 @@ public partial class HomePageUI
         public string itemName;
         public string icon;
         public string itemCategory;
-        public int amount;
+        public long amount;
     }
 
     [Serializable]
@@ -2453,18 +3741,20 @@ public partial class HomePageUI
         public int rewardSeq;
         public string configuredRewardType;
         public string configuredRewardKey;
+        public string configuredRewardQuality;
         public long configuredAssetId;
         public string configuredRewardName;
         public string configuredRewardIcon;
         public string configuredRewardCategory;
-        public int configuredRewardAmount;
+        public long configuredRewardAmount;
         public string grantedRewardType;
         public string grantedRewardKey;
+        public string grantedRewardQuality;
         public long grantedAssetId;
         public string grantedRewardName;
         public string grantedRewardIcon;
         public string grantedRewardCategory;
-        public int grantedRewardAmount;
+        public long grantedRewardAmount;
         public bool fallbackApplied;
     }
 
@@ -2582,6 +3872,12 @@ public partial class HomePageUI
     {
         public long id;
         public string announcementCode;
+        public string announcementType;
+        public string announcementTypeName;
+        public string type;
+        public string typeName;
+        public string category;
+        public string categoryName;
         public string title;
         public string content;
         public int priority;

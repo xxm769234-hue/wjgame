@@ -24,7 +24,10 @@ public partial class HomePageUI
     private const string AvatarOwnerPlayerIdKey = "PlayerAvatarOwnerId";
     private const string LocalAvatarResourcePathKey = "PlayerAvatarResourcePath";
     private const string AvatarCodeKey = "PlayerAvatarCode";
+    private const string PlayerAvatarStateKeyPrefix = "PlayerAvatarState.";
+    [SerializeField] private AvatarSpriteBinding[] avatarSpriteBindings = new AvatarSpriteBinding[0];
     private readonly Dictionary<string, Sprite> avatarSpriteCache = new Dictionary<string, Sprite>();
+    private readonly Dictionary<long, object> avatarByPlayerId = new Dictionary<long, object>();
     private readonly Dictionary<Image, AvatarImageState> avatarImageStates = new Dictionary<Image, AvatarImageState>();
     private readonly List<AvatarPresetOption> presetAvatarOptions = new List<AvatarPresetOption>();
     private readonly HashSet<string> enabledPresetAvatarCodes = new HashSet<string>(StringComparer.Ordinal);
@@ -50,39 +53,14 @@ public partial class HomePageUI
         avatarButtonComponent.interactable = !avatarMutationRunning;
         BindSceneButton(avatarButtonComponent, BeginAvatarSelection);
 
-        Transform parent = avatar.transform.parent;
-        Button chooseButton = FindSceneComponent<Button>(parent, "ProfileChooseAvatarButton");
-        if (chooseButton == null)
-        {
-            chooseButton = CreateButton(parent, "ProfileChooseAvatarButton", "选择头像", new Color(0.28f, 0.55f, 0.76f, 1f), Color.white);
-            SetRect(chooseButton.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(260f, -40f), new Vector2(100f, 40f));
-            ShrinkButtonLabel(chooseButton, 15);
-        }
-
-        Button resetButton = FindSceneComponent<Button>(parent, "ProfileResetAvatarButton");
-        if (resetButton == null)
-        {
-            resetButton = CreateButton(parent, "ProfileResetAvatarButton", "恢复默认", new Color(0.65f, 0.45f, 0.27f, 1f), Color.white);
-            SetRect(resetButton.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(260f, -88f), new Vector2(100f, 40f));
-            ShrinkButtonLabel(resetButton, 15);
-        }
-
-        chooseButton.gameObject.SetActive(true);
-        resetButton.gameObject.SetActive(isAuthenticated);
-        chooseButton.interactable = !avatarMutationRunning;
-        resetButton.interactable = !avatarMutationRunning
-            && (!string.IsNullOrEmpty(GetCurrentAvatarUrl()) || !string.IsNullOrEmpty(GetCurrentAvatarCode()));
-        SetSceneButtonText(chooseButton, avatarMutationRunning ? "处理中" : "选择头像");
-        BindSceneButton(chooseButton, BeginAvatarSelection);
-        BindSceneButton(resetButton, () => StartCoroutine(ResetCurrentAvatar()));
-
         ApplyAvatarImage(
             avatar,
             FindSceneComponent<TMP_Text>(root, "ProfileAvatarInitial"),
             GameSession.PlayerId,
             GetCurrentAvatarUrl(),
             GetCurrentAvatarCode(),
-            GetCurrentAvatarVersion());
+            GetCurrentAvatarVersion(),
+            true);
     }
 
     private void BeginAvatarSelection()
@@ -109,7 +87,7 @@ public partial class HomePageUI
         if (panel == null || panel.PanelRoot == null)
         {
             Debug.LogWarning("[Avatar] Account profile panel is unavailable; cannot show preset avatars.", this);
-            RefreshProfileAvatarPanel("个人信息面板未找到，无法选择头像");
+            RefreshProfileAvatarPanel("头像选择暂不可用，请稍后重试");
             return;
         }
 
@@ -158,27 +136,32 @@ public partial class HomePageUI
         overlayButton.targetGraphic = overlayImage;
         BindSceneButton(overlayButton, HidePresetAvatarPicker);
 
-        Image card = CreateImage("ProfileAvatarPickerCard", overlay.transform, new Color(1f, 0.94f, 0.76f, 1f));
+        Image card = CreateImage("ProfileAvatarPickerCard", overlay.transform, Color.white);
+        card.sprite = Resources.Load<Sprite>("UI/ApprovedUi/Panels/PaperPanel");
         card.raycastTarget = true;
-        SetRect(card.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(560f, 410f));
+        SetRect(card.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(740f, 450f));
 
         TMP_Text title = CreatePresetAvatarText("ProfileAvatarPickerTitle", card.transform, "选择预置头像", 26f, new Color(0.30f, 0.16f, 0.08f, 1f), TextAlignmentOptions.Center);
-        SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(-100f, 42f));
+        SetRect(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -58f), new Vector2(-160f, 44f));
 
         Image closeImage = CreateImage("ProfileAvatarPickerCloseButton", card.transform, new Color(0.78f, 0.30f, 0.22f, 1f));
         closeImage.raycastTarget = true;
-        SetRect(closeImage.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-18f, -18f), new Vector2(42f, 42f));
+        closeImage.sprite = Resources.Load<Sprite>("UI/ApprovedUi/Panels/CloseButton");
+        closeImage.color = Color.white;
+        closeImage.preserveAspect = true;
+        SetRect(closeImage.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-36f, -48f), new Vector2(52f, 52f));
         Button closeButton = closeImage.gameObject.AddComponent<Button>();
         closeButton.targetGraphic = closeImage;
         BindSceneButton(closeButton, HidePresetAvatarPicker);
         TMP_Text closeText = CreatePresetAvatarText("Text", closeImage.transform, "X", 22f, Color.white, TextAlignmentOptions.Center);
         Stretch(closeText.rectTransform);
+        closeText.gameObject.SetActive(closeImage.sprite == null);
 
         GameObject gridObject = new GameObject("ProfileAvatarPickerGrid", typeof(RectTransform));
         gridObject.transform.SetParent(card.transform, false);
-        SetRect(gridObject.GetComponent<RectTransform>(), Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(0f, 4f), new Vector2(-56f, -142f));
+        SetRect(gridObject.GetComponent<RectTransform>(), Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), new Vector2(0f, -19f), new Vector2(-140f, -240f));
         GridLayoutGroup grid = gridObject.AddComponent<GridLayoutGroup>();
-        grid.cellSize = new Vector2(100f, 100f);
+        grid.cellSize = new Vector2(128f, 148f);
         grid.spacing = new Vector2(18f, 18f);
         grid.padding = new RectOffset(10, 10, 10, 10);
         grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
@@ -186,8 +169,8 @@ public partial class HomePageUI
         grid.childAlignment = TextAnchor.UpperCenter;
 
         Button weChatButton = CreateButton(card.transform, "ProfileWechatAvatarButton", "选择微信头像", new Color(0.25f, 0.58f, 0.42f, 1f), Color.white);
-        SetRect(weChatButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 18f), new Vector2(180f, 42f));
-        ShrinkButtonLabel(weChatButton, 16);
+        SetRect(weChatButton.GetComponent<RectTransform>(), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 48f), new Vector2(224f, 52f));
+        ApplyPresentationButton(weChatButton, false, 23f);
         BindSceneButton(weChatButton, BeginWeChatAvatarSelection);
 
         return overlay;
@@ -201,6 +184,9 @@ public partial class HomePageUI
             Debug.LogWarning("[Avatar] Preset avatar grid is missing.", pickerRoot);
             return;
         }
+        RectTransform card = FindSceneComponent<RectTransform>(pickerRoot, "ProfileAvatarPickerCard");
+        if (card != null)
+            card.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, Mathf.Clamp(300f + Mathf.Ceil(presetAvatarOptions.Count / 4f) * 150f, 450f, 900f));
 
         for (int i = grid.childCount - 1; i >= 0; i--)
         {
@@ -215,10 +201,15 @@ public partial class HomePageUI
                 continue;
             }
 
-            Image option = CreateImage("ProfileAvatarPreset_" + preset.avatarCode, grid, Color.white);
-            option.sprite = preset.sprite;
-            option.preserveAspect = true;
+            Image option = CreateImage("ProfileAvatarPreset_" + preset.avatarCode, grid, new Color(1f, .96f, .85f, 1f));
+            option.sprite = Resources.Load<Sprite>("IdleAdventureUI/RoundedPanel");
+            option.type = Image.Type.Sliced;
             option.raycastTarget = true;
+            Image portrait = CreateImage("Portrait", option.transform, Color.white);
+            portrait.sprite = preset.sprite;
+            portrait.preserveAspect = true;
+            portrait.raycastTarget = false;
+            SetRect(portrait.rectTransform, new Vector2(.5f, 1f), new Vector2(.5f, 1f), new Vector2(.5f, 1f), new Vector2(0f, -8f), new Vector2(104f, 104f));
             Button optionButton = option.gameObject.AddComponent<Button>();
             optionButton.targetGraphic = option;
             AvatarPresetOption selectedPreset = preset;
@@ -228,10 +219,13 @@ public partial class HomePageUI
                 "Label",
                 option.transform,
                 string.IsNullOrWhiteSpace(preset.displayName) ? preset.avatarCode : preset.displayName,
-                12f,
+                17f,
                 new Color(0.28f, 0.14f, 0.06f, 1f),
-                TextAlignmentOptions.Bottom);
-            SetRect(label.rectTransform, Vector2.zero, Vector2.one, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(-4f, -4f));
+                TextAlignmentOptions.Center);
+            SetRect(label.rectTransform, Vector2.zero, new Vector2(1f, 0f), new Vector2(.5f, 0f), new Vector2(0f, 4f), new Vector2(-8f, 30f));
+            ConfigurePresentationLabel(label, 17f, false);
+            label.margin = Vector4.zero;
+            label.alignment = TextAlignmentOptions.Center;
         }
     }
 
@@ -242,7 +236,7 @@ public partial class HomePageUI
         TextMeshProUGUI text = textObject.GetComponent<TextMeshProUGUI>();
         TMP_FontAsset resolvedFont = RuntimeFontAssetProvider.Resolve();
         text.font = resolvedFont != null ? resolvedFont : TMP_Settings.defaultFontAsset;
-        text.text = FrontendTextLocalization.Normalize(value);
+        text.text = value;
         text.fontSize = fontSize;
         text.fontStyle = FontStyles.Normal;
         text.color = color;
@@ -378,21 +372,15 @@ public partial class HomePageUI
             }
 
             string avatarCode = entry.avatarCode.Trim();
-            string resourcePath = GetPresetAvatarResourcePath(avatarCode);
-            if (string.IsNullOrEmpty(resourcePath))
-            {
-                Debug.LogWarning("[Avatar] Ignoring unknown preset avatar code: " + avatarCode + ".", this);
-                continue;
-            }
             if (!entry.enabled || enabledPresetAvatarCodes.Contains(avatarCode))
             {
                 continue;
             }
 
-            Sprite sprite = Resources.Load<Sprite>(resourcePath);
+            Sprite sprite = GetPresetAvatarSprite(avatarCode);
             if (sprite == null)
             {
-                Debug.LogWarning("[Avatar] Preset resource is missing: Resources/" + resourcePath + ".", this);
+                Debug.LogWarning("[Avatar] Preset sprite is missing for avatar code: " + avatarCode + ".", this);
                 continue;
             }
 
@@ -516,6 +504,29 @@ public partial class HomePageUI
             default:
                 return string.Empty;
         }
+    }
+
+    private Sprite GetPresetAvatarSprite(string avatarCode)
+    {
+        if (string.IsNullOrWhiteSpace(avatarCode))
+        {
+            return null;
+        }
+
+        if (avatarSpriteBindings != null)
+        {
+            foreach (AvatarSpriteBinding binding in avatarSpriteBindings)
+            {
+                if (binding != null && binding.sprite != null
+                    && string.Equals(binding.avatarCode, avatarCode, StringComparison.Ordinal))
+                {
+                    return binding.sprite;
+                }
+            }
+        }
+
+        string resourcePath = GetPresetAvatarResourcePath(avatarCode);
+        return string.IsNullOrEmpty(resourcePath) ? null : Resources.Load<Sprite>(resourcePath);
     }
 
     private string ResolvePresetAvatarResourcePathForDisplay(string avatarCode)
@@ -663,7 +674,7 @@ public partial class HomePageUI
             if (imageBytes.Length > MaximumSourceAvatarBytes)
             {
                 imageBytes = null;
-                error = "头像源文件超过16兆字节，请重新选择较小图片";
+                error = "头像源文件超过 16 MB，请重新选择较小图片";
                 return false;
             }
             return true;
@@ -684,7 +695,7 @@ public partial class HomePageUI
             }
             if (file.Length > MaximumSourceAvatarBytes)
             {
-                error = "头像源文件超过16兆字节，请重新选择较小图片";
+                error = "头像源文件超过 16 MB，请重新选择较小图片";
                 return false;
             }
 
@@ -753,7 +764,7 @@ public partial class HomePageUI
         error = "头像图片处理失败，请重新选择";
         if (!TryDetectAvatarImageType(sourceBytes, out fileName, out mimeType))
         {
-            error = "只支持扩展名为 .jpg 或 .png 的头像图片";
+            error = "只支持 JPG 或 PNG 格式的头像图片";
             return false;
         }
 
@@ -764,7 +775,7 @@ public partial class HomePageUI
                 || sourceTexture.width <= 0
                 || sourceTexture.height <= 0)
             {
-                error = "所选文件不是可读取的受支持图片";
+                error = "所选文件不是可读取的 JPG 或 PNG 图片";
                 return false;
             }
 
@@ -819,7 +830,7 @@ public partial class HomePageUI
                 targetHeight = Mathf.Max(256, targetHeight / 2);
             }
 
-            error = "头像压缩后仍超过2兆字节，请重新选择其他图片";
+            error = "头像压缩后仍超过 2 MB，请重新选择其他图片";
             return false;
         }
         catch (Exception exception)
@@ -1084,6 +1095,11 @@ public partial class HomePageUI
             : 0L;
     }
 
+    private static string GetPlayerAvatarStateKeyPrefix(long playerId)
+    {
+        return PlayerAvatarStateKeyPrefix + playerId + ".";
+    }
+
     private void RefreshCurrentAvatarVisuals()
     {
         if (mainPageTransform != null)
@@ -1178,7 +1194,8 @@ public partial class HomePageUI
         int playerId,
         string avatarUrl,
         string avatarCode,
-        long avatarVersion)
+        long avatarVersion,
+        bool preserveSceneStyle = false)
     {
         if (image == null)
         {
@@ -1186,18 +1203,18 @@ public partial class HomePageUI
         }
 
         AvatarImageState state = GetAvatarImageState(image);
+        state.preserveSceneStyle = preserveSceneStyle;
         if (!string.IsNullOrWhiteSpace(avatarCode))
         {
-            string presetResourcePath = ResolvePresetAvatarResourcePathForDisplay(avatarCode.Trim());
-            if (!string.IsNullOrEmpty(presetResourcePath))
+            string resolvedCode = avatarCode.Trim();
+            Sprite presetSprite = !avatarPresetCatalogLoaded || enabledPresetAvatarCodes.Contains(resolvedCode)
+                ? GetPresetAvatarSprite(resolvedCode)
+                : null;
+            if (presetSprite != null)
             {
-                Sprite presetSprite = Resources.Load<Sprite>(presetResourcePath);
-                if (presetSprite != null)
-                {
-                    state.requestKey = "preset:" + avatarCode;
-                    SetLoadedAvatar(image, fallbackText, presetSprite);
-                    return;
-                }
+                state.requestKey = "preset:" + resolvedCode;
+                SetLoadedAvatar(image, fallbackText, presetSprite, state);
+                return;
             }
 
             ApplyBundledDefaultAvatar(image, fallbackText, state);
@@ -1213,7 +1230,7 @@ public partial class HomePageUI
             if (localSprite != null)
             {
                 state.requestKey = "local:" + localResourcePath;
-                SetLoadedAvatar(image, fallbackText, localSprite);
+                SetLoadedAvatar(image, fallbackText, localSprite, state);
                 return;
             }
 
@@ -1231,27 +1248,30 @@ public partial class HomePageUI
         state.requestKey = key;
         if (avatarSpriteCache.TryGetValue(key, out Sprite cachedSprite) && cachedSprite != null)
         {
-            SetLoadedAvatar(image, fallbackText, cachedSprite);
+            SetLoadedAvatar(image, fallbackText, cachedSprite, state);
             return;
         }
 
         StartCoroutine(DownloadAvatarSprite(image, fallbackText, key, resolvedUrl));
     }
 
-    private static void ApplyBundledDefaultAvatar(Image image, Component fallbackText, AvatarImageState state)
+    private void ApplyBundledDefaultAvatar(Image image, Component fallbackText, AvatarImageState state)
     {
-        Sprite defaultAvatar = Resources.Load<Sprite>(DefaultAvatarResourcePath);
+        Sprite defaultAvatar = GetPresetAvatarSprite(DefaultAvatarCode);
         if (defaultAvatar != null)
         {
             state.requestKey = "default:" + DefaultAvatarCode;
-            SetLoadedAvatar(image, fallbackText, defaultAvatar);
+            SetLoadedAvatar(image, fallbackText, defaultAvatar, state);
             return;
         }
 
         state.requestKey = string.Empty;
         image.sprite = state.defaultSprite;
-        image.color = state.defaultColor;
-        image.preserveAspect = state.defaultPreserveAspect;
+        if (!state.preserveSceneStyle)
+        {
+            image.color = state.defaultColor;
+            image.preserveAspect = state.defaultPreserveAspect;
+        }
         if (fallbackText != null)
         {
             fallbackText.gameObject.SetActive(true);
@@ -1296,7 +1316,7 @@ public partial class HomePageUI
                 && avatarImageStates.TryGetValue(image, out AvatarImageState state)
                 && state.requestKey == requestKey)
             {
-                SetLoadedAvatar(image, fallbackText, sprite);
+                SetLoadedAvatar(image, fallbackText, sprite, state);
             }
         }
     }
@@ -1316,11 +1336,14 @@ public partial class HomePageUI
         return state;
     }
 
-    private static void SetLoadedAvatar(Image image, Component fallbackText, Sprite sprite)
+    private static void SetLoadedAvatar(Image image, Component fallbackText, Sprite sprite, AvatarImageState state)
     {
         image.sprite = sprite;
-        image.color = Color.white;
-        image.preserveAspect = true;
+        if (!state.preserveSceneStyle)
+        {
+            image.color = Color.white;
+            image.preserveAspect = true;
+        }
         if (fallbackText != null)
         {
             fallbackText.gameObject.SetActive(false);
@@ -1360,10 +1383,10 @@ public partial class HomePageUI
         {
             body = body.Substring(0, 500) + "...";
         }
-        return "请求状态 " + request.responseCode
-            + "，结果=" + request.result
-            + "，错误=" + (request.error ?? string.Empty)
-            + "，响应=" + body;
+        return "HTTP " + request.responseCode
+            + ", result=" + request.result
+            + ", error=" + (request.error ?? string.Empty)
+            + ", body=" + body;
     }
 
     private void DisposeAvatarCache()
@@ -1403,6 +1426,13 @@ public partial class HomePageUI
     private class AvatarPresetSelectionRequest
     {
         public string avatarCode;
+    }
+
+    [Serializable]
+    private sealed class AvatarSpriteBinding
+    {
+        public string avatarCode;
+        public Sprite sprite;
     }
 
     private sealed class AvatarPresetOption
@@ -1465,6 +1495,7 @@ public partial class HomePageUI
         public Sprite defaultSprite;
         public Color defaultColor;
         public bool defaultPreserveAspect;
+        public bool preserveSceneStyle;
         public string requestKey;
     }
 }

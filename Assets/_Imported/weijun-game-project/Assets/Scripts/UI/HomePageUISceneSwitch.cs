@@ -8,7 +8,7 @@ public partial class HomePageUI
     private IEnumerator LoadLandSceneAndEnter(string landType)
     {
         mapEntryRunning = true;
-        SetStatus("正在读取服务器区域...");
+        SetStatus("正在加载区域...");
 
         if (!HasAuthSession() || GameSession.PlayerId <= 0)
         {
@@ -59,7 +59,7 @@ public partial class HomePageUI
         if (target == null || target.ResolvedSceneId <= 0L)
         {
             mapEntryRunning = false;
-            SetStatus("服务器未配置该区域，暂时无法进入");
+            SetStatus("该区域暂未开放");
             yield break;
         }
 
@@ -122,7 +122,7 @@ public partial class HomePageUI
         if (switchedSceneId > int.MaxValue)
         {
             mapEntryRunning = false;
-            SetStatus("区域切换失败：场景编号超出客户端支持范围");
+            SetStatus("当前版本暂时无法前往该区域，请更新游戏");
             yield break;
         }
 

@@ -119,7 +119,19 @@ public static class WeChatPlatformBridge
 
     public static void RequestAvatarSelection(MonoBehaviour receiver)
     {
-        AvatarSelectionBridge.Request(receiver);
+        if (receiver == null)
+        {
+            return;
+        }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        WJ_WeChatChooseAvatar(receiver.gameObject.name);
+#else
+        receiver.SendMessage(
+            "OnAvatarSelectionFailed",
+            "系统图片选择只能在微信小游戏运行环境中调用。",
+            SendMessageOptions.DontRequireReceiver);
+#endif
     }
 
     public static void SyncFriendLevel(int level)
@@ -357,6 +369,9 @@ public static class WeChatPlatformBridge
 
     [DllImport("__Internal")]
     private static extern void WJ_WeChatRequestSubscribeMessages(string receiverName, string requestJson);
+
+    [DllImport("__Internal")]
+    private static extern void WJ_WeChatChooseAvatar(string receiverName);
 
     [DllImport("__Internal")]
     private static extern void WJ_WeChatSyncFriendLevel(int level);

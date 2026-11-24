@@ -17,6 +17,8 @@ public sealed class PlayerComplianceGuard : MonoBehaviour
     private float lastStatusRequestTime = -ResumeCheckCooldownSeconds;
     private GameObject noticeCanvasObject;
     private Image noticeBlocker;
+    private RectTransform noticeCard;
+    private ScrollRect noticeScroll;
     private TMP_Text noticeTitle;
     private TMP_Text noticeMessage;
     private Coroutine noticeHideCoroutine;
@@ -205,7 +207,16 @@ public sealed class PlayerComplianceGuard : MonoBehaviour
         noticeBlocker.raycastTarget = blocking;
         noticeBlocker.color = blocking ? new Color(0f, 0f, 0f, 0.68f) : new Color(0f, 0f, 0f, 0f);
         noticeTitle.text = FrontendTextLocalization.Normalize(title);
-        noticeMessage.text = FrontendTextLocalization.Normalize(message);
+        string normalizedMessage = message ?? string.Empty;
+        noticeMessage.text = normalizedMessage;
+        if (noticeCard != null)
+        {
+            float preferredHeight = noticeMessage.GetPreferredValues(normalizedMessage, 676f, Mathf.Infinity).y + 8f;
+            noticeCard.sizeDelta = new Vector2(720f, Mathf.Clamp(preferredHeight + 84f, 128f, 380f));
+            noticeMessage.rectTransform.sizeDelta = new Vector2(0f, preferredHeight);
+            noticeScroll.StopMovement();
+            noticeScroll.verticalNormalizedPosition = 1f;
+        }
         if (noticeHideCoroutine != null)
         {
             StopCoroutine(noticeHideCoroutine);
@@ -248,19 +259,37 @@ public sealed class PlayerComplianceGuard : MonoBehaviour
         CanvasScaler scaler = noticeCanvasObject.GetComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
 
         noticeBlocker = CreateImage("Blocker", noticeCanvasObject.transform, new Color(0f, 0f, 0f, 0f));
         Stretch(noticeBlocker.rectTransform);
         noticeBlocker.raycastTarget = false;
 
-        Image card = CreateImage("Card", noticeCanvasObject.transform, new Color(0.12f, 0.16f, 0.22f, 0.97f));
+        Image card = CreateImage("Card", noticeCanvasObject.transform, new Color(0.98f, 0.95f, 0.86f, 0.98f));
         SetRect(card.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -92f), new Vector2(720f, 128f));
-        noticeTitle = CreateText("Title", card.transform, string.Empty, 26, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+        noticeCard = card.rectTransform;
+        Outline outline = card.gameObject.AddComponent<Outline>();
+        outline.effectColor = new Color(0.47f, 0.31f, 0.18f, 0.8f);
+        outline.effectDistance = new Vector2(2f, -2f);
+        noticeTitle = CreateText("Title", card.transform, string.Empty, 26, FontStyle.Bold, new Color(0.28f, 0.17f, 0.10f), TextAnchor.MiddleCenter);
         SetRect(noticeTitle.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -12f), new Vector2(-44f, 38f));
-        noticeMessage = CreateText("Message", card.transform, string.Empty, 18, FontStyle.Normal, new Color(0.93f, 0.95f, 0.98f, 1f), TextAnchor.MiddleCenter);
+        Image viewport = CreateImage("MessageViewport", card.transform, Color.clear);
+        Stretch(viewport.rectTransform);
+        viewport.rectTransform.offsetMin = new Vector2(22f, 18f);
+        viewport.rectTransform.offsetMax = new Vector2(-22f, -66f);
+        viewport.gameObject.AddComponent<RectMask2D>();
+        noticeMessage = CreateText("Message", viewport.transform, string.Empty, 21, FontStyle.Normal, new Color(0.28f, 0.17f, 0.10f), TextAnchor.UpperLeft);
         noticeMessage.enableWordWrapping = true;
         noticeMessage.overflowMode = TextOverflowModes.Overflow;
-        SetRect(noticeMessage.rectTransform, Vector2.zero, new Vector2(1f, 1f), new Vector2(0.5f, 0.5f), new Vector2(0f, -18f), new Vector2(-44f, 56f));
+        noticeMessage.richText = false;
+        noticeMessage.lineSpacing = 6f;
+        SetRect(noticeMessage.rectTransform, new Vector2(0f, 1f), Vector2.one, new Vector2(0.5f, 1f), Vector2.zero, Vector2.zero);
+        noticeScroll = viewport.gameObject.AddComponent<ScrollRect>();
+        noticeScroll.viewport = viewport.rectTransform;
+        noticeScroll.content = noticeMessage.rectTransform;
+        noticeScroll.horizontal = false;
+        noticeScroll.movementType = ScrollRect.MovementType.Clamped;
+        noticeScroll.scrollSensitivity = 35f;
         noticeCanvasObject.SetActive(false);
     }
 

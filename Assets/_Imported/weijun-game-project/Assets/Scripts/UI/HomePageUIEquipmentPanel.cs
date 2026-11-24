@@ -4,15 +4,50 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using TMPro;
+using Text = TMPro.TMP_Text;
 
 public partial class HomePageUI
 {
-    private const int EquipmentRows = 6;
+    private const int EquipmentColumns = 3;
+
+    [Header("Equipment quality backgrounds")]
+    [SerializeField] private Sprite equipmentCommonBackground;
+    [SerializeField] private Sprite equipmentFineBackground;
+    [SerializeField] private Sprite equipmentExcellentBackground;
+    [SerializeField] private Sprite equipmentEpicBackground;
+    [SerializeField] private Sprite equipmentLegendaryBackground;
+    [SerializeField] private EquipmentIconBinding[] equipmentIconBindings = new EquipmentIconBinding[0];
+
+    [Header("Equipment list layout")]
+    [Tooltip("Spacing between generated equipment cells. Cell size and child styles come from EquipmentItemRow0.")]
+    [SerializeField] private Vector2 equipmentGridSpacing = new Vector2(20.232f, 37.209f);
+
+    private RectTransform _equipmentItemParent;
+    private RectTransform _equipmentRowTemplate;
+    private readonly List<RectTransform> _equipmentRows = new List<RectTransform>();
+    private float _equipmentGridMinimumHeight;
+    private int _equipmentReadVersion;
+    private bool _equipmentDataReadSucceeded;
+    private readonly Dictionary<string, Sprite> _equipmentIconCache = new Dictionary<string, Sprite>();
+    private readonly Dictionary<long, EquipmentLoadoutData> _equipmentLoadouts = new Dictionary<long, EquipmentLoadoutData>();
+    private readonly Dictionary<long, PlayerNpcResponse> _equipmentWearers = new Dictionary<long, PlayerNpcResponse>();
+    private readonly HashSet<string> _equipmentUnknownQualities = new HashSet<string>();
+    private readonly HashSet<string> _equipmentMissingIconKeys = new HashSet<string>();
+
+    [Serializable]
+    private sealed class EquipmentIconBinding
+    {
+        public string iconKey;
+        public Sprite sprite;
+    }
 
     private static readonly string[] EquipmentSlotIds = { "weapon", "helmet", "armor", "boots", "gloves" };
     private static readonly string[] EquipmentSlotLabels = { "武器", "头盔", "护甲", "靴子", "手套" };
-    private static readonly string[] EquipmentCategoryIds = { "all", "weapon", "helmet", "armor", "boots", "gloves" };
-    private static readonly string[] EquipmentCategoryLabels = { "全部", "武器", "头盔", "护甲", "靴子", "手套" };
+    private Transform _equipmentCategoryRoot;
+    private readonly List<Button> _equipmentCategoryButtons = new List<Button>();
+    private int _equipmentSinglePreviewVersion;
+    private int _equipmentAutoPreviewVersion;
 
     private GameObject equipmentPanelObject;
     private InventoryItemResponse[] currentEquipmentItems = new InventoryItemResponse[0];
@@ -23,7 +58,6 @@ public partial class HomePageUI
     private bool equipmentRefreshRunning;
     private bool equipmentMutationRunning;
     private int selectedEquipmentNpcIndex;
-    private int equipmentPageIndex;
     private string activeEquipmentCategory = "all";
     private string selectedEquipmentItemKey = string.Empty;
     private string equipmentStatusMessage = string.Empty;
@@ -47,6 +81,7 @@ public partial class HomePageUI
 
     private void ShowEquipmentPanel()
     {
+        LoadPendingEquipmentGrowthRequests();
         HideEquipmentPanel();
         HideSystemMailPanel();
         HideSignPanel();
@@ -60,10 +95,20 @@ public partial class HomePageUI
         HideFriendsPanel();
         HideSettingsPanel();
 
+        if (equipmentMutationRunning)
+        {
+            ShowEquipmentScenePanel(currentEquipmentItems, true, "正在处理装备操作，请稍候...");
+            return;
+        }
+
         activeEquipmentCategory = "all";
         selectedEquipmentItemKey = string.Empty;
-        equipmentPageIndex = 0;
         equipmentStatusMessage = string.Empty;
+        serverPlayerNpcs = new PlayerNpcResponse[0];
+        serverEquipmentWarehouse = new InventoryItemResponse[0];
+        serverEquipmentLoadout = null;
+        _equipmentLoadouts.Clear();
+        _equipmentWearers.Clear();
         ResetEquipmentUpgradePreview();
         ResetEquipmentAutoUpgradePreviews();
 
@@ -71,8 +116,9 @@ public partial class HomePageUI
         ShowEquipmentScenePanel(
             new InventoryItemResponse[0],
             true,
-            "正在读取服务器居民与装备仓库...");
+            "正在加载角色与装备...");
         StartCoroutine(GetEquipmentInventoryList());
+        ResumePendingEquipmentGrowthRequest();
     }
 
     private void ShowEquipmentScenePanel(InventoryItemResponse[] items, bool serverBacked, string status)
@@ -83,7 +129,7 @@ public partial class HomePageUI
             SetLeftContent(
                 "装备",
                 BuildEquipmentFallbackText(items),
-                "装备场景组件未找到");
+                "装备页面暂时无法打开");
             return;
         }
 
@@ -92,12 +138,18 @@ public partial class HomePageUI
         equipmentStatusMessage = status ?? string.Empty;
         equipmentPanelObject = panel.gameObject;
         RenderEquipmentScenePanel(panel.PanelRoot);
+        ResetEquipmentScroll(panel.PanelRoot);
         SetStatus(equipmentStatusMessage);
     }
 
-    private IEnumerator GetEquipmentInventoryList()
+    private IEnumerator GetEquipmentInventoryList(bool allowHidden = false)
     {
+        int readVersion = ++_equipmentReadVersion;
+        string sessionToken = GameSession.Token;
+        _equipmentDataReadSucceeded = false;
+        serverEquipmentLoadout = null;
         ResetEquipmentUpgradePreview();
+        ResetEquipmentAutoUpgradePreviews();
         long selectedNpcId = GetCurrentEquipmentNpc() != null ? GetCurrentEquipmentNpc().playerNpcId : 0;
         int playerId = GameSession.PlayerId;
         UnityWebRequest npcRequest = CreateAuthorizedGet($"/npc/list/{playerId}");
@@ -112,8 +164,9 @@ public partial class HomePageUI
         using (npcRequest)
         {
             yield return npcRequest.SendWebRequest();
+            if (readVersion != _equipmentReadVersion || playerId != GameSession.PlayerId || sessionToken != GameSession.Token) yield break;
 
-            if (equipmentPanelObject == null)
+            if (equipmentPanelObject == null && !allowHidden)
             {
                 equipmentRefreshRunning = false;
                 yield break;
@@ -129,7 +182,7 @@ public partial class HomePageUI
             if (npcRequest.result != UnityWebRequest.Result.Success || response == null || response.code != 200)
             {
                 equipmentRefreshRunning = false;
-                equipmentStatusMessage = "居民列表读取失败：" + (response == null
+                equipmentStatusMessage = "NPC 列表读取失败：" + (response == null
                     ? ApiRequestUtility.GetErrorMessage(npcRequest, "服务器连接失败")
                     : GetApiError(response));
                 RenderEquipmentScenePanel(GetEquipmentPanelRoot());
@@ -151,34 +204,50 @@ public partial class HomePageUI
             }
         }
 
-        yield return RefreshServerEquipmentWarehouse();
-        if (!equipmentRefreshRunning || equipmentPanelObject == null)
+        yield return RefreshServerEquipmentWarehouse(allowHidden);
+        if (readVersion != _equipmentReadVersion || playerId != GameSession.PlayerId || sessionToken != GameSession.Token) yield break;
+        if (!equipmentRefreshRunning || (equipmentPanelObject == null && !allowHidden))
         {
             yield break;
         }
 
-        serverEquipmentLoadout = null;
-        if (GetCurrentEquipmentNpc() != null)
+        _equipmentLoadouts.Clear();
+        for (int npcIndex = 0; npcIndex < serverPlayerNpcs.Length; npcIndex++)
         {
-            yield return RefreshSelectedNpcLoadout();
-            if (!equipmentRefreshRunning)
+            PlayerNpcResponse npc = serverPlayerNpcs[npcIndex];
+            if (npc == null) continue;
+            yield return RefreshEquipmentNpcLoadout(npc, allowHidden);
+            if (readVersion != _equipmentReadVersion || playerId != GameSession.PlayerId || sessionToken != GameSession.Token) yield break;
+            if (!equipmentRefreshRunning || (equipmentPanelObject == null && !allowHidden))
             {
                 RebuildServerEquipmentItems();
                 RenderEquipmentScenePanel(GetEquipmentPanelRoot());
                 yield break;
             }
         }
+        PlayerNpcResponse selectedNpc = GetCurrentEquipmentNpc();
+        serverEquipmentLoadout = selectedNpc != null && _equipmentLoadouts.ContainsKey(selectedNpc.playerNpcId)
+            ? _equipmentLoadouts[selectedNpc.playerNpcId] : null;
 
         RebuildServerEquipmentItems();
+        _equipmentDataReadSucceeded = true;
         equipmentRefreshRunning = false;
-        equipmentStatusMessage = serverPlayerNpcs.Length == 0
-            ? "装备仓库已刷新；当前账号还没有可穿戴装备的居民"
-            : "服务器居民、装备仓库与穿戴数据已刷新";
+        equipmentStatusMessage = !string.IsNullOrEmpty(equipmentGrowthPersistenceError)
+            ? equipmentGrowthPersistenceError
+            : HasPendingEquipmentGrowthRequest()
+            ? "正在后台同步尚未返回的装备升级结果"
+            : serverPlayerNpcs.Length == 0
+            ? "装备仓库已刷新；当前账号还没有可穿戴装备的 NPC"
+            : string.Empty;
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+        ResumePendingEquipmentGrowthRequest();
     }
 
-    private IEnumerator RefreshServerEquipmentWarehouse()
+    private IEnumerator RefreshServerEquipmentWarehouse(bool allowHidden = false)
     {
+        int readVersion = _equipmentReadVersion;
+        int playerId = GameSession.PlayerId;
+        string sessionToken = GameSession.Token;
         UnityWebRequest request = CreateAuthorizedGet("/equipment/warehouse");
         if (request == null)
         {
@@ -191,6 +260,8 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
+            if (readVersion != _equipmentReadVersion || playerId != GameSession.PlayerId || sessionToken != GameSession.Token
+                || (equipmentPanelObject == null && !allowHidden)) yield break;
             if (HandleUnauthorizedResponse(request))
             {
                 equipmentRefreshRunning = false;
@@ -219,6 +290,19 @@ public partial class HomePageUI
     private IEnumerator RefreshSelectedNpcLoadout()
     {
         PlayerNpcResponse npc = GetCurrentEquipmentNpc();
+        if (npc == null) yield break;
+        int readVersion = _equipmentReadVersion;
+        yield return RefreshEquipmentNpcLoadout(npc);
+        if (readVersion != _equipmentReadVersion) yield break;
+        EquipmentLoadoutData loadout;
+        serverEquipmentLoadout = _equipmentLoadouts.TryGetValue(npc.playerNpcId, out loadout) ? loadout : null;
+    }
+
+    private IEnumerator RefreshEquipmentNpcLoadout(PlayerNpcResponse npc, bool allowHidden = false)
+    {
+        int readVersion = _equipmentReadVersion;
+        int playerId = GameSession.PlayerId;
+        string sessionToken = GameSession.Token;
         if (npc == null)
         {
             serverEquipmentLoadout = null;
@@ -236,6 +320,8 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
+            if (readVersion != _equipmentReadVersion || playerId != GameSession.PlayerId || sessionToken != GameSession.Token
+                || (equipmentPanelObject == null && !allowHidden)) yield break;
             if (HandleUnauthorizedResponse(request))
             {
                 equipmentRefreshRunning = false;
@@ -246,13 +332,13 @@ public partial class HomePageUI
             if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
                 equipmentRefreshRunning = false;
-                equipmentStatusMessage = "居民装备读取失败：" + (response == null
+                equipmentStatusMessage = "NPC 装备读取失败：" + (response == null
                     ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
                     : GetApiError(response));
                 yield break;
             }
 
-            serverEquipmentLoadout = response.data;
+            _equipmentLoadouts[npc.playerNpcId] = response.data;
         }
     }
 
@@ -269,35 +355,39 @@ public partial class HomePageUI
             }
         }
 
-        if (serverEquipmentLoadout != null && serverEquipmentLoadout.equipment != null)
+        _equipmentWearers.Clear();
+        for (int npcIndex = 0; npcIndex < serverPlayerNpcs.Length; npcIndex++)
         {
-            for (int i = 0; i < serverEquipmentLoadout.equipment.Length; i++)
+            PlayerNpcResponse npc = serverPlayerNpcs[npcIndex];
+            EquipmentLoadoutData loadout;
+            if (npc == null || !_equipmentLoadouts.TryGetValue(npc.playerNpcId, out loadout)
+                || loadout == null || loadout.equipment == null) continue;
+            for (int itemIndex = 0; itemIndex < loadout.equipment.Length; itemIndex++)
             {
-                EquipmentLoadoutItem loadoutItem = serverEquipmentLoadout.equipment[i];
-                if (loadoutItem == null || !instanceIds.Add(loadoutItem.playerEquipmentId))
+                EquipmentLoadoutItem equipped = loadout.equipment[itemIndex];
+                if (equipped == null || equipped.playerEquipmentId <= 0) continue;
+                _equipmentWearers[equipped.playerEquipmentId] = npc;
+                InventoryItemResponse item = items.Find(candidate => candidate.playerEquipmentId == equipped.playerEquipmentId);
+                if (item == null)
                 {
-                    continue;
+                    item = new InventoryItemResponse { playerEquipmentId = equipped.playerEquipmentId };
+                    items.Add(item);
                 }
-
-                InventoryItemResponse item = new InventoryItemResponse
-                {
-                    playerEquipmentId = loadoutItem.playerEquipmentId,
-                    equipmentId = loadoutItem.equipmentId,
-                    equipmentKey = loadoutItem.equipmentKey,
-                    name = loadoutItem.name,
-                    equipmentType = loadoutItem.equipmentType,
-                    quality = loadoutItem.quality,
-                    icon = loadoutItem.icon,
-                    modelKey = loadoutItem.modelKey,
-                    level = loadoutItem.level,
-                    locked = loadoutItem.locked,
-                    healthBonus = loadoutItem.healthBonus,
-                    attackBonus = loadoutItem.attackBonus,
-                    defenseBonus = loadoutItem.defenseBonus,
-                    speedBonus = loadoutItem.speedBonus
-                };
+                item.equipmentId = equipped.equipmentId;
+                item.equipmentKey = equipped.equipmentKey;
+                item.name = equipped.name;
+                item.equipmentType = equipped.equipmentType;
+                item.quality = equipped.quality;
+                item.icon = equipped.icon;
+                item.modelKey = equipped.modelKey;
+                item.level = equipped.level;
+                item.locked = equipped.locked;
+                item.healthBonus = equipped.healthBonus;
+                item.attackBonus = equipped.attackBonus;
+                item.defenseBonus = equipped.defenseBonus;
+                item.speedBonus = equipped.speedBonus;
+                item.status = "EQUIPPED";
                 NormalizeServerEquipmentItem(item, "EQUIPPED");
-                items.Add(item);
             }
         }
 
@@ -326,249 +416,243 @@ public partial class HomePageUI
         return panel != null ? panel.PanelRoot : null;
     }
 
-    private void EnsureBackendEquipmentUi(Transform root)
+    private void RenderEquipmentNpcSummary(Transform root, PlayerNpcResponse npc)
     {
-        RenameLegacyEquipmentNode(root, "EquipmentSlot", "Accessory", "Helmet");
-        RenameLegacyEquipmentNode(root, "EquipmentSlot", "Pet", "Boots");
-        CloneEquipmentNode(root, "EquipmentSlotBoots", "EquipmentSlotGloves", "Boots", "Gloves");
-
-        Vector2[] slotPositions =
+        Image avatar = FindSceneComponent<Image>(root, "EquipmentNpcAvatar");
+        Text avatarFallback = FindSceneComponent<Text>(root, "EquipmentNpcAvatarText");
+        Text name = FindSceneComponent<Text>(root, "EquipmentNpcName");
+        Text level = FindSceneComponent<Text>(root, "EquipmentNpcLevel");
+        Text attribute = FindSceneComponent<Text>(root, "EquipmentNpcAttribute");
+        Text description = FindSceneComponent<Text>(root, "EquipmentNpcDescription");
+        if (npc == null)
         {
-            new Vector2(62f, -222f),
-            new Vector2(207f, -222f),
-            new Vector2(352f, -222f),
-            new Vector2(134f, -372f),
-            new Vector2(279f, -372f)
-        };
-        for (int i = 0; i < EquipmentSlotIds.Length; i++)
-        {
-            Button slot = FindSceneComponent<Button>(root, "EquipmentSlot" + ToPascalCase(EquipmentSlotIds[i]));
-            if (slot == null)
+            if (avatar != null) avatar.enabled = false;
+            if (avatarFallback != null)
             {
-                continue;
+                avatarFallback.gameObject.SetActive(true);
+                avatarFallback.text = "NPC";
             }
-
-            RectTransform rect = slot.GetComponent<RectTransform>();
-            SetRect(rect, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), slotPositions[i], new Vector2(139f, 129f));
-            rect.localScale = Vector3.one;
-
-            string suffix = ToPascalCase(EquipmentSlotIds[i]);
-            RectTransform iconBackground = FindSceneTransform(root, "EquipmentSlotIconBackground" + suffix) as RectTransform;
-            if (iconBackground != null)
-            {
-                SetRect(iconBackground, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(42.5f, -8f), new Vector2(54f, 54f));
-            }
-
-            Text iconLabel = FindSceneComponent<Text>(root, "EquipmentSlotIcon" + suffix);
-            if (iconLabel != null)
-            {
-                Stretch(iconLabel.rectTransform);
-                iconLabel.fontSize = 24;
-                iconLabel.resizeTextForBestFit = true;
-                iconLabel.resizeTextMinSize = 16;
-                iconLabel.resizeTextMaxSize = 24;
-            }
-            ConfigureCompactEquipmentSlotText(root, "EquipmentSlotName" + suffix, new Vector2(8f, -66f), new Vector2(123f, 24f), 16, 12);
-            ConfigureCompactEquipmentSlotText(root, "EquipmentSlotState" + suffix, new Vector2(8f, -92f), new Vector2(123f, 20f), 13, 11);
-
-            RectTransform empty = FindSceneTransform(root, "EquipmentSlotEmpty" + suffix) as RectTransform;
-            if (empty != null)
-            {
-                SetRect(empty, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(8f, -113f), new Vector2(123f, 14f));
-                Text emptyLabel = empty.GetComponentInChildren<Text>(true);
-                if (emptyLabel != null)
-                {
-                    emptyLabel.fontSize = 11;
-                    emptyLabel.resizeTextForBestFit = true;
-                    emptyLabel.resizeTextMinSize = 9;
-                    emptyLabel.resizeTextMaxSize = 11;
-                }
-            }
-        }
-
-        RenameLegacyEquipmentNode(root, "EquipmentCategory", "Accessory", "Helmet");
-        RenameLegacyEquipmentNode(root, "EquipmentCategory", "Pet", "Boots");
-        CloneEquipmentNode(root, "EquipmentCategoryBoots", "EquipmentCategoryGloves", "Boots", "Gloves");
-
-        for (int i = 0; i < EquipmentCategoryIds.Length; i++)
-        {
-            Button category = FindSceneComponent<Button>(root, "EquipmentCategory" + ToPascalCase(EquipmentCategoryIds[i]));
-            if (category == null)
-            {
-                continue;
-            }
-
-            RectTransform rect = category.GetComponent<RectTransform>();
-            SetRect(
-                rect,
-                TopLeftAnchor(),
-                TopLeftAnchor(),
-                TopLeftAnchor(),
-                new Vector2(548f + i * 70f, -216f),
-                new Vector2(64f, 38f));
-            rect.localScale = Vector3.one;
-            SetSceneButtonText(category, EquipmentCategoryLabels[i]);
-            ConfigureClearButtonLabel(category, 15);
-        }
-
-        EnsureEquipmentSpeedUi(root);
-    }
-
-    private void ConfigureCompactEquipmentSlotText(
-        Transform root,
-        string objectName,
-        Vector2 position,
-        Vector2 size,
-        int fontSize,
-        int minimumFontSize)
-    {
-        Text label = FindSceneComponent<Text>(root, objectName);
-        if (label == null)
-        {
+            SetSceneText(root, "EquipmentNpcName", "未选择角色");
+            SetSceneText(root, "EquipmentNpcLevel", "等级 -");
+            SetSceneText(root, "EquipmentNpcAttribute", "战斗属性 -");
+            SetSceneText(root, "EquipmentNpcDescription", "请选择角色查看穿戴装备");
+            SetSceneText(root, "EquipmentNpcStats", "基础属性  -\n装备加成  -\n最终属性  -");
             return;
         }
 
-        SetRect(label.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
-        label.fontSize = fontSize;
-        label.resizeTextForBestFit = true;
-        label.resizeTextMinSize = minimumFontSize;
-        label.resizeTextMaxSize = fontSize;
+        ApplyNpcIcon(avatar, avatarFallback, npc);
+        SetSceneText(root, "EquipmentNpcName", npc.name);
+        SetSceneText(root, "EquipmentNpcLevel", $"等级 Lv.{npc.level}/{Mathf.Max(npc.maxLevel, npc.level)}");
+        SetSceneText(root, "EquipmentNpcAttribute", string.IsNullOrEmpty(npc.combatAttribute) ? "战斗属性 -" : $"战斗属性 {npc.combatAttribute}");
+        SetSceneText(root, "EquipmentNpcDescription", string.IsNullOrEmpty(npc.description) ? "" : npc.description);
+        SetSceneText(root, "EquipmentNpcStats", BuildEquipmentLoadoutStatsText());
     }
 
-    private static void RenameLegacyEquipmentNode(
-        Transform root,
-        string prefix,
-        string legacySuffix,
-        string backendSuffix)
+    private string BuildEquipmentLoadoutStatsText()
     {
-        if (FindSceneTransform(root, prefix + backendSuffix) != null)
+        if (!equipmentServerBacked || serverEquipmentLoadout == null)
         {
-            return;
+            return "正在加载角色属性...";
         }
 
-        Transform legacy = FindSceneTransform(root, prefix + legacySuffix);
-        if (legacy != null)
+        string baseText = $"生命 {serverEquipmentLoadout.baseHealth}  攻击 {serverEquipmentLoadout.baseAttack}  防御 {serverEquipmentLoadout.baseDefense}";
+        string bonusText = $"生命 +{serverEquipmentLoadout.equipmentHealthBonus}  攻击 +{serverEquipmentLoadout.equipmentAttackBonus}  防御 +{serverEquipmentLoadout.equipmentDefenseBonus}";
+        string totalText = $"生命 {serverEquipmentLoadout.totalHealth}  攻击 {serverEquipmentLoadout.totalAttack}  防御 {serverEquipmentLoadout.totalDefense}";
+        if (serverEquipmentLoadout.baseSpeed != 0
+            || serverEquipmentLoadout.equipmentSpeedBonus != 0
+            || serverEquipmentLoadout.totalSpeed != 0)
         {
-            RenameEquipmentNodeTree(legacy, legacySuffix, backendSuffix);
-            legacy.name = prefix + backendSuffix;
+            baseText += $"  速度 {serverEquipmentLoadout.baseSpeed}";
+            bonusText += $"  速度 +{serverEquipmentLoadout.equipmentSpeedBonus}";
+            totalText += $"  速度 {serverEquipmentLoadout.totalSpeed}";
         }
+
+        return $"基础属性  {baseText}\n装备加成  {bonusText}\n最终属性  {totalText}";
     }
 
-    private static void CloneEquipmentNode(
-        Transform root,
-        string sourceName,
-        string targetName,
-        string sourceSuffix,
-        string targetSuffix)
+    private void ApplyEquipmentIcon(Image image, Text fallback, InventoryItemResponse item, string fallbackName = null)
     {
-        if (FindSceneTransform(root, targetName) != null)
+        if (image == null) return;
+        string displayName = item == null ? fallbackName : item.name;
+        Sprite sprite = ResolveEquipmentSprite(item);
+        image.sprite = sprite;
+        image.enabled = sprite != null;
+        if (fallback != null)
         {
-            return;
+            fallback.gameObject.SetActive(sprite == null);
+            fallback.text = string.IsNullOrEmpty(displayName) ? string.Empty
+                : System.Globalization.StringInfo.GetNextTextElement(displayName);
         }
 
-        Transform source = FindSceneTransform(root, sourceName);
-        if (source == null)
+        if (item != null && sprite == null)
         {
-            return;
-        }
-
-        GameObject clone = UnityEngine.Object.Instantiate(source.gameObject, source.parent, false);
-        RenameEquipmentNodeTree(clone.transform, sourceSuffix, targetSuffix);
-        clone.name = targetName;
-    }
-
-    private static void RenameEquipmentNodeTree(Transform node, string sourceSuffix, string targetSuffix)
-    {
-        Transform[] descendants = node.GetComponentsInChildren<Transform>(true);
-        for (int i = 0; i < descendants.Length; i++)
-        {
-            descendants[i].name = descendants[i].name.Replace(sourceSuffix, targetSuffix);
+            string missingKey = string.Join("|", item.equipmentKey, item.icon, item.quality, item.equipmentType);
+            if (_equipmentMissingIconKeys.Add(missingKey))
+            {
+                Debug.LogWarning("Equipment sprite was not found: " + missingKey, image);
+            }
         }
     }
 
-    private void EnsureEquipmentSpeedUi(Transform root)
+    private void ApplyNpcIcon(Image image, Text fallback, PlayerNpcResponse npc)
     {
-        Text speedSummary = FindSceneComponent<Text>(root, "EquipmentSpeedText");
-        if (speedSummary == null)
+        if (image == null) return;
+
+        Sprite sprite = ResolveNpcSprite(npc);
+        image.sprite = sprite;
+        image.enabled = sprite != null;
+        if (fallback != null)
         {
-            Text healthSummary = FindSceneComponent<Text>(root, "EquipmentHealthText");
-            if (healthSummary != null)
+            fallback.gameObject.SetActive(sprite == null);
+            fallback.text = npc == null || string.IsNullOrEmpty(npc.name)
+                ? "NPC"
+                : System.Globalization.StringInfo.GetNextTextElement(npc.name);
+        }
+        if (sprite == null && npc != null && !string.IsNullOrEmpty(npc.icon))
+        {
+            Debug.LogWarning("NPC portrait sprite was not found for icon: " + npc.icon, image);
+        }
+    }
+
+    private Sprite ResolveNpcSprite(PlayerNpcResponse npc)
+    {
+        if (npc == null) return null;
+
+        string npcId = npc.npcId > 0 ? npc.npcId.ToString() : null;
+        string[] keys = { npc.icon, npc.npcCode, npc.modelKey, npcId, npc.npcId > 0 ? "Npc_" + npcId : null };
+        Sprite boundSprite = FindBoundRoleSprite(keys, true);
+        if (boundSprite != null) return boundSprite;
+
+        for (int index = 0; index < keys.Length; index++)
+        {
+            string key = keys[index];
+            if (string.IsNullOrWhiteSpace(key)) continue;
+
+            key = key.Trim().Replace('\\', '/');
+            int separator = key.LastIndexOf('/');
+            if (separator >= 0) key = key.Substring(separator + 1);
+            int extension = key.LastIndexOf('.');
+            if (extension > 0) key = key.Substring(0, extension);
+
+            string[] candidates =
             {
-                speedSummary = UnityEngine.Object.Instantiate(healthSummary, healthSummary.transform.parent, false);
-                speedSummary.name = "EquipmentSpeedText";
+                "_Project/Art/UI/角色/Q版/" + key + ".png",
+                "_Project/Art/UI/角色/角色立绘/" + key + ".png",
+                "_Project/Art/UI/角色/" + key + ".png"
+            };
+            for (int candidateIndex = 0; candidateIndex < candidates.Length; candidateIndex++)
+            {
+                Sprite sprite = LoadSpriteFromAsset(candidates[candidateIndex]);
+                if (sprite != null) return sprite;
             }
         }
-        if (speedSummary != null)
+
+        return null;
+    }
+
+    private Sprite ResolveEquipmentSprite(InventoryItemResponse item)
+    {
+        if (item == null) return null;
+
+        string[] candidates = { item.icon, item.equipmentKey, item.name };
+        for (int index = 0; index < candidates.Length; index++)
         {
-            SetRect(
-                speedSummary.rectTransform,
-                TopLeftAnchor(),
-                TopLeftAnchor(),
-                TopLeftAnchor(),
-                new Vector2(1120f, -758f),
-                new Vector2(130f, 28f));
+            Sprite sprite = ResolveEquipmentSprite(candidates[index]);
+            if (sprite != null) return sprite;
         }
 
-        Transform speedChip = FindSceneTransform(root, "EquipmentDetailSpeedChip");
-        if (speedChip == null)
-        {
-            Transform healthChip = FindSceneTransform(root, "EquipmentDetailHealthChip");
-            if (healthChip != null)
-            {
-                GameObject clone = UnityEngine.Object.Instantiate(healthChip.gameObject, healthChip.parent, false);
-                RenameEquipmentNodeTree(clone.transform, "Health", "Speed");
-                clone.name = "EquipmentDetailSpeedChip";
-                speedChip = clone.transform;
+        string slotId = GetEquipmentSlot(item);
+        Sprite boundSprite = ResolveEquipmentSprite(GetEquipmentIconBindingKey(item.quality, slotId));
+        return boundSprite != null ? boundSprite : LoadEquipmentSpriteFromProject(item.quality, slotId);
+    }
 
-                Image speedMark = FindSceneComponent<Image>(speedChip, "EquipmentDetailSpeedMark");
-                if (speedMark != null)
-                {
-                    speedMark.color = new Color(0.32f, 0.62f, 0.75f, 1f);
-                }
-            }
+    private Sprite LoadEquipmentSpriteFromProject(string quality, string slotId)
+    {
+        string qualityDirectory;
+        switch ((quality ?? string.Empty).Trim().ToUpperInvariant())
+        {
+            case "FINE": qualityDirectory = "优秀级"; break;
+            case "EXCELLENT": qualityDirectory = "稀有级"; break;
+            case "EPIC": qualityDirectory = "史诗级"; break;
+            case "LEGENDARY": qualityDirectory = "传说级/橙金"; break;
+            default: qualityDirectory = "普通级"; break;
         }
 
-        string[] statIds = { "Attack", "Defense", "Health", "Speed", "Power" };
-        Vector2[] statPositions =
+        string fileName;
+        switch (NormalizeEquipmentType(slotId))
         {
-            new Vector2(28f, -312f),
-            new Vector2(172f, -312f),
-            new Vector2(316f, -312f),
-            new Vector2(100f, -376f),
-            new Vector2(244f, -376f)
-        };
-        for (int i = 0; i < statIds.Length; i++)
+            case "weapon": fileName = qualityDirectory == "优秀级" || qualityDirectory == "传说级/橙金" ? "武器1" : "武器"; break;
+            case "helmet": fileName = "头盔"; break;
+            case "armor": fileName = qualityDirectory == "普通级" || qualityDirectory == "传说级/橙金" ? "胸甲" : "护甲"; break;
+            case "boots": fileName = "鞋子"; break;
+            case "gloves": fileName = "手套"; break;
+            default: return null;
+        }
+
+        return LoadSpriteFromAsset("_Project/Art/UI/装备图标/" + qualityDirectory + "/" + fileName + ".png");
+    }
+
+    private static string GetEquipmentIconBindingKey(string quality, string slotId)
+    {
+        string normalizedQuality = (quality ?? string.Empty).Trim().ToUpperInvariant();
+        switch (normalizedQuality)
         {
-            string statId = statIds[i];
-            Transform chip = FindSceneTransform(root, "EquipmentDetail" + statId + "Chip");
-            if (chip == null)
-            {
-                continue;
-            }
+            case "FINE":
+            case "EXCELLENT":
+            case "EPIC":
+            case "LEGENDARY":
+                break;
+            default:
+                normalizedQuality = "COMMON";
+                break;
+        }
 
-            SetRect(
-                chip.GetComponent<RectTransform>(),
-                TopLeftAnchor(),
-                TopLeftAnchor(),
-                TopLeftAnchor(),
-                statPositions[i],
-                new Vector2(130f, 52f));
+        string normalizedSlot = NormalizeEquipmentType(slotId);
+        return string.IsNullOrEmpty(normalizedSlot)
+            ? string.Empty
+            : normalizedQuality + ":" + normalizedSlot;
+    }
 
-            RectTransform mark = FindSceneTransform(chip, "EquipmentDetail" + statId + "Mark") as RectTransform;
-            if (mark != null)
+    private Sprite ResolveEquipmentSprite(string iconKey)
+    {
+        if (string.IsNullOrWhiteSpace(iconKey)) return null;
+        Sprite cached;
+        if (_equipmentIconCache.TryGetValue(iconKey, out cached) && cached != null) return cached;
+        string resourceName = iconKey.Trim().Replace('\\', '/');
+        int separator = resourceName.LastIndexOf('/');
+        if (separator >= 0) resourceName = resourceName.Substring(separator + 1);
+        int extension = resourceName.LastIndexOf('.');
+        if (extension > 0) resourceName = resourceName.Substring(0, extension);
+        Sprite sprite = null;
+        for (int index = 0; equipmentIconBindings != null && index < equipmentIconBindings.Length; index++)
+        {
+            EquipmentIconBinding binding = equipmentIconBindings[index];
+            if (binding != null && binding.sprite != null && (string.Equals(binding.iconKey, iconKey, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(binding.iconKey, resourceName, StringComparison.OrdinalIgnoreCase)))
             {
-                SetRect(mark, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(10f, -12f), new Vector2(24f, 28f));
-            }
-
-            Text value = FindSceneComponent<Text>(chip, "EquipmentDetail" + statId);
-            if (value != null)
-            {
-                SetRect(value.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(40f, -8f), new Vector2(82f, 32f));
-                value.resizeTextForBestFit = true;
-                value.resizeTextMinSize = 11;
-                value.resizeTextMaxSize = Mathf.Max(16, value.fontSize);
+                sprite = binding.sprite;
+                break;
             }
         }
+        if (sprite == null) sprite = LoadMailAttachmentResourceSprite(iconKey);
+#if UNITY_EDITOR
+        if (sprite == null)
+        {
+            string path = iconKey.Replace('\\', '/');
+            if (path.StartsWith("Assets/", StringComparison.Ordinal)) path = path.Substring(7);
+            if (!System.IO.Path.HasExtension(path)) path += ".png";
+            string[] candidates = { path, "Sprites/" + path, "Sprites/Arts/" + path, "Sprites/Arts/png/" + path };
+            for (int index = 0; index < candidates.Length && sprite == null; index++)
+            {
+                sprite = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>("Assets/" + candidates[index]);
+                if (sprite == null)
+                    sprite = UnityEditor.AssetDatabase.LoadAssetAtPath<Sprite>(
+                        "Assets/_Imported/weijun-game-project/Assets/" + candidates[index]);
+            }
+        }
+#endif
+        if (sprite != null) _equipmentIconCache[iconKey] = sprite;
+        return sprite;
     }
 
     private void RenderEquipmentScenePanel(Transform root)
@@ -578,44 +662,33 @@ public partial class HomePageUI
             return;
         }
 
-        EnsureBackendEquipmentUi(root);
-
+        List<string> categoryIds = GetBackendEquipmentCategoryIds(currentEquipmentItems);
+        if (!categoryIds.Contains(activeEquipmentCategory)) activeEquipmentCategory = "all";
         List<InventoryItemResponse> allVisibleItems = GetFilteredEquipmentItems();
-        int pageCount = Mathf.Max(1, Mathf.CeilToInt(allVisibleItems.Count / (float)EquipmentRows));
-        equipmentPageIndex = Mathf.Clamp(equipmentPageIndex, 0, pageCount - 1);
-        int firstItemIndex = equipmentPageIndex * EquipmentRows;
-        List<InventoryItemResponse> visibleItems = allVisibleItems.GetRange(
-            firstItemIndex,
-            Mathf.Min(EquipmentRows, Mathf.Max(0, allVisibleItems.Count - firstItemIndex)));
         InventoryItemResponse selected = FindEquipmentItem(selectedEquipmentItemKey);
-        if (selected == null || !visibleItems.Contains(selected))
+        if (selected == null || !allVisibleItems.Contains(selected))
         {
-            selected = visibleItems.Count > 0 ? visibleItems[0] : null;
+            selected = allVisibleItems.Count > 0 ? allVisibleItems[0] : null;
             selectedEquipmentItemKey = selected == null ? string.Empty : GetInventoryItemKey(selected);
         }
 
         EquipmentStats totalStats = CalculateEquippedStats();
         PlayerNpcResponse selectedNpc = GetCurrentEquipmentNpc();
+        RenderEquipmentNpcSummary(root, selectedNpc);
         SetSceneText(root, "EquipmentTitle", "装备大厅");
         SetSceneText(
             root,
             "EquipmentModeText",
             equipmentServerBacked
-                ? (selectedNpc == null ? "服务器装备 · 暂无居民" : $"{selectedNpc.name}  等级 {selectedNpc.level}  {selectedEquipmentNpcIndex + 1}/{serverPlayerNpcs.Length}")
-                : "本地奖励库存 · 可穿戴");
-        SetSceneText(root, "EquipmentPowerText", $"总战力  {totalStats.Power}");
+                ? (selectedNpc == null ? "暂无角色" : $"{selectedNpc.name}  Lv.{selectedNpc.level}")
+                : "体验装备");
         SetSceneText(root, "EquipmentCount", $"装备 {allVisibleItems.Count} 件");
         SetSceneText(root, "EquipmentStatus", equipmentStatusMessage);
-        SetSceneText(root, "EquipmentHint", equipmentServerBacked
-            ? "装备操作以服务器实例状态为准；锁定装备不会被自动选作突破材料"
-            : "点击装备栏可卸下，选择物品后可穿戴");
         SetSceneText(root, "EquipmentAttackText", $"攻击  {totalStats.Attack}");
         SetSceneText(root, "EquipmentDefenseText", $"防御  {totalStats.Defense}");
         SetSceneText(root, "EquipmentHealthText", $"生命  {totalStats.Health}");
         SetSceneText(root, "EquipmentSpeedText", $"速度  {totalStats.Speed}");
-        SetSceneText(root, "EquipmentPowerDetailText", $"战力  {totalStats.Power}");
         ConfigureServerNpcControls(root);
-        ConfigureEquipmentPaging(root, pageCount);
 
         BindSceneButton(FindSceneComponent<Button>(root, "EquipmentCloseButton"), HideEquipmentPanel);
         Button refresh = FindSceneComponent<Button>(root, "EquipmentRefreshButton");
@@ -623,149 +696,392 @@ public partial class HomePageUI
         {
             refresh.interactable = HasAuthSession() && !equipmentRefreshRunning && !equipmentMutationRunning;
         }
-        SetSceneButtonText(refresh, equipmentRefreshRunning ? "同步中..." : (HasAuthSession() ? "刷新背包" : "本地已同步"));
+        SetSceneButtonText(refresh, "刷新背包");
         BindSceneButton(refresh, () =>
         {
-            if (HasAuthSession() && !equipmentRefreshRunning)
+            if (HasAuthSession() && !equipmentRefreshRunning && !equipmentMutationRunning)
             {
                 equipmentRefreshRunning = true;
-                equipmentStatusMessage = "正在同步服务器背包...";
+                equipmentStatusMessage = "正在刷新装备...";
                 RenderEquipmentScenePanel(root);
                 StartCoroutine(GetEquipmentInventoryList());
             }
         });
 
-        for (int i = 0; i < EquipmentCategoryIds.Length; i++)
+        RenderEquipmentCategories(root, categoryIds);
+
+        RenderEquipmentSlots(root);
+        RenderEquipmentRows(root, allVisibleItems);
+        RenderEquipmentDetail(root, selected);
+    }
+
+    private static string NormalizeEquipmentType(string equipmentType)
+    {
+        string value = (equipmentType ?? string.Empty).Trim().ToLowerInvariant();
+        switch (value)
         {
-            string categoryId = EquipmentCategoryIds[i];
-            Button categoryButton = FindSceneComponent<Button>(root, "EquipmentCategory" + ToPascalCase(categoryId));
-            ConfigureEquipmentCategoryButton(categoryButton, activeEquipmentCategory == categoryId);
-            if (categoryButton != null)
+            case "weapon":
+            case "weapons":
+            case "sword":
+            case "bow":
+            case "武器":
+                return "weapon";
+            case "helmet":
+            case "head":
+            case "headgear":
+            case "hat":
+            case "头盔":
+            case "头部":
+                return "helmet";
+            case "armor":
+            case "armour":
+            case "chest":
+            case "body":
+            case "护甲":
+            case "胸甲":
+                return "armor";
+            case "boots":
+            case "boot":
+            case "shoes":
+            case "footwear":
+            case "鞋子":
+            case "靴子":
+                return "boots";
+            case "gloves":
+            case "glove":
+            case "hands":
+            case "hand":
+            case "手套":
+                return "gloves";
+            default:
+                return value;
+        }
+    }
+
+    private static List<string> GetBackendEquipmentCategoryIds(InventoryItemResponse[] items)
+    {
+        List<string> categories = new List<string>();
+        HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal) { "all" };
+        if (items != null)
+        {
+            for (int index = 0; index < items.Length; index++)
             {
-                categoryButton.interactable = !equipmentRefreshRunning && !equipmentMutationRunning;
+                InventoryItemResponse item = items[index];
+                if (item == null || item.playerEquipmentId <= 0) continue;
+                string equipmentType = NormalizeEquipmentType(item.equipmentType);
+                if (!string.IsNullOrEmpty(equipmentType) && seen.Add(equipmentType)) categories.Add(equipmentType);
             }
-            BindSceneButton(categoryButton, () =>
+        }
+        categories.Sort(StringComparer.Ordinal);
+        categories.Insert(0, "all");
+        return categories;
+    }
+
+    private void RenderEquipmentCategories(Transform root, List<string> categoryIds)
+    {
+        Transform categoryRoot = FindSceneTransform(root, "EquipmentCategory");
+        if (categoryRoot == null) return;
+        if (_equipmentCategoryRoot != categoryRoot)
+        {
+            _equipmentCategoryRoot = categoryRoot;
+            _equipmentCategoryButtons.Clear();
+            for (int index = 0; index < categoryRoot.childCount; index++)
+            {
+                Button button = categoryRoot.GetChild(index).GetComponent<Button>();
+                if (button != null && button.name.StartsWith("EquipmentCategory", StringComparison.Ordinal))
+                    _equipmentCategoryButtons.Add(button);
+            }
+            _equipmentCategoryButtons.Sort((left, right) =>
+                ((RectTransform)right.transform).anchoredPosition.y.CompareTo(((RectTransform)left.transform).anchoredPosition.y));
+        }
+        if (_equipmentCategoryButtons.Count == 0) return;
+        while (_equipmentCategoryButtons.Count < categoryIds.Count)
+        {
+            Button template = _equipmentCategoryButtons.Count > 1 ? _equipmentCategoryButtons[1] : _equipmentCategoryButtons[0];
+            RectTransform last = _equipmentCategoryButtons[_equipmentCategoryButtons.Count - 1].transform as RectTransform;
+            float spacing = _equipmentCategoryButtons.Count > 1
+                ? ((RectTransform)_equipmentCategoryButtons[0].transform).anchoredPosition.y
+                    - ((RectTransform)_equipmentCategoryButtons[1].transform).anchoredPosition.y
+                : last.rect.height + 12f;
+            Button clone = Instantiate(template, categoryRoot, false);
+            clone.name = "EquipmentCategory_" + categoryIds[_equipmentCategoryButtons.Count];
+            ((RectTransform)clone.transform).anchoredPosition = last.anchoredPosition
+                - new Vector2(0f, Mathf.Max(last.rect.height, spacing));
+            _equipmentCategoryButtons.Add(clone);
+        }
+        for (int index = 0; index < _equipmentCategoryButtons.Count; index++)
+        {
+            Button button = _equipmentCategoryButtons[index];
+            if (button == null) continue;
+            bool visible = index < categoryIds.Count;
+            button.gameObject.SetActive(visible);
+            if (!visible) continue;
+            string categoryId = categoryIds[index];
+            SetSceneButtonText(button, categoryId == "all" ? "全部" : GetEquipmentSlotLabel(categoryId));
+            ConfigureEquipmentCategoryButton(button, activeEquipmentCategory == categoryId);
+            button.interactable = !equipmentRefreshRunning && !equipmentMutationRunning;
+            BindSceneButton(button, () =>
             {
                 activeEquipmentCategory = categoryId;
                 selectedEquipmentItemKey = string.Empty;
-                equipmentPageIndex = 0;
                 equipmentStatusMessage = "已切换装备分类";
                 RenderEquipmentScenePanel(root);
+                ResetEquipmentScroll(root);
             });
         }
+    }
 
-        RenderEquipmentSlots(root);
-        RenderEquipmentRows(root, visibleItems);
-        RenderEquipmentDetail(root, selected);
+    private static Button FindEquipmentSlotButton(Transform root, string prefix, string slotId)
+    {
+        Button button = FindSceneComponent<Button>(root, prefix + ToPascalCase(slotId));
+        if (button == null && slotId == "helmet") button = FindSceneComponent<Button>(root, prefix + "Accessory");
+        if (button == null && slotId == "boots") button = FindSceneComponent<Button>(root, prefix + "Pet");
+        return button;
+    }
+
+    private static T FindEquipmentCellComponent<T>(Transform root, string prefix) where T : Component
+    {
+        if (root == null) return null;
+        T[] components = root.GetComponentsInChildren<T>(true);
+        for (int index = 0; index < components.Length; index++)
+        {
+            if (components[index].name.StartsWith(prefix, StringComparison.Ordinal)) return components[index];
+        }
+        return null;
+    }
+
+    private static void SetEquipmentCellText(Transform root, string prefix, string value)
+    {
+        Text label = FindEquipmentCellComponent<Text>(root, prefix);
+        if (label != null) label.text = value;
     }
 
     private static void ConfigureEquipmentCategoryButton(Button button, bool selected)
     {
-        if (button == null)
+        if (button == null) return;
+        Transform marker = button.transform.Find("Image");
+        if (marker != null) marker.gameObject.SetActive(selected);
+        Image background = button.targetGraphic as Image;
+        if (background != null && button.transition == Selectable.Transition.SpriteSwap)
         {
-            return;
-        }
-
-        Image background = button.GetComponent<Image>();
-        if (background != null)
-        {
-            background.color = selected
-                ? new Color(0.42f, 0.24f, 0.50f, 1f)
-                : new Color(0.90f, 0.79f, 0.59f, 1f);
-        }
-
-        Text label = button.GetComponentInChildren<Text>(true);
-        if (label != null)
-        {
-            label.color = selected ? Color.white : new Color(0.36f, 0.20f, 0.10f, 1f);
+            background.overrideSprite = selected && button.spriteState.selectedSprite != null
+                ? button.spriteState.selectedSprite : null;
         }
     }
 
     private void RenderEquipmentSlots(Transform root)
     {
-        for (int i = 0; i < EquipmentSlotIds.Length; i++)
+        for (int index = 0; index < EquipmentSlotIds.Length; index++)
         {
-            string slotId = EquipmentSlotIds[i];
+            string slotId = EquipmentSlotIds[index];
             InventoryItemResponse item = FindEquipmentItem(GetEquippedItemKey(slotId));
-            string slotName = EquipmentSlotLabels[i];
-            Button slotButton = FindSceneComponent<Button>(root, "EquipmentSlot" + ToPascalCase(slotId));
-            Image slotBackground = slotButton != null ? slotButton.GetComponent<Image>() : null;
-            if (slotBackground != null)
-            {
-                slotBackground.color = item == null
-                    ? new Color(0.86f, 0.72f, 0.48f, 1f)
-                    : GetEquipmentColor(item);
-            }
-
-            Image slotIconBackground = FindSceneComponent<Image>(root, "EquipmentSlotIconBackground" + ToPascalCase(slotId));
-            if (slotIconBackground != null)
-            {
-                Color slotColor = GetEquipmentSlotColor(slotId);
-                slotIconBackground.color = item == null ? Color.Lerp(slotColor, Color.white, 0.12f) : GetEquipmentColor(item);
-            }
-
-            SetSceneText(root, "EquipmentSlotIcon" + ToPascalCase(slotId), item == null ? GetSlotIcon(slotId) : GetNicknameInitial(item.name));
-            SetSceneText(root, "EquipmentSlotName" + ToPascalCase(slotId), item == null ? "空装备位" : item.name);
-            SetSceneText(root, "EquipmentSlotState" + ToPascalCase(slotId), item == null ? slotName : $"{slotName} · 已装备");
-            SetSceneObjectActive(root, "EquipmentSlotEmpty" + ToPascalCase(slotId), item == null);
-
-            string capturedSlotId = slotId;
-            BindSceneButton(slotButton, () => UnequipEquipment(root, capturedSlotId));
+            Button slot = FindEquipmentSlotButton(root, "EquipmentSlot", slotId);
+            if (slot == null) continue;
+            Image icon = FindEquipmentCellComponent<Image>(slot.transform, "EquipmentSlotIconBackground");
+            Text fallback = FindEquipmentCellComponent<Text>(slot.transform, "EquipmentSlotIcon");
+            ApplyEquipmentIcon(icon, fallback, item, EquipmentSlotLabels[index]);
+            SetEquipmentCellText(slot.transform, "EquipmentSlotName", item == null ? "空装备位" : item.name);
+            SetEquipmentCellText(slot.transform, "EquipmentSlotState", EquipmentSlotLabels[index]);
+            slot.interactable = item != null && !equipmentRefreshRunning && !equipmentMutationRunning;
+            BindSceneButton(slot, () => SelectEquipmentItem(root, GetEquippedItemKey(slotId)));
         }
     }
 
-    private void RenderEquipmentRows(Transform root, List<InventoryItemResponse> visibleItems)
+    private void RenderEquipmentRows(Transform root, List<InventoryItemResponse> items)
     {
-        for (int i = 0; i < EquipmentRows; i++)
+        RectTransform content = FindSceneTransform(root, "EquipmentItemP") as RectTransform;
+        if (content == null) return;
+        if (_equipmentItemParent != content || _equipmentRowTemplate == null)
         {
-            Transform row = FindSceneTransform(root, "EquipmentItemRow" + i);
-            if (row == null)
+            RectTransform template = content.Find("EquipmentItemRow0") as RectTransform;
+            if (template == null)
             {
-                continue;
+                Debug.LogWarning("EquipmentItemRow0 is missing; equipment cells cannot be generated.", this);
+                return;
             }
-
-            bool visible = i < visibleItems.Count;
-            row.gameObject.SetActive(visible);
-            if (!visible)
-            {
-                continue;
-            }
-
-            InventoryItemResponse item = visibleItems[i];
-            string itemKey = GetInventoryItemKey(item);
-            bool equipped = IsItemEquipped(item);
-            Image background = row.GetComponent<Image>();
-            if (background != null)
-            {
-                background.color = itemKey == selectedEquipmentItemKey
-                    ? new Color(1f, 0.78f, 0.38f, 1f)
-                    : new Color(1f, 0.94f, 0.74f, 1f);
-            }
-
-            Image iconBackground = FindSceneComponent<Image>(row, "EquipmentRowIconBackground" + i);
-            if (iconBackground != null)
-            {
-                iconBackground.color = GetEquipmentColor(item);
-            }
-
-            SetSceneText(row, "EquipmentRowIcon" + i, GetNicknameInitial(item.name));
-            SetSceneText(row, "EquipmentRowName" + i, item.name);
-            SetSceneText(
-                row,
-                "EquipmentRowMeta" + i,
-                equipmentServerBacked
-                    ? $"{GetEquipmentTypeLabel(item)}  等级 {item.level}  {GetEquipmentQualityLabel(item.quality)}"
-                    : $"{GetEquipmentTypeLabel(item)}  ×{item.quantity}");
-            SetSceneText(
-                row,
-                "EquipmentRowEquipped" + i,
-                equipmentServerBacked
-                    ? (equipped ? "已装备" : (item.locked ? "已锁定" : "仓库"))
-                    : (equipped ? "已装备" : "可穿戴"));
-            Button rowButton = row.GetComponent<Button>();
-            string capturedKey = itemKey;
-            BindSceneButton(rowButton, () => SelectEquipmentItem(root, capturedKey));
+            HideEquipmentRowsFrom(0);
+            _equipmentRows.Clear();
+            _equipmentItemParent = content;
+            _equipmentRowTemplate = template;
+            ScrollRect scroll = FindSceneComponent<ScrollRect>(root, "EquipmentItemsViewport");
+            _equipmentGridMinimumHeight = scroll != null && scroll.viewport != null
+                ? scroll.viewport.rect.height : content.rect.height;
         }
+        _equipmentRowTemplate.gameObject.SetActive(false);
+        ConfigureEquipmentCellReadability(_equipmentRowTemplate);
+        // Keep generated rows in a small runtime pool. Scene-authored children are
+        // never removed, and inactive rows are reused when the list grows again.
+        HideEquipmentRowsFrom(items.Count);
+        while (_equipmentRows.Count < items.Count)
+        {
+            RectTransform row = Instantiate(_equipmentRowTemplate, content, false);
+            row.name = "EquipmentItemRow" + (_equipmentRows.Count + 1);
+            _equipmentRows.Add(row);
+        }
+
+        float columnStride = Mathf.Max(1f, _equipmentRowTemplate.rect.width + equipmentGridSpacing.x);
+        float rowStride = Mathf.Max(1f, _equipmentRowTemplate.rect.height + Mathf.Max(72f, equipmentGridSpacing.y));
+        int rowCount = Mathf.CeilToInt(items.Count / (float)EquipmentColumns);
+        float requiredHeight = rowCount == 0 ? 0f
+            : GetEquipmentTemplateBottom(content) + (rowCount - 1) * rowStride;
+        content.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical,
+            Mathf.Max(_equipmentGridMinimumHeight, requiredHeight));
+        for (int index = 0; index < _equipmentRows.Count; index++)
+        {
+            RectTransform row = _equipmentRows[index];
+            if (row == null) continue;
+            bool visible = index < items.Count;
+            row.gameObject.SetActive(visible);
+            if (!visible) continue;
+            row.anchoredPosition = _equipmentRowTemplate.anchoredPosition
+                + new Vector2(index % EquipmentColumns * columnStride, -index / EquipmentColumns * rowStride);
+            InventoryItemResponse item = items[index];
+            string itemKey = GetInventoryItemKey(item);
+            Transform selection = row.Find("Select");
+            if (selection != null) selection.gameObject.SetActive(itemKey == selectedEquipmentItemKey);
+            Image background = row.GetComponent<Image>();
+            Sprite qualitySprite = GetEquipmentQualityBackground(item.quality);
+            if (background != null && qualitySprite != null)
+            {
+                background.sprite = qualitySprite;
+                background.overrideSprite = null;
+            }
+            Image icon = FindEquipmentCellComponent<Image>(row, "EquipmentRowIconBackground");
+            Text fallback = FindEquipmentCellComponent<Text>(row, "EquipmentRowIcon");
+            ApplyEquipmentIcon(icon, fallback, item);
+            SetEquipmentCellText(row, "EquipmentRowName", item.name);
+            SetEquipmentCellText(row, "EquipmentRowMeta", "Lv." + item.level);
+            ConfigureEquipmentCellReadability(row);
+            ConfigureEquipmentWearerBadge(row, item);
+            Button button = row.GetComponent<Button>();
+            if (button != null) button.interactable = !equipmentRefreshRunning && !equipmentMutationRunning;
+            BindSceneButton(button, () => SelectEquipmentItem(root, itemKey));
+        }
+    }
+
+    private void ConfigureEquipmentCellReadability(RectTransform row)
+    {
+        Text name = FindEquipmentCellComponent<Text>(row, "EquipmentRowName");
+        if (name != null)
+        {
+            RectTransform rectangle = name.rectTransform;
+            rectangle.anchorMin = rectangle.anchorMax = new Vector2(.5f, 0f);
+            rectangle.pivot = new Vector2(.5f, 1f);
+            rectangle.anchoredPosition = new Vector2(0f, -4f);
+            rectangle.sizeDelta = new Vector2(row.rect.width + Mathf.Max(0f, equipmentGridSpacing.x - 8f), 60f);
+            ConfigureReadableText(name, name.name);
+        }
+        Text level = FindEquipmentCellComponent<Text>(row, "EquipmentRowMeta");
+        if (level != null)
+        {
+            RectTransform rectangle = level.rectTransform;
+            rectangle.anchorMin = rectangle.anchorMax = new Vector2(.5f, 0f);
+            rectangle.pivot = new Vector2(.5f, 0f);
+            rectangle.anchoredPosition = new Vector2(0f, 3f);
+            rectangle.sizeDelta = new Vector2(row.rect.width - 8f, 22f);
+            level.enableAutoSizing = false;
+            level.enableWordWrapping = false;
+            level.fontSize = 14f;
+            level.alignment = TextAlignmentOptions.Center;
+            level.overflowMode = TextOverflowModes.Ellipsis;
+        }
+    }
+
+    private void HideEquipmentRowsFrom(int firstHiddenIndex)
+    {
+        for (int index = firstHiddenIndex; index < _equipmentRows.Count; index++)
+        {
+            RectTransform row = _equipmentRows[index];
+            if (row != null) row.gameObject.SetActive(false);
+        }
+    }
+
+    private void ConfigureEquipmentWearerBadge(Transform row, InventoryItemResponse item)
+    {
+        Transform badge = FindSceneTransform(row, "EquipmentRowNPC");
+        if (badge == null) return;
+
+        PlayerNpcResponse wearer;
+        bool worn = _equipmentWearers.TryGetValue(item.playerEquipmentId, out wearer) && wearer != null;
+        Sprite portrait = null;
+        if (worn)
+        {
+            string npcId = wearer.npcId > 0 ? wearer.npcId.ToString(System.Globalization.CultureInfo.InvariantCulture) : null;
+            string[] keys = { wearer.icon, wearer.npcCode, npcId, npcId != null ? "Npc_" + npcId : null, wearer.modelKey };
+            portrait = ResolveRoleSprite(keys, false);
+        }
+
+        Image head = FindSceneComponent<Image>(badge, "NPCHead");
+        if (head != null)
+        {
+            head.overrideSprite = null;
+            head.sprite = portrait;
+            head.enabled = portrait != null;
+        }
+
+        Image background = badge.GetComponent<Image>();
+        if (background != null)
+        {
+            background.color = worn ? GetEquipmentWearerQualityColor(wearer.quality) : Color.white;
+        }
+
+        Text label = badge.GetComponentInChildren<Text>(true);
+        if (label != null)
+        {
+            label.text = worn && (head == null || portrait == null) && !string.IsNullOrEmpty(wearer.name)
+                ? System.Globalization.StringInfo.GetNextTextElement(wearer.name) : string.Empty;
+        }
+        badge.gameObject.SetActive(worn);
+    }
+
+    private static Color GetEquipmentWearerQualityColor(string quality)
+    {
+        switch (GetEquipmentQualityRank(quality))
+        {
+            case 4: return new Color(1f, 0.75f, 0.2f, 1f);
+            case 3: return new Color(0.65f, 0.32f, 0.86f, 1f);
+            case 2: return new Color(0.15f, 0.55f, 0.82f, 1f);
+            case 1: return new Color(0.22f, 0.68f, 0.38f, 1f);
+            default: return Color.white;
+        }
+    }
+
+    private float GetEquipmentTemplateBottom(RectTransform content)
+    {
+        float bottom = 0f;
+        Vector3[] corners = new Vector3[4];
+        RectTransform[] children = _equipmentRowTemplate.GetComponentsInChildren<RectTransform>(true);
+        for (int index = 0; index < children.Length; index++)
+        {
+            children[index].GetWorldCorners(corners);
+            for (int cornerIndex = 0; cornerIndex < corners.Length; cornerIndex++)
+                bottom = Mathf.Max(bottom, content.rect.yMax - content.InverseTransformPoint(corners[cornerIndex]).y);
+        }
+        return bottom;
+    }
+
+    private Sprite GetEquipmentQualityBackground(string quality)
+    {
+        switch ((quality ?? string.Empty).Trim().ToUpperInvariant())
+        {
+            case "COMMON": return equipmentCommonBackground;
+            case "FINE": return equipmentFineBackground != null ? equipmentFineBackground : equipmentCommonBackground;
+            case "EXCELLENT": return equipmentExcellentBackground;
+            case "EPIC": return equipmentEpicBackground;
+            case "LEGENDARY": return equipmentLegendaryBackground;
+            default:
+                if (_equipmentUnknownQualities.Add(quality ?? string.Empty))
+                    Debug.LogWarning("Unknown equipment quality: " + quality + "; using COMMON.", this);
+                return equipmentCommonBackground;
+        }
+    }
+
+    private void ResetEquipmentScroll(Transform root)
+    {
+        ScrollRect scroll = FindSceneComponent<ScrollRect>(root, "EquipmentItemsViewport");
+        if (scroll == null) return;
+        scroll.StopMovement();
+        scroll.verticalNormalizedPosition = 1f;
     }
 
     private void RenderEquipmentDetail(Transform root, InventoryItemResponse item)
@@ -781,57 +1097,48 @@ public partial class HomePageUI
 
         EnsureEquipmentUpgradePreview(item);
         EquipmentStats stats = GetEquipmentStats(item);
-        SetSceneText(root, "EquipmentDetailIcon", GetNicknameInitial(item.name));
+        Image detailIconBackground = FindSceneComponent<Image>(root, "EquipmentDetailIconBackground");
+        Text detailIconFallback = FindSceneComponent<Text>(root, "EquipmentDetailIcon");
+        ApplyEquipmentIcon(detailIconBackground, detailIconFallback, item);
         SetSceneText(root, "EquipmentDetailName", item.name);
         SetSceneText(
             root,
             "EquipmentDetailType",
             equipmentServerBacked
-                ? $"{GetEquipmentTypeLabel(item)} · 等级 {item.level} · {GetEquipmentQualityLabel(item.quality)}"
-                : $"{GetEquipmentTypeLabel(item)}  ·  数量 ×{item.quantity}");
-        Text descriptionText = FindSceneComponent<Text>(root, "EquipmentDetailDescription");
-        if (descriptionText != null)
-        {
-            descriptionText.resizeTextForBestFit = true;
-            descriptionText.resizeTextMinSize = 10;
-            descriptionText.resizeTextMaxSize = 16;
-            descriptionText.horizontalOverflow = HorizontalWrapMode.Wrap;
-            descriptionText.verticalOverflow = VerticalWrapMode.Truncate;
-            descriptionText.lineSpacing = 0.9f;
-            RectTransform descriptionCard = descriptionText.transform.parent as RectTransform;
-            if (descriptionCard != null)
-            {
-                descriptionCard.sizeDelta = new Vector2(descriptionCard.sizeDelta.x, 72f);
-            }
-        }
+                ? $"{GetEquipmentTypeLabel(item)} · Lv.{item.level} · {GetEquipmentQualityLabel(item.quality)}"
+                : $"{GetEquipmentTypeLabel(item)}  ·  数量 x{item.quantity}");
         SetSceneText(root, "EquipmentDetailDescription", GetEquipmentDescriptionWithUpgradePreview(item));
+        SetSceneText(root, "EquipmentDetailUpgradePreview", BuildEquipmentAutoUpgradePreviewText(item));
+        ConstrainEquipmentUpgradePreview(root);
         SetSceneText(root, "EquipmentDetailAttack", $"攻击  +{stats.Attack}");
         SetSceneText(root, "EquipmentDetailDefense", $"防御  +{stats.Defense}");
         SetSceneText(root, "EquipmentDetailHealth", $"生命  +{stats.Health}");
         SetSceneText(root, "EquipmentDetailSpeed", $"速度  +{stats.Speed}");
-        SetSceneText(root, "EquipmentDetailPower", $"战力  +{stats.Power}");
-
-        Image iconBackground = FindSceneComponent<Image>(root, "EquipmentDetailIconBackground");
-        if (iconBackground != null)
-        {
-            iconBackground.color = GetEquipmentColor(item);
-        }
 
         bool equipped = IsItemEquipped(item);
+        PlayerNpcResponse wearer;
+        bool wornByOther = _equipmentWearers.TryGetValue(item.playerEquipmentId, out wearer) && !equipped;
         Button action = FindSceneComponent<Button>(root, "EquipmentActionButton");
         if (action != null)
         {
-            action.interactable = !equipmentMutationRunning && (!equipmentServerBacked || GetCurrentEquipmentNpc() != null);
+            action.interactable = !equipmentMutationRunning && !equipmentRefreshRunning
+                && !HasPendingEquipmentGrowthRequest(item.playerEquipmentId)
+                && (!equipmentServerBacked || (GetCurrentEquipmentNpc() != null && serverEquipmentLoadout != null))
+                && !wornByOther
+                && (equipped || string.IsNullOrEmpty(GetEquippedItemKey(GetEquipmentSlot(item))));
         }
-        SetSceneButtonText(action, equipped ? "卸下装备" : "穿戴装备");
+        bool slotOccupied = !equipped && !string.IsNullOrEmpty(GetEquippedItemKey(GetEquipmentSlot(item)));
+        SetSceneButtonText(action, equipped ? "卸下" : "穿戴");
         BindSceneButton(action, () => ToggleEquipment(root, item));
         ConfigureServerEquipmentDetailActions(root, item);
         SetSceneText(
             root,
             "EquipmentDetailStatus",
             equipmentServerBacked
-                ? $"实例编号 {item.playerEquipmentId} · {(equipped ? "当前居民已穿戴" : "当前位于仓库")} · {(item.locked ? "已锁定" : "未锁定")}"
+                ? $"{(wearer != null ? wearer.name + " 已穿戴" : "当前位于仓库")} · {(item.locked ? "已锁定" : "未锁定")}" +
+                    (wornByOther ? " · 请先在原角色卸下" : slotOccupied ? " · 请先卸下同部位装备" : string.Empty)
                 : (equipped ? "当前已穿戴" : "选择穿戴后会替换同一栏位的装备"));
+        ConfigureEquipmentPresentation(root);
     }
 
     private void SelectEquipmentItem(Transform root, string itemKey)
@@ -842,6 +1149,14 @@ public partial class HomePageUI
             return;
         }
 
+        if (selectedEquipmentItemKey != itemKey)
+        {
+            CloseEquipmentBreakthroughPanel();
+        }
+        if (activeEquipmentCategory != "all" && activeEquipmentCategory != GetEquipmentSlot(item))
+        {
+            activeEquipmentCategory = "all";
+        }
         selectedEquipmentItemKey = itemKey;
         equipmentStatusMessage = $"已选择：{item.name}";
         RenderEquipmentScenePanel(root);
@@ -849,7 +1164,7 @@ public partial class HomePageUI
 
     private void ToggleEquipment(Transform root, InventoryItemResponse item)
     {
-        if (item == null)
+        if (item == null || equipmentMutationRunning || equipmentRefreshRunning || HasPendingEquipmentGrowthRequest(item.playerEquipmentId))
         {
             return;
         }
@@ -865,19 +1180,32 @@ public partial class HomePageUI
         if (equipmentServerBacked)
         {
             PlayerNpcResponse npc = GetCurrentEquipmentNpc();
-            if (npc == null)
+            if (npc == null || serverEquipmentLoadout == null)
             {
-                equipmentStatusMessage = "当前没有可穿戴装备的居民";
+                equipmentStatusMessage = "当前没有可穿戴装备的 NPC";
                 RenderEquipmentScenePanel(root);
                 return;
             }
 
+            if (_equipmentWearers.TryGetValue(item.playerEquipmentId, out PlayerNpcResponse wearer)
+                && wearer.playerNpcId != npc.playerNpcId)
+            {
+                equipmentStatusMessage = "请切换到 " + wearer.name + " 后卸下该装备";
+                RenderEquipmentScenePanel(root);
+                return;
+            }
             if (IsItemEquipped(item))
             {
                 StartCoroutine(UnequipServerEquipment(npc.playerNpcId, item.playerEquipmentId));
             }
             else
             {
+                if (!string.IsNullOrEmpty(GetEquippedItemKey(slotId)))
+                {
+                    equipmentStatusMessage = "请先卸下该角色同部位的装备";
+                    RenderEquipmentScenePanel(root);
+                    return;
+                }
                 StartCoroutine(EquipServerEquipment(npc.playerNpcId, item.playerEquipmentId));
             }
             return;
@@ -887,7 +1215,7 @@ public partial class HomePageUI
         if (currentKey == GetInventoryItemKey(item))
         {
             ClearEquippedItemKey(slotId);
-            equipmentStatusMessage = equipmentServerBacked ? "已取消本地预览" : $"已卸下：{item.name}";
+            equipmentStatusMessage = equipmentServerBacked ? "已取消预览" : $"已卸下：{item.name}";
         }
         else
         {
@@ -915,7 +1243,7 @@ public partial class HomePageUI
             InventoryItemResponse item = FindEquipmentItem(currentKey);
             if (npc == null || item == null)
             {
-                equipmentStatusMessage = "当前居民的装备状态已变化，请刷新";
+                equipmentStatusMessage = "当前 NPC 的装备状态已变化，请刷新";
                 RenderEquipmentScenePanel(root);
                 return;
             }
@@ -926,7 +1254,7 @@ public partial class HomePageUI
 
         ClearEquippedItemKey(slotId);
         SaveEquipmentState();
-        equipmentStatusMessage = equipmentServerBacked ? "已取消本地预览" : $"已卸下{GetEquipmentSlotLabel(slotId)}装备";
+        equipmentStatusMessage = equipmentServerBacked ? "已取消预览" : $"已卸下{GetEquipmentSlotLabel(slotId)}装备";
         RenderEquipmentScenePanel(root);
     }
 
@@ -942,17 +1270,13 @@ public partial class HomePageUI
         {
             InventoryItemResponse item = currentEquipmentItems[i];
             if (item == null
-                || (!equipmentServerBacked && item.quantity <= 0)
-                || (!IsEquipmentItem(item) && !IsPetItem(item)))
+                || (equipmentServerBacked && item.playerEquipmentId <= 0)
+                || (!equipmentServerBacked && (item.quantity <= 0 || (!IsEquipmentItem(item) && !IsPetItem(item)))))
             {
                 continue;
             }
 
             string slotId = GetEquipmentSlot(item);
-            if (string.IsNullOrEmpty(slotId))
-            {
-                continue;
-            }
             if (activeEquipmentCategory != "all" && slotId != activeEquipmentCategory)
             {
                 continue;
@@ -961,16 +1285,30 @@ public partial class HomePageUI
             result.Add(item);
         }
 
-        result.Sort((left, right) =>
-        {
-            int equippedOrder = IsItemEquipped(right).CompareTo(IsItemEquipped(left));
-            if (equippedOrder != 0)
-            {
-                return equippedOrder;
-            }
-            return string.Compare(left.name, right.name, StringComparison.OrdinalIgnoreCase);
-        });
+        result.Sort(CompareEquipmentItems);
         return result;
+    }
+
+    private static int GetEquipmentQualityRank(string quality)
+    {
+        switch ((quality ?? string.Empty).Trim().ToUpperInvariant())
+        {
+            case "LEGENDARY": return 4;
+            case "EPIC": return 3;
+            case "EXCELLENT": return 2;
+            case "FINE": return 1;
+            default: return 0;
+        }
+    }
+
+    private static int CompareEquipmentItems(InventoryItemResponse left, InventoryItemResponse right)
+    {
+        int qualityOrder = GetEquipmentQualityRank(right.quality).CompareTo(GetEquipmentQualityRank(left.quality));
+        if (qualityOrder != 0) return qualityOrder;
+        int levelOrder = right.level.CompareTo(left.level);
+        if (levelOrder != 0) return levelOrder;
+        int nameOrder = string.Compare(left.name, right.name, StringComparison.OrdinalIgnoreCase);
+        return nameOrder != 0 ? nameOrder : left.playerEquipmentId.CompareTo(right.playerEquipmentId);
     }
 
     private InventoryItemResponse FindEquipmentItem(string itemKey)
@@ -998,6 +1336,8 @@ public partial class HomePageUI
             return string.Empty;
         }
 
+        if (equipmentServerBacked) return NormalizeEquipmentType(item.equipmentType);
+
         string equipmentType = (!string.IsNullOrEmpty(item.equipmentType) ? item.equipmentType : item.itemType ?? string.Empty)
             .Trim()
             .ToUpperInvariant();
@@ -1006,11 +1346,6 @@ public partial class HomePageUI
         if (equipmentType == "ARMOR") return "armor";
         if (equipmentType == "BOOTS") return "boots";
         if (equipmentType == "GLOVES") return "gloves";
-
-        if (equipmentServerBacked)
-        {
-            return string.Empty;
-        }
 
         if (!IsEquipmentItem(item))
         {
@@ -1091,7 +1426,7 @@ public partial class HomePageUI
             for (int i = 0; i < currentEquipmentItems.Length; i++)
             {
                 InventoryItemResponse item = currentEquipmentItems[i];
-                if (item != null && IsItemEquippedByStatus(item) && GetEquipmentSlot(item) == slotId)
+                if (item != null && IsItemEquipped(item) && GetEquipmentSlot(item) == slotId)
                 {
                     return GetInventoryItemKey(item);
                 }
@@ -1148,7 +1483,11 @@ public partial class HomePageUI
     {
         if (equipmentServerBacked)
         {
-            return IsItemEquippedByStatus(item);
+            PlayerNpcResponse wearer;
+            PlayerNpcResponse selectedNpc = GetCurrentEquipmentNpc();
+            return item != null && selectedNpc != null
+                && _equipmentWearers.TryGetValue(item.playerEquipmentId, out wearer)
+                && wearer.playerNpcId == selectedNpc.playerNpcId;
         }
 
         string slotId = GetEquipmentSlot(item);
@@ -1171,9 +1510,10 @@ public partial class HomePageUI
                 Health = serverEquipmentLoadout.totalHealth,
                 Speed = serverEquipmentLoadout.totalSpeed
             };
-            serverStats.Power = CalculateEquipmentPower(serverStats);
             return serverStats;
         }
+
+        if (equipmentServerBacked) return new EquipmentStats();
 
         EquipmentStats result = new EquipmentStats
         {
@@ -1198,7 +1538,6 @@ public partial class HomePageUI
             result.Speed += itemStats.Speed;
         }
 
-        result.Power = CalculateEquipmentPower(result);
         return result;
     }
 
@@ -1213,7 +1552,6 @@ public partial class HomePageUI
                 Health = item.healthBonus,
                 Speed = item.speedBonus
             };
-            serverStats.Power = CalculateEquipmentPower(serverStats);
             return serverStats;
         }
 
@@ -1248,13 +1586,7 @@ public partial class HomePageUI
             result.Speed = 1 + variant / 3;
         }
 
-        result.Power = CalculateEquipmentPower(result);
         return result;
-    }
-
-    private static int CalculateEquipmentPower(EquipmentStats stats)
-    {
-        return stats.Attack + stats.Defense + stats.Health / 10 + stats.Speed;
     }
 
     private string GetEquipmentDescription(InventoryItemResponse item)
@@ -1270,7 +1602,7 @@ public partial class HomePageUI
         if (slot == "armor") return "守护领地的护甲装备，提升防御与生命。";
         if (slot == "boots") return "兼顾防护与行动的靴子，可提升速度。";
         if (slot == "gloves") return "强化攻击动作的手套，补充战斗属性。";
-        return "装备属性与穿戴部位由服务器配置决定。";
+        return string.Empty;
     }
 
     private string GetEquipmentDescriptionWithUpgradePreview(InventoryItemResponse item)
@@ -1295,12 +1627,12 @@ public partial class HomePageUI
         }
         if (equipmentUpgradePreview.maxLevelReached)
         {
-            return description + $"\n已达到最高等级 {equipmentUpgradePreview.maxLevel}";
+            return description + $"\n已达到最高等级 Lv.{equipmentUpgradePreview.maxLevel}";
         }
 
         List<string> costs = new List<string>
         {
-            $"金币 ×{equipmentUpgradePreview.goldCost}（持有 {equipmentUpgradePreview.availableGold}）"
+            $"金币 x{equipmentUpgradePreview.goldCost}（持有 {equipmentUpgradePreview.availableGold}）"
         };
         EquipmentUpgradeResourceCostPreviewData[] resourceCosts = equipmentUpgradePreview.resourceCosts
             ?? new EquipmentUpgradeResourceCostPreviewData[0];
@@ -1314,18 +1646,172 @@ public partial class HomePageUI
             string displayName = string.IsNullOrWhiteSpace(resourceCost.itemName)
                 ? resourceCost.itemKey
                 : resourceCost.itemName;
-            costs.Add($"{displayName} ×{resourceCost.amount}（持有 {resourceCost.availableAmount}）");
+            costs.Add($"{displayName} x{resourceCost.amount}（持有 {resourceCost.availableAmount}）");
         }
-        if (equipmentUpgradePreview.sameEquipmentCount > 0)
+        if (equipmentUpgradePreview.isBreakthrough)
         {
-            costs.Add($"同款1级装备 ×{equipmentUpgradePreview.sameEquipmentCount}");
+            costs.Add($"同款任意等级装备 x{equipmentUpgradePreview.requiredMaterialCount}（手动选择，永久消耗）");
         }
         return description
-            + $"\n升至等级 {equipmentUpgradePreview.targetLevel}：{string.Join("，", costs)}";
+            + $"\n{(equipmentUpgradePreview.isBreakthrough ? "突破" : "升级")}至 Lv.{equipmentUpgradePreview.targetLevel}：{string.Join("，", costs)}";
+    }
+
+    private string BuildEquipmentAutoUpgradePreviewText(InventoryItemResponse item)
+    {
+        if (!equipmentServerBacked || item == null)
+        {
+            return string.Empty;
+        }
+        if (!string.IsNullOrEmpty(equipmentGrowthPersistenceError)) return equipmentGrowthPersistenceError;
+        if (HasPendingEquipmentGrowthRequest(item.playerEquipmentId))
+        {
+            return "正在自动同步此装备的升级结果，无需再次点击";
+        }
+        if (equipmentRefreshRunning) return "正在同步装备与资源数据...";
+        if (!_equipmentDataReadSucceeded) return "装备数据尚未同步，请刷新背包后再升级";
+        if (equipmentUpgradePreviewRequestId == item.playerEquipmentId && !string.IsNullOrEmpty(equipmentUpgradePreviewError))
+            return "升级预览：" + equipmentUpgradePreviewError + "；请刷新背包重试";
+        if (equipmentUpgradePreviewRunning) return "正在读取升级费用...";
+        if (equipmentUpgradePreviewRequestId == item.playerEquipmentId && equipmentUpgradePreview != null
+            && equipmentUpgradePreview.maxLevelReached)
+        {
+            return $"已达到最高等级 Lv.{equipmentUpgradePreview.maxLevel}";
+        }
+        if (equipmentUpgradePreviewRequestId == item.playerEquipmentId && equipmentUpgradePreview != null
+            && equipmentUpgradePreview.isBreakthrough)
+        {
+            return "已到达突破门槛，请先选择材料手动突破，再继续一键升级";
+        }
+        if (equipmentAutoUpgradePreviewId != item.playerEquipmentId || equipmentAutoUpgradePreviewRunning)
+        {
+            return "正在计算可升级等级与消耗...";
+        }
+        if (!string.IsNullOrEmpty(equipmentAutoUpgradePreviewError))
+        {
+            return "一键升级预览：" + equipmentAutoUpgradePreviewError;
+        }
+        if (equipmentAutoUpgradePreview == null)
+        {
+            return "一键升级预览：暂无数据";
+        }
+
+        EquipmentAutoUpgradePreviewData preview = equipmentAutoUpgradePreview;
+        string result = $"一键升级 Lv.{preview.currentLevel} → Lv.{preview.payableTargetLevel}/{preview.requestedTargetLevel}"
+            + $"  共 {preview.upgradeLevelCount} 级  {FormatAutoUpgradeOutcome(preview.outcome)}";
+        if (!string.IsNullOrEmpty(preview.stopReason))
+        {
+            result += "\n停止原因：" + preview.stopReason;
+        }
+        if (preview.blockedLevel > 0 && preview.blockedRequirements != null && preview.blockedRequirements.Length > 0)
+        {
+            for (int requirementIndex = 0; requirementIndex < preview.blockedRequirements.Length; requirementIndex++)
+            {
+                EquipmentAutoUpgradeBlockedRequirementData blocked = preview.blockedRequirements[requirementIndex];
+                if (blocked != null)
+                {
+                    result += $"\nLv.{preview.blockedLevel} 需要 {GetAutoUpgradeRequirementText(blocked)}";
+                }
+            }
+        }
+        if (preview.upgradeSteps != null && preview.upgradeSteps.Length > 0)
+        {
+            result += "\n逐级：";
+            for (int i = 0; i < preview.upgradeSteps.Length; i++)
+            {
+                EquipmentAutoUpgradeStepData step = preview.upgradeSteps[i];
+                if (step == null)
+                {
+                    continue;
+                }
+                long deltaAttack = GetEquipmentStepDeltaAttack(step);
+                long deltaDefense = GetEquipmentStepDeltaDefense(step);
+                long deltaHealth = GetEquipmentStepDeltaHealth(step);
+                long deltaSpeed = GetEquipmentStepDeltaSpeed(step);
+                result += $"\nLv.{step.targetLevel} 攻{deltaAttack:+#;-#;0} 防{deltaDefense:+#;-#;0} 生{deltaHealth:+#;-#;0} 速{deltaSpeed:+#;-#;0}，金币 {step.goldCost}";
+                if (step.requirements != null)
+                {
+                    for (int requirementIndex = 0; requirementIndex < step.requirements.Length; requirementIndex++)
+                    {
+                        if (step.requirements[requirementIndex] != null)
+                        {
+                            result += "，" + GetAutoUpgradeRequirementText(step.requirements[requirementIndex]);
+                        }
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
+    private void ConstrainEquipmentUpgradePreview(Transform root)
+    {
+        ScrollRect scroll = FindSceneComponent<ScrollRect>(root, "EquipmentUpgradePreviewViewport");
+        if (scroll == null || scroll.viewport == null) return;
+        RectTransform viewport = scroll.viewport;
+        RectTransform status = FindSceneComponent<RectTransform>(root, "EquipmentDetailStatus");
+        if (status != null && status.parent == viewport.parent)
+        {
+            Vector3[] corners = new Vector3[4];
+            status.GetWorldCorners(corners);
+            float top = viewport.parent.InverseTransformPoint(viewport.TransformPoint(new Vector3(0f, viewport.rect.yMax))).y;
+            float bottom = viewport.parent.InverseTransformPoint(corners[1]).y + 8f;
+            viewport.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, Mathf.Max(24f, Mathf.Min(60f, top - bottom)));
+        }
+        RectMask2D mask = viewport.GetComponent<RectMask2D>();
+        if (mask != null) mask.enabled = true;
+    }
+
+    private static long GetEquipmentStepDeltaHealth(EquipmentAutoUpgradeStepData step)
+    {
+        return step.deltaHealth != 0 ? step.deltaHealth : step.healthBonusDelta != 0
+            ? step.healthBonusDelta : step.afterHealthBonus - step.beforeHealthBonus;
+    }
+
+    private static long GetEquipmentStepDeltaAttack(EquipmentAutoUpgradeStepData step)
+    {
+        return step.deltaAttack != 0 ? step.deltaAttack : step.attackBonusDelta != 0
+            ? step.attackBonusDelta : step.afterAttackBonus - step.beforeAttackBonus;
+    }
+
+    private static long GetEquipmentStepDeltaDefense(EquipmentAutoUpgradeStepData step)
+    {
+        return step.deltaDefense != 0 ? step.deltaDefense : step.defenseBonusDelta != 0
+            ? step.defenseBonusDelta : step.afterDefenseBonus - step.beforeDefenseBonus;
+    }
+
+    private static long GetEquipmentStepDeltaSpeed(EquipmentAutoUpgradeStepData step)
+    {
+        return step.deltaSpeed != 0 ? step.deltaSpeed : step.speedBonusDelta != 0
+            ? step.speedBonusDelta : step.afterSpeedBonus - step.beforeSpeedBonus;
+    }
+
+    private static string FormatAutoUpgradeOutcome(string outcome)
+    {
+        if (string.Equals(outcome, "TARGET_REACHED", StringComparison.OrdinalIgnoreCase))
+        {
+            return "可达到目标";
+        }
+        if (string.Equals(outcome, "PARTIAL", StringComparison.OrdinalIgnoreCase))
+        {
+            return "资源不足，部分升级";
+        }
+        if (string.Equals(outcome, "BREAKTHROUGH_REQUIRED", StringComparison.OrdinalIgnoreCase))
+        {
+            return "已到突破门槛，需要手动突破";
+        }
+        return string.IsNullOrEmpty(outcome) ? "待确认" : outcome;
+    }
+
+    private static string GetAutoUpgradeRequirementText(EquipmentAutoUpgradeBlockedRequirementData requirement)
+    {
+        string name = string.IsNullOrEmpty(requirement.itemKey) ? requirement.requirementType : requirement.itemKey;
+        return $"{name} {requirement.availableAmount}/{requirement.requiredAmount}";
     }
 
     private void ResetEquipmentUpgradePreview()
     {
+        if (!equipmentGrowthPreservesBreakthrough) CloseEquipmentBreakthroughPanel();
+        _equipmentSinglePreviewVersion++;
         equipmentUpgradePreview = null;
         equipmentUpgradePreviewRequestId = 0L;
         equipmentUpgradePreviewRunning = false;
@@ -1337,6 +1823,7 @@ public partial class HomePageUI
         if (!equipmentServerBacked
             || item == null
             || item.playerEquipmentId <= 0L
+            || !_equipmentDataReadSucceeded
             || equipmentRefreshRunning
             || equipmentMutationRunning)
         {
@@ -1354,11 +1841,15 @@ public partial class HomePageUI
         equipmentUpgradePreviewRequestId = item.playerEquipmentId;
         equipmentUpgradePreviewRunning = true;
         equipmentUpgradePreviewError = string.Empty;
-        StartCoroutine(RefreshEquipmentUpgradePreview(item.playerEquipmentId));
+        StartCoroutine(RefreshEquipmentUpgradePreview(item.playerEquipmentId, item.level));
     }
 
-    private IEnumerator RefreshEquipmentUpgradePreview(long playerEquipmentId)
+    private IEnumerator RefreshEquipmentUpgradePreview(long playerEquipmentId, int expectedLevel)
     {
+        int previewVersion = ++_equipmentSinglePreviewVersion;
+        int readVersion = _equipmentReadVersion;
+        int playerId = GameSession.PlayerId;
+        string sessionToken = GameSession.Token;
         UnityWebRequest request = CreateAuthorizedGet($"/equipment/{playerEquipmentId}/upgrade-preview");
         if (request == null)
         {
@@ -1375,6 +1866,8 @@ public partial class HomePageUI
         {
             yield return request.SendWebRequest();
             if (equipmentUpgradePreviewRequestId != playerEquipmentId
+                || previewVersion != _equipmentSinglePreviewVersion || readVersion != _equipmentReadVersion
+                || playerId != GameSession.PlayerId || sessionToken != GameSession.Token
                 || equipmentPanelObject == null)
             {
                 yield break;
@@ -1390,12 +1883,16 @@ public partial class HomePageUI
             if (request.result != UnityWebRequest.Result.Success
                 || response == null
                 || response.code != 200
-                || response.data == null
-                || response.data.playerEquipmentId != playerEquipmentId)
+                || response.data == null)
             {
                 equipmentUpgradePreviewError = response == null
                     ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
                     : GetApiError(response);
+            }
+            else if (!IsValidEquipmentSinglePreview(response.data, playerEquipmentId, expectedLevel))
+            {
+                equipmentUpgradePreview = null;
+                equipmentUpgradePreviewError = "装备状态已变化，请刷新后重试";
             }
             else
             {
@@ -1416,11 +1913,14 @@ public partial class HomePageUI
 
     private static string GetEquipmentQualityLabel(string quality)
     {
-        if (string.Equals(quality, "COMMON", StringComparison.OrdinalIgnoreCase)) return "普通";
-        if (string.Equals(quality, "RARE", StringComparison.OrdinalIgnoreCase)) return "稀有";
-        if (string.Equals(quality, "EPIC", StringComparison.OrdinalIgnoreCase)) return "史诗";
-        if (string.Equals(quality, "LEGENDARY", StringComparison.OrdinalIgnoreCase)) return "传说";
-        return string.IsNullOrEmpty(quality) ? "装备" : (FrontendTextLocalization.ContainsAsciiLetter(quality) ? "装备" : quality);
+        switch (GetEquipmentQualityRank(quality))
+        {
+            case 4: return "传说";
+            case 3: return "史诗";
+            case 2: return "优秀";
+            case 1: return "精良";
+            default: return "普通";
+        }
     }
 
     private static string GetEquipmentSlotLabel(string slotId)
@@ -1430,7 +1930,7 @@ public partial class HomePageUI
         if (slotId == "armor") return "护甲";
         if (slotId == "boots") return "靴子";
         if (slotId == "gloves") return "手套";
-        return "装备";
+        return string.IsNullOrEmpty(slotId) ? "未分类" : slotId.ToUpperInvariant();
     }
 
     private static string GetSlotIcon(string slotId)
@@ -1476,7 +1976,11 @@ public partial class HomePageUI
 
     private void ConfigureServerNpcControls(Transform root)
     {
-        Transform panel = FindSceneTransform(root, "EquipmentPanel");
+        Transform panel = FindSceneTransform(root, "EquipmentSlotsCard");
+        if (panel == null)
+        {
+            panel = FindSceneTransform(root, "EquipmentPanel");
+        }
         if (panel == null)
         {
             return;
@@ -1493,36 +1997,14 @@ public partial class HomePageUI
             return;
         }
 
-        if (previous == null)
-        {
-            previous = CreateButton(panel, "EquipmentNpcPreviousButton", "<", new Color(0.58f, 0.38f, 0.66f, 1f), Color.white);
-            SetRect(previous.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(282f, -40f), new Vector2(40f, 42f));
-            ConfigureClearButtonLabel(previous, 22);
-        }
-        if (next == null)
-        {
-            next = CreateButton(panel, "EquipmentNpcNextButton", ">", new Color(0.58f, 0.38f, 0.66f, 1f), Color.white);
-            SetRect(next.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(616f, -40f), new Vector2(40f, 42f));
-            ConfigureClearButtonLabel(next, 22);
-        }
-        if (upgrade == null)
-        {
-            upgrade = CreateButton(panel, "EquipmentNpcUpgradeButton", "居民升级", new Color(0.86f, 0.48f, 0.20f, 1f), Color.white);
-            SetRect(upgrade.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(664f, -40f), new Vector2(104f, 42f));
-            ConfigureClearButtonLabel(upgrade, 16);
-        }
-
-        previous.gameObject.SetActive(true);
-        next.gameObject.SetActive(true);
-        upgrade.gameObject.SetActive(true);
         PlayerNpcResponse selectedNpc = GetCurrentEquipmentNpc();
-        EnsureNpcAutoUpgradePreview(selectedNpc);
+        if (upgrade != null) EnsureNpcAutoUpgradePreview(selectedNpc);
         bool npcMaxLevelReached = selectedNpc != null
             && selectedNpc.maxLevel > 0
             && selectedNpc.level >= selectedNpc.maxLevel;
         bool canSwitch = serverPlayerNpcs.Length > 1 && !equipmentRefreshRunning && !equipmentMutationRunning;
-        previous.interactable = canSwitch;
-        next.interactable = canSwitch;
+        if (previous != null) previous.interactable = canSwitch;
+        if (next != null) next.interactable = canSwitch;
         bool autoReady = selectedNpc != null
             && npcAutoUpgradePreviewId == selectedNpc.playerNpcId
             && npcAutoUpgradePreview != null
@@ -1536,19 +2018,21 @@ public partial class HomePageUI
         bool autoLoading = selectedNpc != null
             && npcAutoUpgradePreviewId == selectedNpc.playerNpcId
             && npcAutoUpgradePreviewRunning;
-        upgrade.interactable = selectedNpc != null
+        if (upgrade != null) upgrade.interactable = selectedNpc != null
             && !equipmentRefreshRunning
             && !equipmentMutationRunning
             && !autoLoading
             && !autoUnavailable
-            && !npcMaxLevelReached;
-        SetSceneButtonText(upgrade, npcMaxLevelReached ? "已满级" : autoLoading ? "读取中..." : autoUnavailable ? "无法升级" : autoReady ? "一键升级" : "居民升级");
+            && !npcMaxLevelReached
+            && autoReady;
+        SetSceneButtonText(upgrade, "一键升级");
         BindSceneButton(previous, () => ChangeEquipmentNpc(-1));
         BindSceneButton(next, () => ChangeEquipmentNpc(1));
-        Action upgradeAction = autoReady
-            ? (Action)(() => StartCoroutine(AutoUpgradeCurrentServerNpc(selectedNpc)))
-            : UpgradeCurrentServerNpc;
-        BindSceneButton(upgrade, upgradeAction);
+        BindSceneButton(upgrade, () =>
+        {
+            if (autoReady && !equipmentMutationRunning && !equipmentRefreshRunning)
+                StartCoroutine(AutoUpgradeCurrentServerNpc(selectedNpc));
+        });
     }
 
     private void ChangeEquipmentNpc(int offset)
@@ -1560,17 +2044,22 @@ public partial class HomePageUI
 
         selectedEquipmentNpcIndex = (selectedEquipmentNpcIndex + offset + serverPlayerNpcs.Length) % serverPlayerNpcs.Length;
         selectedEquipmentItemKey = string.Empty;
-        equipmentPageIndex = 0;
+        ResetEquipmentUpgradePreview();
+        ResetEquipmentAutoUpgradePreviews();
         equipmentRefreshRunning = true;
-        equipmentStatusMessage = "正在读取所选居民的装备...";
+        serverEquipmentLoadout = null;
+        RebuildServerEquipmentItems();
+        equipmentStatusMessage = "正在读取所选 NPC 的装备...";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
         StartCoroutine(ChangeSelectedNpcLoadout());
     }
 
     private IEnumerator ChangeSelectedNpcLoadout()
     {
+        int readVersion = ++_equipmentReadVersion;
         serverEquipmentLoadout = null;
         yield return RefreshSelectedNpcLoadout();
+        if (readVersion != _equipmentReadVersion) yield break;
         if (!equipmentRefreshRunning)
         {
             RenderEquipmentScenePanel(GetEquipmentPanelRoot());
@@ -1580,120 +2069,129 @@ public partial class HomePageUI
         RebuildServerEquipmentItems();
         equipmentRefreshRunning = false;
         PlayerNpcResponse npc = GetCurrentEquipmentNpc();
-        equipmentStatusMessage = npc == null ? "当前没有居民" : $"已切换到 {npc.name}";
-        RenderEquipmentScenePanel(GetEquipmentPanelRoot());
-    }
-
-    private void ConfigureEquipmentPaging(Transform root, int pageCount)
-    {
-        Transform panel = FindSceneTransform(root, "EquipmentPanel");
-        if (panel == null)
-        {
-            return;
-        }
-
-        SetSceneText(root, "EquipmentListTitle", pageCount > 1 ? $"装备物品 {equipmentPageIndex + 1}/{pageCount}" : "装备物品");
-        Button previous = FindSceneComponent<Button>(panel, "EquipmentPagePreviousButton");
-        Button next = FindSceneComponent<Button>(panel, "EquipmentPageNextButton");
-        if (previous == null)
-        {
-            previous = CreateButton(panel, "EquipmentPagePreviousButton", "<", new Color(0.67f, 0.46f, 0.24f, 1f), Color.white);
-            SetRect(previous.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(850f, -178f), new Vector2(42f, 36f));
-            ConfigureClearButtonLabel(previous, 20);
-        }
-        if (next == null)
-        {
-            next = CreateButton(panel, "EquipmentPageNextButton", ">", new Color(0.67f, 0.46f, 0.24f, 1f), Color.white);
-            SetRect(next.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(902f, -178f), new Vector2(42f, 36f));
-            ConfigureClearButtonLabel(next, 20);
-        }
-
-        previous.gameObject.SetActive(pageCount > 1);
-        next.gameObject.SetActive(pageCount > 1);
-        previous.interactable = equipmentPageIndex > 0 && !equipmentRefreshRunning && !equipmentMutationRunning;
-        next.interactable = equipmentPageIndex + 1 < pageCount && !equipmentRefreshRunning && !equipmentMutationRunning;
-        BindSceneButton(previous, () => ChangeEquipmentPage(-1));
-        BindSceneButton(next, () => ChangeEquipmentPage(1));
-    }
-
-    private void ChangeEquipmentPage(int offset)
-    {
-        equipmentPageIndex += offset;
-        selectedEquipmentItemKey = string.Empty;
+        equipmentStatusMessage = npc == null ? "当前没有 NPC" : $"已切换到 {npc.name}";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
     }
 
     private void ConfigureServerEquipmentDetailActions(Transform root, InventoryItemResponse item)
     {
-        Transform detailContent = FindSceneTransform(root, "EquipmentDetailContent");
-        Button action = FindSceneComponent<Button>(root, "EquipmentActionButton");
         Button upgrade = FindSceneComponent<Button>(root, "EquipmentUpgradeButton");
+        Button autoUpgrade = FindSceneComponent<Button>(root, "EquipmentAutoUpgradeButton");
         Button lockButton = FindSceneComponent<Button>(root, "EquipmentLockButton");
-        if (detailContent == null || action == null)
-        {
-            return;
-        }
-
         if (!equipmentServerBacked)
         {
-            SetRect(action.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(136f, -454f), new Vector2(202f, 50f));
-            if (upgrade != null) upgrade.gameObject.SetActive(false);
-            if (lockButton != null) lockButton.gameObject.SetActive(false);
+            SetSceneButtonText(upgrade, "升级");
+            SetSceneButtonText(autoUpgrade, "一键升级");
+            SetSceneButtonText(lockButton, item != null && item.locked ? "解锁" : "锁定");
+            if (upgrade != null) upgrade.interactable = false;
+            if (autoUpgrade != null) autoUpgrade.interactable = false;
+            if (lockButton != null) lockButton.interactable = false;
             return;
         }
 
-        SetRect(action.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(28f, -454f), new Vector2(128f, 50f));
-        ConfigureClearButtonLabel(action, 18);
-        if (upgrade == null)
-        {
-            upgrade = CreateButton(detailContent, "EquipmentUpgradeButton", "升级", new Color(0.86f, 0.49f, 0.18f, 1f), Color.white);
-            SetRect(upgrade.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(173f, -454f), new Vector2(128f, 50f));
-            ConfigureClearButtonLabel(upgrade, 18);
-        }
-        if (lockButton == null)
-        {
-            lockButton = CreateButton(detailContent, "EquipmentLockButton", "锁定", new Color(0.44f, 0.43f, 0.60f, 1f), Color.white);
-            SetRect(lockButton.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(318f, -454f), new Vector2(128f, 50f));
-            ConfigureClearButtonLabel(lockButton, 18);
-        }
-
-        upgrade.gameObject.SetActive(true);
-        lockButton.gameObject.SetActive(true);
         EnsureEquipmentAutoUpgradePreview(item);
-        bool previewMatches = item != null
-            && equipmentUpgradePreviewRequestId == item.playerEquipmentId;
-        bool previewLoading = previewMatches && equipmentUpgradePreviewRunning;
-        bool maxLevelReached = previewMatches
-            && equipmentUpgradePreview != null
-            && equipmentUpgradePreview.maxLevelReached;
-        bool autoPreviewMatches = item != null && equipmentAutoUpgradePreviewId == item.playerEquipmentId;
-        bool autoPreviewLoading = autoPreviewMatches && equipmentAutoUpgradePreviewRunning;
-        bool autoReady = autoPreviewMatches && equipmentAutoUpgradePreview != null
-            && !string.IsNullOrEmpty(equipmentAutoUpgradePreview.planFingerprint)
-            && equipmentAutoUpgradePreview.payableTargetLevel > equipmentAutoUpgradePreview.currentLevel;
-        bool autoUnavailable = autoPreviewMatches && equipmentAutoUpgradePreview != null
-            && !string.IsNullOrEmpty(equipmentAutoUpgradePreview.planFingerprint)
-            && equipmentAutoUpgradePreview.payableTargetLevel <= equipmentAutoUpgradePreview.currentLevel;
-        upgrade.interactable = item != null
-            && !equipmentMutationRunning
-            && !equipmentRefreshRunning
-            && !previewLoading
-            && !maxLevelReached
-            && !autoPreviewLoading
-            && !autoUnavailable;
-        lockButton.interactable = item != null && !equipmentMutationRunning && !equipmentRefreshRunning;
-        SetSceneButtonText(upgrade, maxLevelReached ? "已满级" : autoPreviewLoading ? "读取中..." : autoUnavailable ? "无法升级" : autoReady ? "一键升级" : (previewLoading ? "读取中..." : "升级"));
+        bool busy = equipmentMutationRunning || equipmentRefreshRunning;
+        bool previewMatches = item != null && equipmentUpgradePreviewRequestId == item.playerEquipmentId;
+        bool singleReady = previewMatches && equipmentUpgradePreview != null
+            && equipmentUpgradePreview.currentLevel == item.level && !equipmentUpgradePreviewRunning;
+        bool maxLevelReached = singleReady && (equipmentUpgradePreview.maxLevelReached
+            || item.level >= equipmentUpgradePreview.maxLevel);
+        bool breakthrough = singleReady && equipmentUpgradePreview.isBreakthrough;
+        bool singleInsufficient = singleReady && !HasEquipmentUpgradeFunds(equipmentUpgradePreview);
+        bool pending = item != null && HasPendingEquipmentGrowthRequest(item.playerEquipmentId);
+        bool autoReady = HasCurrentEquipmentAutoUpgradePreview(item)
+            && !equipmentAutoUpgradePreviewRunning;
+        bool canAutoUpgrade = autoReady && equipmentAutoUpgradePreview.payableTargetLevel > item.level;
+        bool canPersistGrowth = string.IsNullOrEmpty(equipmentGrowthPersistenceError);
+
+        if (upgrade != null) upgrade.interactable = canPersistGrowth && !busy && !pending && item != null && !maxLevelReached
+            && !singleInsufficient && singleReady;
+        if (autoUpgrade != null) autoUpgrade.interactable = canPersistGrowth && !busy && !pending && !breakthrough && item != null && !maxLevelReached
+            && canAutoUpgrade;
+        if (lockButton != null) lockButton.interactable = item != null && !busy && !pending;
+
+        SetSceneButtonText(upgrade, breakthrough ? "突破" : "升级");
+        SetSceneButtonText(autoUpgrade, "一键升级");
         SetSceneButtonText(lockButton, item != null && item.locked ? "解锁" : "锁定");
-        Action upgradeAction = autoReady
-            ? (Action)(() => StartCoroutine(AutoUpgradeServerEquipment(item)))
-            : () => UpgradeServerEquipment(item);
-        BindSceneButton(upgrade, upgradeAction);
+
+        BindSceneButton(upgrade, () =>
+        {
+            if (busy || equipmentMutationRunning || equipmentRefreshRunning || !canPersistGrowth) return;
+            if (item == null) return;
+            if (HasPendingEquipmentGrowthRequest(item.playerEquipmentId)) return;
+            if (!singleReady || maxLevelReached || singleInsufficient) return;
+            if (breakthrough)
+            {
+                ShowEquipmentBreakthroughPanel(item);
+                return;
+            }
+            UpgradeServerEquipment(item);
+        });
+        BindSceneButton(autoUpgrade, () =>
+        {
+            if (busy || item == null || equipmentMutationRunning || equipmentRefreshRunning || !canPersistGrowth
+                || HasPendingEquipmentGrowthRequest(item.playerEquipmentId) || breakthrough) return;
+            if (!canAutoUpgrade) return;
+            StartCoroutine(AutoUpgradeServerEquipment(item));
+        });
         BindSceneButton(lockButton, () => ToggleServerEquipmentLock(item));
+    }
+
+    private void RetryEquipmentUpgradePreview(Transform root)
+    {
+        if (equipmentMutationRunning || equipmentRefreshRunning || equipmentPanelObject == null) return;
+        ResetEquipmentUpgradePreview();
+        _equipmentAutoPreviewVersion++;
+        equipmentAutoUpgradePreview = null;
+        equipmentAutoUpgradePreviewId = 0L;
+        equipmentAutoUpgradePreviewRunning = false;
+        equipmentAutoUpgradePreviewError = string.Empty;
+        equipmentRefreshRunning = true;
+        equipmentStatusMessage = "正在同步装备并重新读取升级预览...";
+        RenderEquipmentScenePanel(root);
+        StartCoroutine(GetEquipmentInventoryList());
+    }
+
+    private bool HasCurrentEquipmentAutoUpgradePreview(InventoryItemResponse item)
+    {
+        return _equipmentDataReadSucceeded && item != null && equipmentAutoUpgradePreviewId == item.playerEquipmentId
+            && IsValidEquipmentAutoUpgradePreview(equipmentAutoUpgradePreview, item.playerEquipmentId,
+                item.level, equipmentUpgradePreview != null ? equipmentUpgradePreview.maxLevel : 0);
+    }
+
+    private static bool IsValidEquipmentAutoUpgradePreview(EquipmentAutoUpgradePreviewData preview,
+        long playerEquipmentId, int currentLevel, int maxLevel)
+    {
+        if (preview == null || preview.playerEquipmentId != playerEquipmentId
+            || preview.currentLevel != currentLevel || currentLevel < 1
+            || preview.requestedTargetLevel <= currentLevel
+            || preview.requestedTargetLevel > Math.Min(maxLevel, 100)
+            || preview.payableTargetLevel < currentLevel || preview.payableTargetLevel > preview.requestedTargetLevel
+            || preview.upgradeLevelCount != preview.payableTargetLevel - currentLevel
+            || !IsValidUpgradePlanFingerprint(preview.planFingerprint)) return false;
+        return true;
+    }
+
+    private static bool IsValidNpcAutoUpgradePreview(
+        NpcAutoUpgradePreviewData preview,
+        long playerNpcId,
+        int requestedTargetLevel)
+    {
+        return preview != null
+            && preview.playerNpcId == playerNpcId
+            && preview.currentLevel >= 1
+            && preview.requestedTargetLevel == requestedTargetLevel
+            && preview.requestedTargetLevel > preview.currentLevel
+            && preview.payableTargetLevel >= preview.currentLevel
+            && preview.payableTargetLevel <= preview.requestedTargetLevel
+            && preview.upgradeLevelCount == preview.payableTargetLevel - preview.currentLevel
+            && IsValidUpgradePlanFingerprint(preview.planFingerprint);
     }
 
     private void UpgradeServerEquipment(InventoryItemResponse item)
     {
-        if (item != null && !equipmentMutationRunning && !equipmentRefreshRunning)
+        if (item != null && !equipmentMutationRunning && !equipmentRefreshRunning
+            && !HasPendingEquipmentGrowthRequest(item.playerEquipmentId))
         {
             StartCoroutine(UpgradeServerEquipmentRequest(item.playerEquipmentId));
         }
@@ -1701,7 +2199,7 @@ public partial class HomePageUI
 
     private void ToggleServerEquipmentLock(InventoryItemResponse item)
     {
-        if (item != null && !equipmentMutationRunning && !equipmentRefreshRunning)
+        if (item != null && !equipmentMutationRunning && !equipmentRefreshRunning && !HasPendingEquipmentGrowthRequest(item.playerEquipmentId))
         {
             StartCoroutine(SetServerEquipmentLock(item.playerEquipmentId, !item.locked));
         }
@@ -1721,6 +2219,7 @@ public partial class HomePageUI
 
     private void ResetEquipmentAutoUpgradePreviews()
     {
+        _equipmentAutoPreviewVersion++;
         equipmentAutoUpgradePreview = null;
         equipmentAutoUpgradePreviewId = 0L;
         equipmentAutoUpgradePreviewRunning = false;
@@ -1746,7 +2245,7 @@ public partial class HomePageUI
             npcAutoUpgradePreview = null;
             npcAutoUpgradePreviewId = npc.playerNpcId;
             npcAutoUpgradePreviewRunning = false;
-            npcAutoUpgradePreviewError = "居民已满级";
+            npcAutoUpgradePreviewError = "NPC 已满级";
             return;
         }
 
@@ -1801,6 +2300,11 @@ public partial class HomePageUI
                     ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
                     : GetApiError(response);
             }
+            else if (!IsValidNpcAutoUpgradePreview(response.data, playerNpcId, targetLevel))
+            {
+                npcAutoUpgradePreview = null;
+                npcAutoUpgradePreviewError = "NPC 升级预览与当前角色不一致，请重新预览";
+            }
             else
             {
                 npcAutoUpgradePreview = response.data;
@@ -1816,18 +2320,19 @@ public partial class HomePageUI
     {
         if (npc == null || npcAutoUpgradePreview == null || string.IsNullOrEmpty(npcAutoUpgradePreview.planFingerprint))
         {
-            UpgradeCurrentServerNpc();
+            equipmentStatusMessage = "NPC 一键升级预览已失效，请重新读取升级方案";
+            RenderEquipmentScenePanel(GetEquipmentPanelRoot());
             yield break;
         }
         if (npcAutoUpgradePreview.payableTargetLevel <= npcAutoUpgradePreview.currentLevel)
         {
-            equipmentStatusMessage = "当前资源不足或居民已无法继续升级";
+            equipmentStatusMessage = "当前资源不足或 NPC 已无法继续升级";
             RenderEquipmentScenePanel(GetEquipmentPanelRoot());
             yield break;
         }
 
         equipmentMutationRunning = true;
-        equipmentStatusMessage = "正在执行居民一键升级...";
+        equipmentStatusMessage = "正在执行 NPC 一键升级...";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
         AutoUpgradeRequestPayload payload = new AutoUpgradeRequestPayload
         {
@@ -1843,7 +2348,18 @@ public partial class HomePageUI
 
     private void EnsureEquipmentAutoUpgradePreview(InventoryItemResponse item)
     {
-        if (!equipmentServerBacked || item == null || item.playerEquipmentId <= 0L || equipmentRefreshRunning || equipmentMutationRunning)
+        if (!equipmentServerBacked || !_equipmentDataReadSucceeded || item == null || item.playerEquipmentId <= 0L || equipmentRefreshRunning || equipmentMutationRunning)
+        {
+            return;
+        }
+
+        if (equipmentUpgradePreviewRequestId != item.playerEquipmentId || equipmentUpgradePreview == null
+            || equipmentUpgradePreviewRunning || equipmentUpgradePreview.maxLevelReached || equipmentUpgradePreview.isBreakthrough)
+        {
+            return;
+        }
+        int targetLevel = Mathf.Min(equipmentUpgradePreview.maxLevel, 100);
+        if (targetLevel <= item.level)
         {
             return;
         }
@@ -1864,12 +2380,17 @@ public partial class HomePageUI
         equipmentAutoUpgradePreviewId = item.playerEquipmentId;
         equipmentAutoUpgradePreviewRunning = true;
         equipmentAutoUpgradePreviewError = string.Empty;
-        StartCoroutine(LoadEquipmentAutoUpgradePreview(item.playerEquipmentId));
+        StartCoroutine(LoadEquipmentAutoUpgradePreview(item.playerEquipmentId, targetLevel));
     }
 
-    private IEnumerator LoadEquipmentAutoUpgradePreview(long playerEquipmentId)
+    private IEnumerator LoadEquipmentAutoUpgradePreview(long playerEquipmentId, int targetLevel)
     {
-        UnityWebRequest request = CreateAuthorizedGet($"/equipment/{playerEquipmentId}/auto-upgrade-preview?targetLevel=100");
+        int previewVersion = ++_equipmentAutoPreviewVersion;
+        int readVersion = _equipmentReadVersion;
+        int playerId = GameSession.PlayerId;
+        string sessionToken = GameSession.Token;
+        int currentLevel = equipmentUpgradePreview != null ? equipmentUpgradePreview.currentLevel : 0;
+        UnityWebRequest request = CreateAuthorizedGet($"/equipment/{playerEquipmentId}/auto-upgrade-preview?targetLevel={targetLevel}");
         if (request == null)
         {
             equipmentAutoUpgradePreviewRunning = false;
@@ -1881,7 +2402,9 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
-            if (equipmentAutoUpgradePreviewId != playerEquipmentId)
+            if (equipmentAutoUpgradePreviewId != playerEquipmentId || equipmentPanelObject == null
+                || playerId != GameSession.PlayerId || sessionToken != GameSession.Token
+                || previewVersion != _equipmentAutoPreviewVersion || readVersion != _equipmentReadVersion)
             {
                 yield break;
             }
@@ -1898,6 +2421,12 @@ public partial class HomePageUI
                     ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
                     : GetApiError(response);
             }
+            else if (!IsValidEquipmentAutoUpgradePreview(response.data, playerEquipmentId, currentLevel, targetLevel)
+                || response.data.requestedTargetLevel != targetLevel)
+            {
+                equipmentAutoUpgradePreview = null;
+                equipmentAutoUpgradePreviewError = "升级预览与当前装备不一致，请重新预览";
+            }
             else
             {
                 equipmentAutoUpgradePreview = response.data;
@@ -1911,9 +2440,16 @@ public partial class HomePageUI
 
     private IEnumerator AutoUpgradeServerEquipment(InventoryItemResponse item)
     {
-        if (item == null || equipmentAutoUpgradePreview == null || string.IsNullOrEmpty(equipmentAutoUpgradePreview.planFingerprint))
+        if (item == null || equipmentMutationRunning || equipmentRefreshRunning || HasPendingEquipmentGrowthRequest(item.playerEquipmentId)
+            || !string.IsNullOrEmpty(equipmentGrowthPersistenceError)
+            || (equipmentUpgradePreview != null && equipmentUpgradePreview.isBreakthrough))
         {
-            UpgradeServerEquipment(item);
+            yield break;
+        }
+        if (!HasCurrentEquipmentAutoUpgradePreview(item))
+        {
+            equipmentStatusMessage = "一键升级预览已失效，请重新预览";
+            RetryEquipmentUpgradePreview(GetEquipmentPanelRoot());
             yield break;
         }
         if (equipmentAutoUpgradePreview.payableTargetLevel <= equipmentAutoUpgradePreview.currentLevel)
@@ -1923,19 +2459,23 @@ public partial class HomePageUI
             yield break;
         }
 
-        equipmentMutationRunning = true;
-        equipmentStatusMessage = "正在执行装备一键升级...";
-        RenderEquipmentScenePanel(GetEquipmentPanelRoot());
-        AutoUpgradeRequestPayload payload = new AutoUpgradeRequestPayload
+        EquipmentAutoUpgradeRequestPayload payload = new EquipmentAutoUpgradeRequestPayload
         {
             playerEquipmentId = item.playerEquipmentId,
-            expectedCurrentLevel = Mathf.Max(1, equipmentAutoUpgradePreview.currentLevel),
-            targetLevel = equipmentAutoUpgradePreview.requestedTargetLevel > equipmentAutoUpgradePreview.currentLevel
-                ? equipmentAutoUpgradePreview.requestedTargetLevel
-                : equipmentAutoUpgradePreview.payableTargetLevel,
+            expectedCurrentLevel = equipmentAutoUpgradePreview.currentLevel,
+            targetLevel = equipmentAutoUpgradePreview.requestedTargetLevel,
             planFingerprint = equipmentAutoUpgradePreview.planFingerprint
         };
-        yield return SendAutoUpgradeRequest("/equipment/auto-upgrade", JsonUtility.ToJson(payload), false, item.playerEquipmentId);
+        yield return SendEquipmentGrowthRequest(new EquipmentGrowthRequest
+        {
+            playerId = GameSession.PlayerId,
+            playerEquipmentId = item.playerEquipmentId,
+            expectedLevel = item.level,
+            targetLevel = payload.targetLevel,
+            path = "/equipment/auto-upgrade",
+            json = JsonUtility.ToJson(payload),
+            idempotencyKey = Guid.NewGuid().ToString("D")
+        });
     }
 
     private IEnumerator SendAutoUpgradeRequest(string path, string json, bool npc, long targetId)
@@ -1966,6 +2506,7 @@ public partial class HomePageUI
             equipmentAutoUpgradeRequestSignature = requestSignature;
         }
         ApiRequestUtility.SetIdempotencyKey(request, idempotencyKey);
+        string completionMessage = string.Empty;
         using (request)
         {
             yield return request.SendWebRequest();
@@ -1983,7 +2524,7 @@ public partial class HomePageUI
                     && request.responseCode > 0
                     && request.responseCode < 500;
                 equipmentMutationRunning = false;
-                equipmentStatusMessage = (npc ? "居民" : "装备") + "一键升级失败：" + (response == null
+                equipmentStatusMessage = (npc ? "NPC" : "装备") + "一键升级失败：" + (response == null
                     ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
                     : GetApiError(response));
                 if (definitiveRejection)
@@ -2000,6 +2541,8 @@ public partial class HomePageUI
                     }
                     else
                     {
+                        ResetEquipmentUpgradePreview();
+                        _equipmentAutoPreviewVersion++;
                         equipmentAutoUpgradePreview = null;
                         equipmentAutoUpgradePreviewId = 0L;
                         equipmentAutoUpgradePreviewRunning = false;
@@ -2013,7 +2556,9 @@ public partial class HomePageUI
             }
 
             autoUpgradePendingKeys.Remove(requestSignature);
-            equipmentStatusMessage = (npc ? "居民" : "装备") + $"已升级到等级 {response.data.reachedLevel}，资源已由服务器结算";
+            completionMessage = (npc ? "NPC" : "装备") + $"已升级到 Lv.{response.data.reachedLevel}"
+                + (response.data.targetReached ? "，已达到目标等级" : "，本次仅完成部分升级")
+                + "，消耗已结算";
         }
 
         equipmentMutationRunning = false;
@@ -2021,6 +2566,7 @@ public partial class HomePageUI
         equipmentRefreshRunning = true;
         yield return RefreshGeneralInventoryAfterEquipmentMutation();
         yield return GetEquipmentInventoryList();
+        equipmentStatusMessage = completionMessage;
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
     }
 
@@ -2050,11 +2596,12 @@ public partial class HomePageUI
         string pendingMessage,
         string successMessage)
     {
-        if (equipmentMutationRunning)
+        if (equipmentMutationRunning || HasPendingEquipmentGrowthRequest(payload.playerEquipmentId))
         {
             yield break;
         }
 
+        int readVersion = _equipmentReadVersion;
         equipmentMutationRunning = true;
         equipmentStatusMessage = pendingMessage;
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
@@ -2069,6 +2616,11 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
+            if (readVersion != _equipmentReadVersion)
+            {
+                equipmentMutationRunning = false;
+                yield break;
+            }
             if (HandleUnauthorizedResponse(request))
             {
                 equipmentMutationRunning = false;
@@ -2087,10 +2639,17 @@ public partial class HomePageUI
             }
 
             serverEquipmentLoadout = response.data;
+            _equipmentLoadouts[payload.playerNpcId] = response.data;
+            PlayerOnboardingManager.NotifyBusinessSucceeded();
         }
 
         equipmentRefreshRunning = true;
         yield return RefreshServerEquipmentWarehouse();
+        if (readVersion != _equipmentReadVersion)
+        {
+            equipmentMutationRunning = false;
+            yield break;
+        }
         equipmentMutationRunning = false;
         if (equipmentRefreshRunning)
         {
@@ -2103,53 +2662,71 @@ public partial class HomePageUI
 
     private IEnumerator UpgradeServerEquipmentRequest(long playerEquipmentId)
     {
-        equipmentMutationRunning = true;
-        equipmentStatusMessage = "正在升级装备...";
-        RenderEquipmentScenePanel(GetEquipmentPanelRoot());
-        EquipmentInstanceRequest payload = new EquipmentInstanceRequest { playerEquipmentId = playerEquipmentId };
-        if (!TryCreateAuthorizedPost("/equipment/upgrade", JsonUtility.ToJson(payload), out UnityWebRequest request, out string error))
+        EquipmentUpgradePreviewData preview = equipmentUpgradePreview;
+        if (equipmentMutationRunning || equipmentRefreshRunning || HasPendingEquipmentGrowthRequest(playerEquipmentId)
+            || !string.IsNullOrEmpty(equipmentGrowthPersistenceError)
+            || !_equipmentDataReadSucceeded || preview == null || preview.playerEquipmentId != playerEquipmentId || preview.isBreakthrough
+            || preview.maxLevelReached || !HasEquipmentUpgradeFunds(preview)) yield break;
+        long playerId = GameSession.PlayerId;
+        string token = GameSession.Token;
+        EquipmentAutoUpgradePreviewData singlePlan = null;
+        UnityWebRequest request = CreateAuthorizedGet($"/equipment/{playerEquipmentId}/auto-upgrade-preview?targetLevel={preview.targetLevel}");
+        if (request == null)
         {
-            equipmentMutationRunning = false;
-            equipmentStatusMessage = error;
+            equipmentStatusMessage = requestCreationError;
             RenderEquipmentScenePanel(GetEquipmentPanelRoot());
             yield break;
         }
-
-        EquipmentUpgradeData result = null;
-        using (request)
-        {
-            yield return request.SendWebRequest();
-            if (HandleUnauthorizedResponse(request))
-            {
-                equipmentMutationRunning = false;
-                yield break;
-            }
-
-            EquipmentUpgradeApiResponse response = ParseJson<EquipmentUpgradeApiResponse>(request.downloadHandler.text);
-            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
-            {
-                equipmentMutationRunning = false;
-                equipmentStatusMessage = "装备升级失败：" + (response == null
-                    ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
-                    : GetApiError(response));
-                RenderEquipmentScenePanel(GetEquipmentPanelRoot());
-                yield break;
-            }
-            result = response.data;
-        }
-
-        SyncEquipmentUpgradeResourceBalances(result);
-        equipmentMutationRunning = false;
-        ResetEquipmentAutoUpgradePreviews();
-        equipmentRefreshRunning = true;
-        yield return RefreshGeneralInventoryAfterEquipmentMutation();
-        yield return GetEquipmentInventoryList();
-        string resourceCost = FormatEquipmentUpgradeResourceCosts(result.resourceCosts);
-        string materialCost = result.sameEquipmentCount > 0
-            ? $"，消耗同款装备 {result.sameEquipmentCount} 件"
-            : string.Empty;
-        equipmentStatusMessage = $"{result.name} 已升级到等级 {result.level}，消耗金币 {result.goldCost}{resourceCost}{materialCost}";
+        equipmentMutationRunning = true;
+        equipmentStatusMessage = "正在升级装备...";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+        try
+        {
+            using (request)
+            {
+                yield return request.SendWebRequest();
+                if (playerId != GameSession.PlayerId || token != GameSession.Token || HandleUnauthorizedResponse(request)) yield break;
+                EquipmentAutoUpgradePreviewApiResponse response = ParseJson<EquipmentAutoUpgradePreviewApiResponse>(request.downloadHandler.text);
+                if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200
+                    || !IsValidEquipmentAutoUpgradePreview(response.data, playerEquipmentId, preview.currentLevel, preview.maxLevel)
+                    || response.data.requestedTargetLevel != preview.targetLevel)
+                {
+                    equipmentStatusMessage = response == null || response.code == 200
+                        ? "升级费用读取失败，请稍后再试"
+                        : EquipmentGrowthError(response.code, GetApiError(response));
+                    yield break;
+                }
+                if (response.data.payableTargetLevel < preview.targetLevel)
+                {
+                    equipmentStatusMessage = "当前资源不足，无法升级";
+                    yield break;
+                }
+                singlePlan = response.data;
+            }
+        }
+        finally
+        {
+            equipmentMutationRunning = false;
+            RenderEquipmentScenePanel(GetEquipmentPanelRoot());
+        }
+        if (singlePlan == null) yield break;
+        EquipmentAutoUpgradeRequestPayload payload = new EquipmentAutoUpgradeRequestPayload
+        {
+            playerEquipmentId = playerEquipmentId,
+            expectedCurrentLevel = singlePlan.currentLevel,
+            targetLevel = singlePlan.requestedTargetLevel,
+            planFingerprint = singlePlan.planFingerprint
+        };
+        yield return SendEquipmentGrowthRequest(new EquipmentGrowthRequest
+        {
+            playerId = playerId,
+            playerEquipmentId = playerEquipmentId,
+            expectedLevel = singlePlan.currentLevel,
+            targetLevel = singlePlan.requestedTargetLevel,
+            path = "/equipment/auto-upgrade",
+            json = JsonUtility.ToJson(payload),
+            idempotencyKey = Guid.NewGuid().ToString("D")
+        });
     }
 
     private void SyncEquipmentUpgradeResourceBalances(EquipmentUpgradeData result)
@@ -2160,7 +2737,7 @@ public partial class HomePageUI
         balances[0] = new InventoryItemResponse
         {
             itemKey = "gold",
-            quantity = Mathf.Max(0, result.remainingGold)
+            quantity = ClampEquipmentInventoryQuantity(result.remainingGold)
         };
         for (int i = 0; i < resourceCosts.Length; i++)
         {
@@ -2201,7 +2778,7 @@ public partial class HomePageUI
             string displayName = string.IsNullOrWhiteSpace(resourceCost.itemName)
                 ? resourceCost.itemKey
                 : resourceCost.itemName;
-            descriptions.Add($"{displayName} ×{resourceCost.amount}");
+            descriptions.Add($"{displayName} x{resourceCost.amount}");
         }
         return descriptions.Count == 0
             ? string.Empty
@@ -2222,6 +2799,7 @@ public partial class HomePageUI
 
     private IEnumerator SetServerEquipmentLock(long playerEquipmentId, bool locked)
     {
+        if (equipmentMutationRunning || HasPendingEquipmentGrowthRequest(playerEquipmentId)) yield break;
         equipmentMutationRunning = true;
         equipmentStatusMessage = locked ? "正在锁定装备..." : "正在解锁装备...";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
@@ -2269,7 +2847,7 @@ public partial class HomePageUI
     private IEnumerator UpgradeServerNpcRequest(long playerNpcId)
     {
         equipmentMutationRunning = true;
-        equipmentStatusMessage = "正在升级居民...";
+        equipmentStatusMessage = "正在升级 NPC...";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
         PlayerNpcInstanceRequest payload = new PlayerNpcInstanceRequest { playerNpcId = playerNpcId };
         if (!TryCreateAuthorizedPost("/npc/upgrade", JsonUtility.ToJson(payload), out UnityWebRequest request, out string error))
@@ -2294,7 +2872,7 @@ public partial class HomePageUI
             if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
                 equipmentMutationRunning = false;
-            equipmentStatusMessage = "居民升级失败：" + (response == null
+                equipmentStatusMessage = "NPC 升级失败：" + (response == null
                     ? ApiRequestUtility.GetErrorMessage(request, "请求失败")
                     : GetApiError(response));
                 RenderEquipmentScenePanel(GetEquipmentPanelRoot());
@@ -2311,7 +2889,7 @@ public partial class HomePageUI
         equipmentRefreshRunning = true;
         yield return RefreshGeneralInventoryAfterEquipmentMutation();
         yield return GetEquipmentInventoryList();
-        equipmentStatusMessage = $"{result.name} 已升级到等级 {result.level}，消耗金币 {result.goldCost}";
+        equipmentStatusMessage = $"{result.name} 已升级到 Lv.{result.level}，消耗金币 {result.goldCost}";
         RenderEquipmentScenePanel(GetEquipmentPanelRoot());
     }
 
@@ -2337,13 +2915,15 @@ public partial class HomePageUI
         string text = "装备列表\n\n";
         for (int i = 0; i < equipment.Count; i++)
         {
-            text += $"{i + 1}. {equipment[i].name}  ×{equipment[i].quantity}\n";
+            text += $"{i + 1}. {equipment[i].name}  x{equipment[i].quantity}\n";
         }
         return text;
     }
 
     private void HideEquipmentPanel()
     {
+        CloseEquipmentBreakthroughPanel();
+        if (!equipmentMutationRunning) _equipmentReadVersion++;
         HomePageScenePanel panel = GetRegisteredScenePanel(HomePageScenePanelType.Equipment);
         if (panel != null)
         {
@@ -2351,7 +2931,7 @@ public partial class HomePageUI
         }
 
         equipmentPanelObject = null;
-        equipmentRefreshRunning = false;
+        if (!equipmentMutationRunning) equipmentRefreshRunning = false;
     }
 
 #pragma warning disable 0649
@@ -2370,6 +2950,9 @@ public partial class HomePageUI
         public string name;
         public string icon;
         public string modelKey;
+        public string description;
+        public string combatAttribute;
+        public string quality;
         public int level;
         public int maxLevel;
         public string state;
@@ -2482,6 +3065,16 @@ public partial class HomePageUI
         public long goldCost;
         public long availableGold;
         public int sameEquipmentCount;
+        public bool isBreakthrough;
+        public int requiredMaterialCount;
+        public int materialCandidateCount;
+        public EquipmentBreakthroughMaterial[] materialCandidates;
+        public long[] safeRecommendedMaterialIds;
+        public long[] completeRecommendedMaterialIds;
+        public bool recommendationContainsHighLevel;
+        public string materialPolicy;
+        public string refundPolicy;
+        public string planFingerprint;
         public EquipmentUpgradeResourceCostPreviewData[] resourceCosts;
     }
 
@@ -2505,10 +3098,10 @@ public partial class HomePageUI
         public int fromLevel;
         public int level;
         public string status;
-        public int goldCost;
+        public long goldCost;
         public int sameEquipmentCount;
         public long[] consumedPlayerEquipmentIds;
-        public int remainingGold;
+        public long remainingGold;
         public EquipmentUpgradeResourceCostData[] resourceCosts;
         public int healthBonus;
         public int attackBonus;
@@ -2556,6 +3149,15 @@ public partial class HomePageUI
     }
 
     [Serializable]
+    private class EquipmentAutoUpgradeRequestPayload
+    {
+        public long playerEquipmentId;
+        public int expectedCurrentLevel;
+        public int targetLevel;
+        public string planFingerprint;
+    }
+
+    [Serializable]
     private class AutoUpgradeRequestPayload
     {
         public long playerNpcId;
@@ -2575,10 +3177,18 @@ public partial class HomePageUI
     private class NpcAutoUpgradePreviewData
     {
         public long playerNpcId;
+        public int contractVersion;
         public int currentLevel;
         public int requestedTargetLevel;
         public int payableTargetLevel;
+        public int upgradeLevelCount;
+        public bool targetReached;
+        public string outcome;
+        public string stopReason;
+        public int blockedLevel;
+        public EquipmentAutoUpgradeBlockedRequirementData[] blockedRequirements;
         public string planFingerprint;
+        public EquipmentAutoUpgradeStepData[] upgradeSteps;
     }
 
     [Serializable]
@@ -2591,10 +3201,84 @@ public partial class HomePageUI
     private class EquipmentAutoUpgradePreviewData
     {
         public long playerEquipmentId;
+        public int contractVersion;
         public int currentLevel;
         public int requestedTargetLevel;
         public int payableTargetLevel;
+        public int upgradeLevelCount;
+        public bool targetReached;
+        public string outcome;
+        public string stopReason;
+        public int blockedLevel;
+        public int maxLevel;
+        public bool resourceSufficient;
+        public EquipmentAutoUpgradeBlockedRequirementData[] blockedRequirements;
         public string planFingerprint;
+        public EquipmentAutoUpgradeStepData[] upgradeSteps;
+    }
+
+    [Serializable]
+    private class EquipmentAutoUpgradeBlockedRequirementData
+    {
+        public string requirementType;
+        public string itemKey;
+        public long itemId;
+        public long requiredAmount;
+        public long availableAmount;
+        public string message;
+    }
+
+    [Serializable]
+    private class EquipmentAutoUpgradeStepData
+    {
+        public int fromLevel;
+        public int targetLevel;
+        public long beforeHealth;
+        public long afterHealth;
+        public long beforeAttack;
+        public long afterAttack;
+        public long beforeDefense;
+        public long afterDefense;
+        public long beforeSpeed;
+        public long afterSpeed;
+        public long health;
+        public long attack;
+        public long defense;
+        public long speed;
+        public long deltaHealth;
+        public long deltaAttack;
+        public long deltaDefense;
+        public long deltaSpeed;
+        public long goldCost;
+        public long beforeHealthBonus;
+        public long afterHealthBonus;
+        public long healthBonusDelta;
+        public long beforeAttackBonus;
+        public long afterAttackBonus;
+        public long attackBonusDelta;
+        public long beforeDefenseBonus;
+        public long afterDefenseBonus;
+        public long defenseBonusDelta;
+        public long beforeSpeedBonus;
+        public long afterSpeedBonus;
+        public long speedBonusDelta;
+        public long goldItemId;
+        public string goldItemKey;
+        public bool payable;
+        public long[] consumedPlayerEquipmentIds;
+        public EquipmentAutoUpgradeResourceCostData[] resourceCosts;
+        public EquipmentAutoUpgradeBlockedRequirementData[] requirements;
+    }
+
+    [Serializable]
+    private class EquipmentAutoUpgradeResourceCostData
+    {
+        public long itemId;
+        public string itemKey;
+        public string itemName;
+        public long amount;
+        public long availableAmount;
+        public long remainingAmount;
     }
 
     [Serializable]
@@ -2606,11 +3290,23 @@ public partial class HomePageUI
     [Serializable]
     private class AutoUpgradeData
     {
+        public int contractVersion;
+        public string requestNo;
         public long playerNpcId;
         public long playerEquipmentId;
+        public int fromLevel;
+        public int requestedTargetLevel;
         public int reachedLevel;
+        public int upgradedLevelCount;
         public int level;
+        public bool targetReached;
         public string outcome;
+        public long totalGoldCost;
+        public long remainingGold;
+        public EquipmentAutoUpgradeResourceCostData[] totalResourceCosts;
+        public string planFingerprint;
+        public string businessTime;
+        public EquipmentAutoUpgradeStepData[] upgradeSteps;
     }
 #pragma warning restore 0649
 
@@ -2620,6 +3316,5 @@ public partial class HomePageUI
         public int Defense;
         public int Health;
         public int Speed;
-        public int Power;
     }
 }

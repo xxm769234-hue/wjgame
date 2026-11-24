@@ -153,6 +153,7 @@ public partial class HomePageUI
 
         if (!TryCreateAuthorizedPost("/mail/read", JsonUtility.ToJson(payload), out UnityWebRequest request, out string error))
         {
+            SetLocalMailReadState(mailId, false);
             SetStatus(error);
             yield break;
         }
@@ -162,14 +163,30 @@ public partial class HomePageUI
             yield return request.SendWebRequest();
             if (HandleUnauthorizedResponse(request))
             {
+                SetLocalMailReadState(mailId, false);
                 yield break;
             }
 
             if (request.result != UnityWebRequest.Result.Success)
             {
+                SetLocalMailReadState(mailId, false);
                 SetStatus("标记已读失败：" + ApiRequestUtility.GetErrorMessage(request, "请求失败"));
+                yield break;
             }
+
+            SetLocalMailReadState(mailId, true);
         }
+    }
+
+    private void SetLocalMailReadState(long mailId, bool readFlag)
+    {
+        MailResponse mail = FindCurrentMail(mailId);
+        if (mail != null)
+        {
+            mail.readFlag = readFlag;
+        }
+
+        RefreshSystemMailSceneUnreadMarks();
     }
 
     private IEnumerator ClaimMailAttachment(long mailId)
@@ -237,6 +254,7 @@ public partial class HomePageUI
 
         mailMutationRunning = false;
         SetStatus("附件领取成功，正在刷新邮件列表...");
+        PlayerOnboardingManager.NotifyBusinessSucceeded();
         yield return GetMailList();
     }
 
@@ -291,6 +309,7 @@ public partial class HomePageUI
 
         mailMutationRunning = false;
         SetStatus($"一键领取完成，共领取 {claimedCount} 封邮件附件。正在刷新列表...");
+        if (claimedCount > 0) PlayerOnboardingManager.NotifyBusinessSucceeded();
         yield return GetMailList();
     }
 
@@ -378,7 +397,7 @@ public partial class HomePageUI
             {
                 summary += "  ";
             }
-                summary += $"{name} ×{quantity}";
+            summary += $"{name} x{quantity}";
         }
 
         return string.IsNullOrEmpty(summary) ? "附件待领取" : summary;
@@ -620,6 +639,7 @@ public partial class HomePageUI
         public string rewardName;
         public string rewardCategory;
         public string rewardIcon;
+        public string rewardQuality;
         public long itemId;
         public string itemKey;
         public string itemName;
@@ -633,6 +653,7 @@ public partial class HomePageUI
         public string grantedRewardName;
         public string grantedRewardCategory;
         public string grantedRewardIcon;
+        public string grantedRewardQuality;
         public long grantedQuantity;
         public bool fallbackApplied;
         public string claimedTime;

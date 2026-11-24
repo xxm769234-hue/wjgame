@@ -25,46 +25,30 @@ public sealed class InventorySlotView : MonoBehaviour
     [SerializeField] private Color innerColor = new Color(1f, 0.86f, 0.54f, 0.68f);
     [SerializeField] private Color lockedInnerColor = new Color(0.70f, 0.70f, 0.67f, 1f);
 
-    private Sprite prefabItemIcon;
+    private Sprite _emptyBackgroundSprite;
+    private Color _emptyBackgroundColor;
+    private bool _backgroundInitialized;
 
     private void Awake()
     {
         UpgradeFontAsset();
         UpgradeLegacyTextComponents();
         ResolveTextReferences();
-        if (itemIconImage != null)
-        {
-            prefabItemIcon = itemIconImage.sprite;
-        }
+        ConfigureTextLayout();
     }
 
     public void ShowEmpty()
     {
         ResetState();
-        SetColor(backgroundImage, backgroundImage != null && backgroundImage.sprite != null ? Color.white : emptyColor);
-        SetColor(innerImage, innerColor);
     }
 
     public void SetSlotImages(Sprite normalSprite, Sprite selectedSprite)
     {
-        if (backgroundImage != null && normalSprite != null)
-        {
-            backgroundImage.sprite = normalSprite;
-            backgroundImage.color = Color.white;
-        }
-
-        if (selectedImage != null && selectedSprite != null)
-        {
-            selectedImage.sprite = selectedSprite;
-            selectedImage.color = Color.white;
-        }
     }
 
     public void ShowLocked(UnityAction onClick)
     {
         ResetState();
-        SetColor(backgroundImage, lockedColor);
-        SetColor(innerImage, lockedInnerColor);
         SetActive(lockRoot, true);
         BindClick(onClick);
     }
@@ -75,21 +59,28 @@ public sealed class InventorySlotView : MonoBehaviour
         int quantity,
         bool selected,
         Color fallbackColor,
+        Sprite qualityBackground,
         UnityAction onClick)
     {
         ResetState();
-        SetColor(backgroundImage, backgroundImage != null && backgroundImage.sprite != null ? Color.white : occupiedColor);
-        SetColor(innerImage, innerColor);
 
-        Sprite displaySprite = itemSprite != null ? itemSprite : prefabItemIcon;
-        if (itemIconImage != null)
+        if (backgroundImage != null && qualityBackground != null)
         {
-            itemIconImage.sprite = displaySprite;
-            itemIconImage.enabled = displaySprite != null;
-            itemIconImage.preserveAspect = true;
+            backgroundImage.sprite = qualityBackground;
+            backgroundImage.overrideSprite = null;
+            backgroundImage.color = Color.white;
         }
 
-        bool useFallback = displaySprite == null;
+        if (itemIconImage != null)
+        {
+            itemIconImage.overrideSprite = null;
+            itemIconImage.sprite = itemSprite;
+            itemIconImage.enabled = itemSprite != null;
+            itemIconImage.preserveAspect = true;
+            itemIconImage.raycastTarget = false;
+        }
+
+        bool useFallback = itemSprite == null;
         SetActive(fallbackBackgroundImage, useFallback);
         if (fallbackBackgroundImage != null)
         {
@@ -99,7 +90,7 @@ public sealed class InventorySlotView : MonoBehaviour
         SetActive(fallbackText, useFallback);
         if (fallbackText != null)
         {
-            fallbackText.text = FrontendTextLocalization.Normalize(string.IsNullOrEmpty(fallbackLabel) ? "物" : fallbackLabel);
+            fallbackText.text = string.IsNullOrEmpty(fallbackLabel) ? "物" : fallbackLabel;
         }
 
         SetActive(quantityText, true);
@@ -114,6 +105,8 @@ public sealed class InventorySlotView : MonoBehaviour
 
     private void ResetState()
     {
+        RestoreEmptyBackground();
+
         if (slotButton != null)
         {
             slotButton.onClick.RemoveAllListeners();
@@ -130,6 +123,33 @@ public sealed class InventorySlotView : MonoBehaviour
         SetActive(quantityText, false);
         SetActive(selectedImage, false);
         SetActive(lockRoot, false);
+    }
+
+    /// <summary>Restores the authored empty slot style before binding another item.</summary>
+    private void RestoreEmptyBackground()
+    {
+        if (!_backgroundInitialized)
+        {
+            _backgroundInitialized = true;
+            if (backgroundImage == null)
+            {
+                backgroundImage = GetComponent<Image>();
+            }
+            if (backgroundImage == null)
+            {
+                Debug.LogWarning("Inventory slot has no background Image: " + name, this);
+                return;
+            }
+            _emptyBackgroundSprite = backgroundImage.sprite;
+            _emptyBackgroundColor = backgroundImage.color;
+        }
+
+        if (backgroundImage != null)
+        {
+            backgroundImage.sprite = _emptyBackgroundSprite;
+            backgroundImage.overrideSprite = null;
+            backgroundImage.color = _emptyBackgroundColor;
+        }
     }
 
     private void BindClick(UnityAction onClick)
@@ -165,7 +185,7 @@ public sealed class InventorySlotView : MonoBehaviour
             }
 
             TextMeshProUGUI replacement = legacy.gameObject.AddComponent<TextMeshProUGUI>();
-            replacement.text = FrontendTextLocalization.Normalize(legacy.text);
+            replacement.text = legacy.text;
             replacement.fontSize = legacy.fontSize;
             replacement.color = legacy.color;
             replacement.raycastTarget = legacy.raycastTarget;
@@ -211,6 +231,27 @@ public sealed class InventorySlotView : MonoBehaviour
         return null;
     }
 
+    private void ConfigureTextLayout()
+    {
+        if (fallbackText != null)
+        {
+            fallbackText.enableAutoSizing = true;
+            fallbackText.enableWordWrapping = true;
+            fallbackText.overflowMode = TextOverflowModes.Ellipsis;
+            fallbackText.raycastTarget = false;
+        }
+        if (quantityText != null)
+        {
+            quantityText.enableAutoSizing = true;
+            quantityText.fontSizeMin = 10f;
+            quantityText.fontSizeMax = 16f;
+            quantityText.enableWordWrapping = false;
+            quantityText.overflowMode = TextOverflowModes.Ellipsis;
+            quantityText.alignment = TextAlignmentOptions.MidlineRight;
+            quantityText.raycastTarget = false;
+        }
+    }
+
     private static TextAlignmentOptions ConvertAlignment(TextAnchor alignment)
     {
         switch (alignment)
@@ -225,14 +266,6 @@ public sealed class InventorySlotView : MonoBehaviour
             case TextAnchor.LowerCenter: return TextAlignmentOptions.Bottom;
             case TextAnchor.LowerRight: return TextAlignmentOptions.BottomRight;
             default: return TextAlignmentOptions.Center;
-        }
-    }
-
-    private static void SetColor(Graphic graphic, Color color)
-    {
-        if (graphic != null)
-        {
-            graphic.color = color;
         }
     }
 

@@ -103,27 +103,27 @@ public static class ApiRequestUtility
     {
         if (request == null)
         {
-            return FrontendTextLocalization.Normalize(string.IsNullOrEmpty(fallback) ? "请求未创建。" : fallback);
+            return string.IsNullOrEmpty(fallback) ? "请求未创建。" : fallback;
         }
 
         string body = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
         ApiEnvelope envelope = ParseEnvelope(body);
         if (envelope != null && !string.IsNullOrWhiteSpace(envelope.message))
         {
-            return FrontendTextLocalization.Normalize(envelope.message.Trim());
+            return envelope.message.Trim();
         }
 
         if (!string.IsNullOrWhiteSpace(request.error))
         {
-            return FrontendTextLocalization.Normalize(request.error);
+            return request.error;
         }
 
         if (request.responseCode >= 400)
         {
-            return $"服务器返回网络错误码 {request.responseCode}";
+            return $"服务器返回 HTTP {request.responseCode}";
         }
 
-        return FrontendTextLocalization.Normalize(string.IsNullOrEmpty(fallback) ? "请求失败。" : fallback);
+        return string.IsNullOrEmpty(fallback) ? "请求失败。" : fallback;
     }
 
     private static void Configure(UnityWebRequest request, bool authorized)

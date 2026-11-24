@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using Text = TMPro.TMP_Text;
+using InputField = TMPro.TMP_InputField;
 
 public partial class HomePageUI
 {
@@ -18,14 +20,15 @@ public partial class HomePageUI
     private readonly List<ServerFriendResponse> v37Friends = new List<ServerFriendResponse>();
     private readonly List<ServerFriendRequestResponse> v37IncomingRequests = new List<ServerFriendRequestResponse>();
     private readonly List<ServerFriendRequestResponse> v37OutgoingRequests = new List<ServerFriendRequestResponse>();
-    private readonly Dictionary<string, string> v34DailyGiftPendingKeys = new Dictionary<string, string>();
+    private readonly Dictionary<Transform, int> v37FriendRowPlayerIds = new Dictionary<Transform, int>();
+    private readonly Dictionary<Text, Color> friendPresenceSceneColors = new Dictionary<Text, Color>();
     private ServerFriendRequestSummary v37FriendRequestSummary;
     private ServerDailyGiftStatus serverDailyStaminaGiftStatus;
     private ServerFriendSearchResponse v37FriendSearchResult;
     private int v37FriendSearchPlayerId;
     private int v37SelectedFriendPlayerId;
     private long v37SelectedRequestId;
-    private int v37PageIndex;
+    private bool resetFriendListScroll = true;
     private int v37PanelRevision;
     private bool v37Loading;
     private bool v37MutationRunning;
@@ -33,15 +36,270 @@ public partial class HomePageUI
     private bool v37FriendRequestCreationBlocked;
     private string v37StatusMessage = string.Empty;
     private Coroutine v38PresenceRefreshCoroutine;
+    private bool friendSearchDialogOpen;
+    private int friendSearchDialogRevision;
+    private bool friendSearchLoading;
+    private string friendSearchStatus = string.Empty;
+
+    public static bool EnsureFriendSearchDialog(Transform root)
+    {
+        if (root == null) return false;
+        bool inputUpdated = EnsureFriendInputViewport(FindSceneComponent<InputField>(root, "FriendsSearchInput"));
+        if (FindSceneTransform(root, "FriendSearchOverlay") != null)
+        {
+            return EnsureFriendInputViewport(FindSceneComponent<InputField>(root, "FriendSearchPlayerIdInput"))
+                || inputUpdated;
+        }
+        InputField inputTemplate = FindSceneComponent<InputField>(root, "FriendsAddInput");
+        Button buttonTemplate = FindSceneComponent<Button>(root, "FriendsAddButton");
+        Text textTemplate = FindSceneComponent<Text>(root, "FriendDetailId");
+        Image paperTemplate = FindSceneComponent<Image>(root, "FriendDetailArea");
+        if (inputTemplate == null || buttonTemplate == null || textTemplate == null) return inputUpdated;
+
+        GameObject overlay = new GameObject("FriendSearchOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        overlay.layer = root.gameObject.layer;
+        overlay.transform.SetParent(root, false);
+        RectTransform overlayRect = (RectTransform)overlay.transform;
+        overlayRect.anchorMin = Vector2.zero;
+        overlayRect.anchorMax = Vector2.one;
+        overlayRect.offsetMin = overlayRect.offsetMax = Vector2.zero;
+        overlay.GetComponent<Image>().color = new Color(0f, 0f, 0f, 0.65f);
+        GameObject paper = new GameObject("FriendSearchPanel", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        paper.layer = overlay.layer;
+        paper.transform.SetParent(overlay.transform, false);
+        SetFriendDialogRect((RectTransform)paper.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(660f, 430f));
+        Image background = paper.GetComponent<Image>();
+        background.sprite = paperTemplate != null ? paperTemplate.sprite : null;
+        background.color = paperTemplate != null ? paperTemplate.color : Color.white;
+        background.type = paperTemplate != null ? paperTemplate.type : Image.Type.Simple;
+
+        CreateFriendDialogText(textTemplate, paper.transform, "FriendSearchTitle", "添加好友", new Vector2(0f, 170f), new Vector2(430f, 40f), 28);
+        InputField input = Instantiate(inputTemplate, paper.transform, false);
+        input.name = "FriendSearchPlayerIdInput";
+        EnsureFriendInputViewport(input);
+        input.gameObject.SetActive(true);
+        input.SetTextWithoutNotify(string.Empty);
+        input.onValueChanged.RemoveAllListeners();
+        input.onEndEdit.RemoveAllListeners();
+        SetFriendDialogRect((RectTransform)input.transform, new Vector2(0.5f, 0.5f), new Vector2(-80f, 105f), new Vector2(380f, 54f));
+        CreateFriendDialogButton(buttonTemplate, paper.transform, "FriendSearchQueryButton", "搜索", new Vector2(205f, 105f), new Vector2(130f, 54f));
+        CreateFriendDialogButton(buttonTemplate, paper.transform, "FriendSearchCloseButton", "关闭", new Vector2(245f, 173f), new Vector2(96f, 44f));
+        CreateFriendDialogButton(buttonTemplate, paper.transform, "FriendSearchActionButton", "发送申请", new Vector2(0f, -90f), new Vector2(180f, 56f));
+        CreateFriendDialogText(textTemplate, paper.transform, "FriendSearchResult", "", new Vector2(65f, 10f), new Vector2(390f, 100f), 20);
+        CreateFriendDialogText(textTemplate, paper.transform, "FriendSearchStatus", "请输入玩家ID", new Vector2(0f, -158f), new Vector2(560f, 60f), 17);
+        Image avatarTemplate = FindSceneComponent<Image>(root, "FriendDetailAvatarBackground");
+        if (avatarTemplate != null)
+        {
+            Image avatar = Instantiate(avatarTemplate, paper.transform, false);
+            avatar.name = "FriendSearchAvatar";
+            for (int index = avatar.transform.childCount - 1; index >= 0; index--) avatar.transform.GetChild(index).gameObject.SetActive(false);
+            SetFriendDialogRect(avatar.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(-215f, 10f), new Vector2(100f, 100f));
+            avatar.raycastTarget = false;
+        }
+        UpgradeFriendSearchDialogStyle(root);
+        overlay.SetActive(false);
+        return true;
+    }
+
+    private static bool EnsureFriendInputViewport(InputField input)
+    {
+        if (input == null || input.textViewport != null) return false;
+        input.textViewport = input.transform as RectTransform;
+        return true;
+    }
+
+    public static bool UpgradeFriendSearchDialogStyle(Transform root)
+    {
+        RectTransform paper = FindSceneTransform(root, "FriendSearchPanel") as RectTransform;
+        if (paper == null || Vector2.Distance(paper.sizeDelta, new Vector2(660f, 430f)) > 0.1f) return false;
+        Transform shop = null;
+        foreach (GameObject sceneRoot in root.gameObject.scene.GetRootGameObjects())
+        {
+            shop = FindSceneTransform(sceneRoot.transform, "ShopDetail");
+            if (shop != null) break;
+        }
+        if (shop == null) return false;
+        CopyFriendDialogImage(paper.GetComponent<Image>(), shop.GetComponent<Image>());
+        SetFriendDialogRect(paper, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(800.36f, 450.775f));
+        Image overlay = FindSceneComponent<Image>(root, "FriendSearchOverlay");
+        if (overlay != null) overlay.color = new Color(0f, 0f, 0f, 0.55f);
+        StyleFriendDialogButton(root, shop, "FriendSearchQueryButton", "ShopBuyGoldButton", new Vector2(220f, 105f));
+        StyleFriendDialogButton(root, shop, "FriendSearchCloseButton", "ShopDetailCloseButton", new Vector2(-130f, -170f));
+        StyleFriendDialogButton(root, shop, "FriendSearchActionButton", "ShopBuyGoldButton", new Vector2(120f, -170f));
+        SetSceneButtonText(FindSceneComponent<Button>(root, "FriendSearchCloseButton"), "取消");
+        RectTransform title = FindSceneTransform(root, "FriendSearchTitle") as RectTransform;
+        if (title != null) title.anchoredPosition = new Vector2(0f, 180f);
+        RectTransform status = FindSceneTransform(root, "FriendSearchStatus") as RectTransform;
+        if (status != null) SetFriendDialogRect(status, new Vector2(0.5f, 0.5f), new Vector2(0f, -85f), new Vector2(620f, 50f));
+        return true;
+    }
+
+    private static void CopyFriendDialogImage(Image target, Image source)
+    {
+        if (target == null || source == null) return;
+        target.sprite = source.sprite;
+        target.overrideSprite = null;
+        target.color = source.color;
+        target.material = source.material;
+        target.type = source.type;
+        target.preserveAspect = source.preserveAspect;
+        target.raycastTarget = true;
+    }
+
+    private static void StyleFriendDialogButton(Transform root, Transform shop, string name, string templateName, Vector2 position)
+    {
+        Button button = FindSceneComponent<Button>(root, name);
+        Button template = FindSceneComponent<Button>(shop, templateName);
+        if (button == null || template == null) return;
+        CopyFriendDialogImage(button.GetComponent<Image>(), template.GetComponent<Image>());
+        button.transition = template.transition;
+        button.colors = template.colors;
+        button.spriteState = template.spriteState;
+        SetFriendDialogRect((RectTransform)button.transform, new Vector2(0.5f, 0.5f), position, new Vector2(150f, 64f));
+    }
+
+    private static void SetFriendDialogRect(RectTransform rect, Vector2 anchor, Vector2 position, Vector2 size)
+    {
+        rect.anchorMin = rect.anchorMax = anchor;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
+        rect.localScale = Vector3.one;
+    }
+
+    private static void CreateFriendDialogText(Text template, Transform parent, string name, string value, Vector2 position, Vector2 size, int fontSize)
+    {
+        Text label = Instantiate(template, parent, false);
+        label.name = name;
+        label.gameObject.SetActive(true);
+        label.text = value;
+        label.fontSize = label.fontSizeMax = fontSize;
+        label.enableAutoSizing = true;
+        label.fontSizeMin = 12;
+        label.alignment = TMPro.TextAlignmentOptions.Center;
+        label.raycastTarget = false;
+        SetFriendDialogRect(label.rectTransform, new Vector2(0.5f, 0.5f), position, size);
+    }
+
+    private static void CreateFriendDialogButton(Button template, Transform parent, string name, string value, Vector2 position, Vector2 size)
+    {
+        Button button = Instantiate(template, parent, false);
+        button.name = name;
+        button.gameObject.SetActive(true);
+        button.onClick = new Button.ButtonClickedEvent();
+        SetSceneButtonText(button, value);
+        SetFriendDialogRect((RectTransform)button.transform, new Vector2(0.5f, 0.5f), position, size);
+    }
+
+    private void OpenFriendSearchDialog(Transform root)
+    {
+        if (v37MutationRunning || root == null) return;
+        EnsureFriendSearchDialog(root);
+        Transform overlay = FindSceneTransform(root, "FriendSearchOverlay");
+        if (overlay == null)
+        {
+            Debug.LogWarning("[Friends] Cannot open add-friend dialog: required scene controls are missing.", this);
+            SetSceneText(root, "FriendsStatus", "添加好友暂不可用，请稍后重试");
+            return;
+        }
+        Transform paper = FindSceneTransform(overlay, "FriendSearchPanel");
+        if (paper == null)
+        {
+            Debug.LogWarning("[Friends] Add-friend dialog panel is missing under FriendSearchOverlay.", this);
+            return;
+        }
+        friendSearchDialogOpen = true;
+        friendSearchDialogRevision++;
+        friendSearchLoading = false;
+        friendSearchStatus = "请输入玩家ID";
+        v37FriendSearchResult = null;
+        v37FriendSearchPlayerId = 0;
+        InputField input = FindSceneComponent<InputField>(root, "FriendSearchPlayerIdInput");
+        if (input != null) input.SetTextWithoutNotify(string.Empty);
+        RefreshServerFriendRequestPanel(root, null);
+    }
+
+    private void RefreshFriendSearchDialog(Transform root, bool locked)
+    {
+        SetSceneObjectActive(root, "FriendSearchOverlay", friendSearchDialogOpen);
+        if (!friendSearchDialogOpen) return;
+        Transform overlay = FindSceneTransform(root, "FriendSearchOverlay");
+        if (overlay == null) return;
+        overlay.SetAsLastSibling();
+        SetSceneObjectActive(overlay, "FriendSearchPanel", true);
+        bool searchLocked = friendSearchLoading || v37MutationRunning;
+        Button close = FindSceneComponent<Button>(overlay, "FriendSearchCloseButton");
+        BindSceneButton(close, () =>
+        {
+            if (v37MutationRunning) return;
+            friendSearchDialogOpen = false;
+            friendSearchDialogRevision++;
+            friendSearchLoading = false;
+            v37FriendSearchResult = null;
+            RefreshServerFriendRequestPanel(root, "已关闭添加好友");
+        });
+        if (close != null) close.interactable = !v37MutationRunning;
+        Button search = FindSceneComponent<Button>(overlay, "FriendSearchQueryButton");
+        if (search != null) search.interactable = !searchLocked;
+        BindSceneButton(search, () =>
+        {
+            if (searchLocked) return;
+            v37FriendSearchResult = null;
+            HandleV37SearchOrRequest(root);
+        });
+        Button action = FindSceneComponent<Button>(overlay, "FriendSearchActionButton");
+        ConfigureV37SearchButton(action, locked);
+        if (action != null)
+        {
+            action.gameObject.SetActive(true);
+            action.interactable = action.interactable && !searchLocked && v37FriendSearchResult != null;
+            if (v37FriendSearchResult == null) SetSceneButtonText(action, "发送申请");
+        }
+        BindSceneButton(action, () => HandleV37SearchOrRequest(root));
+        ServerFriendSearchResponse result = v37FriendSearchResult;
+        SetSceneText(overlay, "FriendSearchResult", result == null ? "暂无搜索结果" :
+            result.nickname + "\n玩家ID " + result.playerId + "    Lv." + result.level + "\n" + GetV37RelationshipLabel(result.relationshipStatus));
+        SetSceneText(overlay, "FriendSearchStatus", v37MutationRunning ? v37StatusMessage : friendSearchStatus);
+        Image avatar = FindSceneComponent<Image>(overlay, "FriendSearchAvatar");
+        if (avatar != null)
+        {
+            avatar.gameObject.SetActive(result != null);
+            if (result != null) ApplyAvatarImage(avatar, null, result.playerId, result.avatarUrl, result.avatarCode, result.avatarVersion);
+        }
+    }
+
+    private static bool IsPendingFriendRequest(ServerFriendRequestResponse request)
+    {
+        return request != null && string.Equals(request.status, "PENDING", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetFriendRequestStatusLabel(string status)
+    {
+        switch ((status ?? string.Empty).ToUpperInvariant())
+        {
+            case "PENDING": return "待处理";
+            case "ACCEPTED": return "已同意";
+            case "REJECTED": return "已拒绝";
+            case "CANCELLED": return "已取消";
+            case "EXPIRED": return "已过期";
+            case "INVALIDATED": return "已失效";
+            default: return "状态未知";
+        }
+    }
 
     private void ResetServerFriendRequestPanel()
     {
+        friendSearchDialogRevision++;
+        friendSearchLoading = false;
+        friendSearchStatus = string.Empty;
+        resetFriendRequestScroll = true;
         v37PanelRevision++;
         serverFriendPanelMode = ServerFriendPanelMode.Friends;
+        friendSearchDialogOpen = false;
         v37Friends.Clear();
         v37IncomingRequests.Clear();
         v37OutgoingRequests.Clear();
-        v34DailyGiftPendingKeys.Clear();
+        v37FriendRowPlayerIds.Clear();
         v37FriendRequestSummary = null;
         serverDailyGiftStatus = null;
         serverDailyStaminaGiftStatus = null;
@@ -49,7 +307,7 @@ public partial class HomePageUI
         v37FriendSearchPlayerId = 0;
         v37SelectedFriendPlayerId = 0;
         v37SelectedRequestId = 0;
-        v37PageIndex = 0;
+        resetFriendListScroll = true;
         v37Loading = false;
         v37MutationRunning = false;
         v37LastLoadFailed = false;
@@ -61,6 +319,9 @@ public partial class HomePageUI
 
     private void InvalidateServerFriendRequestPanel()
     {
+        friendSearchDialogRevision++;
+        friendSearchLoading = false;
+        friendSearchDialogOpen = false;
         v37PanelRevision++;
         v37Loading = false;
         v37MutationRunning = false;
@@ -76,7 +337,7 @@ public partial class HomePageUI
         int revision = v37PanelRevision;
         v37Loading = true;
         v37LastLoadFailed = false;
-        RefreshServerFriendRequestPanel(root, "正在同步服务器好友数据...");
+        RefreshServerFriendRequestPanel(root, "正在加载好友...");
 
         yield return LoadServerFriendRequestSummary(root, revision);
         if (revision != v37PanelRevision)
@@ -88,7 +349,7 @@ public partial class HomePageUI
         {
             yield return LoadV37Friends(root, revision);
         }
-        else
+        if (revision == v37PanelRevision && serverFriendPanelMode != ServerFriendPanelMode.Friends)
         {
             yield return LoadV37FriendRequests(root, serverFriendPanelMode, revision);
         }
@@ -164,7 +425,7 @@ public partial class HomePageUI
                 V37FriendListApiResponse response = ParseJson<V37FriendListApiResponse>(request.downloadHandler.text);
                 if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
                 {
-                    SetV37LoadFailure(GetV37RequestError(request, response, "正式好友列表读取失败"));
+                    SetV37LoadFailure(GetV37RequestError(request, response, "好友列表读取失败"));
                     yield break;
                 }
 
@@ -225,7 +486,7 @@ public partial class HomePageUI
         {
             string path = incoming
                 ? "/friends/requests/incoming?status=PENDING&limit=100"
-                : "/friends/requests/outgoing?status=PENDING&limit=100";
+                : "/friends/requests/outgoing?status=ALL&limit=100";
             if (beforeId > 0)
             {
                 path += "&beforeId=" + beforeId;
@@ -291,28 +552,23 @@ public partial class HomePageUI
             return;
         }
 
-        EnsureServerFriendRequestControls(root);
         if (!string.IsNullOrEmpty(status))
         {
             v37StatusMessage = status;
         }
 
         bool interactionLocked = v37Loading || v37MutationRunning;
-        SetSceneText(root, "FriendsTitle", "游戏好友");
-        SetSceneText(root, "FriendsSubtitle", GetV37ModeLabel());
         SetSceneText(root, "FriendsCount", BuildV37FriendCountText());
-        SetSceneText(root, "FriendsStatus", v37StatusMessage);
-
-        ConfigureV37TopControls(root, interactionLocked);
+        RefreshFriendSearchDialog(root, interactionLocked);
+        RefreshFriendRequestsDialog(root, interactionLocked);
         if (serverFriendPanelMode == ServerFriendPanelMode.Friends)
         {
+            SetSceneText(root, "FriendsTitle", "游戏好友");
+            SetSceneText(root, "FriendsSubtitle", string.Empty);
+            SetSceneText(root, "FriendsStatus", v37StatusMessage);
+            ConfigureV37TopControls(root, interactionLocked);
             RenderV37FriendRows(root, interactionLocked);
             RefreshV37FriendDetail(root, interactionLocked);
-        }
-        else
-        {
-            RenderV37RequestRows(root, interactionLocked);
-            RefreshV37RequestDetail(root, interactionLocked);
         }
     }
 
@@ -326,7 +582,7 @@ public partial class HomePageUI
             filterInput.onValueChanged.AddListener(value =>
             {
                 friendsSearchQuery = value.Trim();
-                v37PageIndex = 0;
+                resetFriendListScroll = true;
                 v37SelectedFriendPlayerId = 0;
                 v37SelectedRequestId = 0;
                 RefreshServerFriendRequestPanel(root, null);
@@ -338,7 +594,8 @@ public partial class HomePageUI
             filterInput.interactable = !interactionLocked;
         }
 
-        InputField playerIdInput = FindSceneComponent<InputField>(root, "FriendsAddInput");
+        SetSceneObjectActive(root, "FriendsAddInput", false);
+        InputField playerIdInput = FindSceneComponent<InputField>(root, "FriendSearchPlayerIdInput");
         if (playerIdInput != null)
         {
             playerIdInput.characterLimit = 10;
@@ -351,59 +608,39 @@ public partial class HomePageUI
                 {
                     v37FriendSearchResult = null;
                     v37FriendSearchPlayerId = 0;
-                    v37SelectedFriendPlayerId = 0;
+                    friendSearchStatus = "请输入玩家ID并搜索";
                 }
                 RefreshServerFriendRequestPanel(root, null);
             });
             if (playerIdInput.placeholder is Text placeholder)
             {
-                placeholder.text = "输入玩家编号";
+                placeholder.text = "输入玩家 ID";
             }
-            playerIdInput.interactable = !interactionLocked;
+            playerIdInput.interactable = !friendSearchLoading && !v37MutationRunning;
         }
 
         Button friendTab = FindSceneComponent<Button>(root, "FriendsFilterAll");
-        Button incomingTab = FindSceneComponent<Button>(root, "FriendsFilterOnline");
-        Button outgoingTab = FindSceneComponent<Button>(root, "FriendsFilterOutgoing");
-        ConfigureFriendFilterButton(friendTab, serverFriendPanelMode == ServerFriendPanelMode.Friends);
-        ConfigureFriendFilterButton(incomingTab, serverFriendPanelMode == ServerFriendPanelMode.IncomingRequests);
-        ConfigureFriendFilterButton(outgoingTab, serverFriendPanelMode == ServerFriendPanelMode.OutgoingRequests);
+        Button requestsButton = FindSceneComponent<Button>(root, "FriendsRequestsButton");
         SetSceneButtonText(friendTab, "好友");
-        SetSceneButtonText(incomingTab, BuildV37IncomingTabLabel());
-        SetSceneButtonText(outgoingTab, BuildV37OutgoingTabLabel());
+        SetSceneButtonText(requestsButton, "申请");
         if (friendTab != null) friendTab.interactable = !interactionLocked;
-        if (incomingTab != null) incomingTab.interactable = !interactionLocked;
-        if (outgoingTab != null) outgoingTab.interactable = !interactionLocked;
+        if (requestsButton != null) requestsButton.interactable = !v37MutationRunning;
         BindSceneButton(friendTab, () => ChangeV37FriendPanelMode(root, ServerFriendPanelMode.Friends));
-        BindSceneButton(incomingTab, () => ChangeV37FriendPanelMode(root, ServerFriendPanelMode.IncomingRequests));
-        BindSceneButton(outgoingTab, () => ChangeV37FriendPanelMode(root, ServerFriendPanelMode.OutgoingRequests));
+        BindSceneButton(requestsButton, () => ChangeV37FriendPanelMode(root, ServerFriendPanelMode.IncomingRequests));
         BindSceneButton(FindSceneComponent<Button>(root, "FriendsClearSearchButton"), () =>
         {
             friendsSearchQuery = string.Empty;
-            v37PageIndex = 0;
+            resetFriendListScroll = true;
             RefreshServerFriendRequestPanel(root, "筛选条件已清除");
         });
-        BindSceneButton(FindSceneComponent<Button>(root, "FriendsAddButton"), () => HandleV37SearchOrRequest(root));
+        BindSceneButton(FindSceneComponent<Button>(root, "FriendsAddButton"), () => OpenFriendSearchDialog(root));
         BindSceneButton(FindSceneComponent<Button>(root, "FriendsCloseButton"), HideFriendsPanel);
-        ConfigureWeChatFriendGiftButton(root);
+        SetSceneObjectActive(root, "FriendsWeChatGiftButton", false);
 
         Button addButton = FindSceneComponent<Button>(root, "FriendsAddButton");
-        ConfigureV37SearchButton(addButton, interactionLocked);
+        SetSceneButtonText(addButton, "添加好友");
+        if (addButton != null) addButton.interactable = !v37MutationRunning;
 
-        Button previousButton = FindSceneComponent<Button>(root, "FriendsPreviousButton");
-        Button nextButton = FindSceneComponent<Button>(root, "FriendsNextButton");
-        int pageCount = GetV37PageCount();
-        if (previousButton != null)
-        {
-            previousButton.interactable = !interactionLocked && v37PageIndex > 0;
-        }
-        if (nextButton != null)
-        {
-            nextButton.interactable = !interactionLocked && v37PageIndex < pageCount - 1;
-        }
-        SetSceneText(root, "FriendsPageText", $"{v37PageIndex + 1} / {pageCount}");
-        BindSceneButton(previousButton, () => ChangeV37FriendPage(root, -1));
-        BindSceneButton(nextButton, () => ChangeV37FriendPage(root, 1));
     }
 
     private void ConfigureV37SearchButton(Button button, bool interactionLocked)
@@ -413,7 +650,7 @@ public partial class HomePageUI
             return;
         }
 
-        string label = "搜索玩家";
+        string label = "发送申请";
         bool enabled = !interactionLocked;
         if (v37FriendSearchResult != null)
         {
@@ -430,10 +667,14 @@ public partial class HomePageUI
                     label = "查看收到申请";
                     break;
                 case "FRIEND":
-                    label = "已是好友";
+                    label = "查看好友";
                     break;
                 case "SELF":
                     label = "当前玩家";
+                    enabled = false;
+                    break;
+                default:
+                    label = "暂不可操作";
                     enabled = false;
                     break;
             }
@@ -443,78 +684,41 @@ public partial class HomePageUI
         SetSceneButtonText(button, label);
     }
 
-    private static void ConfigureFriendFilterButton(Button button, bool selected)
-    {
-        if (button == null)
-        {
-            return;
-        }
-
-        Image background = button.GetComponent<Image>();
-        if (background != null)
-        {
-            background.color = selected
-                ? new Color(0.20f, 0.56f, 0.66f, 1f)
-                : new Color(0.90f, 0.79f, 0.59f, 1f);
-        }
-
-        Text label = button.GetComponentInChildren<Text>(true);
-        if (label != null)
-        {
-            label.color = selected ? Color.white : new Color(0.36f, 0.20f, 0.10f, 1f);
-        }
-    }
-
-    private static Color GetFriendAvatarColor(string id)
-    {
-        Color[] colors =
-        {
-            new Color(0.28f, 0.62f, 0.76f, 1f),
-            new Color(0.88f, 0.48f, 0.30f, 1f),
-            new Color(0.38f, 0.66f, 0.36f, 1f),
-            new Color(0.64f, 0.42f, 0.72f, 1f),
-            new Color(0.86f, 0.66f, 0.22f, 1f)
-        };
-        int hash = 0;
-        if (!string.IsNullOrEmpty(id))
-        {
-            for (int index = 0; index < id.Length; index++)
-            {
-                hash = (hash * 31 + id[index]) & int.MaxValue;
-            }
-        }
-
-        return colors[hash % colors.Length];
-    }
 
     private void RenderV37FriendRows(Transform root, bool interactionLocked)
     {
         List<ServerFriendResponse> visibleFriends = GetFilteredV37Friends();
-        int pageCount = Mathf.Max(1, Mathf.CeilToInt(visibleFriends.Count / (float)FriendsPerPage));
-        v37PageIndex = Mathf.Clamp(v37PageIndex, 0, pageCount - 1);
-        int firstIndex = v37PageIndex * FriendsPerPage;
-        int rowCount = Mathf.Min(FriendsPerPage, Mathf.Max(0, visibleFriends.Count - firstIndex));
-        if (v37SelectedFriendPlayerId == 0 && rowCount > 0 && v37FriendSearchResult == null)
+        int rowCount = visibleFriends.Count;
+        List<Transform> rows = EnsureV37FriendRows(root, rowCount);
+        bool selectionInList = false;
+        for (int index = 0; index < rowCount; index++)
         {
-            v37SelectedFriendPlayerId = visibleFriends[firstIndex].playerId;
+            if (visibleFriends[index].playerId == v37SelectedFriendPlayerId)
+            {
+                selectionInList = true;
+                break;
+            }
+        }
+        if (!selectionInList)
+        {
+            v37SelectedFriendPlayerId = rowCount > 0 ? visibleFriends[0].playerId : 0;
         }
 
-        for (int rowIndex = 0; rowIndex < FriendsPerPage; rowIndex++)
+        for (int rowIndex = 0; rowIndex < rows.Count; rowIndex++)
         {
-            Transform row = FindSceneTransform(root, "FriendRow" + rowIndex);
+            Transform row = rows[rowIndex];
             if (row == null)
             {
                 continue;
             }
 
-            bool visible = rowIndex < rowCount;
-            row.gameObject.SetActive(visible);
-            if (!visible)
+            if (rowIndex >= rowCount)
             {
+                ReleaseV37FriendRow(row, rowIndex);
                 continue;
             }
 
-            ServerFriendResponse friend = visibleFriends[firstIndex + rowIndex];
+            ServerFriendResponse friend = visibleFriends[rowIndex];
             bool selected = v37FriendSearchResult == null && friend.playerId == v37SelectedFriendPlayerId;
             RenderV37Row(
                 row,
@@ -525,9 +729,10 @@ public partial class HomePageUI
                 friend.avatarUrl,
                 friend.avatarCode,
                 friend.avatarVersion,
-                BuildV38FriendRowMetadata(friend),
+                friend.level,
                 GetV38FriendPresenceLabel(friend),
                 GetV38FriendPresenceColor(friend),
+                NormalizeV38OnlineStatus(friend.onlineStatus) == "OFFLINE",
                 interactionLocked,
                 () =>
                 {
@@ -536,65 +741,127 @@ public partial class HomePageUI
                     friendDeleteConfirmation = false;
                     RefreshServerFriendRequestPanel(root, "已选择好友");
                 });
+            row.gameObject.SetActive(true);
         }
+        RefreshFriendListScroll(root);
     }
 
-    private void RenderV37RequestRows(Transform root, bool interactionLocked)
+    private List<Transform> EnsureV37FriendRows(Transform root, int requiredCount)
     {
-        List<ServerFriendRequestResponse> requests = GetFilteredV37Requests();
-        int pageCount = Mathf.Max(1, Mathf.CeilToInt(requests.Count / (float)FriendsPerPage));
-        v37PageIndex = Mathf.Clamp(v37PageIndex, 0, pageCount - 1);
-        int firstIndex = v37PageIndex * FriendsPerPage;
-        int rowCount = Mathf.Min(FriendsPerPage, Mathf.Max(0, requests.Count - firstIndex));
-        if (v37SelectedRequestId == 0 && rowCount > 0)
+        List<Transform> rows = new List<Transform>();
+        Transform parent = FindSceneTransform(root, "RowParent");
+        Transform template = parent != null ? parent.Find("FriendRow0") : FindSceneTransform(root, "FriendRow0");
+        RectTransform templateRect = template as RectTransform;
+        if (templateRect == null || template.parent == null)
         {
-            v37SelectedRequestId = requests[firstIndex].requestId;
+            if (requiredCount > 0)
+            {
+                Debug.LogWarning("[Friends] FriendRow0 is missing; cannot create friend rows.", this);
+            }
+            return rows;
         }
 
-        for (int rowIndex = 0; rowIndex < FriendsPerPage; rowIndex++)
+        parent = template.parent;
+        float rowHeight = templateRect.rect.height * Mathf.Abs(templateRect.localScale.y);
+        VerticalLayoutGroup layout = parent.GetComponent<VerticalLayoutGroup>();
+        float rowStep = rowHeight + (layout != null ? layout.spacing : rowHeight * 0.1f);
+        rows.Add(template);
+        for (int index = 0; index < parent.childCount; index++)
         {
-            Transform row = FindSceneTransform(root, "FriendRow" + rowIndex);
-            if (row == null)
+            Transform child = parent.GetChild(index);
+            if (child == template || !child.name.StartsWith("FriendRow", StringComparison.Ordinal)) continue;
+            string suffix = child.name.Substring("FriendRow".Length);
+            if (int.TryParse(suffix, out _) || child.name.StartsWith("FriendRow0 (", StringComparison.Ordinal))
             {
-                continue;
+                rows.Add(child);
             }
-
-            bool visible = rowIndex < rowCount;
-            row.gameObject.SetActive(visible);
-            if (!visible)
+        }
+        int totalRows = Mathf.Max(requiredCount, rows.Count);
+        for (int index = 0; index < totalRows; index++)
+        {
+            bool created = index >= rows.Count;
+            Transform row = created ? Instantiate(template.gameObject, parent, false).transform : rows[index];
+            string oldSuffix = row.name.Substring("FriendRow".Length);
+            foreach (string prefix in new[] { "FriendRowAvatarBackground", "FriendRowAvatar", "FriendRowOnlineMark", "FriendRowName", "FriendRowId", "FriendRowMeta", "FriendRowState" })
             {
-                continue;
+                Transform child = FindSceneTransform(row, prefix + oldSuffix) ?? FindSceneTransform(row, prefix + "0");
+                if (child != null) child.name = prefix + index;
             }
-
-            ServerFriendRequestResponse request = requests[firstIndex + rowIndex];
-            bool incoming = serverFriendPanelMode == ServerFriendPanelMode.IncomingRequests;
-            int otherPlayerId = incoming ? request.requesterPlayerId : request.recipientPlayerId;
-            string otherName = incoming ? request.requesterNickname : request.recipientNickname;
-            int otherLevel = incoming ? request.requesterLevel : request.recipientLevel;
-            string otherAvatarUrl = incoming ? request.requesterAvatarUrl : request.recipientAvatarUrl;
-            string otherAvatarCode = incoming ? request.requesterAvatarCode : request.recipientAvatarCode;
-            long otherAvatarVersion = incoming ? request.requesterAvatarVersion : request.recipientAvatarVersion;
-            RenderV37Row(
-                row,
-                rowIndex,
-                request.requestId == v37SelectedRequestId,
-                otherPlayerId,
-                otherName,
-                otherAvatarUrl,
-                otherAvatarCode,
-                otherAvatarVersion,
-                $"等级 {Mathf.Max(1, otherLevel)}    {FormatV37RequestTime(request.createTime)}",
-                incoming ? "等待你处理" : "等待对方同意",
-                incoming ? new Color(0.91f, 0.46f, 0.16f, 1f) : new Color(0.26f, 0.52f, 0.82f, 1f),
-                interactionLocked,
-                () =>
+            row.name = "FriendRow" + index;
+            if (created)
+            {
+                rows.Add(row);
+                row.gameObject.SetActive(false);
+                RectTransform rowRect = row as RectTransform;
+                if (layout == null) rowRect.anchoredPosition = templateRect.anchoredPosition - new Vector2(0f, rowStep * index);
+                Button button = row.GetComponent<Button>();
+                if (button != null) button.onClick = new Button.ButtonClickedEvent();
+                Image templateAvatar = FindSceneComponent<Image>(template, "FriendRowAvatarBackground0");
+                Image avatar = FindSceneComponent<Image>(row, "FriendRowAvatarBackground" + index);
+                if (templateAvatar != null && avatar != null)
                 {
-                    v37SelectedRequestId = request.requestId;
-                    friendDeleteConfirmation = false;
-                    RefreshServerFriendRequestPanel(root, "已选择好友申请");
-                });
+                    AvatarImageState templateState = GetAvatarImageState(templateAvatar);
+                    avatar.sprite = templateState.defaultSprite;
+                    avatar.color = templateState.defaultColor;
+                    avatar.preserveAspect = templateState.defaultPreserveAspect;
+                }
+                Text templatePresence = FindSceneComponent<Text>(template, "FriendRowState0");
+                Text rowPresence = FindSceneComponent<Text>(row, "FriendRowState" + index);
+                if (templatePresence != null && rowPresence != null
+                    && friendPresenceSceneColors.TryGetValue(templatePresence, out Color sceneColor))
+                {
+                    rowPresence.color = sceneColor;
+                }
+            }
+        }
+        return rows;
+    }
+
+    private void RefreshFriendListScroll(Transform root)
+    {
+        ScrollRect scroll = FindSceneComponent<ScrollRect>(root, "FriendsListViewport");
+        if (scroll == null || scroll.content == null || scroll.viewport == null) return;
+        LayoutRebuilder.ForceRebuildLayoutImmediate(scroll.content);
+        float overflow = Mathf.Max(0f, scroll.content.rect.height - scroll.viewport.rect.height);
+        scroll.horizontal = false;
+        scroll.vertical = overflow > 0.5f;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        Vector2 position = scroll.content.anchoredPosition;
+        float nextY = resetFriendListScroll || !scroll.vertical ? 0f : Mathf.Clamp(position.y, 0f, overflow);
+        if (resetFriendListScroll || !Mathf.Approximately(position.y, nextY) || !scroll.vertical) scroll.StopMovement();
+        scroll.content.anchoredPosition = new Vector2(position.x, nextY);
+        resetFriendListScroll = false;
+    }
+
+    private void ScrollToSelectedFriend(Transform root)
+    {
+        ScrollRect scroll = FindSceneComponent<ScrollRect>(root, "FriendsListViewport");
+        if (scroll == null || scroll.content == null || scroll.viewport == null) return;
+        foreach (KeyValuePair<Transform, int> binding in v37FriendRowPlayerIds)
+        {
+            RectTransform row = binding.Key as RectTransform;
+            if (binding.Value != v37SelectedFriendPlayerId || row == null || !row.gameObject.activeSelf) continue;
+            float rowTop = scroll.content.InverseTransformPoint(row.TransformPoint(new Vector3(0f, row.rect.yMax, 0f))).y;
+            float overflow = Mathf.Max(0f, scroll.content.rect.height - scroll.viewport.rect.height);
+            scroll.StopMovement();
+            scroll.content.anchoredPosition = new Vector2(scroll.content.anchoredPosition.x,
+                Mathf.Clamp(scroll.content.rect.yMax - rowTop, 0f, overflow));
+            break;
         }
     }
+
+    private void ReleaseV37FriendRow(Transform row, int rowIndex)
+    {
+        BindSceneButton(row.GetComponent<Button>(), null);
+        v37FriendRowPlayerIds.Remove(row);
+        Image avatar = FindSceneComponent<Image>(row, "FriendRowAvatarBackground" + rowIndex);
+        if (avatar != null && avatarImageStates.TryGetValue(avatar, out AvatarImageState state))
+        {
+            state.requestKey = string.Empty;
+        }
+        row.gameObject.SetActive(false);
+    }
+
 
     private void RenderV37Row(
         Transform row,
@@ -605,27 +872,24 @@ public partial class HomePageUI
         string avatarUrl,
         string avatarCode,
         long avatarVersion,
-        string metadata,
+        int level,
         string state,
         Color stateColor,
+        bool offline,
         bool interactionLocked,
         Action onSelected)
     {
-        Image background = row.GetComponent<Image>();
-        if (background != null)
-        {
-            background.color = selected
-                ? new Color(1f, 0.80f, 0.42f, 1f)
-                : new Color(1f, 0.95f, 0.78f, 1f);
-        }
-
         Image avatar = FindSceneComponent<Image>(row, "FriendRowAvatarBackground" + rowIndex);
         if (avatar != null)
         {
-            avatar.color = GetFriendAvatarColor(playerId.ToString());
             Text avatarInitial = FindSceneComponent<Text>(row, "FriendRowAvatar" + rowIndex);
+            if (!v37FriendRowPlayerIds.TryGetValue(row, out int boundPlayerId) || boundPlayerId != playerId)
+            {
+                ApplyBundledDefaultAvatar(avatar, avatarInitial, GetAvatarImageState(avatar));
+            }
             ApplyAvatarImage(avatar, avatarInitial, playerId, avatarUrl, avatarCode, avatarVersion);
         }
+        v37FriendRowPlayerIds[row] = playerId;
 
         Image mark = FindSceneComponent<Image>(row, "FriendRowOnlineMark" + rowIndex);
         if (mark != null)
@@ -635,8 +899,16 @@ public partial class HomePageUI
 
         SetSceneText(row, "FriendRowAvatar" + rowIndex, GetNicknameInitial(nickname));
         SetSceneText(row, "FriendRowName" + rowIndex, string.IsNullOrWhiteSpace(nickname) ? "玩家 " + playerId : nickname);
-        SetSceneText(row, "FriendRowMeta" + rowIndex, metadata);
+        Text idLabel = FindSceneComponent<Text>(row, "FriendRowId" + rowIndex);
+        string levelText = "Lv." + Mathf.Max(1, level);
+        if (idLabel != null)
+        {
+            idLabel.text = "ID " + playerId;
+            ConfigureReadableText(idLabel, idLabel.name);
+        }
+        SetSceneText(row, "FriendRowMeta" + rowIndex, idLabel != null ? levelText : levelText + "\nID " + playerId);
         SetSceneText(row, "FriendRowState" + rowIndex, state);
+        SetFriendPresenceTextColor(FindSceneComponent<Text>(row, "FriendRowState" + rowIndex), offline);
         Button rowButton = row.GetComponent<Button>();
         if (rowButton != null)
         {
@@ -648,15 +920,9 @@ public partial class HomePageUI
     private void RefreshV37FriendDetail(Transform root, bool interactionLocked)
     {
         ServerFriendResponse friend = FindV37Friend(v37SelectedFriendPlayerId);
-        if (friend == null && v37FriendSearchResult != null)
-        {
-            RefreshV37SearchDetail(root, interactionLocked);
-            return;
-        }
-
         if (friend == null)
         {
-            SetV37DetailEmpty(root, "暂无正式好友", "搜索玩家编号并发送申请后，等待对方同意");
+            SetV37DetailEmpty(root, "暂无好友", "搜索玩家 ID，发送好友申请");
             return;
         }
 
@@ -671,36 +937,26 @@ public partial class HomePageUI
             GetV38FriendPresenceLabel(friend),
             BuildV38FriendPresenceDetail(friend),
             friend.dailyStaminaGiftReceived ? "今日已收到该好友体力" : "今日尚未收到该好友体力");
-        SetV38FriendPresenceDetailColor(root, friend);
-
+        SetFriendPresenceTextColor(FindSceneComponent<Text>(root, "FriendDetailOnline"),
+            NormalizeV38OnlineStatus(friend.onlineStatus) == "OFFLINE");
         bool giftedToday = friend.dailyStaminaGiftSent;
         ServerDailyGiftStatus staminaGiftStatus = GetServerStaminaGiftStatus();
         bool giftEnabled = staminaGiftStatus != null && staminaGiftStatus.enabled && !giftedToday && !interactionLocked;
-        string giftHint = BuildServerStaminaGiftHint(friend);
-        giftHint += "    " + BuildServerDailyGiftHint(friend);
+        string giftHint = BuildServerStaminaGiftHint(friend)
+            + (friend.dailyStaminaGiftReceived ? "；今日已收体力" : "；今日未收体力");
         SetSceneText(root, "FriendGiftHint", giftHint);
         SetSceneObjectActive(root, "FriendsGiftButton", true);
-        SetSceneObjectActive(root, "FriendsDailyGiftButton", true);
+        SetSceneObjectActive(root, "FriendsDailyGiftButton", false);
         SetSceneObjectActive(root, "FriendsDeleteButton", true);
         SetSceneObjectActive(root, "FriendsRequestPrimaryButton", false);
         SetSceneObjectActive(root, "FriendsRequestSecondaryButton", false);
         Button giftButton = FindSceneComponent<Button>(root, "FriendsGiftButton");
-        Button dailyGiftButton = FindSceneComponent<Button>(root, "FriendsDailyGiftButton");
         Button deleteButton = FindSceneComponent<Button>(root, "FriendsDeleteButton");
         if (giftButton != null) giftButton.interactable = giftEnabled;
-        bool dailyGiftedToday = friend.dailyGiftSent;
-        bool dailyGiftEnabled = serverDailyGiftStatus != null
-            && serverDailyGiftStatus.enabled
-            && serverDailyGiftStatus.remainingSendCount > 0L
-            && !dailyGiftedToday
-            && !interactionLocked;
-        if (dailyGiftButton != null) dailyGiftButton.interactable = dailyGiftEnabled;
         if (deleteButton != null) deleteButton.interactable = !interactionLocked;
         SetSceneButtonText(giftButton, giftedToday ? "今日已赠体力" : "赠送体力");
         SetSceneButtonText(deleteButton, friendDeleteConfirmation ? "确认删除" : "删除好友");
-        SetSceneButtonText(dailyGiftButton, dailyGiftedToday ? "今日已赠物品" : "赠送物品");
         BindSceneButton(giftButton, () => StartCoroutine(SendV37StaminaGift(root, friend.playerId)));
-        BindSceneButton(dailyGiftButton, () => StartCoroutine(SendV34DailyGift(root, friend.playerId)));
         BindSceneButton(deleteButton, () => RequestV37FriendDeletion(root, friend));
     }
 
@@ -720,146 +976,12 @@ public partial class HomePageUI
         return "今日可赠送 " + Math.Max(0L, staminaGiftStatus.quantity) + " 点体力";
     }
 
-    private string BuildServerDailyGiftHint(ServerFriendResponse friend)
-    {
-        if (serverDailyGiftStatus == null || !serverDailyGiftStatus.enabled)
-        {
-            return "每日物品赠礼当前未开启";
-        }
-
-        if (friend != null && friend.dailyGiftSent)
-        {
-            return "今日已向该好友赠送过物品礼";
-        }
-
-        return "今日可赠送 "
-            + Math.Max(0L, serverDailyGiftStatus.quantity)
-            + " "
-            + FormatGiftItemKey(serverDailyGiftStatus.itemKey)
-            + "；剩"
-            + Math.Max(0L, serverDailyGiftStatus.remainingSendCount)
-            + " 次";
-    }
-
-    private static string FormatGiftItemKey(string itemKey)
-    {
-        return string.IsNullOrWhiteSpace(itemKey) ? "物品" : itemKey.Trim();
-    }
-
     private ServerDailyGiftStatus GetServerStaminaGiftStatus()
     {
         return serverDailyStaminaGiftStatus;
     }
 
-    private void RefreshV37SearchDetail(Transform root, bool interactionLocked)
-    {
-        ServerFriendSearchResponse result = v37FriendSearchResult;
-        if (result == null)
-        {
-            SetV37DetailEmpty(root, "搜索玩家", "请输入准确的玩家编号，不支持昵称或全服模糊搜索");
-            return;
-        }
 
-        SetV37DetailBase(
-            root,
-            result.playerId,
-            result.nickname,
-            result.level,
-            result.avatarUrl,
-            result.avatarCode,
-            result.avatarVersion,
-            "搜索结果",
-            "当前关系：" + GetV37RelationshipLabel(result.relationshipStatus),
-            result.pendingRequestId > 0 ? "关联申请 #" + result.pendingRequestId : "可根据服务器关系状态继续操作");
-        SetSceneObjectActive(root, "FriendsGiftButton", false);
-        SetSceneObjectActive(root, "FriendsDailyGiftButton", false);
-        SetSceneObjectActive(root, "FriendsDeleteButton", false);
-
-        Action primaryAction = null;
-        string primaryLabel = string.Empty;
-        switch (result.relationshipStatus)
-        {
-            case "NONE":
-                primaryLabel = IsV37FriendRequestCreationAvailable() ? "发送申请" : "申请未开放";
-                primaryAction = IsV37FriendRequestCreationAvailable()
-                    ? (Action)(() => StartCoroutine(CreateV37FriendRequest(root, result.playerId)))
-                    : null;
-                break;
-            case "INCOMING_PENDING":
-                primaryLabel = "查看收到申请";
-                primaryAction = () => ChangeV37FriendPanelMode(root, ServerFriendPanelMode.IncomingRequests);
-                break;
-            case "OUTGOING_PENDING":
-                primaryLabel = "查看发出申请";
-                primaryAction = () => ChangeV37FriendPanelMode(root, ServerFriendPanelMode.OutgoingRequests);
-                break;
-            case "FRIEND":
-                primaryLabel = "查看好友";
-                primaryAction = () =>
-                {
-                    v37FriendSearchResult = null;
-                    v37SelectedFriendPlayerId = result.playerId;
-                    RefreshServerFriendRequestPanel(root, "已定位正式好友");
-                };
-                break;
-        }
-
-        ConfigureV37RequestButtons(root, primaryLabel, primaryAction, string.Empty, null, interactionLocked || result.relationshipStatus == "SELF");
-    }
-
-    private void RefreshV37RequestDetail(Transform root, bool interactionLocked)
-    {
-        ServerFriendRequestResponse request = FindV37Request(v37SelectedRequestId);
-        if (request == null)
-        {
-            string emptyTitle = serverFriendPanelMode == ServerFriendPanelMode.IncomingRequests ? "暂无收到的申请" : "暂无发出的申请";
-            SetV37DetailEmpty(root, emptyTitle, "好友申请会在服务器按最新状态更新");
-            return;
-        }
-
-        bool incoming = serverFriendPanelMode == ServerFriendPanelMode.IncomingRequests;
-        int otherPlayerId = incoming ? request.requesterPlayerId : request.recipientPlayerId;
-        string otherName = incoming ? request.requesterNickname : request.recipientNickname;
-        int otherLevel = incoming ? request.requesterLevel : request.recipientLevel;
-        string otherAvatarUrl = incoming ? request.requesterAvatarUrl : request.recipientAvatarUrl;
-        string otherAvatarCode = incoming ? request.requesterAvatarCode : request.recipientAvatarCode;
-        long otherAvatarVersion = incoming ? request.requesterAvatarVersion : request.recipientAvatarVersion;
-        SetV37DetailBase(
-            root,
-            otherPlayerId,
-            otherName,
-            otherLevel,
-            otherAvatarUrl,
-            otherAvatarCode,
-            otherAvatarVersion,
-            incoming ? "收到的好友申请" : "发出的好友申请",
-            "申请状态：" + request.status,
-            "过期时间：" + FormatV37RequestTime(request.expireTime));
-        SetSceneObjectActive(root, "FriendsGiftButton", false);
-        SetSceneObjectActive(root, "FriendsDailyGiftButton", false);
-        SetSceneObjectActive(root, "FriendsDeleteButton", false);
-
-        if (incoming)
-        {
-            ConfigureV37RequestButtons(
-                root,
-                "同意",
-                request.canAccept ? (Action)(() => StartCoroutine(MutateV37FriendRequest(root, request.requestId, "accept"))) : null,
-                "拒绝",
-                request.canReject ? (Action)(() => StartCoroutine(MutateV37FriendRequest(root, request.requestId, "reject"))) : null,
-                interactionLocked);
-        }
-        else
-        {
-            ConfigureV37RequestButtons(
-                root,
-                "取消申请",
-                request.canCancel ? (Action)(() => StartCoroutine(MutateV37FriendRequest(root, request.requestId, "cancel"))) : null,
-                string.Empty,
-                null,
-                interactionLocked);
-        }
-    }
 
     private void SetV37DetailBase(
         Transform root,
@@ -878,7 +1000,6 @@ public partial class HomePageUI
         Image avatar = FindSceneComponent<Image>(root, "FriendDetailAvatarBackground");
         if (avatar != null)
         {
-            avatar.color = GetFriendAvatarColor(playerId.ToString());
             ApplyAvatarImage(
                 avatar,
                 FindSceneComponent<Text>(root, "FriendDetailAvatar"),
@@ -890,10 +1011,20 @@ public partial class HomePageUI
 
         SetSceneText(root, "FriendDetailAvatar", GetNicknameInitial(nickname));
         SetSceneText(root, "FriendDetailName", string.IsNullOrWhiteSpace(nickname) ? "玩家 " + playerId : nickname);
-        SetSceneText(root, "FriendDetailId", "玩家编号  " + playerId);
-        SetSceneText(root, "FriendDetailLevel", "领主等级  " + Mathf.Max(1, level));
+        SetSceneText(root, "FriendDetailId", "玩家ID  " + playerId);
+        Button copyIdButton = FindSceneComponent<Button>(root, "FriendCopyIdButton");
+        if (copyIdButton != null)
+        {
+            copyIdButton.interactable = playerId > 0;
+            BindSceneButton(copyIdButton, () =>
+            {
+                if (playerId <= 0) return;
+                GUIUtility.systemCopyBuffer = playerId.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                SetSceneText(root, "FriendsStatus", "好友ID已复制");
+            });
+        }
+        SetSceneText(root, "FriendDetailLevel", "领主等级  Lv." + Mathf.Max(1, level));
         SetSceneText(root, "FriendDetailOnline", title);
-        SetSceneText(root, "FriendDetailIntimacy", detail);
         SetSceneText(root, "FriendGiftHint", hint);
     }
 
@@ -905,74 +1036,60 @@ public partial class HomePageUI
         SetSceneText(root, "FriendDetailEmptyHint", hint);
     }
 
-    private void ConfigureV37RequestButtons(
-        Transform root,
-        string primaryLabel,
-        Action primaryAction,
-        string secondaryLabel,
-        Action secondaryAction,
-        bool interactionLocked)
-    {
-        Button primary = FindSceneComponent<Button>(root, "FriendsRequestPrimaryButton");
-        Button secondary = FindSceneComponent<Button>(root, "FriendsRequestSecondaryButton");
-        bool showPrimary = !string.IsNullOrEmpty(primaryLabel);
-        bool showSecondary = !string.IsNullOrEmpty(secondaryLabel);
-        SetSceneObjectActive(root, "FriendsRequestPrimaryButton", showPrimary);
-        SetSceneObjectActive(root, "FriendsRequestSecondaryButton", showSecondary);
-        if (primary != null)
-        {
-            primary.interactable = !interactionLocked && primaryAction != null;
-            SetSceneButtonText(primary, primaryLabel);
-        }
-        if (secondary != null)
-        {
-            secondary.interactable = !interactionLocked && secondaryAction != null;
-            SetSceneButtonText(secondary, secondaryLabel);
-        }
-        BindSceneButton(primary, primaryAction);
-        BindSceneButton(secondary, secondaryAction);
-    }
 
     private void ChangeV37FriendPanelMode(Transform root, ServerFriendPanelMode mode)
     {
-        if (v37Loading || v37MutationRunning)
+        if (root == null || v37MutationRunning)
         {
             return;
         }
 
+        if (mode == ServerFriendPanelMode.Friends)
+        {
+            CloseFriendRequestsDialog(root);
+            return;
+        }
+        EnsureFriendRequestsDialog(root);
+        if (FindSceneTransform(root, "FriendRequestsOverlay") == null)
+        {
+            Debug.LogWarning("[Friends] FriendRequestsOverlay is missing.", this);
+            SetSceneText(root, "FriendsStatus", "申请列表暂时无法打开，请稍后重试");
+            return;
+        }
+        if (v37Loading)
+        {
+            v37PanelRevision++;
+            v37Loading = false;
+        }
         serverFriendPanelMode = mode;
-        v37PageIndex = 0;
-        v37SelectedFriendPlayerId = 0;
+        friendSearchDialogOpen = false;
+        friendSearchDialogRevision++;
+        friendSearchLoading = false;
+        resetFriendRequestScroll = true;
         v37SelectedRequestId = 0;
         v37FriendSearchResult = null;
         friendDeleteConfirmation = false;
         StartCoroutine(RefreshServerFriendRequestState(root, mode == ServerFriendPanelMode.Friends, "已切换到" + GetV37ModeLabel()));
     }
 
-    private void ChangeV37FriendPage(Transform root, int offset)
-    {
-        v37PageIndex = Mathf.Clamp(v37PageIndex + offset, 0, GetV37PageCount() - 1);
-        RefreshServerFriendRequestPanel(root, "已切换列表页");
-    }
-
     private void HandleV37SearchOrRequest(Transform root)
     {
-        if (v37Loading || v37MutationRunning)
+        if (root == null || !friendSearchDialogOpen || friendSearchLoading || v37MutationRunning)
         {
             return;
         }
 
-        InputField input = FindSceneComponent<InputField>(root, "FriendsAddInput");
+        InputField input = FindSceneComponent<InputField>(root, "FriendSearchPlayerIdInput");
         string value = input == null ? string.Empty : input.text.Trim();
         if (!int.TryParse(value, out int playerId) || playerId <= 0)
         {
-            RefreshServerFriendRequestPanel(root, "请输入正确的玩家编号");
+            SetFriendSearchStatus(root, "请输入正确的玩家 ID");
             return;
         }
 
         if (playerId == GameSession.PlayerId)
         {
-            RefreshServerFriendRequestPanel(root, "不能向自己发送好友申请");
+            SetFriendSearchStatus(root, "不能向自己发送好友申请");
             return;
         }
 
@@ -982,74 +1099,115 @@ public partial class HomePageUI
             return;
         }
 
+        if (v37Loading)
+        {
+            SetFriendSearchStatus(root, "好友数据正在同步，请稍后操作");
+            return;
+        }
+
         switch (v37FriendSearchResult.relationshipStatus)
         {
             case "NONE":
                 if (!IsV37FriendRequestCreationAvailable())
                 {
-                    RefreshServerFriendRequestPanel(root, "好友申请当前不可用");
+                    SetFriendSearchStatus(root, "好友申请当前不可用");
                     break;
                 }
                 StartCoroutine(CreateV37FriendRequest(root, playerId));
                 break;
             case "INCOMING_PENDING":
-                ChangeV37FriendPanelMode(root, ServerFriendPanelMode.IncomingRequests);
+                StartCoroutine(OpenSearchedFriendRequest(root, ServerFriendPanelMode.IncomingRequests, v37FriendSearchResult.pendingRequestId));
                 break;
             case "OUTGOING_PENDING":
-                ChangeV37FriendPanelMode(root, ServerFriendPanelMode.OutgoingRequests);
+                StartCoroutine(OpenSearchedFriendRequest(root, ServerFriendPanelMode.OutgoingRequests, v37FriendSearchResult.pendingRequestId));
                 break;
             case "FRIEND":
+                friendSearchDialogOpen = false;
+                serverFriendPanelMode = ServerFriendPanelMode.Friends;
+                friendsSearchQuery = string.Empty;
                 v37FriendSearchResult = null;
                 v37SelectedFriendPlayerId = playerId;
-                RefreshServerFriendRequestPanel(root, "已是正式好友");
+                RefreshServerFriendRequestPanel(root, "已是好友");
+                ScrollToSelectedFriend(root);
                 break;
             default:
-                RefreshServerFriendRequestPanel(root, "当前玩家不能发送好友申请");
+                SetFriendSearchStatus(root, "当前玩家不能发送好友申请");
                 break;
         }
     }
 
+    private void SetFriendSearchStatus(Transform root, string message)
+    {
+        friendSearchStatus = message;
+        RefreshServerFriendRequestPanel(root, null);
+    }
+
+    private IEnumerator OpenSearchedFriendRequest(Transform root, ServerFriendPanelMode mode, long requestId)
+    {
+        EnsureFriendRequestsDialog(root);
+        serverFriendPanelMode = mode;
+        friendSearchDialogOpen = false;
+        friendSearchDialogRevision++;
+        v37FriendSearchResult = null;
+        v37SelectedRequestId = requestId;
+        resetFriendRequestScroll = true;
+        int revision = v37PanelRevision;
+        yield return RefreshServerFriendRequestState(root, false, "已打开对应申请");
+        if (revision != v37PanelRevision || root == null || !root.gameObject.activeInHierarchy) yield break;
+        RefreshServerFriendRequestPanel(root, null);
+        ScrollToFriendRequest(root, requestId);
+    }
+
     private IEnumerator SearchV37Friend(Transform root, int playerId)
     {
-        v37Loading = true;
-        RefreshServerFriendRequestPanel(root, "正在精确搜索玩家...");
+        int revision = v37PanelRevision;
+        int dialogRevision = friendSearchDialogRevision;
+        friendSearchLoading = true;
+        SetFriendSearchStatus(root, "正在精确搜索玩家...");
         UnityWebRequest request = CreateAuthorizedGet("/friends/search?playerId=" + playerId);
         if (request == null)
         {
-            v37Loading = false;
-            RefreshServerFriendRequestPanel(root, requestCreationError);
+            friendSearchLoading = false;
+            SetFriendSearchStatus(root, requestCreationError);
             yield break;
         }
 
         using (request)
         {
             yield return request.SendWebRequest();
+            if (revision != v37PanelRevision || root == null || !root.gameObject.activeInHierarchy)
+            {
+                yield break;
+            }
             if (HandleUnauthorizedResponse(request))
             {
-                v37Loading = false;
+                friendSearchLoading = false;
                 yield break;
             }
 
+            if (!friendSearchDialogOpen || dialogRevision != friendSearchDialogRevision)
+            {
+                yield break;
+            }
             ServerFriendSearchApiResponse response = ParseJson<ServerFriendSearchApiResponse>(request.downloadHandler.text);
-            v37Loading = false;
+            friendSearchLoading = false;
             if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
                 v37FriendSearchResult = null;
                 v37FriendSearchPlayerId = 0;
-                HandleV37FriendRequestFailure(root, request, response, "玩家搜索失败");
+                SetFriendSearchStatus(root, GetV37RequestError(request, response, "玩家搜索失败"));
                 yield break;
             }
 
             v37FriendSearchResult = response.data;
             v37FriendSearchPlayerId = response.data.playerId;
-            v37SelectedFriendPlayerId = 0;
-            v37SelectedRequestId = 0;
-            RefreshServerFriendRequestPanel(root, "已找到玩家，请确认关系状态后继续操作");
+            SetFriendSearchStatus(root, "已找到玩家，请确认关系状态后继续操作");
         }
     }
 
     private IEnumerator CreateV37FriendRequest(Transform root, int recipientPlayerId)
     {
+        int revision = v37PanelRevision;
         if (v37MutationRunning)
         {
             yield break;
@@ -1061,7 +1219,7 @@ public partial class HomePageUI
         if (!TryCreateAuthorizedPost("/friends/requests", JsonUtility.ToJson(payload), out UnityWebRequest request, out string error))
         {
             v37MutationRunning = false;
-            RefreshServerFriendRequestPanel(root, error);
+            SetFriendSearchStatus(root, error);
             yield break;
         }
 
@@ -1069,6 +1227,10 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
+            if (revision != v37PanelRevision || root == null || !root.gameObject.activeInHierarchy)
+            {
+                yield break;
+            }
             if (HandleUnauthorizedResponse(request))
             {
                 v37MutationRunning = false;
@@ -1079,6 +1241,7 @@ public partial class HomePageUI
             if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
                 v37MutationRunning = false;
+                friendSearchStatus = GetV37RequestError(request, response, "好友申请提交失败");
                 HandleV37FriendRequestFailure(root, request, response, "好友申请提交失败");
                 yield break;
             }
@@ -1086,6 +1249,7 @@ public partial class HomePageUI
         }
 
         v37MutationRunning = false;
+        friendSearchDialogOpen = false;
         v37FriendSearchResult = null;
         v37FriendSearchPlayerId = 0;
         if (created != null)
@@ -1095,18 +1259,35 @@ public partial class HomePageUI
                 : ServerFriendPanelMode.OutgoingRequests;
             v37SelectedRequestId = created.requestId;
         }
-        InputField input = FindSceneComponent<InputField>(root, "FriendsAddInput");
+        InputField input = FindSceneComponent<InputField>(root, "FriendSearchPlayerIdInput");
         if (input != null)
         {
             input.SetTextWithoutNotify(string.Empty);
         }
-        yield return RefreshServerFriendRequestState(root, false, "好友申请已提交，等待对方同意");
+        EnsureFriendRequestsDialog(root);
+        resetFriendRequestScroll = true;
+        yield return RefreshServerFriendRequestState(root, false,
+            serverFriendPanelMode == ServerFriendPanelMode.IncomingRequests
+                ? "对方已向你发出申请，请选择同意或拒绝"
+                : "好友申请已提交，等待对方同意");
     }
 
     private IEnumerator MutateV37FriendRequest(Transform root, long requestId, string action)
     {
-        if (v37MutationRunning || requestId <= 0)
+        int revision = v37PanelRevision;
+        if (v37Loading || v37MutationRunning || root == null || requestId <= 0)
         {
+            yield break;
+        }
+
+        ServerFriendRequestResponse selected = FindV37Request(requestId);
+        bool incoming = serverFriendPanelMode == ServerFriendPanelMode.IncomingRequests;
+        bool allowed = IsPendingFriendRequest(selected) && (incoming
+            ? (action == "accept" && selected.canAccept) || (action == "reject" && selected.canReject)
+            : action == "cancel" && selected.canCancel);
+        if (!allowed)
+        {
+            RefreshServerFriendRequestPanel(root, "申请状态已变化或无操作权限，请重新打开申请列表");
             yield break;
         }
 
@@ -1126,6 +1307,10 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
+            if (revision != v37PanelRevision || root == null || !root.gameObject.activeInHierarchy)
+            {
+                yield break;
+            }
             if (HandleUnauthorizedResponse(request))
             {
                 v37MutationRunning = false;
@@ -1144,10 +1329,6 @@ public partial class HomePageUI
         v37MutationRunning = false;
         v37SelectedRequestId = 0;
         bool accepted = action == "accept";
-        if (accepted)
-        {
-            serverFriendPanelMode = ServerFriendPanelMode.Friends;
-        }
         yield return RefreshServerFriendRequestState(root, accepted, accepted ? "好友申请已同意，已成为正式好友" : "好友申请状态已更新");
     }
 
@@ -1170,6 +1351,7 @@ public partial class HomePageUI
 
     private IEnumerator DeleteV37Friend(Transform root, ServerFriendResponse friend)
     {
+        int revision = v37PanelRevision;
         v37MutationRunning = true;
         RefreshServerFriendRequestPanel(root, "正在删除正式好友...");
         if (!ApiRequestUtility.TryCreateJsonRequest(
@@ -1188,6 +1370,10 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
+            if (revision != v37PanelRevision || root == null || !root.gameObject.activeInHierarchy)
+            {
+                yield break;
+            }
             if (HandleUnauthorizedResponse(request))
             {
                 v37MutationRunning = false;
@@ -1211,7 +1397,11 @@ public partial class HomePageUI
 
     private IEnumerator SendV37StaminaGift(Transform root, int friendPlayerId)
     {
-        if (v37MutationRunning || friendPlayerId <= 0)
+        int revision = v37PanelRevision;
+        ServerFriendResponse friend = FindV37Friend(friendPlayerId);
+        ServerDailyGiftStatus status = GetServerStaminaGiftStatus();
+        if (v37Loading || v37MutationRunning || root == null || friend == null
+            || status == null || !status.enabled || friend.dailyStaminaGiftSent)
         {
             yield break;
         }
@@ -1229,6 +1419,10 @@ public partial class HomePageUI
         using (request)
         {
             yield return request.SendWebRequest();
+            if (revision != v37PanelRevision || root == null || !root.gameObject.activeInHierarchy)
+            {
+                yield break;
+            }
             if (HandleUnauthorizedResponse(request))
             {
                 v37MutationRunning = false;
@@ -1238,101 +1432,39 @@ public partial class HomePageUI
             ServerDailyGiftApiResponse response = ParseJson<ServerDailyGiftApiResponse>(request.downloadHandler.text);
             if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
             {
+                if (response != null && (response.code == 6721 || response.code == 6722))
+                {
+                    status.enabled = false;
+                }
                 v37MutationRunning = false;
-                RefreshServerFriendRequestPanel(root, GetV37RequestError(request, response, "赠礼发送失败"));
+                string failure = GetV37RequestError(request, response, "赠礼发送失败");
+                if (response != null && response.code == 6702)
+                {
+                    v37Friends.Remove(friend);
+                    yield return RefreshServerFriendRequestState(root, true, failure);
+                }
+                else
+                {
+                    RefreshServerFriendRequestPanel(root, failure);
+                }
                 yield break;
             }
             gift = response.data;
         }
-
+        friend.dailyStaminaGiftSent = true;
+        if (string.Equals(status.periodKey, gift.periodKey, StringComparison.Ordinal))
+        {
+            if (!gift.replayed) status.sentCount++;
+        }
+        else
+        {
+            status.enabled = false;
+        }
         v37MutationRunning = false;
         string replay = gift.replayed ? "（今日已赠送，返回原结果）" : string.Empty;
         yield return RefreshServerFriendRequestState(root, true, "已为好友赠送 " + gift.quantity + " 点体力" + replay);
     }
 
-    private IEnumerator SendV34DailyGift(Transform root, int friendPlayerId)
-    {
-        if (v37MutationRunning || friendPlayerId <= 0)
-        {
-            yield break;
-        }
-
-        ServerDailyGiftStatus status = serverDailyGiftStatus;
-        if (status == null || !status.enabled || status.remainingSendCount <= 0L)
-        {
-            RefreshServerFriendRequestPanel(root, "每日物品赠礼当前不可用");
-            yield break;
-        }
-
-        ServerFriendResponse friend = FindV37Friend(friendPlayerId);
-        if (friend != null && friend.dailyGiftSent)
-        {
-            RefreshServerFriendRequestPanel(root, "今日已向该好友发送过物品赠礼");
-            yield break;
-        }
-
-        v37MutationRunning = true;
-        RefreshServerFriendRequestPanel(root, "正在赠送好友每日物品礼...");
-
-        string periodKey = string.IsNullOrWhiteSpace(status.periodKey) ? "unknown" : status.periodKey.Trim();
-        string requestSignature = GameSession.PlayerId + ":" + friendPlayerId + ":" + periodKey;
-        if (!v34DailyGiftPendingKeys.TryGetValue(requestSignature, out string idempotencyKey)
-            || !Guid.TryParse(idempotencyKey, out _))
-        {
-            idempotencyKey = Guid.NewGuid().ToString("D");
-            v34DailyGiftPendingKeys[requestSignature] = idempotencyKey;
-        }
-
-        if (!TryCreateAuthorizedPost(
-                "/friends/" + friendPlayerId + "/gifts/daily",
-                string.Empty,
-                out UnityWebRequest request,
-                out string error))
-        {
-            v37MutationRunning = false;
-            RefreshServerFriendRequestPanel(root, error);
-            yield break;
-        }
-
-        ApiRequestUtility.SetIdempotencyKey(request, idempotencyKey);
-        ServerFriendDailyGiftResponse gift = null;
-        using (request)
-        {
-            yield return request.SendWebRequest();
-            if (HandleUnauthorizedResponse(request))
-            {
-                v34DailyGiftPendingKeys.Remove(requestSignature);
-                v37MutationRunning = false;
-                yield break;
-            }
-
-            ServerFriendDailyGiftApiResponse response = ParseJson<ServerFriendDailyGiftApiResponse>(request.downloadHandler.text);
-            if (request.result != UnityWebRequest.Result.Success || response == null || response.code != 200 || response.data == null)
-            {
-                bool keepPendingKey = request.responseCode <= 0
-                    || request.responseCode == 408
-                    || request.responseCode == 429
-                    || request.responseCode >= 500;
-                if (!keepPendingKey) v34DailyGiftPendingKeys.Remove(requestSignature);
-                v37MutationRunning = false;
-                RefreshServerFriendRequestPanel(root, GetV37RequestError(request, response, "每日物品赠礼发送失败"));
-                yield break;
-            }
-            gift = response.data;
-        }
-
-        v34DailyGiftPendingKeys.Remove(requestSignature);
-        v37MutationRunning = false;
-        string replay = gift.replayed ? "（今日已赠送，返回原结果）" : string.Empty;
-        yield return RefreshServerFriendRequestState(
-            root,
-            true,
-            "已为好友赠送每日物品礼：还剩"
-            + Math.Max(0L, gift.quantity)
-            + " "
-            + FormatGiftItemKey(status.itemKey)
-            + replay);
-    }
 
     private List<ServerFriendResponse> GetFilteredV37Friends()
     {
@@ -1361,13 +1493,7 @@ public partial class HomePageUI
             {
                 continue;
             }
-            bool incoming = serverFriendPanelMode == ServerFriendPanelMode.IncomingRequests;
-            int otherPlayerId = incoming ? request.requesterPlayerId : request.recipientPlayerId;
-            string otherName = incoming ? request.requesterNickname : request.recipientNickname;
-            if (MatchesV37Filter(otherPlayerId.ToString(), otherName))
-            {
-                result.Add(request);
-            }
+            result.Add(request);
         }
         return result;
     }
@@ -1377,14 +1503,6 @@ public partial class HomePageUI
         return string.IsNullOrEmpty(friendsSearchQuery)
             || (!string.IsNullOrEmpty(playerId) && playerId.IndexOf(friendsSearchQuery, StringComparison.OrdinalIgnoreCase) >= 0)
             || (!string.IsNullOrEmpty(nickname) && nickname.IndexOf(friendsSearchQuery, StringComparison.OrdinalIgnoreCase) >= 0);
-    }
-
-    private int GetV37PageCount()
-    {
-        int count = serverFriendPanelMode == ServerFriendPanelMode.Friends
-            ? GetFilteredV37Friends().Count
-            : GetFilteredV37Requests().Count;
-        return Mathf.Max(1, Mathf.CeilToInt(count / (float)FriendsPerPage));
     }
 
     private ServerFriendResponse FindV37Friend(int playerId)
@@ -1509,6 +1627,17 @@ public partial class HomePageUI
         }
     }
 
+    private void SetFriendPresenceTextColor(Text label, bool offline)
+    {
+        if (label == null) return;
+        if (!friendPresenceSceneColors.TryGetValue(label, out Color sceneColor))
+        {
+            sceneColor = label.color;
+            friendPresenceSceneColors.Add(label, sceneColor);
+        }
+        label.color = offline ? new Color32(0x8E, 0x86, 0x7B, 0xFF) : sceneColor;
+    }
+
     private static Color GetV38FriendPresenceColor(ServerFriendResponse friend)
     {
         switch (NormalizeV38OnlineStatus(friend == null ? null : friend.onlineStatus))
@@ -1520,14 +1649,6 @@ public partial class HomePageUI
             default:
                 return new Color(0.86f, 0.58f, 0.18f, 1f);
         }
-    }
-
-    private static string BuildV38FriendRowMetadata(ServerFriendResponse friend)
-    {
-        string date = ShortV38PresenceTime(friend == null ? null : friend.friendsSince);
-        return string.IsNullOrEmpty(date)
-            ? "等级 " + Mathf.Max(1, friend == null ? 1 : friend.level) + "    正式好友"
-            : "等级 " + Mathf.Max(1, friend.level) + "    好友始于 " + date;
     }
 
     private static string BuildV38FriendPresenceDetail(ServerFriendResponse friend)
@@ -1547,14 +1668,6 @@ public partial class HomePageUI
             : value.Trim().Substring(0, Mathf.Min(10, value.Trim().Length));
     }
 
-    private static void SetV38FriendPresenceDetailColor(Transform root, ServerFriendResponse friend)
-    {
-        Text label = FindSceneComponent<Text>(root, "FriendDetailOnline");
-        if (label != null)
-        {
-            label.color = GetV38FriendPresenceColor(friend);
-        }
-    }
 
     private ServerFriendRequestResponse FindV37Request(long requestId)
     {
@@ -1581,18 +1694,6 @@ public partial class HomePageUI
         return $"好友 {v37FriendRequestSummary.friendCount}/{v37FriendRequestSummary.maxFriendCount}    收到 {v37FriendRequestSummary.pendingIncomingCount}    发出 {v37FriendRequestSummary.pendingOutgoingCount}";
     }
 
-    private string BuildV37IncomingTabLabel()
-    {
-        int count = v37FriendRequestSummary == null ? v37IncomingRequests.Count : v37FriendRequestSummary.pendingIncomingCount;
-        return "收到 " + count;
-    }
-
-    private string BuildV37OutgoingTabLabel()
-    {
-        int count = v37FriendRequestSummary == null ? v37OutgoingRequests.Count : v37FriendRequestSummary.pendingOutgoingCount;
-        return "发出 " + count;
-    }
-
     private string GetV37ModeLabel()
     {
         switch (serverFriendPanelMode)
@@ -1614,7 +1715,8 @@ public partial class HomePageUI
             case "OUTGOING_PENDING": return "已发出申请";
             case "INCOMING_PENDING": return "收到对方申请";
             case "SELF": return "当前玩家";
-            default: return "可发送申请";
+            case "NONE": return "可发送申请";
+            default: return "关系状态未知";
         }
     }
 
@@ -1695,65 +1797,6 @@ public partial class HomePageUI
             : ApiRequestUtility.GetErrorMessage(request, fallback);
     }
 
-    private void EnsureServerFriendRequestControls(Transform root)
-    {
-        Transform panel = FindSceneTransform(root, "FriendsPanel");
-        if (panel == null)
-        {
-            return;
-        }
-
-        Button friendTab = FindSceneComponent<Button>(root, "FriendsFilterAll");
-        Button incomingTab = FindSceneComponent<Button>(root, "FriendsFilterOnline");
-        Button weChatGift = FindSceneComponent<Button>(root, "FriendsWeChatGiftButton");
-        InputField playerInput = FindSceneComponent<InputField>(root, "FriendsAddInput");
-        Button searchButton = FindSceneComponent<Button>(root, "FriendsAddButton");
-        SetV37ControlRect(friendTab == null ? null : friendTab.GetComponent<RectTransform>(), new Vector2(382f, -122f), new Vector2(90f, 50f));
-        SetV37ControlRect(incomingTab == null ? null : incomingTab.GetComponent<RectTransform>(), new Vector2(482f, -122f), new Vector2(100f, 50f));
-        SetV37ControlRect(weChatGift == null ? null : weChatGift.GetComponent<RectTransform>(), new Vector2(692f, -122f), new Vector2(176f, 50f));
-        SetV37ControlRect(playerInput == null ? null : playerInput.GetComponent<RectTransform>(), new Vector2(880f, -122f), new Vector2(246f, 50f));
-        SetV37ControlRect(searchButton == null ? null : searchButton.GetComponent<RectTransform>(), new Vector2(1140f, -122f), new Vector2(318f, 50f));
-
-        if (FindSceneComponent<Button>(root, "FriendsFilterOutgoing") == null)
-        {
-            Button outgoing = CreateButton(panel, "FriendsFilterOutgoing", "发出", new Color(0.90f, 0.79f, 0.59f, 1f), new Color(0.36f, 0.20f, 0.10f, 1f));
-            SetV37ControlRect(outgoing.GetComponent<RectTransform>(), new Vector2(592f, -122f), new Vector2(90f, 50f));
-            ShrinkButtonLabel(outgoing, 17);
-        }
-
-        Transform detail = FindSceneTransform(root, "FriendDetailContent");
-        if (detail == null)
-        {
-            return;
-        }
-
-        if (FindSceneComponent<Button>(root, "FriendsRequestPrimaryButton") == null)
-        {
-            Button primary = CreateButton(detail, "FriendsRequestPrimaryButton", "同意", new Color(0.32f, 0.66f, 0.38f, 1f), Color.white);
-            SetV37ControlRect(primary.GetComponent<RectTransform>(), new Vector2(72f, -416f), new Vector2(174f, 50f));
-            ShrinkButtonLabel(primary, 18);
-        }
-        if (FindSceneComponent<Button>(root, "FriendsRequestSecondaryButton") == null)
-        {
-            Button secondary = CreateButton(detail, "FriendsRequestSecondaryButton", "拒绝", new Color(0.84f, 0.38f, 0.30f, 1f), Color.white);
-            SetV37ControlRect(secondary.GetComponent<RectTransform>(), new Vector2(276f, -416f), new Vector2(174f, 50f));
-            ShrinkButtonLabel(secondary, 18);
-        }
-        if (FindSceneComponent<Button>(root, "FriendsDailyGiftButton") == null)
-        {
-            Button dailyGift = CreateButton(detail, "FriendsDailyGiftButton", "赠送物品", new Color(0.30f, 0.52f, 0.76f, 1f), Color.white);
-            SetV37ControlRect(dailyGift.GetComponent<RectTransform>(), new Vector2(72f, -468f), new Vector2(174f, 46f));
-            ShrinkButtonLabel(dailyGift, 17);
-        }
-    }
-
-    private void SetV37ControlRect(RectTransform rect, Vector2 position, Vector2 size)
-    {
-        if (rect != null)
-        {
-            SetRect(rect, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), position, size);
-        }
-    }
 
 #pragma warning disable 0649
     [Serializable]

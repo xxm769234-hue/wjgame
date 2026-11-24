@@ -5,6 +5,9 @@ using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using TMPro;
+using Text = TMPro.TMP_Text;
+using InputField = TMPro.TMP_InputField;
 
 public partial class HomePageUI
 {
@@ -35,20 +38,20 @@ public partial class HomePageUI
     {
         if (!HasAuthSession())
         {
-            SetStatus("请先登录账号后读取服务器站内提醒。 ");
+            SetStatus("请登录后查看站内提醒。");
             return;
         }
 
         HomePageScenePanel panel = OpenRegisteredScenePanel(HomePageScenePanelType.Mail);
         if (panel == null)
         {
-            SetLeftContent("站内提醒", "站内提醒面板场景组件未找到。", "无法打开站内提醒");
+            SetLeftContent("站内提醒", "站内提醒暂不可用，请稍后重试。", "无法打开站内提醒");
             return;
         }
 
         mailShowingNotifications = true;
         mailPanelObject = panel.gameObject;
-        RenderNotificationCenter(panel.PanelRoot, "正在读取服务器站内提醒...");
+        RenderNotificationCenter(panel.PanelRoot, "正在加载站内提醒...");
         if (!notificationListRunning)
         {
             StartCoroutine(GetNotificationCenterList());
@@ -94,7 +97,7 @@ public partial class HomePageUI
 
             currentNotifications = response.data ?? new RealtimeNotification[0];
             notificationListRunning = false;
-            int pageCount = Mathf.Max(1, Mathf.CeilToInt(currentNotifications.Length / 5f));
+            int pageCount = Mathf.Max(1, Mathf.CeilToInt(currentNotifications.Length / (float)GetNotificationPageSize(GetNotificationPanelRoot())));
             notificationPageIndex = Mathf.Clamp(notificationPageIndex, 0, pageCount - 1);
             if (FindNotification(selectedNotificationId) == null)
             {
@@ -145,10 +148,11 @@ public partial class HomePageUI
         SetSceneButtonText(readAllButton, notificationMutationRunning ? "提交中..." : "全部已读");
         BindSceneButton(readAllButton, MarkAllNotificationsRead);
 
-        int pageCount = Mathf.Max(1, Mathf.CeilToInt(currentNotifications.Length / 5f));
+        int pageSize = GetNotificationPageSize(root);
+        int pageCount = Mathf.Max(1, Mathf.CeilToInt(currentNotifications.Length / (float)pageSize));
         notificationPageIndex = Mathf.Clamp(notificationPageIndex, 0, pageCount - 1);
-        int firstIndex = notificationPageIndex * 5;
-        int visibleCount = Mathf.Min(5, Mathf.Max(0, currentNotifications.Length - firstIndex));
+        int firstIndex = notificationPageIndex * pageSize;
+        int visibleCount = Mathf.Min(pageSize, Mathf.Max(0, currentNotifications.Length - firstIndex));
         Transform emptyCard = FindSceneTransform(root, "MailEmptyCard");
         if (emptyCard != null)
         {
@@ -172,7 +176,7 @@ public partial class HomePageUI
             selectedNotificationId = selected != null ? selected.id : 0;
         }
 
-        for (int rowIndex = 0; rowIndex < 5; rowIndex++)
+        for (int rowIndex = 0; rowIndex < pageSize; rowIndex++)
         {
             Button row = FindSceneComponent<Button>(root, "MailItem" + rowIndex);
             if (row == null)
@@ -217,12 +221,12 @@ public partial class HomePageUI
 
     private void RenderNotificationDetail(Transform root, RealtimeNotification notification)
     {
+        RefreshSceneMailRewardSlots(root, null);
         if (notification == null)
         {
             SetSceneText(root, "MailDetailTitle", "系统提示");
             SetSceneText(root, "MailDetailBody", "当前没有可展示的站内提醒。 ");
-            SetSceneText(root, "MailRewardTitle", "状态");
-            SetRepeatedSceneText(root, "MailRewardText", "暂无");
+            SetSceneText(root, "MailRewardTitle", string.Empty);
             Button emptyReadButton = FindSceneComponent<Button>(root, "ClaimMailButton");
             if (emptyReadButton != null) emptyReadButton.interactable = false;
             SetSceneButtonText(emptyReadButton, "标记已读");
@@ -236,8 +240,7 @@ public partial class HomePageUI
             root,
             "MailDetailBody",
             $"{notification.content}\n\n类型：{GetNotificationTypeLabel(notification.type)}\n时间：{notification.createTime}\n状态：{(notification.readFlag ? "已读" : "未读")}");
-        SetSceneText(root, "MailRewardTitle", "提醒状态");
-        SetRepeatedSceneText(root, "MailRewardText", notification.readFlag ? "已读" : "未读");
+        SetSceneText(root, "MailRewardTitle", notification.readFlag ? "已读提醒" : "未读提醒");
         Button readButton = FindSceneComponent<Button>(root, "ClaimMailButton");
         if (readButton != null)
         {
@@ -275,7 +278,7 @@ public partial class HomePageUI
             actionButton = CreateButton(
                 parent,
                 "NotificationActionButton",
-                string.Empty,
+                "前往查看",
                 new Color(0.25f, 0.52f, 0.64f, 1f),
                 Color.white);
             SetRect(
@@ -296,8 +299,28 @@ public partial class HomePageUI
         }
 
         actionButton.gameObject.SetActive(true);
+        TMP_Text actionLabel = actionButton.GetComponentInChildren<TMP_Text>(true);
+        if (actionLabel == null)
+        {
+            actionLabel = CreateText("Text", actionButton.transform, actionText, 20, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+            Stretch(actionLabel.rectTransform);
+        }
+        actionLabel.gameObject.SetActive(true);
+        Button readButton = FindSceneComponent<Button>(root, "ClaimMailButton");
+        if (readButton != null)
+        {
+            RectTransform readRect = readButton.transform as RectTransform;
+            RectTransform actionRect = actionButton.transform as RectTransform;
+            actionRect.SetParent(readRect.parent, false);
+            actionRect.anchorMin = actionRect.anchorMax = new Vector2(0.5f, 0.5f);
+            actionRect.pivot = new Vector2(1f, 0.5f);
+            actionRect.sizeDelta = new Vector2(210f, 64f);
+            Vector3 readCenter = readRect.parent.InverseTransformPoint(readRect.TransformPoint(readRect.rect.center));
+            actionRect.localPosition = new Vector3(readCenter.x - readRect.rect.width * 0.5f - 18f, readCenter.y, 0f);
+        }
         actionButton.interactable = !notificationNavigationRunning && !notificationMutationRunning;
         SetSceneButtonText(actionButton, notificationNavigationRunning ? "处理中..." : actionText);
+        ApplyPresentationButton(actionButton, false, 20f);
         BindSceneButton(actionButton, () => StartCoroutine(NavigateNotification(notification, payload)));
     }
 
@@ -462,6 +485,13 @@ public partial class HomePageUI
         HomePageUINotificationDeepLink.QueueScene(sceneId);
     }
 
+    private static int GetNotificationPageSize(Transform root)
+    {
+        int count = 0;
+        while (root != null && FindSceneComponent<Button>(root, "MailItem" + count) != null) count++;
+        return Mathf.Max(1, count);
+    }
+
     private void ConfigureNotificationPaging(Transform root, int pageCount)
     {
         Transform panel = FindSceneTransform(root, "SystemMailPanel");
@@ -484,6 +514,12 @@ public partial class HomePageUI
             SetRect(next.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1068f, -700f), new Vector2(48f, 42f));
             ConfigureClearButtonLabel(next, 22);
         }
+        SetRect(previous.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(345f, -644f), new Vector2(96f, 48f));
+        SetRect(next.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(457f, -644f), new Vector2(96f, 48f));
+        SetSceneButtonText(previous, "上一页");
+        SetSceneButtonText(next, "下一页");
+        ApplyPresentationButton(previous, false, 19f);
+        ApplyPresentationButton(next, false, 19f);
 
         previous.gameObject.SetActive(pageCount > 1);
         next.gameObject.SetActive(pageCount > 1);
@@ -656,7 +692,7 @@ public partial class HomePageUI
         {
             if (texts[i].name == objectName)
             {
-                texts[i].text = FrontendTextLocalization.Normalize(first ? firstValue : string.Empty);
+                texts[i].text = first ? firstValue : string.Empty;
                 first = false;
             }
         }
@@ -739,7 +775,7 @@ public partial class HomePageUI
             if (pendingSubscribeTemplates.Length == 0)
             {
                 subscribeRequestRunning = false;
-                RefreshSubscriptionSettings("服务器当前没有启用的微信订阅模板");
+                RefreshSubscriptionSettings("微信订阅提醒暂未开放");
                 yield break;
             }
         }
@@ -857,7 +893,7 @@ public partial class HomePageUI
         Transform rechargePanel = scenePanel != null ? FindSceneTransform(scenePanel.PanelRoot, "RechargePanel") : null;
         if (rechargePanel == null)
         {
-            SetStatus("充值场景组件未找到，无法打开退款中心。 ");
+            SetStatus("退款中心暂时无法打开，请稍后重试。");
             return;
         }
 
@@ -882,13 +918,14 @@ public partial class HomePageUI
         }
 
         Image overlay = CreateImage("RefundCenterPanel", parent, new Color(0.97f, 0.91f, 0.76f, 1f));
+        LoginCanvasStyle.ApplyDialogPaper(overlay);
         refundPanelObject = overlay.gameObject;
         SetRect(overlay.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(76f, -88f), new Vector2(1258f, 620f));
 
         Text title = CreateMailText("RefundCenterTitle", overlay.transform, "退款申请与进度", 30, FontStyle.Bold, new Color(0.38f, 0.17f, 0.07f, 1f), TextAnchor.MiddleLeft);
-        SetRect(title.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(30f, -18f), new Vector2(420f, 44f));
-        Button close = CreateButton(overlay.transform, "RefundCenterCloseButton", "关闭", new Color(0.82f, 0.30f, 0.24f, 1f), Color.white);
-        SetRect(close.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1180f, -16f), new Vector2(48f, 48f));
+        SetRect(title.rectTransform, TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(48f, -34f), new Vector2(600f, 44f));
+        Button close = CreateButton(overlay.transform, "RefundCenterCloseButton", "X", new Color(0.82f, 0.30f, 0.24f, 1f), Color.white);
+        SetRect(close.GetComponent<RectTransform>(), TopLeftAnchor(), TopLeftAnchor(), TopLeftAnchor(), new Vector2(1152f, -28f), new Vector2(72f, 72f));
         ConfigureClearButtonLabel(close, 22);
 
         CreateRuntimeInputField("RefundOrderNoInput", overlay.transform, "支付订单号", new Vector2(30f, -82f), new Vector2(500f, 48f), 64, false);
@@ -927,6 +964,31 @@ public partial class HomePageUI
         BindSceneButton(refresh, RefreshRefundListFromFirstPage);
         BindSceneButton(previous, () => ChangeRefundPage(-1));
         BindSceneButton(next, () => ChangeRefundPage(1));
+        LoginCanvasStyle.ApplyDialogCloseButton(close);
+        close.transform.SetAsLastSibling();
+        Image closeIcon = FindSceneComponent<Image>(close.transform, "CloseIcon");
+        if (closeIcon != null) closeIcon.rectTransform.sizeDelta = new Vector2(48f, 48f);
+        foreach (Button action in new[] { submit, query, refresh, previous, next })
+            ApplyPresentationButton(action, action == submit, action == previous || action == next ? 24f : 20f);
+        foreach (InputField input in overlay.GetComponentsInChildren<InputField>(true))
+        {
+            if (input.targetGraphic is Image inputImage)
+            {
+                inputImage.sprite = Resources.Load<Sprite>("IdleAdventureUI/RoundedPanel");
+                inputImage.type = Image.Type.Sliced;
+                inputImage.color = new Color(1f, 0.98f, 0.91f, 1f);
+            }
+            if (input.textComponent != null)
+            {
+                input.textComponent.color = new Color(0.28f, 0.18f, 0.12f, 1f);
+                input.textComponent.fontSize = 20f;
+            }
+            if (input.placeholder is TMP_Text placeholder)
+            {
+                placeholder.fontSize = 20f;
+                placeholder.color = new Color(0.46f, 0.37f, 0.28f, 1f);
+            }
+        }
 
         InputField orderInput = FindSceneComponent<InputField>(overlay.transform, "RefundOrderNoInput");
         if (orderInput != null && !string.IsNullOrEmpty(pendingPaymentOrderNo))
@@ -978,6 +1040,8 @@ public partial class HomePageUI
         SetSceneText(root, "RefundStatusText", refundStatusMessage);
         SetSceneText(root, "RefundListBody", BuildRefundListText());
         SetSceneText(root, "RefundPageText", (refundPageIndex + 1).ToString());
+        EnsureReadableBodyScroll(FindSceneComponent<TMP_Text>(root, "RefundListBody"), 20f);
+        EnsureReadableBodyScroll(FindSceneComponent<TMP_Text>(root, "RefundStatusText"), 18f);
 
         Button previous = FindSceneComponent<Button>(root, "RefundPreviousButton");
         Button next = FindSceneComponent<Button>(root, "RefundNextButton");
@@ -1086,7 +1150,7 @@ public partial class HomePageUI
                     : GetApiError(response);
                 refundStatusMessage = definitiveFailure
                     ? "退款申请失败：" + failure
-                    : "网络状态未知，再次提交相同订单与原因会复用同一幂等键：" + failure;
+                    : "退款申请结果尚未确认，请保持原订单与原因重试，查询本次申请结果";
                 RenderRefundCenter();
                 yield break;
             }
@@ -1288,8 +1352,8 @@ public partial class HomePageUI
         }
 
         string message = status == "SUCCESS"
-            ? "退款已完成，账户资源已从服务器刷新。"
-            : "退款处理中，账户经济状态已从服务器刷新。";
+            ? "退款已完成，账户资源已更新。"
+            : "退款处理中，账户状态已更新。";
         StartCoroutine(RefreshAccountSnapshot(message));
     }
 
