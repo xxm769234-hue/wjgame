@@ -1,0 +1,91 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject:
+    fileID: 0
+  m_PrefabInstance:
+    fileID: 0
+  m_PrefabAsset:
+    fileID: 0
+  m_GameObject:
+    fileID: 0
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
+  m_Name: Monster6_Moth_AttackEffect
+  m_EditorClassIdentifier: ''
+  sequenceId: Monster6_Moth_AttackEffect
+  sourceFolder: D:/怪物动画/怪物6_四翼飞蛾/攻击特效_20261112_00342/Frames
+  action: 7
+  frames:
+  - fileID: 21300000
+    guid: 5ebbd9fb96cd5de9ad0b6c99770de139
+    type: 3
+  - fileID: 21300000
+    guid: 9cbf912246185971be3c75ed2f0ae98b
+    type: 3
+  - fileID: 21300000
+    guid: 19c7d28af4a05724b46675c595609e41
+    type: 3
+  - fileID: 21300000
+    guid: afc3edc6128b5256be7b79276861c4cf
+    type: 3
+  - fileID: 21300000
+    guid: 3b2a9bca690358858873eee3c7aaf9fc
+    type: 3
+  - fileID: 21300000
+    guid: 62b9fea10cda5b12b7dcb20ae7d0f401
+    type: 3
+  - fileID: 21300000
+    guid: 438eb092ecda578dbdbbb5ea7834501c
+    type: 3
+  - fileID: 21300000
+    guid: 7a8f600f195c536e87c670740b338e6b
+    type: 3
+  - fileID: 21300000
+    guid: 31db82d6289c5efba6c0ce202450fad6
+    type: 3
+  - fileID: 21300000
+    guid: 983321ca0b9e519f9a617c61fd34adb3
+    type: 3
+  - fileID: 21300000
+    guid: fe6f33c1fc165997a2c67e6db08b19d8
+    type: 3
+  - fileID: 21300000
+    guid: 7019184bfcd15c57b554980168145128
+    type: 3
+  - fileID: 21300000
+    guid: a73bf796928653da9385679715ab745a
+    type: 3
+  - fileID: 21300000
+    guid: d7c73228dff55641b62697d9cf669460
+    type: 3
+  - fileID: 21300000
+    guid: b0fc3558b9ea50e4bb9a3efc41edc53d
+    type: 3
+  - fileID: 21300000
+    guid: eccc37fbef4d5e86979944153eb6d81e
+    type: 3
+  - fileID: 21300000
+    guid: 11b4521468835b46b7d6f05a44a24c5a
+    type: 3
+  - fileID: 21300000
+    guid: d8f2aa6e45cc5228b90b01f0bf144a6b
+    type: 3
+  - fileID: 21300000
+    guid: 20e9a54333b758d689f8b08e29365e6d
+    type: 3
+  - fileID: 21300000
+    guid: 087e941e25535b80a516ac9126067290
+    type: 3
+  - fileID: 21300000
+    guid: 8af5487c61b4578b93edce5099db0eee
+    type: 3
+  - fileID: 21300000
+    guid: 5fb902bd6d2c55bf8ba3f28955a51af1
+    type: 3
+  frameRate: 30
+  playbackDuration: 0.7333333333333333
+  loop: 0

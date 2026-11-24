@@ -1,0 +1,145 @@
+{
+  "width": 2048,
+  "height": 1152,
+  "entries": [
+    {
+      "name": "FormationHall",
+      "x": 341.78015,
+      "y": 225.47572,
+      "width": 657.23883,
+      "height": 524.25604,
+      "corners": [
+        { "x": 0.09904714, "y": 0.99261969 },
+        { "x": 1.0, "y": 1.0 },
+        { "x": 0.99405658, "y": 0.00278437 },
+        { "x": 0.0, "y": 0.0 }
+      ]
+    },
+    {
+      "name": "Decor",
+      "x": 0,
+      "y": 0,
+      "width": 2048,
+      "height": 1152
+    },
+    {
+      "name": "OpenFormation",
+      "x": 314,
+      "y": 773,
+      "width": 235,
+      "height": 166
+    },
+    {
+      "name": "AutoFormation",
+      "x": 558,
+      "y": 772,
+      "width": 220,
+      "height": 166
+    },
+    {
+      "name": "ClearFormation",
+      "x": 789,
+      "y": 773,
+      "width": 222,
+      "height": 165
+    },
+    {
+      "name": "StartBattle",
+      "x": 1264,
+      "y": 901,
+      "width": 488,
+      "height": 111.2
+    },
+    {
+      "name": "PreviousStage",
+      "x": 1076,
+      "y": 113,
+      "width": 74,
+      "height": 85
+    },
+    {
+      "name": "NextStage",
+      "x": 1598,
+      "y": 113,
+      "width": 75,
+      "height": 85
+    },
+    {
+      "name": "RewardInk",
+      "x": 0,
+      "y": 0,
+      "width": 136,
+      "height": 125
+    },
+    {
+      "name": "RewardGold",
+      "x": 0,
+      "y": 0,
+      "width": 136,
+      "height": 126
+    },
+    {
+      "name": "InkIcon",
+      "x": 0,
+      "y": 0,
+      "width": 145,
+      "height": 256
+    },
+    {
+      "name": "GoldIcon",
+      "x": 0,
+      "y": 0,
+      "width": 244,
+      "height": 256
+    },
+    {
+      "name": "FormationTitleText",
+      "x": 517.719970703125,
+      "y": 115.72041320800781,
+      "width": 288.537841796875,
+      "height": 71.65263366699219
+    },
+    {
+      "name": "FormationCountText",
+      "x": 925.2786254882812,
+      "y": 126.6790542602539,
+      "width": 71.45941162109375,
+      "height": 51.17620086669922
+    },
+    {
+      "name": "StageTitleText",
+      "x": 1191.8746337890625,
+      "y": 105.48511505126953,
+      "width": 364.693115234375,
+      "height": 88.93328094482422
+    },
+    {
+      "name": "RewardTitleText",
+      "x": 1313.0914306640625,
+      "y": 676.2302856445312,
+      "width": 156.787841796875,
+      "height": 42.86669921875
+    },
+    {
+      "name": "RewardArea",
+      "x": 1119.6146240234375,
+      "y": 725.2383422851562,
+      "width": 573.6051025390625,
+      "height": 128.95556640625
+    },
+    {
+      "name": "FormationContent",
+      "x": 415,
+      "y": 239,
+      "width": 574,
+      "height": 495
+    },
+    {
+      "name": "EnemyContent",
+      "x": 1085,
+      "y": 261,
+      "width": 570,
+      "height": 372
+    }
+  ]
+}

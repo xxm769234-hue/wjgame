@@ -1,0 +1,46 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 201f0ee8395392343b511a44f8ef8d2f, type: 3}
+  m_Name: Sustained
+  m_EditorClassIdentifier: 
+  priority: 30
+  hitStop: 0.045
+  shakePixels: 5
+  shakeDuration: 0.22
+  shakeMode: 1
+  recoilPixels: 2.6
+  recoilAttack: 0.06
+  recoilReturn: 0.14
+  recoilMode: 1
+  horizontalRecoil: 1
+  flashAmount: 0.65
+  flashColor: {r: 1, g: 0.12, b: 0.16, a: 1}
+  flashDuration: 0.06
+  afterglowDuration: 0.14
+  afterglowAmount: 0.245
+  afterglowColor: {r: 1, g: 0.35, b: 0.38, a: 1}
+  flashBodyFraction: 0.625
+  sparkPixels: 36.666668
+  sparkDuration: 0.26
+  sparkWidthPixels: 4.8
+  sparkRayWidthPixels: 3
+  contactColor: {r: 0.45, g: 0.86, b: 1, a: 1}
+  windupSounds:
+  - {fileID: 8300000, guid: 56046d28d3ae58399b9e09577671591d, type: 3}
+  contactSounds:
+  - {fileID: 8300000, guid: 2417c835a8d35e3f90e9ed12f6cd23bb, type: 3}
+  - {fileID: 8300000, guid: f242df24558658d8b613d571f07273c6, type: 3}
+  - {fileID: 8300000, guid: 6308e2f413f051cd90a0337d8fd19b7d, type: 3}
+  tailSounds:
+  - {fileID: 8300000, guid: 8dc39cca99f8574b97b7134b622fc6bc, type: 3}
+  sustainSound: {fileID: 8300000, guid: 1c82ff3f579e54b3bb8f841a4398eba9, type: 3}
+  windupLead: 0.5

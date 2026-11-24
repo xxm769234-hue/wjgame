@@ -1,0 +1,99 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f2f55ee33e8e3374b901744e6748bcf7, type: 3}
+  m_Name: F07
+  m_EditorClassIdentifier: 
+  sequenceId: F07
+  sourceFolder: "D:\\unity\u76F8\u5173\\\u52A8\u753B\u5E27\u5E8F\u5217\\\u7279\u6548\\\u70BC\u91D1\u672F\u58EB\\\u70BC\u91D1\u672F\u58EB\u7279\u65482"
+  action: 7
+  frameRate: 24
+  playbackDuration: 3.0416667
+  loop: 0
+  frames:
+  - {fileID: 21300000, guid: 7040452fc77459d6939ec44082aa18dc, type: 3}
+  - {fileID: 21300000, guid: f0bbbf2cf1065bb0af58e8ab40e3882b, type: 3}
+  - {fileID: 21300000, guid: 71a3cbfc6059502f840fca06feb8f50f, type: 3}
+  - {fileID: 21300000, guid: bb16fb2509c6576fb430080d31507ff7, type: 3}
+  - {fileID: 21300000, guid: 6799f234cb4c5f3fb8993b901acb2e05, type: 3}
+  - {fileID: 21300000, guid: fc7922f60ac1525ba076d693c04a9639, type: 3}
+  - {fileID: 21300000, guid: 2529800c62d05993aa0f433f7987a25b, type: 3}
+  - {fileID: 21300000, guid: 04cf0f5412ad501eaa5b0526054395f0, type: 3}
+  - {fileID: 21300000, guid: 5a363272e3f8564dbaed3a73842b48c7, type: 3}
+  - {fileID: 21300000, guid: 2df3ea1a6fbb550cbc146caa22164162, type: 3}
+  - {fileID: 21300000, guid: 8535bfdc06975d62a36419bedf01cc52, type: 3}
+  - {fileID: 21300000, guid: e0cb56e691315b738c46569e8602b466, type: 3}
+  - {fileID: 21300000, guid: e1b09e60e4eb54bbbdc1b563bbc6e8f5, type: 3}
+  - {fileID: 21300000, guid: e8c3e2ec07ba56a284d2ca5c4b1e46c0, type: 3}
+  - {fileID: 21300000, guid: e53c38dc606153eba75dd477fc28d288, type: 3}
+  - {fileID: 21300000, guid: 7f77cb072ce15138935a391ba4ce47f7, type: 3}
+  - {fileID: 21300000, guid: 1d245d8811e250b684e12c24d804e3ed, type: 3}
+  - {fileID: 21300000, guid: ad755d94d53a5643b5045da2b4e12b38, type: 3}
+  - {fileID: 21300000, guid: 602d52ae0a2452f2b5675c75f6d1ce56, type: 3}
+  - {fileID: 21300000, guid: bf604bb2cff255acafa77f8fc40bf70a, type: 3}
+  - {fileID: 21300000, guid: 7bf212e5c3b551db8423a66f204a540f, type: 3}
+  - {fileID: 21300000, guid: bc6121cf05b457ada201b15ee705ce1c, type: 3}
+  - {fileID: 21300000, guid: 8d8316cf40ad5a37a2ab3095055ab50b, type: 3}
+  - {fileID: 21300000, guid: 2fce3911b6ef50b4bb40f51be561648f, type: 3}
+  - {fileID: 21300000, guid: de75340a898a53c797d00f54e4ba87d9, type: 3}
+  - {fileID: 21300000, guid: 5df119a1052753978ab0a1fd9fab8d79, type: 3}
+  - {fileID: 21300000, guid: 7da8bb2a618552f58e2f2d139b457bd8, type: 3}
+  - {fileID: 21300000, guid: a77ca8aa79705c99b9aae8b97819f5ec, type: 3}
+  - {fileID: 21300000, guid: b5bd40c3be405784b2dfab7c1b0f8d75, type: 3}
+  - {fileID: 21300000, guid: b7ae31ab201a53dda650ea0d25b0d1ea, type: 3}
+  - {fileID: 21300000, guid: 76440876f4095afe923af97abd5a1e94, type: 3}
+  - {fileID: 21300000, guid: f9fbf8b53bed5142b4ef748f88649c2a, type: 3}
+  - {fileID: 21300000, guid: e7f2263a051f51fb9a9a265cc4c2bb63, type: 3}
+  - {fileID: 21300000, guid: 355579b23d60558094e486f03414f276, type: 3}
+  - {fileID: 21300000, guid: d3b3e884c3a7562ab1562c8b9185a0a0, type: 3}
+  - {fileID: 21300000, guid: bcd64c8143575d8d82e746451d87a5f0, type: 3}
+  - {fileID: 21300000, guid: baae05116fc35f81b143aef5a9488fca, type: 3}
+  - {fileID: 21300000, guid: 781886ff7d2556aa81a7750105117034, type: 3}
+  - {fileID: 21300000, guid: 1b25e61ecb345c5984e68ec191a5c3d8, type: 3}
+  - {fileID: 21300000, guid: ad69e3de625f5f87ab15229ddf5aed88, type: 3}
+  - {fileID: 21300000, guid: e0037174eba455c3a0270cc3f670c299, type: 3}
+  - {fileID: 21300000, guid: 2f8ec9c584535da18e40bdd1224c873d, type: 3}
+  - {fileID: 21300000, guid: 329c9f7425ad54c49fb8a0eb0e8ff075, type: 3}
+  - {fileID: 21300000, guid: 52afb620ae8f534fbe930f49e24e42bc, type: 3}
+  - {fileID: 21300000, guid: 7e634e898c50555dba868d9c1faf93f6, type: 3}
+  - {fileID: 21300000, guid: c2f2e6c515825226a06f4eaedced017a, type: 3}
+  - {fileID: 21300000, guid: 7b571f68de4b5ab290ef3709ebdf9061, type: 3}
+  - {fileID: 21300000, guid: d26fb4e880345d558b06aeb8207a6b71, type: 3}
+  - {fileID: 21300000, guid: 68c14bd07ed451b29220265115abd6de, type: 3}
+  - {fileID: 21300000, guid: 2c48214053725781b94f08ecda2c25a1, type: 3}
+  - {fileID: 21300000, guid: c4dd1e6b0fef5c50b26e5aca9ea33b1c, type: 3}
+  - {fileID: 21300000, guid: 0085e41c80ca54a4ad2453ee9ac95fe4, type: 3}
+  - {fileID: 21300000, guid: 11691b12af56530c89b38d4e883bfac1, type: 3}
+  - {fileID: 21300000, guid: a88be0e5957c532fa37ec763b64ac881, type: 3}
+  - {fileID: 21300000, guid: 677407e812da5bd8a0a270318d9898d0, type: 3}
+  - {fileID: 21300000, guid: f39f752ea82a5c2ab757de8fe73e1443, type: 3}
+  - {fileID: 21300000, guid: b1dd91e4f5c654dc80df2b1483ca22c1, type: 3}
+  - {fileID: 21300000, guid: 07fda9b5fb7c51fb96865ba9d18c7a0e, type: 3}
+  - {fileID: 21300000, guid: f3404c2783dc5ce0a476ec1500bfe911, type: 3}
+  - {fileID: 21300000, guid: a24293dbca385b98908b4c60214ccad1, type: 3}
+  - {fileID: 21300000, guid: ab35cf0a518057e88fd04ab5e0714406, type: 3}
+  - {fileID: 21300000, guid: fbbe951e433459168e1582e0508b494c, type: 3}
+  - {fileID: 21300000, guid: 61bac5bbcd8051818fd0f46666e56dd5, type: 3}
+  - {fileID: 21300000, guid: ba17a40b9b2850c9bccbb9987a3a74bc, type: 3}
+  - {fileID: 21300000, guid: 73ecad66d9405a9b9b1154fe3e59cbfc, type: 3}
+  - {fileID: 21300000, guid: 99467641889d5eababa35d3207720ce8, type: 3}
+  - {fileID: 21300000, guid: 0f2badbd41b758e68690bfdbbb53cf34, type: 3}
+  - {fileID: 21300000, guid: bda0ca06243a54ea9484b9b3bbc2ebaa, type: 3}
+  - {fileID: 21300000, guid: 704d544fde54555ab8cef43a0ff954dd, type: 3}
+  - {fileID: 21300000, guid: d96bdce441315873928b768c86a07ec7, type: 3}
+  - {fileID: 21300000, guid: 838770a07b1a5bf49e4ab0d364547f53, type: 3}
+  - {fileID: 21300000, guid: 470754210cd4564ab0519e2f8f367b70, type: 3}
+  - {fileID: 21300000, guid: c6ed932178b4556d89b79d8b33dc90b6, type: 3}
+  audioCues:
+  - clip: {fileID: 8300000, guid: b9478874db5e58af880770ffa8a2dbd9, type: 3}
+    startFrame: 0
+    endFrame: 73
+    volume: 0.5
