@@ -76,12 +76,12 @@ public sealed class BuildingManager : MonoBehaviour
         }
         if (config == null)
         {
-            reason = "建筑配置缺失。";
+            reason = "暂时无法查看此建筑，请重新打开列表。";
             return false;
         }
         if (!config.canBuild)
         {
-            reason = string.IsNullOrEmpty(config.disabledReason) ? "该建筑当前不可用。" : config.disabledReason;
+            reason = FrontendTextLocalization.NormalizePlayerMessage(config.disabledReason, "该建筑当前不可用。");
             return false;
         }
         if (!slot.AllowsBuildingType(config))
@@ -100,7 +100,7 @@ public sealed class BuildingManager : MonoBehaviour
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated)
         {
-            reason = "服务器会话未认证。";
+            reason = "请先登录账号。";
             return false;
         }
 
@@ -138,6 +138,7 @@ public sealed class BuildingManager : MonoBehaviour
                 remoteActionPending = false;
                 Debug.Log($"BuildingManager backend build callback for {config.buildingName}: success={success}, message={message}", slot);
                 if (!success) Debug.LogWarning($"Backend building build failed: {message}", slot);
+                else PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
                 if (LandInfoPanel.Instance != null)
                 {
             if (!success) LandInfoPanel.Instance.SetBuildingMessage($"建筑操作失败：{message}");
@@ -203,7 +204,7 @@ public sealed class BuildingManager : MonoBehaviour
         }
         if (slot.BuildingRemainingSeconds > 0f)
         {
-            reason = $"还需 {Mathf.CeilToInt(slot.BuildingRemainingSeconds)}s。";
+            reason = $"还需 {Mathf.CeilToInt(slot.BuildingRemainingSeconds)} 秒。";
             return false;
         }
         return RunRemoteAction(slot, service => service.CompleteBuildingAction(slot, RemoteRefresh(slot, "complete")), out reason);
@@ -328,7 +329,7 @@ public sealed class BuildingManager : MonoBehaviour
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated)
         {
-            reason = "服务器会话未认证。";
+            reason = "请先登录账号。";
             return false;
         }
 
@@ -343,6 +344,7 @@ public sealed class BuildingManager : MonoBehaviour
         {
             remoteActionPending = false;
             if (!success) Debug.LogWarning($"Backend building {actionName} failed: {message}", slot);
+            else if (actionName == "complete") PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
             if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.RefreshIfShowing(slot);
         };
     }

@@ -97,7 +97,7 @@ public sealed class IdleAdventureFormationPanel : MonoBehaviour
 
     public void SetStatus(string text)
     {
-        if (statusText != null) statusText.text = FrontendTextLocalization.Normalize(text);
+        if (statusText != null) statusText.text = string.IsNullOrWhiteSpace(text) ? string.Empty : FrontendTextLocalization.NormalizePlayerMessage(text);
     }
 
     public void SetSlot(int slotIndex, string label, bool occupied, bool frontColumn)

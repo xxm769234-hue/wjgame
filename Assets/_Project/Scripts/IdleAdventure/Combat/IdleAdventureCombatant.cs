@@ -11,6 +11,7 @@ public sealed class IdleAdventureCombatant : MonoBehaviour
 
     public string CombatantName { get; private set; }
     public string RuntimeId { get; private set; }
+    public string AppearanceKey { get; private set; }
     public int MaxHealth { get; private set; }
     public int CurrentHealth { get; private set; }
     public int Attack { get; private set; }
@@ -31,6 +32,7 @@ public sealed class IdleAdventureCombatant : MonoBehaviour
     {
         CombatantName = combatantName;
         RuntimeId = string.Empty;
+        AppearanceKey = null;
         MaxHealth = Mathf.Max(1, maxHealth);
         CurrentHealth = MaxHealth;
         Attack = Mathf.Max(0, attack);
@@ -58,6 +60,11 @@ public sealed class IdleAdventureCombatant : MonoBehaviour
         SlotIndex = slotIndex;
         BaseColor = isFriendly ? new Color(0.18f, 0.62f, 0.93f, 1f) : new Color(0.9f, 0.32f, 0.28f, 1f);
         ReplaceBuffs(backendBuffs);
+    }
+
+    public void SetAppearanceKey(string key)
+    {
+        AppearanceKey = key;
     }
 
     public void SetCurrentHealth(int currentHealth)

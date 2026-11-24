@@ -73,7 +73,7 @@ public sealed class MapCameraController : MonoBehaviour
 
     private void Update()
     {
-        if (PlayerOnboardingInputLock.IsLocked)
+        if (PlayerOnboardingInputLock.IsGameplayInputBlocked)
         {
             EndDrag();
             return;

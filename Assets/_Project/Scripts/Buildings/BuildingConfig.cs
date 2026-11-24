@@ -5,11 +5,14 @@ public sealed class BuildingConfig : ScriptableObject
 {
     [Header("Identity")]
     public int buildingId;
+    public string buildingCode;
     public string buildingName = "建筑";
     [TextArea] public string description;
 
     [Header("Visual")]
     public Sprite buildingSprite;
+    [Tooltip("Full scene artwork displayed inside a simulation comic cell.")]
+    public Sprite comicSceneSprite;
     public Color fallbackColor = new Color(0.92f, 0.62f, 0.25f, 1f);
     [Min(0.01f)] public float visualScale = 1f;
     public Vector2 visualOffset;

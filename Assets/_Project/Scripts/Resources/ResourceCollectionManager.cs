@@ -1,9 +1,12 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 public sealed class ResourceCollectionManager : MonoBehaviour
 {
+    private const string SimulationSceneName = "Simulation management mode";
+
     public static ResourceCollectionManager Instance { get; private set; }
 
     [Header("Collect All Button")]
@@ -19,6 +22,7 @@ public sealed class ResourceCollectionManager : MonoBehaviour
 
     public static ResourceCollectionManager EnsureInstance()
     {
+        if (SceneManager.GetActiveScene().name != SimulationSceneName) return null;
         if (Instance != null) return Instance;
 
         ResourceCollectionManager existing = FindFirstObjectByType<ResourceCollectionManager>();
@@ -42,9 +46,24 @@ public sealed class ResourceCollectionManager : MonoBehaviour
         Instance = this;
     }
 
+    private void OnEnable()
+    {
+        SceneManager.activeSceneChanged += OnActiveSceneChanged;
+    }
+
+    private void OnDisable()
+    {
+        SceneManager.activeSceneChanged -= OnActiveSceneChanged;
+        if (collectAllButton != null) collectAllButton.gameObject.SetActive(false);
+    }
+
+    private void OnActiveSceneChanged(Scene previousScene, Scene currentScene)
+    {
+        RefreshButtonState();
+    }
+
     private void Start()
     {
-        if (createRuntimeButton) EnsureCollectAllButton();
         RefreshButtonState();
     }
 
@@ -73,6 +92,7 @@ public sealed class ResourceCollectionManager : MonoBehaviour
 
     public void OnClickCollectAll()
     {
+        if (SceneManager.GetActiveScene().name != SimulationSceneName) return;
         if (PlayerOnboardingInputLock.IsLocked)
         {
             Debug.LogWarning("Onboarding currently locks resource collection input.", this);
@@ -93,7 +113,11 @@ public sealed class ResourceCollectionManager : MonoBehaviour
             service.CollectAllProductions((success, message, collectedCount) =>
             {
                 if (!success) Debug.LogWarning($"Backend collect-all failed: {message}", this);
-                else Debug.Log($"Backend collect-all gathered {collectedCount} item type(s).", this);
+                else
+                {
+                    Debug.Log($"Backend collect-all gathered {collectedCount} item type(s).", this);
+                    if (collectedCount > 0) PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
+                }
                 RefreshButtonState();
             });
             return;
@@ -102,9 +126,26 @@ public sealed class ResourceCollectionManager : MonoBehaviour
 
     private void EnsureCollectAllButton()
     {
+        Scene activeScene = SceneManager.GetActiveScene();
+        if (activeScene.name != SimulationSceneName) return;
         if (collectAllButton != null) return;
 
-        GameObject existing = GameObject.Find(buttonObjectName);
+        Canvas canvas = null;
+        foreach (Canvas candidate in FindObjectsByType<Canvas>(FindObjectsSortMode.None))
+        {
+            if (candidate.gameObject.scene == activeScene && candidate.isRootCanvas)
+            {
+                canvas = candidate;
+                break;
+            }
+        }
+        if (canvas == null)
+        {
+            Debug.LogWarning("ResourceCollectionManager could not create Collect All button because no simulation Canvas exists.", this);
+            return;
+        }
+
+        Transform existing = canvas.transform.Find(buttonObjectName);
         if (existing != null)
         {
             collectAllButton = existing.GetComponent<Button>();
@@ -117,13 +158,6 @@ public sealed class ResourceCollectionManager : MonoBehaviour
                 SmallButtonIconUtility.ApplyIconButtonWithLabel(collectAllButton, "一键收取", "一键收取");
                 return;
             }
-        }
-
-        Canvas canvas = FindFirstObjectByType<Canvas>();
-        if (canvas == null)
-        {
-            Debug.LogWarning("ResourceCollectionManager could not create Collect All button because no Canvas exists.", this);
-            return;
         }
 
         GameObject buttonObject = new GameObject(buttonObjectName, typeof(RectTransform), typeof(Image), typeof(Button));
@@ -171,6 +205,12 @@ public sealed class ResourceCollectionManager : MonoBehaviour
 
     private void RefreshButtonState()
     {
+        if (SceneManager.GetActiveScene().name != SimulationSceneName)
+        {
+            if (collectAllButton != null) collectAllButton.gameObject.SetActive(false);
+            return;
+        }
+
         if (createRuntimeButton) EnsureCollectAllButton();
 
         int readyCount = CountReadyResources();
@@ -180,6 +220,7 @@ public sealed class ResourceCollectionManager : MonoBehaviour
         }
         if (collectAllButton != null)
         {
+            collectAllButton.gameObject.SetActive(true);
             collectAllButton.interactable = readyCount > 0;
         }
     }

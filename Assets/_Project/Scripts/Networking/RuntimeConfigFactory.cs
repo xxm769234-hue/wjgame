@@ -56,6 +56,7 @@ public static class RuntimeConfigFactory
         if (config == null) return null;
 
         config.buildingId = response.buildingId;
+        config.buildingCode = response.buildingCode;
         config.buildingName = string.IsNullOrEmpty(response.buildingName) ? $"建筑 {response.buildingId}" : response.buildingName;
         if (existing == null || string.IsNullOrEmpty(config.buildingType) || string.Equals(config.buildingType, "Default", StringComparison.OrdinalIgnoreCase))
         {
@@ -75,6 +76,7 @@ public static class RuntimeConfigFactory
         if (config == null) return null;
 
         config.buildingId = id;
+        config.buildingCode = response.code;
         config.buildingName = string.IsNullOrEmpty(response.name) ? $"建筑 {id}" : response.name;
         config.description = response.description;
         config.goldCost = response.goldCost;

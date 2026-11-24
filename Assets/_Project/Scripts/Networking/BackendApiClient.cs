@@ -84,6 +84,9 @@ public static class BackendApiClient
                     yield break;
                 }
 
+                if ((object)response.data is IdleAdventureSessionResponse battleSession)
+                    BackendBattleActionJson.RestoreActionPresence(responseText, battleSession);
+
                 bool success = response.code == 200;
                 onComplete?.Invoke(new BackendResult<T>(success, status, response.code, response.message, response.data));
             }

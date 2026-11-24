@@ -74,17 +74,17 @@ public sealed class NpcManager : MonoBehaviour
         }
         if (config == null)
         {
-            reason = "居民配置缺失。";
+            reason = "暂时无法查看此居民，请重新打开列表。";
             return false;
         }
         if (!config.canAssign)
         {
-            reason = string.IsNullOrEmpty(config.disabledReason) ? "居民当前不可用。" : config.disabledReason;
+            reason = FrontendTextLocalization.NormalizePlayerMessage(config.disabledReason, "居民当前不可用。");
             return false;
         }
         if (!CanUseBuildingType(slot.CurrentBuilding, config.requiredBuildingType))
         {
-            reason = $"需要建筑类型：{config.requiredBuildingType}。";
+            reason = $"需要建筑：{FrontendTextLocalization.Normalize(config.requiredBuildingType)}。";
             return false;
         }
 
@@ -117,14 +117,14 @@ public sealed class NpcManager : MonoBehaviour
 
         if (!playerNpcIds.TryGetValue(config, out int playerNpcId) || playerNpcId <= 0)
         {
-            reason = "服务器居民编号缺失。";
+            reason = "暂时无法分配此居民，请刷新列表。";
             return false;
         }
 
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated)
         {
-            reason = "服务器会话未认证。";
+            reason = "请先登录账号。";
             return false;
         }
 
@@ -171,7 +171,7 @@ public sealed class NpcManager : MonoBehaviour
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated)
         {
-            reason = "服务器会话未认证。";
+            reason = "请先登录账号。";
             return false;
         }
 
@@ -237,7 +237,7 @@ public sealed class NpcManager : MonoBehaviour
         BackendGameService service = BackendGameService.Instance;
         if (service == null || !service.IsAuthenticated)
         {
-            reason = "服务器会话未认证。";
+            reason = "请先登录账号。";
             return false;
         }
         return true;

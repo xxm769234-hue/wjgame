@@ -23,6 +23,7 @@ public sealed class IdleAdventurePausePanel : MonoBehaviour
         exitButton = exitButtonControl;
         resumeButtonText = resumeButton != null ? resumeButton.GetComponentInChildren<TextMeshProUGUI>(true) : null;
         exitButtonText = exitButton != null ? exitButton.GetComponentInChildren<TextMeshProUGUI>(true) : null;
+        ConfigureTextLayout();
     }
 
     public void Bind(Action onResume, Action onExit)
@@ -43,6 +44,7 @@ public sealed class IdleAdventurePausePanel : MonoBehaviour
     public void Show()
     {
         gameObject.SetActive(true);
+        ConfigureTextLayout();
     }
 
     public void Hide()
@@ -59,7 +61,11 @@ public sealed class IdleAdventurePausePanel : MonoBehaviour
     public void SetContent(string title, string body)
     {
         if (titleText != null) titleText.text = FrontendTextLocalization.Normalize(title);
-        if (bodyText != null) bodyText.text = FrontendTextLocalization.Normalize(body);
+        if (bodyText != null)
+        {
+            bodyText.text = FrontendTextLocalization.Normalize(body);
+            ConfigureTextLayout();
+        }
     }
 
     public void SetButtonLabels(string resumeLabel, string exitLabel)
@@ -76,5 +82,10 @@ public sealed class IdleAdventurePausePanel : MonoBehaviour
 
         if (resumeButtonText != null) resumeButtonText.text = FrontendTextLocalization.Normalize(resumeLabel);
         if (exitButtonText != null) exitButtonText.text = FrontendTextLocalization.Normalize(exitLabel);
+    }
+
+    private void ConfigureTextLayout()
+    {
+        IdleAdventureDialogLayout.Apply(titleText, bodyText, resumeButton, exitButton);
     }
 }

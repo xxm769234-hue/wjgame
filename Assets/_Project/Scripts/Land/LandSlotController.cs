@@ -6,7 +6,7 @@ using UnityEngine.Rendering;
 
 /// <summary>Owns one map shape, its mask range, and the land currently built there.</summary>
 [RequireComponent(typeof(PolygonCollider2D))]
-public sealed class LandSlotController : MonoBehaviour
+public sealed partial class LandSlotController : MonoBehaviour
 {
     private const int UnassignedSortingOrder = int.MinValue;
     private static int nextRuntimeSortingOffset;
@@ -198,12 +198,13 @@ public sealed class LandSlotController : MonoBehaviour
                     Debug.LogWarning($"Backend production collect failed: {message}", this);
                     if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetProductionMessage($"生产收取失败：{message}");
                 }
+                else PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
             });
             return;
         }
 
         Debug.LogWarning("Backend production collect failed: Backend session is not authenticated.", this);
-        if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetProductionMessage("生产收取失败：服务器会话未认证。");
+        if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.SetProductionMessage("请先登录账号再收取产出。");
     }
 
     public bool CanReceiveMovedBuilding(BuildingConfig config, out string reason)
@@ -248,6 +249,7 @@ public sealed class LandSlotController : MonoBehaviour
         if (sprite == null)
         {
             if (simulationShapeRenderer != null) simulationShapeRenderer.enabled = false;
+            ConfigureRenderingLayers();
             return;
         }
 
@@ -282,6 +284,8 @@ public sealed class LandSlotController : MonoBehaviour
             spriteMask.transform.localPosition = Vector3.zero;
             spriteMask.transform.localScale = Vector3.one;
         }
+        ConfigureRenderingLayers();
+        FitLandRendererToCollider();
     }
 
     private void ApplySpritePhysicsShape(Sprite sprite)
@@ -515,6 +519,7 @@ public sealed class LandSlotController : MonoBehaviour
 
         currentNpc = null;
         if (npcRenderer != null) npcRenderer.enabled = false;
+        HideResidentPortraitFrame();
     }
 
     public void ClearLandStateFromBackend()
@@ -534,7 +539,7 @@ public sealed class LandSlotController : MonoBehaviour
 
     private void OnMouseDown()
     {
-        if (PlayerOnboardingInputLock.IsLocked) return;
+        if (PlayerOnboardingInputLock.IsGameplayInputBlocked) return;
         if (TryOpenPurificationPanel()) return;
         if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
         if (currentLand == null)
@@ -551,7 +556,7 @@ public sealed class LandSlotController : MonoBehaviour
 
     private void HandlePurificationPointerDown()
     {
-        if (PlayerOnboardingInputLock.IsLocked) return;
+        if (PlayerOnboardingInputLock.IsGameplayInputBlocked) return;
         if (!Input.GetMouseButtonDown(0) || !IsPurificationAvailable || IsBuilt) return;
         if (LandSlotPurchasePanel.Instance != null
             && LandSlotPurchasePanel.Instance.gameObject.activeInHierarchy)
@@ -622,6 +627,10 @@ public sealed class LandSlotController : MonoBehaviour
             purchaseIndicator.font = RuntimeFontAssetProvider.Resolve();
             purchaseIndicator.alignment = TextAlignmentOptions.Center;
             purchaseIndicator.enableWordWrapping = false;
+            purchaseIndicator.enableAutoSizing = true;
+            purchaseIndicator.fontSizeMin = 0.62f;
+            purchaseIndicator.fontSizeMax = 1.25f;
+            purchaseIndicator.overflowMode = TextOverflowModes.Ellipsis;
             purchaseIndicator.fontSize = 1.25f;
             purchaseIndicator.fontStyle = FontStyles.Bold;
             purchaseIndicator.color = new Color(1f, 0.78f, 0.2f, 1f);
@@ -634,7 +643,9 @@ public sealed class LandSlotController : MonoBehaviour
         purchaseIndicator.transform.localPosition = new Vector3(localCenter.x, localCenter.y, -0.15f);
         purchaseIndicator.sortingLayerID = SortingLayer.NameToID(buildingSortingLayer);
         purchaseIndicator.sortingOrder = GetRuntimeSortingOrder() + npcSortingOrderOffset + 1;
-        purchaseIndicator.fontSize = showPurificationAction ? 1f : 1.25f;
+        float indicatorFontSize = showPurificationAction ? 1f : 1.25f;
+        purchaseIndicator.fontSize = indicatorFontSize;
+        purchaseIndicator.fontSizeMax = indicatorFontSize;
         purchaseIndicator.color = showPurificationAction
             ? new Color(0.42f, 1f, 0.86f, 1f)
             : new Color(1f, 0.78f, 0.2f, 1f);
@@ -657,7 +668,11 @@ public sealed class LandSlotController : MonoBehaviour
             if (candidate == null || candidate.GetComponent<SpriteMask>() != null) continue;
             if (candidate == purificationOverlayRenderer
                 || candidate.name == "Unpurified Overlay"
-                || candidate.name == "Simulation Shape Renderer") continue;
+                || candidate.name == "Simulation Shape Renderer"
+                || candidate.name == "Building Renderer"
+                || candidate.name == "NPC Renderer"
+                || candidate.name == "Resident Portrait Frame"
+                || candidate.GetComponentInParent<ResourceBubbleController>() != null) continue;
             return candidate;
         }
         return null;
@@ -854,6 +869,12 @@ public sealed class LandSlotController : MonoBehaviour
         }
         if (buildingRenderer == null) return;
 
+        if (UsesSimulationComicShape)
+        {
+            ConfigureComicBuildingScene();
+            return;
+        }
+
         Vector3 localCenter = polygonCollider != null ? polygonCollider.transform.InverseTransformPoint(CenterWorld) : Vector3.zero;
         buildingRenderer.transform.localPosition = new Vector3(
             localCenter.x + currentBuilding.visualOffset.x,
@@ -884,6 +905,13 @@ public sealed class LandSlotController : MonoBehaviour
             npcRenderer = npcObject.AddComponent<SpriteRenderer>();
         }
         if (npcRenderer == null) return;
+
+        if (UsesSimulationComicShape)
+        {
+            ConfigureComicResidentPortrait();
+            return;
+        }
+        HideResidentPortraitFrame();
 
         Vector3 localCenter = polygonCollider != null ? polygonCollider.transform.InverseTransformPoint(CenterWorld) : Vector3.zero;
         npcRenderer.transform.localPosition = new Vector3(
@@ -1000,6 +1028,7 @@ public sealed class LandSlotController : MonoBehaviour
             {
                 Debug.LogWarning($"Backend building sync failed: {ResultMessage(result)}. {BuildDebugSummary()}", this);
             }
+            else if (IsBuildingCompleted) PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
             if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.RefreshIfShowing(this);
         });
     }
@@ -1041,6 +1070,7 @@ public sealed class LandSlotController : MonoBehaviour
         HideResourceBubble();
         if (buildingRenderer != null) buildingRenderer.enabled = false;
         if (npcRenderer != null) npcRenderer.enabled = false;
+        HideResidentPortraitFrame();
     }
 
     private string GetDisplayedResourceName()

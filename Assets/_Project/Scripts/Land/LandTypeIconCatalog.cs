@@ -36,19 +36,35 @@ public static class LandTypeIconCatalog
         return icon;
     }
 
-    public static float GetUiVisualScale(string landTypeKey)
+    public static Vector2 GetUiVisualScale(string landTypeKey)
     {
         switch (Normalize(landTypeKey))
         {
-            case "MOUNTAIN": return 1.23f;
-            case "FOREST": return 1.31f;
-            case "VOLCANO": return 2.0f;
-            case "OCEAN": return 1.68f;
-            case "GRASSLAND": return 1.88f;
-            case "SNOWFIELD": return 1.66f;
-            case "WATER": return 1.68f;
-            case "SNOW": return 1.66f;
-            default: return 1f;
+            case "MOUNTAIN": return new Vector2(1.24f, 1.26f);
+            case "FOREST": return new Vector2(1.28f, 1.28f);
+            case "VOLCANO": return new Vector2(1.34f, 1.35f);
+            case "OCEAN": return new Vector2(1.31f, 1.37f);
+            case "GRASSLAND": return new Vector2(1.28f, 1.29f);
+            case "SNOWFIELD": return new Vector2(1.29f, 1.29f);
+            case "WATER": return new Vector2(1.31f, 1.37f);
+            case "SNOW": return new Vector2(1.29f, 1.29f);
+            default: return Vector2.one;
+        }
+    }
+
+    public static Vector2 GetUiVisualOffset(string landTypeKey)
+    {
+        switch (Normalize(landTypeKey))
+        {
+            case "MOUNTAIN": return new Vector2(0f, 1.4f);
+            case "FOREST": return new Vector2(0f, 0.5f);
+            case "VOLCANO": return new Vector2(0f, 2.2f);
+            case "OCEAN": return new Vector2(0f, -2.1f);
+            case "GRASSLAND": return new Vector2(0f, 0.6f);
+            case "SNOWFIELD": return new Vector2(0f, 2.5f);
+            case "WATER": return new Vector2(0f, -2.1f);
+            case "SNOW": return new Vector2(0f, 2.5f);
+            default: return Vector2.zero;
         }
     }
 

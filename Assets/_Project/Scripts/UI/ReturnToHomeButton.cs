@@ -27,6 +27,7 @@ public sealed class ReturnToHomeButton : MonoBehaviour
 
     public void ReturnToHome()
     {
+        if (PlayerOnboardingInputLock.IsGameplayInputBlocked) return;
         if (BuildManager.Instance != null) BuildManager.Instance.ExitBuild();
 
         Time.timeScale = 1f;
@@ -44,10 +45,12 @@ public sealed class ReturnToHomeButton : MonoBehaviour
             background.raycastTarget = false;
         }
 
-        TMP_Text[] labels = GetComponentsInChildren<TMP_Text>(true);
-        for (int i = 0; i < labels.Length; i++) labels[i].gameObject.SetActive(false);
-
-        SmallButtonIconUtility.ApplyIconOnlyToButton(button, "\u8FD4\u56DE");
+        SmallButtonIconUtility.ApplyIconButtonWithLabel(button, "\u8FD4\u56DE", "返回");
+        RectTransform rect = button.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0f, 1f);
+        rect.anchorMax = rect.anchorMin;
+        rect.pivot = new Vector2(0f, 1f);
+        rect.anchoredPosition = new Vector2(28f, -28f);
     }
 }
 
@@ -55,11 +58,35 @@ public static class SmallButtonIconUtility
 {
     private const string ResourcePath = "UI/SmallIcons/";
 
+    public static void ApplyOutlinedLabel(TMP_Text label)
+    {
+        if (label == null) return;
+        label.color = Color.white;
+        Outline outline = label.GetComponent<Outline>();
+        if (outline == null) outline = label.gameObject.AddComponent<Outline>();
+        outline.effectColor = Color.black;
+        outline.effectDistance = new Vector2(1.5f, -1.5f);
+        outline.useGraphicAlpha = false;
+    }
+
+    public static void ApplyNavigationLabel(TMP_Text label)
+    {
+        if (label == null) return;
+        label.color = new Color(0.22f, 0.12f, 0.07f, 1f);
+        label.outlineColor = new Color32(255, 239, 207, 255);
+        label.outlineWidth = 0.04f;
+        label.extraPadding = true;
+        Outline outline = label.GetComponent<Outline>();
+        if (outline != null) outline.enabled = false;
+        label.UpdateMeshPadding();
+    }
+
     public static bool ApplyToImage(Image image, string resourceName)
     {
         if (image == null) return false;
 
-        Sprite sprite = Resources.Load<Sprite>(ResourcePath + resourceName);
+        Sprite sprite = LoadApprovedIcon(resourceName);
+        if (sprite == null) sprite = Resources.Load<Sprite>(ResourcePath + resourceName);
         if (sprite == null)
         {
             Debug.LogWarning($"Small button icon was not found: {ResourcePath}{resourceName}", image);
@@ -70,6 +97,21 @@ public static class SmallButtonIconUtility
         image.type = Image.Type.Simple;
         image.preserveAspect = true;
         return true;
+    }
+
+    private static Sprite LoadApprovedIcon(string resourceName)
+    {
+        string approvedName;
+        switch (resourceName)
+        {
+            case "返回": approvedName = "10_return"; break;
+            case "建造副": approvedName = "06_build"; break;
+            case "一键收取": approvedName = "18_resource_reward"; break;
+            case "编队": approvedName = "13_formation"; break;
+            case "对战副": approvedName = "19_battle"; break;
+            default: return null;
+        }
+        return Resources.Load<Sprite>("UI/ApprovedUi/Icons/" + approvedName);
     }
 
     public static Image ApplyToButton(
@@ -156,7 +198,6 @@ public static class SmallButtonIconUtility
         icon.gameObject.SetActive(true);
         icon.color = Color.white;
         icon.raycastTarget = true;
-        icon.alphaHitTestMinimumThreshold = 0.1f;
 
         RectTransform iconRect = icon.rectTransform;
         iconRect.anchorMin = Vector2.zero;
@@ -175,12 +216,12 @@ public static class SmallButtonIconUtility
         string resourceName,
         string labelText,
         float iconSize = 72f,
-        float labelHeight = 24f,
+        float labelHeight = 32f,
         float labelGap = 4f)
     {
         if (button == null) return null;
 
-        button.transition = Selectable.Transition.None;
+        button.transition = Selectable.Transition.ColorTint;
         Image background = button.GetComponent<Image>();
         if (background != null)
         {
@@ -208,9 +249,11 @@ public static class SmallButtonIconUtility
 
         if (!ApplyToImage(icon, resourceName)) return null;
 
+        float buttonWidth = Mathf.Max(96f, iconSize, labelText.Length * 20f + 12f);
         RectTransform buttonRect = button.GetComponent<RectTransform>();
-        if (buttonRect != null) buttonRect.sizeDelta = new Vector2(iconSize, iconSize);
+        if (buttonRect != null) buttonRect.sizeDelta = new Vector2(buttonWidth, iconSize + labelGap + labelHeight);
 
+        icon.gameObject.SetActive(true);
         icon.color = Color.white;
         icon.raycastTarget = false;
         RectTransform iconRect = icon.rectTransform;
@@ -218,28 +261,47 @@ public static class SmallButtonIconUtility
         iconRect.anchorMax = new Vector2(0.5f, 0.5f);
         iconRect.pivot = new Vector2(0.5f, 0.5f);
         iconRect.sizeDelta = new Vector2(iconSize, iconSize);
-        iconRect.anchoredPosition = Vector2.zero;
+        iconRect.anchoredPosition = new Vector2(0f, (labelHeight + labelGap) * 0.5f);
         icon.transform.SetAsFirstSibling();
+        button.targetGraphic = icon;
 
         TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+        if (label == null)
+        {
+            GameObject labelObject = new GameObject("Title", typeof(RectTransform), typeof(CanvasRenderer), typeof(TextMeshProUGUI));
+            labelObject.layer = button.gameObject.layer;
+            labelObject.transform.SetParent(button.transform, false);
+            label = labelObject.GetComponent<TextMeshProUGUI>();
+        }
         if (label != null && label.transform != icon.transform)
         {
+            label.gameObject.SetActive(true);
             label.font = RuntimeFontAssetProvider.Resolve();
             label.text = FrontendTextLocalization.Normalize(labelText);
             label.fontSize = 20f;
             label.fontStyle = FontStyles.Bold;
             label.alignment = TextAlignmentOptions.Center;
-            label.color = Color.black;
+            ApplyNavigationLabel(label);
             label.raycastTarget = false;
             label.enableWordWrapping = false;
-            label.overflowMode = TextOverflowModes.Overflow;
+            label.margin = Vector4.zero;
+            label.characterSpacing = 0f;
+            label.lineSpacing = 0f;
+            label.paragraphSpacing = 0f;
+            label.maxVisibleCharacters = int.MaxValue;
+            label.maxVisibleWords = int.MaxValue;
+            label.maxVisibleLines = 1;
+            label.enableAutoSizing = true;
+            label.fontSizeMin = 18f;
+            label.fontSizeMax = 20f;
+            label.overflowMode = TextOverflowModes.Ellipsis;
 
             RectTransform labelRect = label.rectTransform;
             labelRect.anchorMin = new Vector2(0.5f, 0.5f);
             labelRect.anchorMax = new Vector2(0.5f, 0.5f);
             labelRect.pivot = new Vector2(0.5f, 0.5f);
-            labelRect.sizeDelta = new Vector2(iconSize, labelHeight);
-            labelRect.anchoredPosition = new Vector2(0f, -(iconSize * 0.5f + labelGap + labelHeight * 0.5f));
+            labelRect.sizeDelta = new Vector2(buttonWidth, labelHeight);
+            labelRect.anchoredPosition = new Vector2(0f, -(iconSize + labelGap) * 0.5f);
         }
 
         return icon;

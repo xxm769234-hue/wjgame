@@ -11,6 +11,30 @@ using UnityEngine.UI;
 public sealed class LandInfoPanel : MonoBehaviour
 {
     public static LandInfoPanel Instance { get; private set; }
+    private readonly Dictionary<int, Button> onboardingBuildingButtons = new Dictionary<int, Button>();
+
+    public RectTransform ResolveSettlementOnboardingTarget(LandSlotController slot)
+    {
+        if (slot == null || !slot.IsBuildingCompleted || slot.HasNpc || panel == null) return null;
+        if (current != slot || !panel.activeInHierarchy) Show(slot);
+        if (npcListPanel == null || !npcListPanel.gameObject.activeInHierarchy) ShowNpcList();
+        return npcListPanel != null && npcListPanel.gameObject.activeInHierarchy ? npcListPanel : null;
+    }
+
+    public RectTransform ResolveOnboardingTarget(LandSlotController slot, long buildingConfigId, bool completion)
+    {
+        if (slot == null || !slot.HasRemotePlayerLandId || slot.CurrentLand == null || panel == null) return null;
+        if (current != slot || !panel.activeInHierarchy) Show(slot);
+        if (completion)
+        {
+            return completeActionButton == null ? null : completeActionButton.GetComponent<RectTransform>();
+        }
+        if (buildingListPanel == null || !buildingListPanel.gameObject.activeInHierarchy) ShowBuildingList();
+        return buildingConfigId > 0 && buildingConfigId <= int.MaxValue
+            && onboardingBuildingButtons.TryGetValue((int)buildingConfigId, out Button button) && button != null
+            ? button.GetComponent<RectTransform>() : null;
+    }
+
     [SerializeField] private GameObject panel;
     [SerializeField] private Vector2 panelSize = new Vector2(700f, 400f);
     [SerializeField] private Vector2 panelOffset = new Vector2(380f, 40f);
@@ -34,16 +58,57 @@ public sealed class LandInfoPanel : MonoBehaviour
     [SerializeField] private RectTransform npcListPanel;
     [SerializeField] private RectTransform npcListContent;
     [SerializeField] private bool logButtonClicks = true;
-    private Button workTimeButton;
+    private Image panelImage;
+    private Image landPreviewImage;
+    private Image buildingPreviewImage;
+    private Image npcPreviewImage;
+    private Button closeButton;
+    private TMP_Text titleText;
+    private Texture2D controlsTexture;
+    private Texture2D popupsTexture;
+    private readonly Dictionary<string, Sprite> panelSkinSprites = new Dictionary<string, Sprite>(StringComparer.Ordinal);
+    private static readonly Color PanelTextColor = new Color(0.30f, 0.16f, 0.11f, 1f);
+    private static readonly Color PanelMutedTextColor = new Color(0.42f, 0.27f, 0.18f, 1f);
+    private static readonly Color PanelPrimaryTextColor = new Color(0.24f, 0.11f, 0.06f, 1f);
+    private static readonly Dictionary<string, Rect> ControlAtlasRects = new Dictionary<string, Rect>(StringComparer.Ordinal)
+    {
+        { "ButtonPrimary", new Rect(16, 1536 - 16 - 182, 370, 182) },
+        { "ButtonSecondary", new Rect(402, 1536 - 16 - 182, 369, 182) },
+        { "ButtonDanger", new Rect(787, 1536 - 16 - 182, 370, 182) },
+        { "ButtonDisabled", new Rect(1173, 1536 - 16 - 182, 369, 182) },
+        { "ButtonCompact", new Rect(1558, 1536 - 16 - 146, 268, 146) },
+        { "ButtonSquare", new Rect(16, 1536 - 214 - 200, 201, 200) },
+        { "Close", new Rect(233, 1536 - 214 - 158, 158, 158) },
+        { "BadgeGreen", new Rect(407, 1536 - 214 - 134, 302, 134) },
+        { "BadgeBlue", new Rect(725, 1536 - 214 - 134, 301, 134) },
+        { "BadgeOrange", new Rect(1042, 1536 - 214 - 134, 302, 134) },
+        { "BadgeGray", new Rect(1360, 1536 - 214 - 133, 301, 133) },
+        { "StatusGreen", new Rect(1677, 1536 - 214 - 178, 328, 178) },
+        { "StatusOrange", new Rect(16, 1536 - 430 - 178, 330, 178) },
+        { "StatusBlue", new Rect(362, 1536 - 430 - 178, 328, 178) },
+        { "StatusGray", new Rect(706, 1536 - 430 - 178, 328, 178) },
+        { "ProgressEmpty", new Rect(1050, 1536 - 430 - 88, 375, 88) },
+        { "ProgressFill", new Rect(1441, 1536 - 430 - 88, 375, 88) },
+        { "Upgrade", new Rect(1832, 1536 - 430 - 200, 199, 200) },
+        { "Move", new Rect(16, 1536 - 646 - 199, 197, 199) },
+        { "AssignNpc", new Rect(229, 1536 - 646 - 200, 200, 200) },
+        { "Demolish", new Rect(445, 1536 - 646 - 197, 194, 197) },
+        { "Inspect", new Rect(655, 1536 - 646 - 189, 187, 189) },
+        { "Terrain", new Rect(858, 1536 - 646 - 106, 232, 106) },
+        { "Wheat", new Rect(1106, 1536 - 646 - 197, 166, 197) },
+        { "SyncDot", new Rect(1288, 1536 - 646 - 103, 104, 103) },
+    };
+    private static readonly Dictionary<string, Rect> PopupAtlasRects = new Dictionary<string, Rect>(StringComparer.Ordinal)
+    {
+        { "BuildingListPanel", new Rect(16, 1536 - 16 - 808, 807, 808) },
+        { "NpcListPanel", new Rect(839, 1536 - 16 - 793, 588, 793) },
+        { "ListItem", new Rect(16, 1536 - 840 - 330, 1010, 330) },
+        { "ListItemPaper", new Rect(66, 1536 - 890 - 218, 210, 218) },
+        { "ConfirmPanel", new Rect(1042, 1536 - 840 - 421, 569, 421) },
+    };
     private Button recipeButton;
-    private ProductionWorkTimePreviewResponse workTimePreview;
-    private ProductionWorkTimeRequest workTimePreviewRequest;
-    private string workTimeIdempotencyKey = string.Empty;
     private ProductionRecipesResponse productionRecipes;
     private int productionRecipesBuildingId;
-    private bool workStateRequestRunning;
-    private bool workTimeRequestRunning;
-    private bool workTimeFeatureUnavailable;
     private bool recipesRequestRunning;
     private bool recipeSwitchRequestRunning;
     private string recipeSwitchIdempotencyKey = string.Empty;
@@ -56,6 +121,8 @@ public sealed class LandInfoPanel : MonoBehaviour
     private BuildingManager buildingManager;
     private NpcManager npcManager;
     private int shownFrame = -1;
+    private readonly List<ScrollRect> informationScrolls = new List<ScrollRect>();
+    private Vector2 lastCanvasSize;
 
     private void Awake()
     {
@@ -67,11 +134,13 @@ public sealed class LandInfoPanel : MonoBehaviour
         worldCamera = Camera.main;
         buildingManager = BuildingManager.EnsureInstance();
         npcManager = NpcManager.EnsureInstance();
+        ConfigurePanelSkin();
         ConfigureFloatingPanel();
         EnsureBuildControls();
         EnsureBuildingActionControls();
         EnsureNpcControls();
         EnsureProductionControls();
+        ApplyPanelSkinToControls();
         panel.SetActive(false);
     }
 
@@ -82,21 +151,24 @@ public sealed class LandInfoPanel : MonoBehaviour
         ResetProductionActionsIfBuildingChanged(slot);
         LandConfig data = slot.CurrentLand;
         SetText(nameText, data.landName);
-        SetText(descText, data.description);
-        SetText(levelText, $"等级：{data.unlockLevel}");
+        SetText(descText, string.IsNullOrWhiteSpace(data.description)
+            ? "可在此建造建筑\n从右侧选择操作"
+            : data.description);
+        SetText(levelText, $"解锁等级 {data.unlockLevel}");
+        RefreshPreviewImages(slot);
         RefreshBuildingStatus();
         RefreshProductionStatus();
         RefreshNpcStatus();
         RefreshProductionControls();
         panel.SetActive(true);
+        panelRect.SetAsLastSibling();
+        HideBuildingList();
+        HideNpcList();
+        Canvas.ForceUpdateCanvases();
+        foreach (ScrollRect scroll in informationScrolls) scroll.verticalNormalizedPosition = 1f;
         shownFrame = Time.frameCount;
         PositionNearSlot(slot);
         RefreshRemoteDetails(slot);
-        BackendGameService service = BackendGameService.Instance;
-        if (slot.HasBuilding && service != null && service.IsAuthenticated)
-        {
-            EnsureWorkStateLoaded(service);
-        }
     }
 
     public void Hide()
@@ -105,9 +177,6 @@ public sealed class LandInfoPanel : MonoBehaviour
         HideBuildingList();
         HideNpcList();
         current = null;
-        workTimePreview = null;
-        workTimePreviewRequest = null;
-        workTimeIdempotencyKey = string.Empty;
         productionRecipes = null;
         productionRecipesBuildingId = 0;
         recipeSwitchIdempotencyKey = string.Empty;
@@ -117,20 +186,29 @@ public sealed class LandInfoPanel : MonoBehaviour
     public void RefreshIfShowing(LandSlotController slot)
     {
         if (slot == null || current != slot || panel == null || !panel.activeSelf) return;
+        RefreshPreviewImages(slot);
         RefreshBuildingStatus();
+        RefreshBuildingListIfShowing();
         RefreshProductionStatus();
         RefreshNpcStatus();
         RefreshProductionControls();
     }
 
+    public void RefreshBuildingListIfShowing()
+    {
+        if (current == null || current.HasBuilding || panel == null || !panel.activeSelf
+            || buildingListPanel == null || !buildingListPanel.gameObject.activeSelf) return;
+        ShowBuildingList();
+    }
+
     public void SetBuildingMessage(string message)
     {
-        SetText(buildingText, message);
+        SetText(buildingText, FrontendTextLocalization.NormalizePlayerMessage(message));
     }
 
     public void SetProductionMessage(string message)
     {
-        SetText(productionText, message);
+        SetText(productionText, FrontendTextLocalization.NormalizePlayerMessage(message));
     }
 
     private void RefreshRemoteDetails(LandSlotController slot)
@@ -168,6 +246,8 @@ public sealed class LandInfoPanel : MonoBehaviour
     {
         if (panel == null || !panel.activeSelf || Time.frameCount == shownFrame) return;
 
+        if (canvasRect != null && lastCanvasSize != canvasRect.rect.size) PositionNearSlot(current);
+
         if (current != null && current.IsBuildingInProgress)
         {
             RefreshBuildingStatus();
@@ -182,6 +262,286 @@ public sealed class LandInfoPanel : MonoBehaviour
     private static void SetText(TMP_Text target, string value)
     {
         if (target != null) target.text = FrontendTextLocalization.Normalize(value);
+    }
+
+    private void ConfigurePanelSkin()
+    {
+        if (panelRect == null) return;
+
+        panelImage = panel.GetComponent<Image>();
+        if (panelImage == null) panelImage = panel.AddComponent<Image>();
+        panelImage.sprite = Resources.Load<Sprite>("UI/LandInfoPanelBase");
+        panelImage.color = Color.white;
+        panelImage.type = Image.Type.Simple;
+        panelImage.preserveAspect = true;
+        panelImage.raycastTarget = true;
+        if (panelImage.sprite != null)
+            panelSize = new Vector2(700f, 700f * panelImage.sprite.rect.height / panelImage.sprite.rect.width);
+
+        controlsTexture = Resources.Load<Texture2D>("UI/LandInfoPanelControls");
+        popupsTexture = Resources.Load<Texture2D>("UI/LandInfoPanelPopups");
+        panelSkinSprites.Clear();
+
+        closeButton = EnsureCloseButton();
+
+        landPreviewImage = EnsurePreviewImage("Land Preview", ArtPoint(425f, 605f), new Vector2(156f, 174f));
+        buildingPreviewImage = EnsurePreviewImage("Building Preview", ArtPoint(410f, 645f), new Vector2(92f, 102f));
+        npcPreviewImage = EnsurePreviewImage("NPC Preview", ArtPoint(535f, 710f), new Vector2(46f, 70f));
+    }
+
+    private Button EnsureCloseButton()
+    {
+        Transform existing = panelRect.Find("Close Panel Button");
+        Button button;
+        if (existing != null)
+        {
+            button = existing.GetComponent<Button>();
+        }
+        else
+        {
+            GameObject buttonObject = new GameObject("Close Panel Button", typeof(RectTransform), typeof(Image), typeof(Button));
+            buttonObject.transform.SetParent(panelRect, false);
+            button = buttonObject.GetComponent<Button>();
+            button.onClick.AddListener(Hide);
+
+            GameObject iconObject = new GameObject("Icon", typeof(RectTransform), typeof(Image));
+            iconObject.transform.SetParent(buttonObject.transform, false);
+            RectTransform iconRect = iconObject.GetComponent<RectTransform>();
+            iconRect.anchorMin = new Vector2(0.2f, 0.2f);
+            iconRect.anchorMax = new Vector2(0.8f, 0.8f);
+            iconRect.offsetMin = Vector2.zero;
+            iconRect.offsetMax = Vector2.zero;
+            Image icon = iconObject.GetComponent<Image>();
+            icon.sprite = GetPanelSkinSprite("Close");
+            icon.preserveAspect = true;
+            icon.raycastTarget = false;
+        }
+
+        if (button == null) return null;
+        RectTransform rect = button.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = ArtPoint(1985f, 97f);
+        rect.sizeDelta = new Vector2(36f, 36f);
+        return button;
+    }
+
+    private Image EnsurePreviewImage(string objectName, Vector2 position, Vector2 size)
+    {
+        Transform existing = panelRect.Find(objectName);
+        GameObject previewObject = existing != null
+            ? existing.gameObject
+            : new GameObject(objectName, typeof(RectTransform), typeof(Image));
+        if (existing == null) previewObject.transform.SetParent(panelRect, false);
+
+        RectTransform rect = previewObject.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
+
+        Image image = previewObject.GetComponent<Image>();
+        image.preserveAspect = true;
+        image.raycastTarget = false;
+        image.color = Color.white;
+        return image;
+    }
+
+    private void RefreshPreviewImages(LandSlotController slot)
+    {
+        if (slot == null || slot.CurrentLand == null) return;
+
+        if (landPreviewImage != null)
+        {
+            Sprite terrain = LandTerrainCatalog.GetTerrain(slot.CurrentLand);
+            landPreviewImage.sprite = terrain != null ? terrain : slot.CurrentLand.landSprite;
+            landPreviewImage.gameObject.SetActive(landPreviewImage.sprite != null);
+        }
+
+        if (buildingPreviewImage != null)
+        {
+            buildingPreviewImage.sprite = slot.HasBuilding && slot.CurrentBuilding != null
+                ? slot.CurrentBuilding.buildingSprite
+                : null;
+            SpriteRenderer renderer = slot.transform.Find("Building Renderer")?.GetComponent<SpriteRenderer>();
+            if (slot.HasBuilding && buildingPreviewImage.sprite == null && renderer != null)
+                buildingPreviewImage.sprite = renderer.sprite;
+            buildingPreviewImage.gameObject.SetActive(buildingPreviewImage.sprite != null);
+        }
+
+        if (npcPreviewImage != null)
+        {
+            npcPreviewImage.sprite = slot.HasNpc && slot.CurrentNpc != null
+                ? slot.CurrentNpc.npcSprite
+                : null;
+            SpriteRenderer renderer = slot.transform.Find("NPC Renderer")?.GetComponent<SpriteRenderer>();
+            if (slot.HasNpc && npcPreviewImage.sprite == null && renderer != null)
+                npcPreviewImage.sprite = renderer.sprite;
+            npcPreviewImage.gameObject.SetActive(npcPreviewImage.sprite != null);
+        }
+    }
+
+    private Sprite GetPanelSkinSprite(string name, bool popup = false)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+        if (panelSkinSprites.TryGetValue(name, out Sprite cached) && cached != null) return cached;
+
+        Texture2D texture = popup ? popupsTexture : controlsTexture;
+        Dictionary<string, Rect> rects = popup ? PopupAtlasRects : ControlAtlasRects;
+        if (texture == null || !rects.TryGetValue(name, out Rect atlasRect)) return null;
+
+        float scaleX = texture.width / 2048f;
+        float scaleY = texture.height / 1536f;
+        Rect textureRect = new Rect(atlasRect.x * scaleX, atlasRect.y * scaleY,
+            atlasRect.width * scaleX, atlasRect.height * scaleY);
+        Vector4 border = (!popup && name.StartsWith("Button", StringComparison.Ordinal)) || name == "ListItemPaper"
+            ? new Vector4(32f * scaleX, 32f * scaleY, 32f * scaleX, 32f * scaleY)
+            : Vector4.zero;
+        Sprite sprite = Sprite.Create(
+            texture,
+            textureRect,
+            new Vector2(0.5f, 0.5f),
+            100f,
+            0,
+            SpriteMeshType.FullRect,
+            border);
+        sprite.name = $"LandInfoPanel_{name}";
+        panelSkinSprites[name] = sprite;
+        return sprite;
+    }
+
+    private void ApplyPanelSkinToControls()
+    {
+        ApplyButtonSkin(closeButton, "ButtonSquare");
+        ApplyButtonSkin(buildButton, "ButtonPrimary");
+        ApplyButtonSkin(assignNpcButton, "ButtonPrimary");
+        ApplyButtonSkin(removeNpcButton, "ButtonDanger");
+        ApplyButtonSkin(upgradeButton, "ButtonPrimary");
+        ApplyButtonSkin(moveButton, "ButtonSecondary");
+        ApplyButtonSkin(demolishButton, "ButtonDanger");
+        ApplyButtonSkin(cancelActionButton, "ButtonSecondary");
+        ApplyButtonSkin(completeActionButton, "ButtonPrimary");
+        ApplyButtonSkin(recipeButton, "ButtonCompact");
+        ApplyPopupSkin(buildingListPanel, "BuildingListPanel");
+        ApplyPopupSkin(npcListPanel, "NpcListPanel");
+    }
+
+    private void ApplyButtonSkin(Button button, string skinName)
+    {
+        if (button == null) return;
+        Image image = button.targetGraphic as Image;
+        if (image == null) image = button.GetComponent<Image>();
+        if (image == null) return;
+        Sprite sprite = GetPanelSkinSprite(skinName);
+        if (sprite == null) return;
+        image.sprite = sprite;
+        image.type = Image.Type.Sliced;
+        image.pixelsPerUnitMultiplier = 5f;
+        image.preserveAspect = false;
+        image.color = Color.white;
+        TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+        if (label != null)
+        {
+            SmallButtonIconUtility.ApplyOutlinedLabel(label);
+            label.raycastTarget = false;
+            label.fontSize = 13f;
+            label.fontStyle = FontStyles.Bold;
+            label.enableAutoSizing = true;
+            label.fontSizeMin = 12f;
+            label.fontSizeMax = 13f;
+            label.enableWordWrapping = false;
+            label.overflowMode = TextOverflowModes.Ellipsis;
+            label.alignment = TextAlignmentOptions.Center;
+            label.rectTransform.offsetMin = new Vector2(7f, 4f);
+            label.rectTransform.offsetMax = new Vector2(-7f, -4f);
+        }
+        EnsureButtonIcon(button);
+    }
+
+    private void ApplyPopupSkin(RectTransform popup, string skinName)
+    {
+        if (popup == null) return;
+        Image image = popup.GetComponent<Image>();
+        if (image == null) return;
+        Sprite sprite = GetPanelSkinSprite(skinName, true);
+        if (sprite == null) return;
+        image.sprite = sprite;
+        image.type = Image.Type.Simple;
+        image.preserveAspect = true;
+        image.color = Color.white;
+    }
+
+    private void ApplyListItemSkin(Button button, string skinName)
+    {
+        if (button == null) return;
+        Image image = button.targetGraphic as Image;
+        if (image == null) image = button.GetComponent<Image>();
+        if (image == null) return;
+        Sprite sprite = GetPanelSkinSprite("ListItemPaper", true);
+        if (sprite == null) return;
+        image.sprite = sprite;
+        image.type = Image.Type.Sliced;
+        image.pixelsPerUnitMultiplier = 4f;
+        image.preserveAspect = false;
+        image.color = Color.white;
+        TMP_Text text = button.GetComponentInChildren<TMP_Text>(true);
+        ConfigurePanelTextStyle(text, PanelTextColor, TextAlignmentOptions.TopLeft);
+        text.fontSize = 14f;
+        text.enableAutoSizing = false;
+        text.fontStyle = FontStyles.Normal;
+        text.margin = new Vector4(4f, 4f, 4f, 4f);
+        text.overflowMode = TextOverflowModes.Overflow;
+        LayoutElement layout = button.gameObject.AddComponent<LayoutElement>();
+        float availableWidth = ((RectTransform)button.transform.parent).rect.width - 28f;
+        layout.preferredHeight = Mathf.Max(64f, text.GetPreferredValues(text.text, Mathf.Max(100f, availableWidth), Mathf.Infinity).y + 22f);
+        button.GetComponent<RectTransform>().SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, layout.preferredHeight);
+        EventTrigger trigger = button.GetComponent<EventTrigger>();
+        if (trigger != null) Destroy(trigger);
+    }
+
+    private void EnsureButtonIcon(Button button)
+    {
+        if (button == null) return;
+        string iconName = GetButtonIconName(button.name);
+        if (string.IsNullOrEmpty(iconName)) return;
+
+        Transform iconTransform = button.transform.Find("Skin Icon");
+        GameObject iconObject = iconTransform != null ? iconTransform.gameObject : new GameObject("Skin Icon", typeof(RectTransform), typeof(Image));
+        if (iconTransform == null) iconObject.transform.SetParent(button.transform, false);
+
+        RectTransform iconRect = iconObject.GetComponent<RectTransform>();
+        iconRect.anchorMin = new Vector2(0f, 0.5f);
+        iconRect.anchorMax = new Vector2(0f, 0.5f);
+        iconRect.pivot = new Vector2(0f, 0.5f);
+        iconRect.anchoredPosition = new Vector2(8f, 0f);
+        iconRect.sizeDelta = new Vector2(19f, 19f);
+
+        Image icon = iconObject.GetComponent<Image>();
+        icon.sprite = GetPanelSkinSprite(iconName);
+        icon.type = Image.Type.Simple;
+        icon.preserveAspect = true;
+        icon.color = Color.white;
+        icon.raycastTarget = false;
+
+        TMP_Text label = button.GetComponentInChildren<TMP_Text>(true);
+        if (label == null) return;
+        RectTransform labelRect = label.rectTransform;
+        labelRect.offsetMin = new Vector2(29f, 4f);
+        labelRect.offsetMax = new Vector2(-7f, -4f);
+    }
+
+    private static string GetButtonIconName(string objectName)
+    {
+        if (string.IsNullOrEmpty(objectName)) return string.Empty;
+        if (objectName.Contains("Build Building")) return "Terrain";
+        if (objectName.Contains("Upgrade Building")) return "Upgrade";
+        if (objectName.Contains("Move Building")) return "Move";
+        if (objectName.Contains("Demolish Building")) return "Demolish";
+        if (objectName.Contains("Cancel Building")) return "Close";
+        if (objectName.Contains("Complete Building")) return "Inspect";
+        return string.Empty;
     }
 
     public void ToggleBuildingList()
@@ -209,7 +569,10 @@ public sealed class LandInfoPanel : MonoBehaviour
             return;
         }
 
+        buildingListPanel.gameObject.SetActive(true);
+        Canvas.ForceUpdateCanvases();
         ClearBuildingList();
+        onboardingBuildingButtons.Clear();
         IReadOnlyList<BuildingConfig> buildings = buildingManager.AvailableBuildings;
         if (logButtonClicks) Debug.Log($"LandInfoPanel showing building list. availableBuildings={buildings.Count}", this);
         int visibleCount = 0;
@@ -227,12 +590,17 @@ public sealed class LandInfoPanel : MonoBehaviour
             string label = FormatBuildingLabel(config, canBuild ? string.Empty : disabledReason);
             BuildingConfig captured = config;
             visibleCount++;
-            Button itemButton = CreateTextButton($"Building Item {visibleCount}", buildingListContent, label, new Vector2(0f, 0f), new Vector2(600f, 72f), 20f, () => SelectBuilding(captured));
+            Button itemButton = CreateTextButton($"Building Item {visibleCount}", buildingListContent, label, new Vector2(0f, 0f), new Vector2(220f, 64f), 16f, () => SelectBuilding(captured));
+            ApplyListItemSkin(itemButton, "ListItem");
             itemButton.interactable = canBuild;
+            onboardingBuildingButtons[config.buildingId] = itemButton;
             if (logButtonClicks) Debug.Log($"LandInfoPanel shown building item: {config.buildingName} type={config.buildingType} id={config.buildingId} canBuild={canBuild}", this);
         }
 
         buildingListPanel.gameObject.SetActive(true);
+        buildingListPanel.SetAsLastSibling();
+        Canvas.ForceUpdateCanvases();
+        buildingListPanel.GetComponent<ScrollRect>().verticalNormalizedPosition = 1f;
     }
 
     private void SelectBuilding(BuildingConfig config)
@@ -248,7 +616,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         if (!buildingManager.TryBuildOnSlot(current, config, out string reason))
         {
             Debug.LogWarning($"LandInfoPanel build click reached BuildingManager but failed before request. building={(config != null ? config.buildingName : "null")}, reason={reason}", this);
-            SetText(buildingText, $"建造失败：{reason}");
+            SetText(buildingText, "建造失败：" + FrontendTextLocalization.NormalizePlayerMessage(reason));
             return;
         }
 
@@ -266,7 +634,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!buildingManager.TryStartUpgrade(current, out string reason))
         {
-            SetText(buildingText, $"升级失败：{reason}");
+            SetText(buildingText, "升级失败：" + FrontendTextLocalization.NormalizePlayerMessage(reason));
             return;
         }
 
@@ -282,7 +650,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!buildingManager.BeginMoveBuilding(current, out string reason))
         {
-            SetText(buildingText, $"移动失败：{reason}");
+            SetText(buildingText, "移动失败：" + FrontendTextLocalization.NormalizePlayerMessage(reason));
             return;
         }
 
@@ -296,7 +664,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!buildingManager.TryDemolishBuilding(current, out string reason))
         {
-            SetText(buildingText, $"拆除失败：{reason}");
+            SetText(buildingText, "拆除失败：" + FrontendTextLocalization.NormalizePlayerMessage(reason));
             return;
         }
 
@@ -312,7 +680,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!buildingManager.TryCancelBuildingAction(current, out string reason))
         {
-            SetText(buildingText, $"取消失败：{reason}");
+            SetText(buildingText, "取消失败：" + FrontendTextLocalization.NormalizePlayerMessage(reason));
             return;
         }
 
@@ -328,7 +696,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!buildingManager.TryCompleteBuildingAction(current, out string reason))
         {
-            SetText(buildingText, $"完成失败：{reason}");
+            SetText(buildingText, "完成失败：" + FrontendTextLocalization.NormalizePlayerMessage(reason));
             return;
         }
 
@@ -356,11 +724,15 @@ public sealed class LandInfoPanel : MonoBehaviour
         EnsureNpcControls();
         if (npcListPanel == null || npcListContent == null || npcManager == null) return;
 
+        npcListPanel.gameObject.SetActive(true);
+        Canvas.ForceUpdateCanvases();
         ClearNpcList();
         LandSlotController requestedSlot = current;
         Button loading = CreateTextButton("NPC Loading", npcListContent, "正在读取居民……", new Vector2(0f, 0f), new Vector2(600f, 52f), 22f, () => { });
+        ApplyListItemSkin(loading, "ListItem");
         loading.interactable = false;
         npcListPanel.gameObject.SetActive(true);
+        npcListPanel.SetAsLastSibling();
 
         npcManager.RequestAvailableNpcsForSlot(requestedSlot, (success, message, npcs) =>
         {
@@ -369,7 +741,8 @@ public sealed class LandInfoPanel : MonoBehaviour
             ClearNpcList();
             if (!success)
             {
-                Button failed = CreateTextButton("NPC Load Failed", npcListContent, $"居民读取失败：{message}", new Vector2(0f, 0f), new Vector2(600f, 52f), 20f, () => { });
+                Button failed = CreateTextButton("NPC Load Failed", npcListContent, "居民读取失败：" + FrontendTextLocalization.NormalizePlayerMessage(message), new Vector2(0f, 0f), new Vector2(600f, 52f), 20f, () => { });
+                ApplyListItemSkin(failed, "ListItem");
                 failed.interactable = false;
                 return;
             }
@@ -377,6 +750,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             if (npcs == null || npcs.Count == 0)
             {
                 Button empty = CreateTextButton("NPC Empty", npcListContent, "暂无可用居民", new Vector2(0f, 0f), new Vector2(600f, 52f), 22f, () => { });
+                ApplyListItemSkin(empty, "ListItem");
                 empty.interactable = false;
                 return;
             }
@@ -388,7 +762,8 @@ public sealed class LandInfoPanel : MonoBehaviour
 
                 string label = FormatNpcLabel(config);
                 NpcConfig captured = config;
-                Button itemButton = CreateTextButton($"NPC Item {i + 1}", npcListContent, label, new Vector2(0f, 0f), new Vector2(600f, 52f), 22f, () => SelectNpc(captured));
+                Button itemButton = CreateTextButton($"NPC Item {i + 1}", npcListContent, label, new Vector2(0f, 0f), new Vector2(180f, 64f), 15f, () => SelectNpc(captured));
+                ApplyListItemSkin(itemButton, "ListItem");
                 if (!npcManager.CanAssignToSlot(current, config, out _)) itemButton.interactable = false;
             }
         });
@@ -403,7 +778,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         {
             if (!success)
             {
-                SetText(npcText, $"居民操作失败：{message}");
+                SetText(npcText, "居民操作失败：" + FrontendTextLocalization.NormalizePlayerMessage(message));
                 return;
             }
 
@@ -411,9 +786,10 @@ public sealed class LandInfoPanel : MonoBehaviour
             RefreshProductionStatus();
             RefreshNpcStatus();
             RefreshProductionControls();
+            PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
         }, out string reason))
         {
-            SetText(npcText, $"居民操作失败：{reason}");
+            SetText(npcText, "居民操作失败：" + FrontendTextLocalization.NormalizePlayerMessage(reason));
             return;
         }
     }
@@ -427,7 +803,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         {
             if (!success)
             {
-                SetText(npcText, $"移除居民失败：{message}");
+                SetText(npcText, "移除居民失败：" + FrontendTextLocalization.NormalizePlayerMessage(message));
                 return;
             }
 
@@ -436,7 +812,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             RefreshNpcStatus();
         }, out string reason))
         {
-            SetText(npcText, $"移除居民失败：{reason}");
+            SetText(npcText, "移除居民失败：" + FrontendTextLocalization.NormalizePlayerMessage(reason));
             return;
         }
     }
@@ -454,7 +830,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         }
         else
         {
-            SetText(buildingText, "建筑：无");
+            SetText(buildingText, "尚未建造\n点击「建造」\n选择所需建筑");
             if (buildButton != null) buildButton.gameObject.SetActive(true);
             SetBuildingActionButtonsVisible(false);
         }
@@ -466,28 +842,28 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!current.HasBuilding)
         {
-            SetText(npcText, "居民：请先建造建筑");
+            SetText(npcText, "暂无居民\n请先建造建筑");
             if (assignNpcButton != null) assignNpcButton.gameObject.SetActive(false);
             if (removeNpcButton != null) removeNpcButton.gameObject.SetActive(false);
             HideNpcList();
         }
         else if (!current.IsBuildingCompleted)
         {
-            SetText(npcText, "居民：请等待建筑完成");
+            SetText(npcText, "暂不可分配\n请等待建筑完成");
             if (assignNpcButton != null) assignNpcButton.gameObject.SetActive(false);
             if (removeNpcButton != null) removeNpcButton.gameObject.SetActive(false);
             HideNpcList();
         }
         else if (current.HasNpc)
         {
-            SetText(npcText, $"居民：{current.CurrentNpc.npcName}（{current.CurrentNpc.role}）");
+            SetText(npcText, $"{current.CurrentNpc.npcName}\n{TranslateDisplayLabel(current.CurrentNpc.role, "居民")}\n已入驻");
             if (assignNpcButton != null) assignNpcButton.gameObject.SetActive(false);
             if (removeNpcButton != null) removeNpcButton.gameObject.SetActive(true);
             HideNpcList();
         }
         else
         {
-            SetText(npcText, "居民：无");
+            SetText(npcText, "暂无居民\n可从右侧分配");
             if (assignNpcButton != null) assignNpcButton.gameObject.SetActive(true);
             if (removeNpcButton != null) removeNpcButton.gameObject.SetActive(false);
         }
@@ -499,7 +875,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
         if (!current.HasBuilding)
         {
-            SetText(productionText, "生产：请先建造建筑");
+            SetText(productionText, "暂无产出\n请先建造建筑");
             RefreshProductionControls();
             return;
         }
@@ -507,7 +883,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         IReadOnlyList<ProductionResponse> productions = current.LatestProductions;
         if (productions == null || productions.Count == 0)
         {
-            SetText(productionText, current.IsBuildingCompleted ? "生产：同步中……" : "生产：已暂停");
+            SetText(productionText, current.IsBuildingCompleted ? "正在查看产出……" : "生产已暂停");
             RefreshProductionControls();
             return;
         }
@@ -517,7 +893,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             ? BackendGameService.Instance.CurrentWorkState
             : null);
         if (!string.IsNullOrEmpty(workState)) status += "\n" + workState;
-        if (!string.IsNullOrEmpty(productionActionMessage)) status += "\n" + productionActionMessage;
+        if (!string.IsNullOrEmpty(productionActionMessage)) status += "\n" + FrontendTextLocalization.NormalizePlayerMessage(productionActionMessage);
         SetText(productionText, status);
         RefreshProductionControls();
     }
@@ -527,9 +903,6 @@ public sealed class LandInfoPanel : MonoBehaviour
         int buildingId = slot != null && slot.HasBuilding ? slot.PlayerBuildingId : 0;
         if (productionRecipesBuildingId == buildingId) return;
 
-        workTimePreview = null;
-        workTimePreviewRequest = null;
-        workTimeIdempotencyKey = string.Empty;
         productionRecipes = null;
         productionRecipesBuildingId = buildingId;
         recipeSwitchIdempotencyKey = string.Empty;
@@ -539,18 +912,6 @@ public sealed class LandInfoPanel : MonoBehaviour
     private void EnsureProductionControls()
     {
         if (panelRect == null) return;
-
-        if (workTimeButton == null)
-        {
-            workTimeButton = CreateTextButton(
-                "Production Work Time Button",
-                panelRect,
-                "补充工时",
-                new Vector2(35f, -214f),
-                new Vector2(145f, 38f),
-                16f,
-                OnWorkTimeButtonClicked);
-        }
 
         if (recipeButton == null)
         {
@@ -564,14 +925,14 @@ public sealed class LandInfoPanel : MonoBehaviour
                 OnRecipeButtonClicked);
         }
 
-        ConfigureButtonRect(workTimeButton, new Vector2(35f, -214f), new Vector2(145f, 38f));
-        ConfigureButtonRect(recipeButton, new Vector2(190f, -214f), new Vector2(145f, 38f));
+        ConfigureButtonRect(recipeButton, ArtPoint(1024f, 1101f), new Vector2(116f, 27f));
+        ApplyButtonSkin(recipeButton, "ButtonCompact");
         RefreshProductionControls();
     }
 
     private void RefreshProductionControls()
     {
-        if (workTimeButton == null || recipeButton == null) return;
+        if (recipeButton == null) return;
 
         BackendGameService service = BackendGameService.Instance;
         bool canUseProduction = current != null
@@ -579,128 +940,10 @@ public sealed class LandInfoPanel : MonoBehaviour
             && current.IsBuildingCompleted
             && service != null
             && service.IsAuthenticated;
-        bool workTimeBusy = workStateRequestRunning || workTimeRequestRunning;
         bool recipesBusy = recipesRequestRunning || recipeSwitchRequestRunning;
-        SetButtonVisible(workTimeButton, canUseProduction && !workTimeFeatureUnavailable, !workTimeBusy);
         SetButtonVisible(recipeButton, canUseProduction, !recipesBusy);
 
-        SetButtonLabel(workTimeButton, workTimePreview != null ? "确认补充" : "补充工时");
         SetButtonLabel(recipeButton, productionRecipes != null ? "切换配方" : "读取配方");
-    }
-
-    private void OnWorkTimeButtonClicked()
-    {
-        if (workTimeRequestRunning || workStateRequestRunning) return;
-
-        if (workTimePreview != null && workTimePreviewRequest != null)
-        {
-            StartCoroutine(ConsumeWorkTime());
-            return;
-        }
-
-        BackendGameService service = BackendGameService.Instance;
-        if (service == null || !service.IsAuthenticated)
-        {
-            productionActionMessage = "请先登录账号";
-            RefreshProductionStatus();
-            return;
-        }
-
-        if (service.CurrentWorkState == null)
-        {
-            EnsureWorkStateLoaded(service);
-            return;
-        }
-
-        ProductionFuelResponse fuel = FindAvailableFuel(service.CurrentWorkState);
-        if (fuel == null)
-        {
-            productionActionMessage = "没有可用于补充工时的物品";
-            RefreshProductionStatus();
-            return;
-        }
-
-        workTimePreviewRequest = new ProductionWorkTimeRequest
-        {
-            itemId = fuel.itemId,
-            quantity = 1L,
-            expectedConfigVersion = service.CurrentWorkState.configVersion
-        };
-        workTimeRequestRunning = true;
-        productionActionMessage = "正在预览补充工时...";
-        workTimeIdempotencyKey = string.Empty;
-        RefreshProductionStatus();
-        service.PreviewProductionWorkTime(workTimePreviewRequest, result =>
-        {
-            workTimeRequestRunning = false;
-            if (result == null || !result.Success || result.Data == null || !result.Data.canConsume)
-            {
-                workTimePreview = null;
-                workTimePreviewRequest = null;
-                if (result != null && result.Code == 7801) workTimeFeatureUnavailable = true;
-                productionActionMessage = result == null
-                    ? "补充工时预览失败"
-                    : string.IsNullOrEmpty(result.Message) ? "当前无法补充工时" : result.Message;
-                if (result != null && ShouldRefreshWorkState(result.Code))
-                {
-                    service.LoadProductionWorkState(_ => RefreshProductionStatus());
-                }
-            }
-            else
-            {
-                workTimePreview = result.Data;
-                productionActionMessage = $"预计增加 {FormatDuration(result.Data.requestedWorkSeconds)}，再次点击确认";
-            }
-            RefreshProductionStatus();
-        });
-    }
-
-    private IEnumerator ConsumeWorkTime()
-    {
-        BackendGameService service = BackendGameService.Instance;
-        if (service == null || workTimePreviewRequest == null)
-        {
-            workTimePreview = null;
-            workTimePreviewRequest = null;
-            RefreshProductionStatus();
-            yield break;
-        }
-
-        workTimeRequestRunning = true;
-        productionActionMessage = "正在确认补充工时...";
-        RefreshProductionStatus();
-        if (string.IsNullOrEmpty(workTimeIdempotencyKey))
-        {
-            workTimeIdempotencyKey = System.Guid.NewGuid().ToString("D");
-        }
-        BackendResult<ProductionWorkTimeConsumeResponse> result = null;
-        yield return service.ConsumeProductionWorkTime(
-            workTimePreviewRequest,
-            workTimeIdempotencyKey,
-            value => result = value);
-        workTimeRequestRunning = false;
-        if (result == null || !result.Success || result.Data == null)
-        {
-            productionActionMessage = result == null
-                ? "补充工时失败"
-                : string.IsNullOrEmpty(result.Message) ? "补充工时失败" : result.Message;
-            if (result != null && result.Code > 0)
-            {
-                if (result.Code == 7801) workTimeFeatureUnavailable = true;
-                workTimePreview = null;
-                workTimePreviewRequest = null;
-                workTimeIdempotencyKey = string.Empty;
-            }
-        }
-        else
-        {
-            productionActionMessage = $"已补充 {FormatDuration(result.Data.grantedWorkSeconds)}";
-            workTimePreview = null;
-            workTimePreviewRequest = null;
-            workTimeIdempotencyKey = string.Empty;
-            service.RefreshInventory();
-        }
-        RefreshProductionStatus();
     }
 
     private void OnRecipeButtonClicked()
@@ -713,7 +956,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         if (productionRecipes == null || productionRecipesBuildingId != current.PlayerBuildingId)
         {
             recipesRequestRunning = true;
-            productionActionMessage = "正在读取服务器配方...";
+            productionActionMessage = "正在查看配方……";
             RefreshProductionStatus();
             service.LoadProductionRecipes(current.PlayerBuildingId, result =>
             {
@@ -793,24 +1036,6 @@ public sealed class LandInfoPanel : MonoBehaviour
         });
     }
 
-    private void EnsureWorkStateLoaded(BackendGameService service)
-    {
-        if (workStateRequestRunning || service == null || !service.IsAuthenticated) return;
-
-        workStateRequestRunning = true;
-        productionActionMessage = "正在读取工作时间...";
-        RefreshProductionStatus();
-        service.LoadProductionWorkState(result =>
-        {
-            workStateRequestRunning = false;
-            if (result != null && result.Success) workTimeFeatureUnavailable = false;
-            productionActionMessage = result == null || !result.Success
-                ? "读取工作时间失败"
-                : "工作时间已同步，请再次点击补充";
-            RefreshProductionStatus();
-        });
-    }
-
     private void ReloadRecipesAfterConflict(BackendGameService service, long playerBuildingId, string message)
     {
         if (service == null || !service.IsAuthenticated || playerBuildingId <= 0L) return;
@@ -838,28 +1063,6 @@ public sealed class LandInfoPanel : MonoBehaviour
         });
     }
 
-    private static bool ShouldRefreshWorkState(int code)
-    {
-        return code == 7801
-            || code == 7802
-            || code == 7803
-            || code == 7805
-            || code == 7806
-            || code == 7807
-            || code == 7809;
-    }
-
-    private static ProductionFuelResponse FindAvailableFuel(ProductionWorkStateResponse state)
-    {
-        if (state == null || state.fuels == null) return null;
-        for (int i = 0; i < state.fuels.Length; i++)
-        {
-            ProductionFuelResponse fuel = state.fuels[i];
-            if (fuel != null && fuel.itemId > 0 && fuel.maxConsumableQuantity > 0) return fuel;
-        }
-        return null;
-    }
-
     private static ProductionRecipeResponse FindSwitchTarget(ProductionRecipesResponse recipes)
     {
         if (recipes == null || recipes.recipes == null) return null;
@@ -873,24 +1076,24 @@ public sealed class LandInfoPanel : MonoBehaviour
 
     private static string FormatRecipeSummary(ProductionRecipesResponse recipes)
     {
-        if (recipes == null || recipes.recipes == null || recipes.recipes.Length == 0) return "服务器没有可用配方";
+        if (recipes == null || recipes.recipes == null || recipes.recipes.Length == 0) return "暂无可用配方";
 
         List<string> names = new List<string>();
         for (int i = 0; i < recipes.recipes.Length; i++)
         {
             ProductionRecipeResponse recipe = recipes.recipes[i];
             if (recipe == null) continue;
-            string name = string.IsNullOrEmpty(recipe.displayName) ? recipe.recipeCode : recipe.displayName;
+            string name = string.IsNullOrEmpty(recipe.displayName) ? "生产配方" : recipe.displayName;
             if (!string.IsNullOrEmpty(name)) names.Add(name + (recipe.active ? "（当前）" : string.Empty));
         }
-        return names.Count == 0 ? "服务器没有可用配方" : "配方：" + string.Join("、", names.ToArray());
+        return names.Count == 0 ? "暂无可用配方" : "配方：" + string.Join("、", names.ToArray());
     }
 
     private static string FormatWorkState(ProductionWorkStateResponse state)
     {
         if (state == null) return string.Empty;
         string running = state.productionRunning ? "生产中" : "生产暂停";
-        return $"工作时间：{FormatDuration(state.remainingWorkSeconds)}，{running}";
+        return $"剩余工时 {FormatDuration(state.remainingWorkSeconds)}\n{running}";
     }
 
     private static string FormatDuration(long seconds)
@@ -941,7 +1144,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
     private static string FormatBuildingLabel(BuildingConfig config, string disabledReason)
     {
-        string buildTime = config.buildSeconds > 0 ? $"{config.buildSeconds}s" : "立即完成";
+        string buildTime = config.buildSeconds > 0 ? FormatDuration(config.buildSeconds) : "立即完成";
         List<string> costs = new List<string>();
         if (config.goldCost > 0L) costs.Add($"金币 {config.goldCost:N0}");
         if (config.woodCost > 0L) costs.Add($"木材 {config.woodCost:N0}");
@@ -949,26 +1152,26 @@ public sealed class LandInfoPanel : MonoBehaviour
         if (config.ironCost > 0L) costs.Add($"铁矿 {config.ironCost:N0}");
         string cost = costs.Count > 0 ? string.Join("、", costs) : config.cost > 0 ? $"消耗 {config.cost:N0}" : "免费";
         string ownership = config.hasOwnershipLimit ? $"  已拥有 {config.ownedCount}/{config.maxOwnedCount}" : string.Empty;
-        string reason = string.IsNullOrEmpty(disabledReason) ? string.Empty : $"\n不可用：{disabledReason}";
-        return $"{config.buildingName} - {cost} - {buildTime}{ownership}{reason}";
+        string reason = string.IsNullOrEmpty(disabledReason) ? string.Empty : "\n不可用：" + FrontendTextLocalization.NormalizePlayerMessage(disabledReason);
+        return $"{config.buildingName}\n{cost}\n建造：{buildTime}{ownership}{reason}";
     }
 
     private static string FormatBuildingStatus(LandSlotController slot)
     {
         BuildingConfig building = slot.CurrentBuilding;
-        if (building == null) return "建筑：无";
+        if (building == null) return "尚未建造";
 
-        string text = $"建筑：{building.buildingName}  编号：{slot.PlayerBuildingId}\n等级：{slot.BuildingLevel}/{building.maxLevel}  状态：{FormatBuildingRuntimeStatus(slot.BuildingStatus)}";
+        string text = $"{building.buildingName}\n等级 {slot.BuildingLevel}/{building.maxLevel}\n{FormatBuildingRuntimeStatus(slot.BuildingStatus)}";
         if (slot.IsBuildingInProgress)
         {
-            text += $"  {Mathf.CeilToInt(slot.BuildingRemainingSeconds)}s  {Mathf.RoundToInt(slot.BuildingProgress * 100f)}%";
+            text += $"\n剩余 {FormatDuration(Mathf.CeilToInt(slot.BuildingRemainingSeconds))}\n进度 {Mathf.RoundToInt(slot.BuildingProgress * 100f)}%";
         }
         return text;
     }
 
     private static string FormatProductionStatus(LandSlotController slot, IReadOnlyList<ProductionResponse> productions)
     {
-        if (productions == null || productions.Count == 0) return "生产：无";
+        if (productions == null || productions.Count == 0) return "暂无产出";
 
         List<string> lines = new List<string>();
         string costText = FormatProductionCosts(slot != null ? slot.CurrentBuilding : null);
@@ -982,12 +1185,12 @@ public sealed class LandInfoPanel : MonoBehaviour
             itemName = TranslateResourceLabel(itemName);
 
             string collectState = production.canCollect ? "可收取" : FormatRemaining(production.remainingSeconds);
-            string bonus = production.npcProduceBonusRate > 0f ? $"  加成 +{Mathf.RoundToInt(production.npcProduceBonusRate * 100f)}%" : string.Empty;
-            string cost = string.IsNullOrEmpty(costText) ? string.Empty : $"  消耗 {costText}/周期";
-            lines.Add($"{itemName}: {production.storedAmount}/{production.storageCapacity}  +{production.produceAmount}/{production.produceIntervalSeconds}s  {collectState}{bonus}{cost}");
+            string bonus = production.npcProduceBonusRate > 0f ? $"\n居民加成 +{Mathf.RoundToInt(production.npcProduceBonusRate * 100f)}%" : string.Empty;
+            string cost = string.IsNullOrEmpty(costText) ? string.Empty : $"\n每轮消耗 {costText}";
+            lines.Add($"{itemName} {production.storedAmount}/{production.storageCapacity}\n每{FormatDuration(production.produceIntervalSeconds)} +{production.produceAmount}\n{collectState}{bonus}{cost}");
         }
 
-        return lines.Count == 0 ? "生产：无" : $"生产：\n{string.Join("\n", lines)}";
+        return lines.Count == 0 ? "暂无产出" : string.Join("\n\n", lines);
     }
 
     private static string FormatProductionCosts(BuildingConfig building)
@@ -1094,8 +1297,7 @@ public sealed class LandInfoPanel : MonoBehaviour
 
     private static string ResultMessage<T>(BackendResult<T> result)
     {
-        if (result == null) return "未收到服务器响应。";
-        return FrontendTextLocalization.Normalize(string.IsNullOrEmpty(result.Message) ? $"请求状态：{result.HttpStatus}" : result.Message);
+        return FrontendTextLocalization.NormalizePlayerMessage(result == null ? null : result.Message, "暂时无法读取，请稍后重试。");
     }
 
     private static bool TryGetPointerDownPosition(out Vector2 screenPosition)
@@ -1154,15 +1356,168 @@ public sealed class LandInfoPanel : MonoBehaviour
         panelRect.anchorMax = new Vector2(0.5f, 0.5f);
         panelRect.pivot = new Vector2(0.5f, 0.5f);
         panelRect.sizeDelta = panelSize;
+        if (titleText == null)
+        {
+            titleText = CreatePanelText("Panel Title", panelRect);
+            SetText(titleText, "地块档案");
+        }
         if (productionText == null) productionText = CreatePanelText("Production Status", panelRect);
         if (npcText == null) npcText = CreatePanelText("NPC Status", panelRect);
 
-        ConfigureTextRect(nameText, new Vector2(0f, 142f), new Vector2(620f, 58f), 38f);
-        ConfigureTextRect(descText, new Vector2(0f, 70f), new Vector2(620f, 70f), 24f);
-        ConfigureTextRect(levelText, new Vector2(-185f, 8f), new Vector2(420f, 36f), 22f);
-        ConfigureTextRect(buildingText, new Vector2(-135f, -42f), new Vector2(370f, 58f), 20f);
-        ConfigureTextRect(productionText, new Vector2(-145f, -108f), new Vector2(370f, 72f), 17f);
-        ConfigureTextRect(npcText, new Vector2(-150f, -166f), new Vector2(350f, 38f), 19f);
+        ConfigureTextRect(titleText, ArtPoint(1024f, 70f), new Vector2(160f, 30f), 22f);
+        ConfigureTextRect(nameText, ArtPoint(885f, 207f), new Vector2(460f, 34f), 23f);
+        ConfigureTextRect(levelText, ArtPoint(425f, 936f), new Vector2(160f, 22f), 14f);
+        ConfigurePanelTextStyle(titleText, new Color(1f, 0.92f, 0.74f), TextAlignmentOptions.Center);
+        ConfigurePanelTextStyle(nameText, PanelPrimaryTextColor, TextAlignmentOptions.Center);
+        if (nameText != null)
+        {
+            nameText.enableAutoSizing = true;
+            nameText.fontSizeMin = 14f;
+            nameText.fontSizeMax = 23f;
+            nameText.enableWordWrapping = false;
+            nameText.overflowMode = TextOverflowModes.Ellipsis;
+        }
+        ConfigurePanelTextStyle(descText, PanelTextColor, TextAlignmentOptions.TopLeft);
+        ConfigurePanelTextStyle(levelText, PanelMutedTextColor, TextAlignmentOptions.Center);
+        ConfigurePanelTextStyle(buildingText, PanelTextColor, TextAlignmentOptions.Left);
+        ConfigurePanelTextStyle(productionText, PanelTextColor, TextAlignmentOptions.Left);
+        ConfigurePanelTextStyle(npcText, PanelTextColor, TextAlignmentOptions.Left);
+
+        SetVerticalAlignment(titleText, VerticalAlignmentOptions.Middle);
+        SetVerticalAlignment(nameText, VerticalAlignmentOptions.Middle);
+        SetVerticalAlignment(descText, VerticalAlignmentOptions.Top);
+        SetVerticalAlignment(levelText, VerticalAlignmentOptions.Middle);
+        SetVerticalAlignment(buildingText, VerticalAlignmentOptions.Top);
+        SetVerticalAlignment(productionText, VerticalAlignmentOptions.Top);
+        SetVerticalAlignment(npcText, VerticalAlignmentOptions.Top);
+
+        ConfigureInformationText(descText, new Rect(787f, 412f, 366f, 180f));
+        ConfigureInformationText(buildingText, new Rect(1243f, 412f, 366f, 180f));
+        ConfigureInformationText(productionText, new Rect(787f, 764f, 366f, 206f));
+        ConfigureInformationText(npcText, new Rect(1243f, 764f, 366f, 206f));
+
+        if (levelText != null) levelText.transform.SetAsLastSibling();
+    }
+
+    private Vector2 ArtPoint(float horizontal, float vertical)
+    {
+        float scale = panelSize.x / 2048f;
+        return new Vector2(horizontal * scale - panelSize.x * 0.5f, panelSize.y * 0.5f - vertical * scale);
+    }
+
+    private void ConfigureInformationText(TMP_Text text, Rect artworkBounds)
+    {
+        if (text == null) return;
+        GameObject area = new GameObject(text.name + " Scroll Area", typeof(RectTransform));
+        area.transform.SetParent(panelRect, false);
+        RectTransform areaRect = area.GetComponent<RectTransform>();
+        areaRect.anchoredPosition = ArtPoint(artworkBounds.center.x, artworkBounds.center.y);
+        areaRect.sizeDelta = artworkBounds.size * (panelSize.x / 2048f);
+        text.fontSize = 13f;
+        text.enableAutoSizing = false;
+        text.fontStyle = FontStyles.Normal;
+        text.lineSpacing = 3f;
+        text.margin = new Vector4(2f, 2f, 3f, 3f);
+        text.overflowMode = TextOverflowModes.Masking;
+        informationScrolls.Add(ConfigureScrollArea(areaRect, text.rectTransform, Vector2.zero, Vector2.zero));
+    }
+
+    private ScrollRect ConfigureScrollArea(RectTransform host, RectTransform content, Vector2 insetMin, Vector2 insetMax)
+    {
+        ScrollRect scroll = host.GetComponent<ScrollRect>();
+        if (scroll != null) return scroll;
+        scroll = host.gameObject.AddComponent<ScrollRect>();
+        GameObject viewportObject = new GameObject("Viewport", typeof(RectTransform), typeof(Image), typeof(RectMask2D));
+        viewportObject.transform.SetParent(host, false);
+        RectTransform viewport = viewportObject.GetComponent<RectTransform>();
+        viewport.anchorMin = Vector2.zero;
+        viewport.anchorMax = Vector2.one;
+        viewport.offsetMin = insetMin;
+        viewport.offsetMax = new Vector2(insetMax.x - 8f, insetMax.y);
+        viewportObject.GetComponent<Image>().color = Color.clear;
+        content.SetParent(viewport, false);
+        content.anchorMin = new Vector2(0f, 1f);
+        content.anchorMax = Vector2.one;
+        content.pivot = new Vector2(0.5f, 1f);
+        content.anchoredPosition = Vector2.zero;
+        content.sizeDelta = Vector2.zero;
+        ContentSizeFitter fitter = content.GetComponent<ContentSizeFitter>();
+        if (fitter == null) fitter = content.gameObject.AddComponent<ContentSizeFitter>();
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        scroll.viewport = viewport;
+        scroll.content = content;
+        scroll.horizontal = false;
+        scroll.vertical = true;
+        scroll.movementType = ScrollRect.MovementType.Clamped;
+        scroll.inertia = false;
+        scroll.scrollSensitivity = 18f;
+
+        GameObject scrollbarObject = new GameObject("Scrollbar", typeof(RectTransform), typeof(Image), typeof(Scrollbar));
+        scrollbarObject.transform.SetParent(host, false);
+        RectTransform scrollbarRect = scrollbarObject.GetComponent<RectTransform>();
+        scrollbarRect.anchorMin = new Vector2(1f, 0f);
+        scrollbarRect.anchorMax = Vector2.one;
+        scrollbarRect.offsetMin = new Vector2(insetMax.x - 5f, insetMin.y);
+        scrollbarRect.offsetMax = new Vector2(insetMax.x, insetMax.y);
+        scrollbarObject.GetComponent<Image>().color = new Color(0.35f, 0.20f, 0.10f, 0.12f);
+        GameObject handleObject = new GameObject("Handle", typeof(RectTransform), typeof(Image));
+        handleObject.transform.SetParent(scrollbarRect, false);
+        Image handle = handleObject.GetComponent<Image>();
+        handle.color = new Color(0.48f, 0.27f, 0.14f, 0.82f);
+        RectTransform handleRect = handle.rectTransform;
+        handleRect.anchorMin = Vector2.zero;
+        handleRect.anchorMax = Vector2.one;
+        handleRect.offsetMin = Vector2.zero;
+        handleRect.offsetMax = Vector2.zero;
+        Scrollbar scrollbar = scrollbarObject.GetComponent<Scrollbar>();
+        scrollbar.handleRect = handleRect;
+        scrollbar.targetGraphic = handle;
+        scrollbar.direction = Scrollbar.Direction.BottomToTop;
+        scroll.verticalScrollbar = scrollbar;
+        scroll.verticalScrollbarVisibility = ScrollRect.ScrollbarVisibility.AutoHide;
+        return scroll;
+    }
+
+    private void ConfigureSelectionList(RectTransform list, RectTransform content, string title, bool npc)
+    {
+        list.pivot = new Vector2(0.5f, 0.5f);
+        list.anchoredPosition = new Vector2(0f, -8f);
+        list.sizeDelta = npc ? new Vector2(240f, 324f) : new Vector2(320f, 320f);
+        if (list.GetComponent<ScrollRect>() != null) return;
+
+        VerticalLayoutGroup layout = content.GetComponent<VerticalLayoutGroup>();
+        layout.childControlHeight = true;
+        ConfigureScrollArea(list, content, new Vector2(22f, 40f), new Vector2(-22f, -58f));
+        TMP_Text heading = CreatePanelText("List Title", list);
+        ConfigureTextRect(heading, new Vector2(0f, list.sizeDelta.y * 0.5f - 25f), new Vector2(list.sizeDelta.x - 86f, 30f), 18f);
+        ConfigurePanelTextStyle(heading, npc ? PanelPrimaryTextColor : new Color(1f, 0.92f, 0.74f), TextAlignmentOptions.Center);
+        SetText(heading, title);
+        Button dismiss = CreateTextButton("Close List", list, string.Empty,
+            new Vector2(list.sizeDelta.x * 0.5f - 29f, list.sizeDelta.y * 0.5f - 27f), new Vector2(25f, 25f), 14f,
+            () => list.gameObject.SetActive(false));
+        Image dismissImage = dismiss.GetComponent<Image>();
+        dismissImage.sprite = GetPanelSkinSprite("Close");
+        dismissImage.color = Color.white;
+        dismissImage.preserveAspect = true;
+        TMP_Text hint = CreatePanelText("List Scroll Hint", list);
+        ConfigureTextRect(hint, new Vector2(0f, -list.sizeDelta.y * 0.5f + 26f), new Vector2(list.sizeDelta.x - 46f, 20f), 11f);
+        ConfigurePanelTextStyle(hint, PanelMutedTextColor, TextAlignmentOptions.Center);
+        SetText(hint, "上下滑动查看 · 点击条目选择");
+    }
+
+    private static void SetVerticalAlignment(TMP_Text text, VerticalAlignmentOptions alignment)
+    {
+        if (text != null) text.verticalAlignment = alignment;
+    }
+
+    private static void ConfigurePanelTextStyle(TMP_Text text, Color color, TextAlignmentOptions alignment)
+    {
+        if (text == null) return;
+        text.color = color;
+        text.fontStyle = FontStyles.Bold;
+        text.alignment = alignment;
+        text.enableWordWrapping = true;
+        text.raycastTarget = false;
     }
 
     private static void ConfigureTextRect(TMP_Text text, Vector2 position, Vector2 size, float fontSize)
@@ -1176,6 +1531,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         rect.anchoredPosition = position;
         rect.sizeDelta = size;
         text.fontSize = fontSize;
+        text.enableAutoSizing = false;
         text.enableWordWrapping = true;
     }
 
@@ -1187,7 +1543,8 @@ public sealed class LandInfoPanel : MonoBehaviour
         {
             buildButton = CreateTextButton("Build Building Button", panelRect, "建造", new Vector2(220f, -55f), new Vector2(170f, 50f), 24f, ToggleBuildingList);
         }
-        ConfigureButtonRect(buildButton, new Vector2(220f, -55f), new Vector2(170f, 50f));
+        ConfigureButtonRect(buildButton, ArtPoint(1806f, 425f), new Vector2(78f, 38f));
+        ApplyButtonSkin(buildButton, "ButtonPrimary");
 
         if (buildingListPanel == null)
         {
@@ -1197,12 +1554,13 @@ public sealed class LandInfoPanel : MonoBehaviour
             buildingListPanel.anchorMin = new Vector2(0.5f, 0.5f);
             buildingListPanel.anchorMax = new Vector2(0.5f, 0.5f);
             buildingListPanel.pivot = new Vector2(0.5f, 1f);
-            buildingListPanel.anchoredPosition = new Vector2(0f, -190f);
-            buildingListPanel.sizeDelta = new Vector2(640f, 180f);
+            buildingListPanel.anchoredPosition = new Vector2(0f, -182f);
+            buildingListPanel.sizeDelta = new Vector2(220f, 250f);
 
             Image image = listObject.GetComponent<Image>();
             image.color = new Color(0.05f, 0.05f, 0.05f, 0.82f);
             image.raycastTarget = true;
+            ApplyPopupSkin(buildingListPanel, "BuildingListPanel");
         }
 
         if (buildingListContent == null)
@@ -1212,8 +1570,8 @@ public sealed class LandInfoPanel : MonoBehaviour
             buildingListContent = contentObject.GetComponent<RectTransform>();
             buildingListContent.anchorMin = new Vector2(0f, 0f);
             buildingListContent.anchorMax = new Vector2(1f, 1f);
-            buildingListContent.offsetMin = new Vector2(16f, 12f);
-            buildingListContent.offsetMax = new Vector2(-16f, -12f);
+            buildingListContent.offsetMin = new Vector2(8f, 12f);
+            buildingListContent.offsetMax = new Vector2(-8f, -12f);
 
             VerticalLayoutGroup layout = contentObject.GetComponent<VerticalLayoutGroup>();
             layout.childAlignment = TextAnchor.UpperCenter;
@@ -1224,6 +1582,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             layout.spacing = 8f;
         }
 
+        ConfigureSelectionList(buildingListPanel, buildingListContent, "选择建筑", false);
         buildingListPanel.gameObject.SetActive(false);
     }
 
@@ -1237,11 +1596,11 @@ public sealed class LandInfoPanel : MonoBehaviour
         if (cancelActionButton == null) cancelActionButton = CreateTextButton("Cancel Building Action Button", panelRect, "取消", new Vector2(240f, -126f), new Vector2(135f, 42f), 18f, OnCancelActionClicked);
         if (completeActionButton == null) completeActionButton = CreateTextButton("Complete Building Action Button", panelRect, "完成", new Vector2(240f, -173f), new Vector2(135f, 42f), 18f, OnCompleteActionClicked);
 
-        ConfigureButtonRect(upgradeButton, new Vector2(240f, 15f), new Vector2(135f, 42f));
-        ConfigureButtonRect(moveButton, new Vector2(240f, -32f), new Vector2(135f, 42f));
-        ConfigureButtonRect(demolishButton, new Vector2(240f, -79f), new Vector2(135f, 42f));
-        ConfigureButtonRect(cancelActionButton, new Vector2(240f, -126f), new Vector2(135f, 42f));
-        ConfigureButtonRect(completeActionButton, new Vector2(240f, -173f), new Vector2(135f, 42f));
+        ConfigureButtonRect(upgradeButton, ArtPoint(1806f, 425f), new Vector2(78f, 38f));
+        ConfigureButtonRect(moveButton, ArtPoint(1806f, 565f), new Vector2(78f, 38f));
+        ConfigureButtonRect(demolishButton, ArtPoint(1806f, 895f), new Vector2(78f, 38f));
+        ConfigureButtonRect(cancelActionButton, ArtPoint(1806f, 705f), new Vector2(78f, 38f));
+        ConfigureButtonRect(completeActionButton, ArtPoint(1806f, 565f), new Vector2(78f, 38f));
         SetBuildingActionButtonsVisible(false);
     }
 
@@ -1273,13 +1632,13 @@ public sealed class LandInfoPanel : MonoBehaviour
         {
             assignNpcButton = CreateTextButton("Assign NPC Button", panelRect, "分配居民", new Vector2(220f, -115f), new Vector2(170f, 44f), 20f, ToggleNpcList);
         }
-        ConfigureButtonRect(assignNpcButton, new Vector2(220f, -115f), new Vector2(170f, 44f));
+        ConfigureButtonRect(assignNpcButton, ArtPoint(1806f, 705f), new Vector2(78f, 38f));
 
         if (removeNpcButton == null)
         {
             removeNpcButton = CreateTextButton("Remove NPC Button", panelRect, "移除居民", new Vector2(220f, -164f), new Vector2(170f, 44f), 19f, OnRemoveNpcClicked);
         }
-        ConfigureButtonRect(removeNpcButton, new Vector2(220f, -164f), new Vector2(170f, 44f));
+        ConfigureButtonRect(removeNpcButton, ArtPoint(1806f, 705f), new Vector2(78f, 38f));
         removeNpcButton.gameObject.SetActive(false);
 
         if (npcListPanel == null)
@@ -1290,12 +1649,13 @@ public sealed class LandInfoPanel : MonoBehaviour
             npcListPanel.anchorMin = new Vector2(0.5f, 0.5f);
             npcListPanel.anchorMax = new Vector2(0.5f, 0.5f);
             npcListPanel.pivot = new Vector2(0.5f, 1f);
-            npcListPanel.anchoredPosition = new Vector2(0f, -170f);
-            npcListPanel.sizeDelta = new Vector2(640f, 180f);
+            npcListPanel.anchoredPosition = new Vector2(0f, -182f);
+            npcListPanel.sizeDelta = new Vector2(180f, 280f);
 
             Image image = listObject.GetComponent<Image>();
             image.color = new Color(0.05f, 0.05f, 0.05f, 0.82f);
             image.raycastTarget = true;
+            ApplyPopupSkin(npcListPanel, "NpcListPanel");
         }
 
         if (npcListContent == null)
@@ -1305,8 +1665,8 @@ public sealed class LandInfoPanel : MonoBehaviour
             npcListContent = contentObject.GetComponent<RectTransform>();
             npcListContent.anchorMin = new Vector2(0f, 0f);
             npcListContent.anchorMax = new Vector2(1f, 1f);
-            npcListContent.offsetMin = new Vector2(16f, 12f);
-            npcListContent.offsetMax = new Vector2(-16f, -12f);
+            npcListContent.offsetMin = new Vector2(8f, 12f);
+            npcListContent.offsetMax = new Vector2(-8f, -12f);
 
             VerticalLayoutGroup layout = contentObject.GetComponent<VerticalLayoutGroup>();
             layout.childAlignment = TextAnchor.UpperCenter;
@@ -1317,6 +1677,7 @@ public sealed class LandInfoPanel : MonoBehaviour
             layout.spacing = 8f;
         }
 
+        ConfigureSelectionList(npcListPanel, npcListContent, "选择居民", true);
         npcListPanel.gameObject.SetActive(false);
     }
 
@@ -1392,6 +1753,7 @@ public sealed class LandInfoPanel : MonoBehaviour
         text.color = Color.white;
         text.alignment = TextAlignmentOptions.Center;
         text.enableWordWrapping = true;
+        text.raycastTarget = false;
 
         return button;
     }
@@ -1399,6 +1761,12 @@ public sealed class LandInfoPanel : MonoBehaviour
     private void PositionNearSlot(LandSlotController slot)
     {
         if (slot == null || panelRect == null || canvasRect == null) return;
+
+        lastCanvasSize = canvasRect.rect.size;
+        Vector2 availableSize = lastCanvasSize - screenPadding * 2f;
+        float preferredScale = Mathf.Max(1.30f, Mathf.Min(lastCanvasSize.x * 0.60f / panelSize.x, lastCanvasSize.y * 0.67f / panelSize.y));
+        float scale = Mathf.Min(preferredScale, availableSize.x / panelSize.x, availableSize.y / panelSize.y);
+        panelRect.localScale = Vector3.one * Mathf.Max(0.1f, scale);
 
         if (worldCamera == null) worldCamera = Camera.main;
         Camera uiCamera = rootCanvas != null && rootCanvas.renderMode != RenderMode.ScreenSpaceOverlay ? rootCanvas.worldCamera : null;
@@ -1413,7 +1781,7 @@ public sealed class LandInfoPanel : MonoBehaviour
     private Vector2 ClampToCanvas(Vector2 anchoredPosition)
     {
         Rect canvas = canvasRect.rect;
-        Vector2 halfPanel = panelSize * 0.5f;
+        Vector2 halfPanel = Vector2.Scale(panelRect.rect.size, panelRect.localScale) * 0.5f;
 
         float minX = canvas.xMin + halfPanel.x + screenPadding.x;
         float maxX = canvas.xMax - halfPanel.x - screenPadding.x;

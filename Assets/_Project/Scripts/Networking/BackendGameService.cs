@@ -917,9 +917,9 @@ public sealed partial class BackendGameService : MonoBehaviour
     {
         yield return LoadLandScenesRoutine(null);
         yield return LoadAvailableLandsRoutine();
-        yield return LoadAvailableBuildingsRoutine();
         yield return SyncBuildingStatusRoutine(null);
         yield return SyncMapRoutine(null);
+        yield return LoadAvailableBuildingsRoutine();
         yield return RefreshProductionsRoutine(null);
         yield return LoadProductionWorkStateRoutine(null);
         yield return RequestUserRoutine(null);
@@ -1062,6 +1062,7 @@ public sealed partial class BackendGameService : MonoBehaviour
         }
 
         if (BuildingManager.Instance != null) BuildingManager.Instance.SetRemoteAvailableBuildings(configs);
+        if (LandInfoPanel.Instance != null) LandInfoPanel.Instance.RefreshBuildingListIfShowing();
     }
 
     private IEnumerator LoadAvailableLandsRoutine()
@@ -1141,6 +1142,7 @@ public sealed partial class BackendGameService : MonoBehaviour
         {
             ApplyBuildingExperienceGrants(result.Data);
             if (MapManager.Instance != null) MapManager.Instance.ApplyRemoteBuildings(result.Data);
+            yield return LoadAvailableBuildingsRoutine();
         }
         else
         {
@@ -1708,6 +1710,15 @@ public sealed partial class BackendGameService : MonoBehaviour
         {
             onComplete?.Invoke(new BackendResult<IdleAdventureHomeResponse>(false, 0, "Backend session changed while adventure home was loading.", null));
             yield break;
+        }
+        if (result != null && result.Success && result.Data != null)
+        {
+            yield return LoadIdleAdventureNpcLevels(result.Data.available_npc_list, session);
+            if (!IsSessionRequestCurrent(session))
+            {
+                onComplete?.Invoke(new BackendResult<IdleAdventureHomeResponse>(false, 0, "Backend session changed while NPC levels were loading.", null));
+                yield break;
+            }
         }
         if (result != null && result.Success && result.Data != null && result.Data.stamina != null)
         {

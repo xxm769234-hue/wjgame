@@ -1,5 +1,6 @@
 using TMPro;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 /// <summary>
@@ -52,6 +53,12 @@ public sealed class RuntimeFontAssetProvider : MonoBehaviour
         {
             if (texts[i] != null)
             {
+                if (!UsesLocalPresentation(texts[i].gameObject))
+                {
+                    if (resolvedFont != null && texts[i].font == null) texts[i].font = resolvedFont;
+                    continue;
+                }
+
                 if (IsEditableInputText(texts[i]))
                 {
                     continue;
@@ -62,6 +69,7 @@ public sealed class RuntimeFontAssetProvider : MonoBehaviour
                     texts[i].font = resolvedFont;
                 }
 
+                if (PreservesAuthoredContent(texts[i].transform)) continue;
                 string normalized = FrontendTextLocalization.Normalize(texts[i].text);
                 if (texts[i].text != normalized)
                 {
@@ -76,6 +84,8 @@ public sealed class RuntimeFontAssetProvider : MonoBehaviour
         {
             if (legacyTexts[i] != null)
             {
+                if (!UsesLocalPresentation(legacyTexts[i].gameObject)) continue;
+
                 if (IsEditableInputText(legacyTexts[i]))
                 {
                     continue;
@@ -86,6 +96,7 @@ public sealed class RuntimeFontAssetProvider : MonoBehaviour
                     legacyTexts[i].font = resolvedLegacyFont;
                 }
 
+                if (PreservesAuthoredContent(legacyTexts[i].transform)) continue;
                 string normalized = FrontendTextLocalization.Normalize(legacyTexts[i].text);
                 if (legacyTexts[i].text != normalized)
                 {
@@ -93,6 +104,28 @@ public sealed class RuntimeFontAssetProvider : MonoBehaviour
                 }
             }
         }
+    }
+
+    private static bool UsesLocalPresentation(GameObject target)
+    {
+        string sceneName = target.scene.name;
+        if (sceneName == "DontDestroyOnLoad") sceneName = SceneManager.GetActiveScene().name;
+        return sceneName == "Launch" || sceneName == "Simulation management mode" || sceneName == "Idle Adventure mode";
+    }
+
+    private static bool PreservesAuthoredContent(Transform target)
+    {
+        for (Transform current = target; current != null; current = current.parent)
+        {
+            string objectName = current.name.ToLowerInvariant();
+            if (objectName.Contains("nickname") || objectName.Contains("avatarname")
+                || objectName.Contains("playername") || objectName.Contains("friendname")
+                || objectName.Contains("privacy") || objectName.Contains("agreement")
+                || objectName.Contains("agerating") || objectName.Contains("agerecommendation")
+                || objectName.Contains("personalinfopopup") || objectName.Contains("realnamepanel")
+                || objectName.Contains("minornoticeoverlay")) return true;
+        }
+        return false;
     }
 
     private static bool IsEditableInputText(TMP_Text text)

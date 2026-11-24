@@ -77,6 +77,17 @@ public sealed class BuildManager : MonoBehaviour
         return activePreview;
     }
 
+    public void PlaceOnboardingLand(LandSlotController slot, LandConfig config)
+    {
+        if (!PlayerOnboardingInputLock.IsTargetOnly || config == null || slot == null
+            || !(PlayerOnboardingInputLock.IsInputAllowed("OPEN_LAND_PLACEMENT", "LAND_BUILD_BUTTON")
+                || PlayerOnboardingInputLock.IsInputAllowed("PLACE_LAND", "HOME_FREE_LAND_SLOT")
+                || PlayerOnboardingInputLock.IsInputAllowed("PLACE_FARM_LAND", "FREE_LAND"))
+            || !PlayerOnboardingInputLock.IsSlotAllowed(slot)
+            || !PlayerOnboardingInputLock.IsConfigAllowed("land", config.landId)) return;
+        HandlePlacementRequested(slot, config);
+    }
+
     private void HandlePlacementRequested(LandSlotController slot, LandConfig config)
     {
         if (mapManager == null) mapManager = MapManager.EnsureInstance();
@@ -108,6 +119,7 @@ public sealed class BuildManager : MonoBehaviour
         {
             placementPending = false;
             if (!success) Debug.LogWarning($"Backend land placement failed: {message}", slot);
+            else PlayerOnboardingGameplayBridge.NotifyBusinessSucceeded();
         });
         EndBuild(false);
     }

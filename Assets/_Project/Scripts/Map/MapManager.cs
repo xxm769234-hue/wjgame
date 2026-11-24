@@ -181,24 +181,22 @@ public sealed class MapManager : MonoBehaviour
         reason = string.Empty;
         if (slot == null)
         {
-            reason = "指针下没有地块。";
+            reason = "请将地块放在小镇的可用位置。";
             return false;
         }
         if (!slot.IsPlacementUnlocked)
         {
-            reason = "服务器尚未解锁此地块的放置权限。";
+            reason = "此处尚未解锁。";
             return false;
         }
         if (config == null)
         {
-            reason = "缺少地块配置。";
+            reason = "暂时无法选择这块地，请重新选择。";
             return false;
         }
         if (!config.canPlace)
         {
-            reason = string.IsNullOrEmpty(config.disabledReason)
-                ? "服务器当前不允许使用此地块配置。"
-                : config.disabledReason;
+            reason = FrontendTextLocalization.NormalizePlayerMessage(config.disabledReason, "这块地暂时无法放置。");
             return false;
         }
 
@@ -206,7 +204,7 @@ public sealed class MapManager : MonoBehaviour
         Vector2Int gridPosition = slot.GridPosition;
         if (!IsWithinBounds(gridPosition))
         {
-            reason = $"Grid position {gridPosition} is outside map bounds {mapSize}.";
+            reason = "请将地块放在小镇范围内。";
             return false;
         }
         if (slot.IsBuilt || occupiedSlots.Contains(gridPosition))
